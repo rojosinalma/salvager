@@ -23,7 +23,7 @@ local COLUMNS = {
 }
 
 local f, list, summary, tabs = nil, nil, nil, {}
-local checkButton, cancelButton, qualityFilter, typeFilter
+local checkButton, cancelButton, qualityFilter, typeFilter, dataOnly
 
 --- Which bands the Odds view shows: { quality = { [2], [3], [4] }, type = { a, w } }, kept with the window.
 local function oddsFilter()
@@ -31,7 +31,7 @@ local function oddsFilter()
     ns.db.windows.ledger = saved
     saved.oddsQuality = saved.oddsQuality or { [2] = true, [3] = true, [4] = true }
     saved.oddsType = saved.oddsType or { a = true, w = true }
-    return saved.oddsQuality, saved.oddsType
+    return saved.oddsQuality, saved.oddsType, saved
 end
 
 local function when(t) return (t and t > 0) and date("%m-%d %H:%M", t) or "-" end
@@ -178,7 +178,7 @@ function Window.OddsRows()
     local by = Ledger.Report(ns.db.ledger)
     local s = ns.db.settings
     local opts = { salvager = ns.SalvagerForBuy(), salvagerChance = s.salvagerChance, cut = s.cut }
-    local showQuality, showType = oddsFilter()
+    local showQuality, showType, saved = oddsFilter()
     for _, q in ipairs({ { 2, Data.GREEN }, { 3, Data.BLUE }, { 4, Data.PURPLE } }) do
         for _, c in ipairs({ { Data.CLASS_ARMOR, "a", " armor" }, { Data.CLASS_WEAPON, "w", " weapons" } }) do
             for _, band in ipairs((showQuality[q[1]] and showType[c[2]]) and q[2] or {}) do
@@ -187,7 +187,8 @@ function Window.OddsRows()
                 local mine = by[string.format("%d:%s:%d", quality, c[2], up)]
                 local n = mine and mine.n or 0
                 local v = Model.Value(outcomes, ns.PriceOf, opts)
-                rows[#rows + 1] = {
+                local first = #rows + 1
+                rows[first] = {
                     cells = { GOLD .. QUALITY_NAME[quality] .. c[3] .. ", item level " .. bandRange(quality, up) .. "|r",
                         n > 0 and tostring(n) or (GREY .. "0|r"), "", "",
                         ns.Money(v.net) .. (#v.missing > 0 and (GREY .. "?|r") or ""),
@@ -206,6 +207,10 @@ function Window.OddsRows()
                             price and (ns.Money(price) .. " each") or (GREY .. "no price|r"), "" },
                     }
                 end
+                -- "Only bands with my data": take the band out again when it has none.
+                if saved.oddsDataOnly and n == 0 then
+                    for i = #rows, first, -1 do rows[i] = nil end
+                end
                 -- What came that the table does not have for this band.
                 for id, m in pairs(mine and mine.mats or {}) do
                     if not inTable[id] then
@@ -219,7 +224,10 @@ function Window.OddsRows()
             end
         end
     end
-    if #rows == 0 then rows[1] = note("Nothing selected: pick a quality and a gear type above.") end
+    if #rows == 0 then
+        rows[1] = note(saved.oddsDataOnly and "No disenchants yet in the selected bands. Untick \"Only bands with my data\" "
+            .. "to see the tables." or "Nothing selected: pick a quality and a gear type above.")
+    end
     return rows
 end
 
@@ -265,7 +273,9 @@ function Window.Refresh()
     local odds = Window.view == "odds"
     qualityFilter:SetShown(odds)
     typeFilter:SetShown(odds)
+    dataOnly:SetShown(odds)
     if odds then
+        dataOnly:SetChecked(select(3, oddsFilter()).oddsDataOnly and true or false)
         qualityFilter:Update()
         typeFilter:Update()
     end
@@ -340,6 +350,14 @@ local function build()
         Window.Refresh()
     end, "Which qualities the Odds view lists.", "Quality")
     qualityFilter:SetPoint("RIGHT", typeFilter, "LEFT", -6, 0)
+    dataOnly = W.Check(f, "Only bands with my data",
+        "Lists only the item level bands you have disenchanted in. Untick it to see the table of every band.",
+        function(on)
+            select(3, oddsFilter()).oddsDataOnly = on
+            list.offset = 0
+            Window.Refresh()
+        end)
+    dataOnly:SetPoint("TOPRIGHT", f, "TOPRIGHT", -190, -38)
     list = W.List(f, { rowHeight = 22 })
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98)
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)

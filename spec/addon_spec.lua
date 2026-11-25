@@ -141,6 +141,11 @@ describe("Salvager in a simulated client", function()
         assert.are.equal(11083, dust.itemID)
         assert.is_truthy(dust.cells[3]:find("75%", 1, true))       -- the table
         assert.is_truthy(dust.cells[4]:find("100%", 1, true))      -- yours
+        -- Only the bands with data: the one band, its table rows.
+        ns.db.windows.ledger = { oddsDataOnly = true }
+        local mine = ns.LedgerWindow.OddsRows()
+        assert.are.equal(4, #mine)                                 -- the band, dust, essence, shard
+        assert.is_truthy(mine[1].cells[1]:find("item level 26-30", 1, true))
         -- Filters: only blue weapons.
         ns.db.windows.ledger = { oddsQuality = { [3] = true }, oddsType = { w = true } }
         local few = ns.LedgerWindow.OddsRows()
