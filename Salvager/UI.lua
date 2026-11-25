@@ -19,6 +19,18 @@ local VIEWS = {
         icon = true,
         indent = 46,
         header = { "Item", "Type", "iLvl", "Buyout", "Value", "Profit", "Lose %" },
+        -- Shown when the mouse is over a column's title.
+        help = {
+            [5] = { "Value", "What one disenchant of this item is worth on average over many disenchants, at the "
+                .. "scanned material prices, after the 5% auction house cut. One disenchant gives less or more than this." },
+            [6] = { "Profit", "Value minus the buyout: the average profit per item over many disenchants. "
+                .. "It is not what one item will give." },
+            [7] = { "Lose %", "The chance that ONE disenchant of this item is worth less than its buyout, after the cut.\n\n"
+                .. "Example: a hood at 11s 46c gives dust 75% of the time, worth 4s or 8s, so Lose % is 75%. The rare "
+                .. "essence or shard pays for the losses.\n\nGreen: under 30%. Yellow: 30% or more. Red: 60% or more.\n\n"
+                .. "A high Lose % with a good Profit needs many items before the average shows. A low Lose % is safe "
+                .. "even for a few items." },
+        },
         cols = { { 205, "LEFT" }, { 46, "CENTER" }, { 34, "CENTER" }, { 80, "RIGHT" }, { 80, "RIGHT" }, { 80, "RIGHT" },
             { 54, "CENTER" } },
     },
@@ -39,6 +51,7 @@ local VIEWS = {
 local f, rows, headers, status, footer, minProfit, playButton, stopButton, gearChoice, tabs =
     nil, {}, {}, nil, nil, nil, nil, nil, nil, {}
 local qualityDrop, popOut
+local headerHelp = {}
 local REFRESH_GAP, lastRefresh, refreshQueued = 0.25, 0, false
 local spinner, bigSpinner, bigSpinnerText
 
@@ -167,7 +180,7 @@ local function footerText()
             text = text .. " No gear scan yet: click Scan both."
         end
         text = text .. " Value = the average over many disenchants. Lose % = the chance that one disenchant is worth "
-            .. "less than the price."
+            .. "less than the price. Hover a column title for more."
         return text
     elseif UI.view == "materials" then
         return ns.Materials.Legend()
@@ -261,6 +274,8 @@ function UI.Refresh()
         else
             h:Hide()
         end
+        headerHelp[i].help = col and view.help and view.help[i] or nil
+        headerHelp[i]:SetShown(headerHelp[i].help ~= nil)
     end
     for r = ROWS + 1, MAX_ROWS do rows[r]:Hide() end
     for r = 1, ROWS do
@@ -534,6 +549,20 @@ local function build()
         local h = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         h:SetHeight(ROW_H)
         headers[i] = h
+        -- An invisible area over the title, for its help text.
+        local area = CreateFrame("Frame", nil, list)
+        area:SetAllPoints(h)
+        area:EnableMouse(true)
+        area:SetScript("OnEnter", function(self)
+            if not self.help then return end
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(self.help[1], 1, 1, 1)
+            GameTooltip:AddLine(self.help[2], 1, 0.82, 0, true)
+            GameTooltip:Show()
+        end)
+        area:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        area:Hide()
+        headerHelp[i] = area
     end
     for r = 1, MAX_ROWS do
         local row = CreateFrame("Button", nil, list)
