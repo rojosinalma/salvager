@@ -185,7 +185,7 @@ function Results.Refresh()
 end
 
 local function build()
-    f = W.Window("SalvagerResultsFrame", "Salvager results", "results", 780, 480, 640, 260)
+    f = W.Window("SalvagerResultsFrame", "Salvager results", "results", 780, 480, 700, 260)
     summary = {}
     for i = 1, 2 do
         local l = W.Label(f, "", "GameFontHighlightSmall")

@@ -486,6 +486,25 @@ describe("Salvager deals list", function()
         assert.are.equal(0, ns.Queue.Pending())
     end)
 
+    it("leaves out columns that do not fit a narrow window", function()
+        local list = ns.Widgets.List(_G.UIParent, {})
+        list:SetColumns({ { "Item", 220 }, { "Bought", 82 }, { "Paid", 84, "RIGHT" } })
+        list:SetSource(1, function() return { cells = { "a", "b", "c" } } end)
+        list.GetWidth = function() return 600 end
+        list:Refresh()
+        assert.is_true(list.headers[3]:IsShown())
+        assert.is_true(list.rows[1].cells[3]:IsShown())
+        list.GetWidth = function() return 250 end      -- room for the first two columns only
+        list:Refresh()
+        assert.is_true(list.headers[2]:IsShown())
+        assert.is_false(list.headers[3]:IsShown())
+        assert.is_false(list.rows[1].cells[3]:IsShown())
+        list.GetWidth = function() return 120 end      -- only the first column, cut to the width
+        list:Refresh()
+        assert.is_false(list.headers[2]:IsShown())
+        assert.is_true(list.headers[1]:IsShown())
+    end)
+
     it("resizes from the corner and keeps the size", function()
         local f = _G.SalvagerFrame
         assert.is_function(f.scripts.OnSizeChanged)

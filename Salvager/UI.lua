@@ -530,6 +530,7 @@ local function build()
         UI.Refresh()
     end)
     UI.list = list
+    if list.SetClipsChildren then list:SetClipsChildren(true) end
 
     -- Scroll bar on the right of the list.
     local bar = W.ScrollBar(f, function(value)

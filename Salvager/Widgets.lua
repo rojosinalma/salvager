@@ -344,9 +344,12 @@ function Widgets.List(parent, opts)
     local ROW_H = opts.rowHeight or 22
     local HEAD_H = opts.header == false and 0 or ROW_H
     local MAX_ROWS, MAX_COLS, GAP, BAR_W = 60, 8, 6, 18
+    local MIN_FIRST = 90       -- the first column never gets narrower than this
     local list = CreateFrame("Frame", nil, parent)
+    if list.SetClipsChildren then list:SetClipsChildren(true) end
     list.offset, list.count, list.columns = 0, 0, {}
     local headers, rows = {}, {}
+    list.headers, list.rows = headers, rows
 
     for i = 1, MAX_COLS do
         local h = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -411,18 +414,22 @@ function Widgets.List(parent, opts)
         local fit = math.max(1, math.min(MAX_ROWS, math.floor(((self:GetHeight() or 0) - HEAD_H) / ROW_H)))
         self.offset = math.max(0, math.min(self.offset, self.count - fit))
         bar:Update(self.offset, self.count - fit)
-        -- Column positions: the first column takes what is left of the width.
+        -- Column positions. The first column takes what is left of the width and shrinks with the
+        -- window; a column that still does not fit is left out, from the right.
+        local avail = (self:GetWidth() or 0) - BAR_W - 8
         local fixed = 0
         for i = 2, #cols do fixed = fixed + cols[i][2] + GAP end
-        local first = math.max(cols[1] and cols[1][2] or 0, (self:GetWidth() or 0) - BAR_W - 8 - fixed)
-        local xs, ws, x = {}, {}, 4
+        local first = math.max(MIN_FIRST, avail - fixed)
+        local xs, ws, fits, x = {}, {}, {}, 4
         for i, col in ipairs(cols) do
             xs[i], ws[i] = x, (i == 1 and first or col[2])
+            fits[i] = i == 1 or (x + ws[i] <= avail + 4)
             x = x + ws[i] + GAP
         end
+        if not fits[2] and cols[1] then ws[1] = math.max(10, avail - 4) end
         for i = 1, MAX_COLS do
             local h, col = headers[i], cols[i]
-            if col and HEAD_H > 0 then
+            if col and fits[i] and HEAD_H > 0 then
                 h:ClearAllPoints()
                 h:SetPoint("TOPLEFT", self, "TOPLEFT", xs[i], 0)
                 h:SetWidth(ws[i]) h:SetJustifyH(col[3] or "LEFT") h:SetText(col[1]) h:Show()
@@ -450,7 +457,7 @@ function Widgets.List(parent, opts)
                 end
                 for i = 1, MAX_COLS do
                     local fs, col = row.cells[i], cols[i]
-                    if col then
+                    if col and fits[i] then
                         local extra = i == 1 and textIndent or 0
                         fs:ClearAllPoints()
                         fs:SetPoint("LEFT", row, "LEFT", xs[i] + extra, 0)
