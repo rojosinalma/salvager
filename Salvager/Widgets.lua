@@ -345,6 +345,7 @@ function Widgets.List(parent, opts)
     local HEAD_H = opts.header == false and 0 or ROW_H
     local MAX_ROWS, MAX_COLS, GAP, BAR_W = 60, 8, 6, 18
     local MIN_FIRST = 90       -- the first column never gets narrower than this
+    local ACTION_W = opts.actionWidth or 0   -- room on the right for a row's button and warning sign
     local list = CreateFrame("Frame", nil, parent)
     if list.SetClipsChildren then list:SetClipsChildren(true) end
     list.offset, list.count, list.columns = 0, 0, {}
@@ -382,6 +383,31 @@ function Widgets.List(parent, opts)
             GameTooltip:Show()
         end)
         row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        if ACTION_W > 0 then
+            row.action = Widgets.Button(row, "", 64, function()
+                local a = row.data and row.data.action
+                if a and a.onClick then a.onClick() end
+            end)
+            row.action:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+            row.action:Hide()
+            row.warn = CreateFrame("Frame", nil, row)
+            row.warn:SetSize(18, 18)
+            row.warn:SetPoint("RIGHT", row.action, "LEFT", -4, 0)
+            local sign = row.warn:CreateTexture(nil, "ARTWORK")
+            sign:SetAllPoints()
+            sign:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew")
+            row.warn:EnableMouse(true)
+            row.warn:SetScript("OnEnter", function(self)
+                local w = row.data and row.data.warn
+                if not w then return end
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(w.title, 1, 0.3, 0.3)
+                GameTooltip:AddLine(w.text, 1, 0.82, 0, true)
+                GameTooltip:Show()
+            end)
+            row.warn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            row.warn:Hide()
+        end
         row:Hide()
         rows[r] = row
     end
@@ -416,7 +442,7 @@ function Widgets.List(parent, opts)
         bar:Update(self.offset, self.count - fit)
         -- Column positions. The first column takes what is left of the width and shrinks with the
         -- window; a column that still does not fit is left out, from the right.
-        local avail = (self:GetWidth() or 0) - BAR_W - 8
+        local avail = (self:GetWidth() or 0) - BAR_W - 8 - ACTION_W
         local fixed = 0
         for i = 2, #cols do fixed = fixed + cols[i][2] + GAP end
         local first = math.max(MIN_FIRST, avail - fixed)
@@ -441,6 +467,15 @@ function Widgets.List(parent, opts)
             local row = rows[r]
             local data = r <= fit and (r + self.offset) <= self.count and self.getRow(r + self.offset) or nil
             row.data = data
+            if ACTION_W > 0 then
+                local a = data and data.action
+                row.action:SetShown(a ~= nil)
+                if a then
+                    row.action:SetText(a.text)
+                    row.action:SetEnabled(a.enabled and true or false)
+                end
+                row.warn:SetShown(data ~= nil and data.warn ~= nil)
+            end
             if not data then
                 row:Hide()
             else

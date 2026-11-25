@@ -1,7 +1,7 @@
 -- Salvager: the main window (Deals, Materials, Limits) and the Log panel attached to its right side.
 local _, ns = ...
 
-local Ledger, Data, W = ns.Ledger, ns.Data, ns.Widgets
+local Data, W = ns.Data, ns.Widgets
 
 local UI = { view = "deals", offset = 0, expanded = {} }
 ns.UI = UI
@@ -25,7 +25,7 @@ local VIEWS = {
         icon = true,
         header = { "Material", "Price", "Units", "Age", "Bags", "Stock", "Avg cost", "Break-even" },
         cols = { { 160, "LEFT" }, { 80, "RIGHT" }, { 45, "CENTER" }, { 36, "CENTER" }, { 40, "CENTER" }, { 40, "CENTER" },
-            { 85, "RIGHT" }, { 85, "RIGHT" } },
+            { 85, "RIGHT" }, { 85, "RIGHT" } },   -- (the same as Materials.COLUMNS)
     },
     limits = {
         icon = false,
@@ -37,16 +37,9 @@ local VIEWS = {
 
 local f, rows, headers, status, footer, minProfit, playButton, stopButton, gearChoice, tabs =
     nil, {}, {}, nil, nil, nil, nil, nil, nil, {}
-local qualityDrop
+local qualityDrop, popOut
 local REFRESH_GAP, lastRefresh, refreshQueued = 0.25, 0, false
 local spinner, bigSpinner, bigSpinnerText
-
-local function ago(seconds)
-    if not seconds then return "-" end
-    if seconds < 60 then return "now" end
-    if seconds < 3600 then return math.floor(seconds / 60) .. "m" end
-    return math.floor(seconds / 3600) .. "h"
-end
 
 ------------------------------------------------------------------ rows per view
 
@@ -102,41 +95,6 @@ local function dealRows()
     return out
 end
 
-local function materialRows()
-    local out = {}
-    local maxAge = ns.PriceOldAfter()
-    for _, m in ipairs(Data.MATERIALS) do
-        local e = ns.db.prices[m.id]
-        local price = ns.PriceOf(m.id)
-        local age = e and e.t and (time() - e.t)
-        local s = ns.db.ledger.stock[m.id]
-        local avg = Ledger.AvgCost(ns.db.ledger, m.id)
-        local unknown = s and (s.unknown or 0) or 0
-        local bags = ns.Post.BagCount(m.id)
-        local suggest = bags > 0 and ns.Post.Suggest(m.id) or nil
-        local be = Ledger.BreakEven(ns.db.ledger, m.id, ns.Cut())
-        local priceText = price and ns.Money(price) or "-"
-        if e and not e.p and e.last then
-            priceText = "*" .. priceText
-        elseif e and not e.p and price then
-            priceText = "~" .. priceText
-        end
-        if price and be and price < be then priceText = "|cffff4040" .. priceText .. "|r" end
-        local ageText = ago(age)
-        if age and age > maxAge then ageText = "|cffff8040" .. ageText .. "|r" end
-        out[#out + 1] = {
-            cells = { ns.MaterialName(m.id), priceText,
-                e and e.units and e.units > 0 and (e.units .. "/" .. e.listings) or "-",
-                ageText, bags > 0 and tostring(bags) or "-", s and tostring(s.qty) or "-",
-                avg and (ns.Money(avg) .. (unknown > 0 and " |cff808080+" .. unknown .. "?|r" or ""))
-                    or (unknown > 0 and "|cff808080unknown|r" or "-"),
-                be and ns.Money(be) or "-" },
-            itemID = m.id, post = bags > 0, suggest = suggest,
-        }
-    end
-    return out
-end
-
 local function recommendedText(x, dim)
     if not x then return "-" end
     local t = ns.Money(x.recommended)
@@ -161,7 +119,7 @@ local function limitRows()
     return out
 end
 
-local SOURCES = { deals = dealRows, materials = materialRows, limits = limitRows }
+local SOURCES = { deals = dealRows, materials = function() return ns.Materials.Rows() end, limits = limitRows }
 
 ------------------------------------------------------------------ drawing
 
@@ -201,10 +159,7 @@ local function footerText()
         end
         return text
     elseif UI.view == "materials" then
-        return string.format("Price = average of cheapest %d units. Red = below break-even. * = none listed, last price. "
-            .. "~ = other essence form. Unknown / +n? = units with no recorded purchase (/salv stock sets them). "
-            .. "Post = sell what is in your bags; the warning sign means the price is below your break-even.",
-            ns.db.settings.priceUnits)
+        return ns.Materials.Legend()
     end
     return "Recommended = disenchant value after the 5% cut, minus your minimum profit. Type gold, silver and copper in "
         .. "Buy below to set your own (yellow). x = back to the recommended price. Grey = type not scanned."
@@ -277,6 +232,11 @@ end
 
 function UI.Refresh()
     if not f or not f:IsShown() then return end
+    -- The materials list is in its own window: this window does not show it too.
+    local out = ns.Materials.IsPoppedOut()
+    if out and UI.view == "materials" then UI.view, UI.offset = "deals", 0 end
+    tabs.materials:SetAlpha(out and 0.5 or 1)
+    popOut:SetShown(UI.view == "materials")
     local view = VIEWS[UI.view]
     ROWS = fitRows()
     local w = layout(view)
@@ -427,11 +387,24 @@ local function build()
     -- Row 1: views, log, options.
     local x = 12
     for _, t in ipairs({ { "deals", "Deals" }, { "materials", "Materials" }, { "limits", "Limits" } }) do
-        local b = W.Button(f, t[2], 90, function() UI.view = t[1] UI.offset = 0 UI.Refresh() end)
+        local b = W.Button(f, t[2], 90, function()
+            -- The Materials tab, while its list is in its own window: put it back here.
+            if t[1] == "materials" then ns.Materials.PutBack() end
+            UI.view = t[1]
+            UI.offset = 0
+            UI.Refresh()
+        end)
         b:SetPoint("TOPLEFT", f, "TOPLEFT", x, -30)
         tabs[t[1]] = b
         x = x + 94
     end
+    W.Tooltip(tabs.materials, "Materials", "Prices, stock and break-even of the disenchanting materials. "
+        .. "While the list is in its own window (Pop out), a click here puts it back.")
+    popOut = W.Button(f, "Pop out", 76, function() ns.Materials.PopOut() end,
+        "Moves the materials list to a window of its own, so you can watch it next to the deals. "
+        .. "Scans keep running. Close that window to put the list back here.")
+    popOut:SetPoint("TOPLEFT", f, "TOPLEFT", x + 6, -30)
+    popOut:Hide()
     local options = W.Button(f, "Options", 80, function() ns.Options.Open() end)
     options:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -30)
     local log = W.Button(f, "Log", 80, function() ns.LogWindow.Toggle() end,
@@ -607,9 +580,7 @@ local function build()
             if not sug then return end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetText("Below your break-even", 1, 0.3, 0.3)
-            GameTooltip:AddLine(string.format("The lowest listing is %s. Your break-even is %s. Posting now loses about %s each.",
-                sug.lowest and ns.Money(sug.lowest) or "not known", ns.Money(sug.breakEven),
-                ns.Money(sug.breakEven - sug.price)), 1, 0.82, 0, true)
+            GameTooltip:AddLine(ns.Materials.WarnText(sug), 1, 0.82, 0, true)
             GameTooltip:Show()
         end)
         row.warn:SetScript("OnLeave", function() GameTooltip:Hide() end)

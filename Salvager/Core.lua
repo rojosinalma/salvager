@@ -348,6 +348,7 @@ local HELP = {
     "/salv stock <item> <quantity> <cost each> - opening stock, e.g. /salv stock 11137 40 6s",
     "/salv report - disenchant results by band",
     "/salv auras - list your buffs (to find the Salvager's)",
+    "/salv materials - the materials list in its own window (again: put it back)",
     "/salv ledger - the ledger window (purchases, sales, odds)",
     "/salv log - the log window; /salv log 20 prints the last 20 lines in chat",
     "/salv reset ledger confirm - clear all purchases, stock and history",
@@ -418,6 +419,8 @@ SlashCmdList.SALVAGER = function(msg)
         ns.Fire("SALVAGER_LEDGER")
     elseif cmd == "report" then
         if ns.Report then ns.Report.Print() end
+    elseif cmd == "materials" then
+        if ns.Materials.IsPoppedOut() then ns.Materials.PutBack() else ns.Materials.PopOut() end
     elseif cmd == "ledger" or cmd == "results" then
         ns.LedgerWindow.Toggle()
     elseif cmd == "log" and not tonumber(args[2]) or cmd == "activity" then

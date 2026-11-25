@@ -59,6 +59,14 @@ flipping is out of scope for now.
 18. **Searches wait for the browse:** a search sent while browse pages load made the auction house drop a
     page (seen 2026-11-25: a pass ended at 2500 of ~9000 items). The queue holds searches during a browse
     (except one the player asked for), and a page that does not come is asked for again twice (4 s each).
+19. **Mail is booked by count, not by identity.** Mails have no ID, and two purchases (or sales) of the same
+    item at the same price are identical mails. Until 0.3.4 a mail was skipped when one with the same sender,
+    subject, money and days left had been booked: 4 of 5 Azure Silk Hoods bought together were lost
+    (2026-11-25). Now a take starts a watch on that kind of mail, and one mail is booked for each that no
+    longer holds its item or money at the next `MAIL_INBOX_UPDATE`, never more than the takes asked for.
+    Known limit: with more than 50 mails, an identical one can slide into view and hide a take.
+20. **Materials pop-out:** the materials list is one row builder (`Materials.Rows`) shown either in the main
+    window's tab or in its own window, never both. Closing the window puts it back. Scans are not touched.
 15. **UI redraws** from events are limited to four per second; the log panel is not rebuilt during a scan.
 
 ## Data

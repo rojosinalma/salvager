@@ -19,6 +19,7 @@ Copy the `Salvager` folder into `World of Warcraft/_forever_/Interface/AddOns/`,
 5. Take your "Auction won" mail, disenchant, and sell the materials as usual. Salvager books each step.
 6. **Materials** shows price, stock, average cost and break-even. **Post** sells what is in your bags at
    1 copper under the lowest listing; a warning sign shows when that is below your break-even.
+   **Pop out** moves the materials list to a window of its own; close it to put the list back.
    **Limits** shows the buy limit per item level band for armor and weapons.
    **Ledger** opens a window of its own: what you bought with what each item was disenchanted into,
    your sales with their profit, and your disenchant odds. **Log** opens the activity log.

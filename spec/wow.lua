@@ -132,8 +132,9 @@ function M.install()
     -- Mail: env.inbox[i] = { header = {...}, invoice = {...}, link = ... }
     _G.GetInboxHeaderInfo = function(i)
         local m = env.inbox[i]
-        return nil, nil, m.sender, m.subject, m.money or 0, nil, m.daysLeft or 30
+        return nil, nil, m.sender, m.subject, m.money or 0, nil, m.daysLeft or 30, m.link and 1 or 0
     end
+    _G.GetInboxNumItems = function() return #env.inbox end
     _G.GetInboxInvoiceInfo = function(i) return unpack(env.inbox[i].invoice) end
     _G.GetInboxItemLink = function(i, a) local m = env.inbox[i] return a == 1 and m.link or nil end
     _G.TakeInboxItem = function() end

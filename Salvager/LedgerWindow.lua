@@ -47,7 +47,9 @@ function Window.PurchaseRows()
             cells = {
                 name, when(e.boughtAt or (not e.done and e.t) or nil),
                 e.paid and ns.Money(e.paid) or (GREY .. "not recorded|r"), money(e.expected),
-                e.done and money(e.got) or (GREY .. "not disenchanted|r"), signed(e.result),
+                e.done and money(e.got)
+                    or (GREY .. (ns.NoDisenchant(e.itemID) and "cannot be disenchanted" or "not disenchanted") .. "|r"),
+                signed(e.result),
             },
         }
         for _, m in ipairs(e.mats or {}) do

@@ -77,8 +77,10 @@ describe("Salvager in a simulated client", function()
             invoice = { "buyer", "Test Boots", "Seller", 500, 500, 0, 0, 0, 0, 0, 1 } }
         assert.are.equal(1, #ns.db.ledger.purchases[BOOTS])   -- recorded when bought
         TakeInboxItem(1, 1)
-        AutoLootMailItem(1)   -- the same mail again must not count twice
-        assert.are.equal(1, #ns.db.ledger.purchases[BOOTS])
+        AutoLootMailItem(1)   -- asked twice for the same mail
+        table.remove(env.inbox, 1)                            -- the item left the mailbox
+        wow.fire(ns, "MAIL_INBOX_UPDATE")
+        assert.are.equal(1, #ns.db.ledger.purchases[BOOTS])   -- the mail matches the purchase: not counted again
         assert.are.equal(500, ns.db.ledger.purchases[BOOTS][1].each)
     end)
 
@@ -100,9 +102,12 @@ describe("Salvager in a simulated client", function()
     end)
 
     it("books a material sale from the Auction successful mail", function()
-        env.inbox[2] = { sender = "Auction House", subject = "Auction successful: Soul Dust (2)",
+        env.inbox[1] = { sender = "Auction House", subject = "Auction successful: Soul Dust (2)", money = 1140,
             invoice = { "seller", "Soul Dust", "Buyer", 1200, 1200, 60, 60, 0, 0, 0, 2 } }
-        TakeInboxMoney(2)
+        TakeInboxMoney(1)
+        assert.are.equal(0, #ns.db.ledger.sales)              -- not booked until the money is gone
+        table.remove(env.inbox, 1)
+        wow.fire(ns, "MAIL_INBOX_UPDATE")
         local sale = ns.db.ledger.sales[1]
         assert.are.equal(2, sale.count)
         assert.are.equal(1140, sale.net)
@@ -576,11 +581,85 @@ describe("Salvager posting", function()
         assert.is_true(env.ah.posts[#env.ah.posts].confirmed)
     end)
 
+    it("pops the materials list out to its own window and puts it back when closed", function()
+        ns.UI.view = "materials"
+        ns.UI.Refresh()
+        ns.Scanner.auto = true                             -- a scan setting that must survive
+        ns.Materials.PopOut()
+        assert.is_true(ns.Materials.IsPoppedOut())
+        assert.is_true(_G.SalvagerMaterialsFrame:IsShown())
+        ns.UI.Refresh()
+        assert.are.equal("deals", ns.UI.view)              -- the main window gave up the list
+        assert.is_true(ns.Scanner.auto)
+        -- The window's row for the dust has a Post button.
+        local posted
+        for _, fr in ipairs(env.frames) do
+            local data = rawget(fr, "data")
+            if data and data.itemID == DUST and data.action then posted = data.action end
+        end
+        assert.is_table(posted)
+        assert.are.equal("Post", posted.text)
+        _G.SalvagerMaterialsFrame:Hide()                   -- closed with its X
+        _G.SalvagerMaterialsFrame.scripts.OnHide()
+        assert.is_false(ns.Materials.IsPoppedOut())
+        ns.UI.view = "materials"
+        ns.UI.Refresh()
+        assert.are.equal("materials", ns.UI.view)          -- back in the tab
+        ns.Scanner.auto = false
+    end)
+
     it("refuses when none is in the bags", function()
         env.bagSlots = {}
         local ok, why = ns.Post.Send(DUST, 1, 429, 2)
         assert.is_false(ok)
         assert.is_string(why)
         for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
+    end)
+end)
+
+describe("Salvager mail", function()
+    local env, ns
+    local HOOD, LINK = 7048, "|cff1eff00|Hitem:7048::::::::30:::::|h[Azure Silk Hood]|h|r"
+    local function won()
+        return { sender = "Auction House", subject = "Auction won: Azure Silk Hood", link = LINK,
+            invoice = { "buyer", "Azure Silk Hood", "Seller", 1000, 1000, 0, 0, 0, 0, 0, 1 } }
+    end
+    setup(function()
+        env = wow.install()
+        env.items[HOOD] = { name = "Azure Silk Hood", quality = 2, ilvl = 29, classID = 4 }
+        ns = wow.loadAddon()
+        wow.fire(ns, "ADDON_LOADED", "Salvager")
+    end)
+
+    it("books two identical purchase mails as two purchases", function()
+        env.inbox = { won(), won(), won() }
+        TakeInboxItem(1, 1)
+        table.remove(env.inbox, 1)
+        wow.fire(ns, "MAIL_INBOX_UPDATE")
+        assert.are.equal(1, #ns.db.ledger.purchases[HOOD])
+        TakeInboxItem(1, 1)                    -- the next one: the same sender, subject and price
+        table.remove(env.inbox, 1)
+        wow.fire(ns, "MAIL_INBOX_UPDATE")
+        assert.are.equal(2, #ns.db.ledger.purchases[HOOD])
+    end)
+
+    it("books a mail once when it is asked for twice, and not before it is gone", function()
+        TakeInboxItem(1, 1)
+        wow.fire(ns, "MAIL_INBOX_UPDATE")      -- nothing left the mailbox yet (bags full, lag)
+        assert.are.equal(2, #ns.db.ledger.purchases[HOOD])
+        TakeInboxItem(1, 1)
+        table.remove(env.inbox, 1)
+        wow.fire(ns, "MAIL_INBOX_UPDATE")
+        assert.are.equal(3, #ns.db.ledger.purchases[HOOD])
+    end)
+
+    it("books every mail of an open-all run", function()
+        env.inbox = { won(), won(), won(), won() }
+        for i = 1, 4 do AutoLootMailItem(i) end
+        for _ = 1, 4 do
+            table.remove(env.inbox, 1)
+            wow.fire(ns, "MAIL_INBOX_UPDATE")
+        end
+        assert.are.equal(7, #ns.db.ledger.purchases[HOOD])
     end)
 end)
