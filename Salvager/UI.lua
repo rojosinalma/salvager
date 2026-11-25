@@ -26,7 +26,7 @@ local VIEWS = {
     limits = {
         icon = false,
         header = { "Item level", "Armor recommended", "Armor buy below", "Weapon recommended", "Weapon buy below" },
-        cols = { { 90, "LEFT" }, { 125, "RIGHT" }, { 125, "RIGHT" }, { 125, "RIGHT" }, { 125, "RIGHT" } },
+        cols = { { 64, "LEFT" }, { 100, "RIGHT" }, { 182, "RIGHT" }, { 100, "RIGHT" }, { 182, "RIGHT" } },
         edit = { [3] = "armor", [5] = "weapon" },
     },
 }
@@ -145,8 +145,8 @@ local function footerText()
         return string.format("Price = average of cheapest %d units. Red = below break-even. * = none listed, last price. "
             .. "~ = other essence form.", ns.db.settings.priceUnits)
     end
-    return "Recommended = disenchant value after the 5% cut, minus your minimum profit. Type a price in Buy below "
-        .. "to set your own (yellow). Clear the box to use the recommended one again. Grey = type not scanned."
+    return "Recommended = disenchant value after the 5% cut, minus your minimum profit. Type gold, silver and copper in "
+        .. "Buy below to set your own (yellow). x = back to the recommended price. Grey = type not scanned."
 end
 
 local function layout(view)
@@ -162,8 +162,7 @@ local function layout(view)
             if which then
                 local e = row.edits[which]
                 e:ClearAllPoints()
-                e:SetPoint("LEFT", row, "LEFT", x + 8, 0)
-                e:SetWidth(col[1] - 8)
+                e:SetPoint("LEFT", row, "LEFT", x + 4, 0)
             end
         end
         if col then x = x + col[1] + 6 end
@@ -173,10 +172,10 @@ end
 --- Shows one buy-limit box: yellow when set by hand, white for the recommended limit.
 local function showEdit(e, x, dim)
     e.limit = x
-    if not x then e:Hide() return end
+    if not x then e:Hide() e.reset:Hide() return end
     e:Show()
-    if e:HasFocus() then return end
-    e:SetText(ns.Money(x.limit))
+    e.reset:SetShown(x.manual)
+    e:Set(x.limit)
     if dim then e:SetTextColor(0.5, 0.5, 0.5)
     elseif x.manual then e:SetTextColor(1, 0.82, 0)
     else e:SetTextColor(1, 1, 1) end
@@ -369,27 +368,22 @@ local function build()
         end
         row.edits = {}
         for _, which in ipairs({ "armor", "weapon" }) do
-            local e = W.Edit(row, 100, false)
-            e:SetJustifyH("RIGHT")
-            e:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
-            e:SetScript("OnEditFocusLost", function(self)
-                local lim = self.limit
-                if not lim then return end
-                local text = self:GetText():gsub("^%s+", ""):gsub("%s+$", "")
-                local copper = text ~= "" and ns.Util.ParseMoney(text) or nil
-                if text == "" or copper == lim.recommended then
-                    if lim.manual then ns.SetLimitOverride(lim.quality, lim.classID, lim.band, nil) end
-                elseif copper ~= lim.limit and copper then
+            local e
+            e = W.Money(row, function(copper)
+                local lim = e.limit
+                if not lim or copper == lim.limit then return end
+                if copper == lim.recommended and lim.manual then
+                    ns.SetLimitOverride(lim.quality, lim.classID, lim.band, nil)
+                elseif copper ~= lim.recommended then
                     ns.SetLimitOverride(lim.quality, lim.classID, lim.band, copper)
-                elseif copper then
-                    UI.Refresh()
-                else
-                    ns.Print("not a price: %s (examples: 1g20s, 45s, 80)", text)
-                    UI.Refresh()
                 end
             end)
-            W.Tooltip(e, "Buy below", "Type a price, for example 1g20s or 45s (a plain number is silver). "
-                .. "Clear the box to use the recommended price again.")
+            e.reset = W.Button(e:Right(), "x", 20, function()
+                local lim = e.limit
+                if lim then ns.SetLimitOverride(lim.quality, lim.classID, lim.band, nil) end
+            end, "Use the recommended price again.")
+            e.reset:SetPoint("LEFT", e:Right(), "RIGHT", -6, 0)
+            e.reset:Hide()
             e:Hide()
             row.edits[which] = e
         end

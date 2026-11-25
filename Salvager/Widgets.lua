@@ -69,23 +69,28 @@ function Widgets.Edit(parent, width, numeric)
     return e
 end
 
---- Three boxes (gold, silver, copper). onChange(copper) runs on Enter or when focus leaves.
+--- Three boxes (gold, silver, copper) in one frame. onChange(copper) runs when a box loses focus.
 function Widgets.Money(parent, onChange)
-    local m = { boxes = {} }
+    local frame = CreateFrame("Frame", nil, parent)
+    frame:SetSize(150, 20)
+    local m = { boxes = {}, frame = frame }
     local prev
     for i, unit in ipairs({ { "g", "ffd700" }, { "s", "c7c7cf" }, { "c", "eda55f" } }) do
-        local e = Widgets.Edit(parent, i == 1 and 44 or 28, true)
+        local e = Widgets.Edit(frame, i == 1 and 44 or 28, true)
         e:SetMaxLetters(i == 1 and 6 or 2)
-        if prev then e:SetPoint("LEFT", prev, "RIGHT", 18, 0) end
-        local l = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        if prev then e:SetPoint("LEFT", prev, "RIGHT", 18, 0) else e:SetPoint("LEFT", frame, "LEFT", 6, 0) end
+        local l = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         l:SetPoint("LEFT", e, "RIGHT", 3, 0)
         l:SetText("|cff" .. unit[2] .. unit[1] .. "|r")
-        local function apply()
+        e:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+        e:SetScript("OnTabPressed", function()
+            local nextBox = m.boxes[i % 3 + 1]
+            if nextBox then nextBox:SetFocus() end
+        end)
+        e:SetScript("OnEditFocusLost", function()
             if m.silent then return end
             if onChange then onChange(m:Get()) end
-        end
-        e:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
-        e:SetScript("OnEditFocusLost", apply)
+        end)
         m.boxes[i] = e
         prev = e
     end
@@ -95,8 +100,11 @@ function Widgets.Money(parent, onChange)
         local c = math.min(99, tonumber(self.boxes[3]:GetText()) or 0)
         return g * 10000 + s * 100 + c
     end
+    function m:HasFocus()
+        return self.boxes[1]:HasFocus() or self.boxes[2]:HasFocus() or self.boxes[3]:HasFocus()
+    end
     function m:Set(copper)
-        if self.boxes[1]:HasFocus() or self.boxes[2]:HasFocus() or self.boxes[3]:HasFocus() then return end
+        if self:HasFocus() then return end
         self.silent = true
         copper = math.max(0, math.floor(copper or 0))
         self.boxes[1]:SetText(tostring(math.floor(copper / 10000)))
@@ -104,8 +112,12 @@ function Widgets.Money(parent, onChange)
         self.boxes[3]:SetText(tostring(copper % 100))
         self.silent = false
     end
-    function m:SetPoint(...) self.boxes[1]:SetPoint(...) end
-    function m:Right() return self.boxes[3] end
+    function m:SetTextColor(r, g, b) for _, e in ipairs(self.boxes) do e:SetTextColor(r, g, b) end end
+    function m:SetPoint(...) self.frame:SetPoint(...) end
+    function m:ClearAllPoints() self.frame:ClearAllPoints() end
+    function m:Show() self.frame:Show() end
+    function m:Hide() self.frame:Hide() end
+    function m:Right() return self.frame end
     return m
 end
 

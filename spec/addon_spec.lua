@@ -214,6 +214,8 @@ describe("Salvager window and options", function()
             ns.UI.view = v
             ns.UI.Refresh()
         end
+        ns.UI.view = "limits"
+        ns.UI.Refresh()
         ns.LogPanel.Toggle()
         ns.LogPanel.mode = "activity"
         ns.LogPanel.Refresh()
@@ -224,9 +226,13 @@ describe("Salvager window and options", function()
     end)
 
     it("reads gold, silver and copper boxes", function()
-        local m = ns.Widgets.Money(_G.UIParent)
+        local got
+        local m = ns.Widgets.Money(_G.UIParent, function(c) got = c end)
         m:Set(12345)
         assert.are.equal(12345, m:Get())
+        m.boxes[2]:SetText("50")
+        m.boxes[2].scripts.OnEditFocusLost(m.boxes[2])
+        assert.are.equal(15045, got)
     end)
 end)
 
