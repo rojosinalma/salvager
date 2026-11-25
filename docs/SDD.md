@@ -1,0 +1,41 @@
+# Salvager — design decisions
+
+## Scope
+
+Personal-use WoW Forever addon (interface 16001). Buying and selling at the auction house only; vendor
+flipping is out of scope for now.
+
+## Decisions
+
+1. **Disenchant table by item level** (Classic table). Required level is only a rough guide; the auction
+   house's level filter uses required level, but every item key carries its item level, which picks the band.
+2. **Arcane Salvager rule:** 50% chance of one extra dust or essence; never on shards or single fixed
+   results. Source: a community spreadsheet with 7000+ disenchants. Configurable (`salvagerChance`).
+   Applied to buy prices only when the player can use it (recipe spell 1263056 or item 279985), or by
+   `/salv salvager on|off`.
+3. **Material price** = average unit price of the cheapest 20 units, own listings excluded. When a scan
+   finds none, the last price stays in use (marked `*`). A missing essence price is filled from the other
+   form (3 lesser = 1 greater, marked `~`).
+4. **Cost split on disenchant:** by material value at the moment of the disenchant. Splits by quantity only
+   when no material has a price.
+5. **Stock valuation:** weighted average cost per material. Break-even = ceil(average ÷ (1 − cut)).
+6. **Purchases** are recorded from the "Auction won" mail invoice, so purchases from any addon count.
+   Matched to disenchants first in, first out per item ID.
+7. **Sales** are recorded from the "Auction successful" invoice: net = sale − cut. Deposits lost on expired
+   auctions are not tracked.
+8. **Opening stock** is entered by hand (`/salv stock`).
+9. **Buying** needs one click per auction (`PlaceBid` needs a hardware event). Nothing buys on its own.
+10. **Search pacing:** one search at a time, gated by `IsThrottledMessageSystemReady`; an item the client
+    already holds results for is refreshed, never searched again (a second search never answers).
+11. **Gear scan:** one browse query (all pages), then item searches only for items whose lowest price is
+    under the buy limit, best margin first, at most 60 per scan.
+
+## Data
+
+`SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),
+`auraSeen` and `auraSnapshots` (to learn the Salvager's aura spell ID; matched by name until then).
+
+## Open
+
+1. The Salvager aura's spell ID: read it from `/salv auras` during the first session with a Salvager.
+2. Whether Forever's disenchant results match the Classic table: the Log tab compares observed odds per band.
