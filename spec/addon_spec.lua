@@ -428,15 +428,28 @@ describe("Salvager scan safety", function()
         ns.Queue.Clear()
     end)
 
+    it("uses the results when the answer came without its event", function()
+        ns.Queue.Clear()
+        local got
+        ns.Queue.Add({ itemKey = { itemID = 5001, itemLevel = 28, itemSuffix = 0 },
+            onResult = function() got = "result" end, onFail = function() got = "fail" end })
+        wow.tick(ns, 0.2)
+        env.ah.hasResults[5001] = true          -- the game holds results, but no event was seen
+        wow.tick(ns, 2.2)
+        assert.are.equal("result", got)
+        env.ah.hasResults[5001] = nil
+    end)
+
     it("tries a search once more when it gets no answer", function()
         ns.Prices.Scan()
         local first = ns.Queue.items[1] and ns.Queue.items[1].commodity
         wow.tick(ns, 0.2)
         assert.are.equal(first, ns.Queue.current.commodity)
-        wow.tick(ns, 3.2)
-        local again = false
-        for _, t in ipairs(ns.Queue.items) do if t.commodity == first then again = true end end
-        assert.is_true(again)
+        wow.tick(ns, 2.3)                       -- no answer in 2 s: the same search goes out again, next in line
+        assert.are.equal(first, ns.Queue.current.commodity)
+        assert.are.equal(1, ns.Queue.current.tries)
+        assert.are.equal(1, ns.Queue.lost)
+        ns.Scanner.Stop()
     end)
 end)
 

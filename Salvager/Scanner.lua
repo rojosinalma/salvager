@@ -87,6 +87,8 @@ local function checkDone()
     Scanner.checked = Scanner.checked + 1
     ns.Fire("SALVAGER_DEALS")
     if Scanner.checked >= Scanner.toCheck then
+        ns.Log("gear checks done: %d items in %.0fs; %d searches got no answer and were sent again, %d used the game's "
+            .. "held results", Scanner.toCheck, GetTime() - (Scanner.checksAt or GetTime()), ns.Queue.lost, ns.Queue.late)
         setState("idle")
         scheduleNext()
     end
@@ -180,6 +182,8 @@ local function queueChecks()
     end
     setState("checking")
     Scanner.toCheck, Scanner.checked = 0, 0
+    Scanner.checksAt = GetTime()
+    ns.Queue.lost, ns.Queue.late = 0, 0
     table.sort(candidates, function(a, b) return a.margin > b.margin end)
     -- Each item search takes about 0.7 s: check the best ones first, at most maxChecks.
     for i = #candidates, ns.db.settings.maxChecks + 1, -1 do candidates[i] = nil end

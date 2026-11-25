@@ -82,6 +82,12 @@ flipping is out of scope for now.
     do not change it. When the auction house opens (and `autoOpen`, `restoreWindows` are on) the Ledger, Log
     and Materials windows that were open are shown again. The main window's tab and the Ledger's view are
     kept too.
+25. **Searches that get no answer** (measured 2026-11-25, 0.3.3 to 0.3.8): about one item search in four got
+    no answer on its first try and none of them reported a drop; every second try worked. Cause not known
+    (another addon sharing the one-request lock is the main suspect). Since 0.3.9: the wait is 2 s, a search
+    is tried up to 3 times and stays next in line, the `_ADDED` result events also count as answers, and at
+    the timeout the results are used if the game holds them. A refresh with no new answer uses the held
+    results and logs it. Each round logs its check time and both counts.
 15. **UI redraws** from events are limited to four per second; the log panel is not rebuilt during a scan.
 
 ## Data

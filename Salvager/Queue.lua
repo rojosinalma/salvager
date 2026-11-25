@@ -5,10 +5,11 @@
 local _, ns = ...
 
 local AH = C_AuctionHouse
-local Queue = { items = {}, current = nil, open = false }
+local Queue = { items = {}, current = nil, open = false, lost = 0, late = 0 }
 ns.Queue = Queue
 
-local REPLY_TIMEOUT = 3     -- seconds to wait for an answer
+local REPLY_TIMEOUT = 2     -- seconds to wait for an answer (one normally comes in about 0.3 s)
+local MAX_TRIES = 2         -- times a search is sent again after no answer
 local STUCK_WAIT = 1.5      -- seconds of "not ready" before sending anyway
 local CACHE_GAP = 0.1       -- an answer this soon after a refresh is the client's cache
 
@@ -104,11 +105,14 @@ local function finish(ok)
     Queue.current = nil
     if not task then return end
     if not ok then
+        Queue.lost = Queue.lost + 1
+        local again = (task.tries or 0) < MAX_TRIES
         ns.Log("search: no answer for %s after %.1fs%s", describe(task), GetTime() - task.sentAt,
-            (task.tries or 0) < 1 and ", trying again" or ", skipped (another addon may be using the auction house)")
-        if (task.tries or 0) < 1 then
+            again and ", trying again" or ", skipped (another addon may be using the auction house)")
+        if again then
             task.tries = (task.tries or 0) + 1
-            table.insert(Queue.items, task)
+            -- Next in line: the item stays in its place among the best candidates.
+            table.insert(Queue.items, 1, task)
             return
         end
     end
@@ -122,14 +126,32 @@ local function finish(ok)
     end
 end
 
+--- Does the client hold results for this task now?
+local function hasResults(task)
+    if task.commodity then return (AH.GetNumCommoditySearchResults(task.commodity) or 0) > 0 end
+    return AH.HasSearchResults(task.itemKey) and true or false
+end
+
 local function pump()
     if not Queue.open then return end
     if Queue.paused and not (Queue.current or (Queue.items[1] and Queue.items[1].urgent)) then return end
     local task = Queue.current
     if task then
         if GetTime() - task.sentAt >= REPLY_TIMEOUT then
-            -- A refresh that only gave the cached answer: use what the client has.
-            finish(task.refreshed)
+            if task.refreshed then
+                -- A refresh that only gave the cached answer: use what the client has.
+                Queue.late = Queue.late + 1
+                ns.Log("search: the refresh of %s got no new answer in %.0fs, using what the game holds",
+                    describe(task), REPLY_TIMEOUT)
+                finish(true)
+            elseif hasResults(task) then
+                -- The answer came, but not the event that announces it.
+                Queue.late = Queue.late + 1
+                ns.Log("search: %s was answered without its event, using the results", describe(task))
+                finish(true)
+            else
+                finish(false)
+            end
         end
         return
     end
@@ -154,12 +176,16 @@ local function answered(match)
     finish(true)
 end
 
-ns.On("COMMODITY_SEARCH_RESULTS_UPDATED", function(itemID)
+local function commodityAnswer(itemID)
     answered(function(t) return t.commodity == itemID end)
-end)
-ns.On("ITEM_SEARCH_RESULTS_UPDATED", function(key)
-    answered(function(t) return t.itemKey and key and t.itemKey.itemID == key.itemID end)
-end)
+end
+local function itemAnswer(key)
+    answered(function(t) return t.itemKey and type(key) == "table" and t.itemKey.itemID == key.itemID end)
+end
+ns.On("COMMODITY_SEARCH_RESULTS_UPDATED", commodityAnswer)
+ns.On("COMMODITY_SEARCH_RESULTS_ADDED", commodityAnswer)
+ns.On("ITEM_SEARCH_RESULTS_UPDATED", itemAnswer)
+ns.On("ITEM_SEARCH_RESULTS_ADDED", itemAnswer)
 -- The auction house takes one request at a time from all addons together. When two arrive close
 -- to each other it throws one away and says so, without saying which. If one of ours went out a
 -- moment ago, it is sent again as soon as the auction house is ready, instead of waiting 3 s for
