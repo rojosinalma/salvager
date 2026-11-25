@@ -120,6 +120,11 @@ flipping is out of scope for now.
 34. **Main window layout:** top bar (Play, Stop, status; Ledger, Log, Options), a settings box with a "Scan" row
     (gear, quality, one-off scans) and a "Buy" row (min profit, max price), the tabs, then the list in its own
     dark bordered panel with a title band and striped rows (`Widgets.Panel`, no game template needed).
+35. **Materials list columns:** Material, Price, Age, Bags, Listed, Sold, Avg cost, Break-even. "Units" is gone
+    (the user found it useless). "Stock" (the ledger's count) is gone too: it confused, because it still
+    counted what was posted or sold but not paid. Listed and Sold come from the last read of the player's
+    auctions. Every material has a Post button, switched off when none is in the bags; the button column
+    has a title.
 15. **UI redraws** from events are limited to four per second; the log panel is not rebuilt during a scan.
 
 ## Data

@@ -780,6 +780,15 @@ describe("Salvager posting", function()
         end
         assert.is_table(posted)
         assert.are.equal("Post", posted.text)
+        assert.is_true(posted.enabled)
+        -- A material you have none of still has its button, switched off.
+        local none
+        for _, fr in ipairs(env.frames) do
+            local data = rawget(fr, "data")
+            if data and data.itemID == 11137 and data.action then none = data.action end
+        end
+        assert.is_table(none)
+        assert.is_false(none.enabled)
         _G.SalvagerMaterialsFrame:Hide()                   -- closed with its X
         _G.SalvagerMaterialsFrame.scripts.OnHide()
         assert.is_false(ns.Materials.IsPoppedOut())

@@ -14,22 +14,22 @@ Materials.HELP = {
     [2] = { "Price", "The price of one, as the average of the cheapest units on the auction house (20 by default), "
         .. "without your own listings. Red = below your break-even. * = none listed now, the last price seen. "
         .. "~ = worked out from the other essence form." },
-    [3] = { "Units", "What the price rests on, as units / listings. 20/1 = the 20 cheapest units all come from one "
-        .. "listing. 20/8 = they come from 8 listings. A first number under 20, such as 9/4, means only 9 units are "
-        .. "listed at all: a thin market, so the price can jump." },
-    [4] = { "Age", "How long ago this price was scanned. Orange = older than twice your rescan setting." },
-    [5] = { "Bags", "How many you carry now. Post sells these." },
-    [6] = { "Stock", "How many the ledger counts as yours: what your disenchants gave, minus what you sold. "
-        .. "It still counts the ones you have posted." },
+    [3] = { "Age", "How long ago this price was scanned. Orange = older than twice your rescan setting." },
+    [4] = { "Bags", "How many you carry now. Post sells these." },
+    [5] = { "Listed", "How many you have on the auction house that are not sold yet, as of the last time the addon "
+        .. "read your auctions (the Ledger's Sales view shows when)." },
+    [6] = { "Sold", "How many are sold and waiting for their money. The game pays about an hour after the sale. "
+        .. "The sale is booked, and these leave the list, when you take that mail." },
     [7] = { "Avg cost", "What one cost you on average: the price of the items you disenchanted, shared out over the "
-        .. "materials they gave. +2? = 2 more units with no recorded purchase." },
+        .. "materials they gave. It covers what you carry, what is listed and what is sold but not paid yet. "
+        .. "+2? = 2 more units with no recorded purchase." },
     [8] = { "Break-even", "The lowest price each at which a sale does not lose money: average cost with the 5% "
         .. "auction house cut added." },
 }
 
 Materials.COLUMNS = {
-    { "Material", 160 }, { "Price", 80, "RIGHT" }, { "Units", 45, "CENTER" }, { "Age", 36, "CENTER" },
-    { "Bags", 40, "CENTER" }, { "Stock", 40, "CENTER" }, { "Avg cost", 85, "RIGHT" }, { "Break-even", 85, "RIGHT" },
+    { "Material", 160 }, { "Price", 80, "RIGHT" }, { "Age", 36, "CENTER" }, { "Bags", 40, "CENTER" },
+    { "Listed", 46, "CENTER" }, { "Sold", 46, "CENTER" }, { "Avg cost", 85, "RIGHT" }, { "Break-even", 85, "RIGHT" },
 }
 for i, help in pairs(Materials.HELP) do Materials.COLUMNS[i].help = help end
 
@@ -40,10 +40,17 @@ local function ago(seconds)
     return math.floor(seconds / 3600) .. "h"
 end
 
---- One row per material: { cells, itemID, post (some in the bags), suggest (Post.Suggest) }.
+--- One row per material: { cells, itemID, post (it has a Post button), canPost (some in the bags),
+--- suggest (Post.Suggest, when there is something to post) }.
 function Materials.Rows()
     local out = {}
     local maxAge = ns.PriceOldAfter()
+    -- Your auctions as last read: what is still listed, and what is sold and waiting for its money.
+    local listed, waiting = {}, {}
+    for _, r in ipairs(ns.db.listings.rows or {}) do
+        local t = r.sold and waiting or listed
+        t[r.itemID] = (t[r.itemID] or 0) + r.qty
+    end
     for _, m in ipairs(Data.MATERIALS) do
         local e = ns.db.prices[m.id]
         local price = ns.PriceOf(m.id)
@@ -64,13 +71,13 @@ function Materials.Rows()
         local ageText = ago(age)
         if age and age > maxAge then ageText = "|cffff8040" .. ageText .. "|r" end
         out[#out + 1] = {
-            cells = { ns.MaterialName(m.id), priceText,
-                e and e.units and e.units > 0 and (e.units .. "/" .. e.listings) or "-",
-                ageText, bags > 0 and tostring(bags) or "-", s and tostring(s.qty) or "-",
+            cells = { ns.MaterialName(m.id), priceText, ageText, bags > 0 and tostring(bags) or "-",
+                listed[m.id] and tostring(listed[m.id]) or "-",
+                waiting[m.id] and ("|cffffd100" .. waiting[m.id] .. "|r") or "-",
                 avg and (ns.Money(avg) .. (unknown > 0 and " |cff808080+" .. unknown .. "?|r" or ""))
                     or (unknown > 0 and "|cff808080unknown|r" or "-"),
                 be and ns.Money(be) or "-" },
-            itemID = m.id, post = bags > 0, suggest = suggest,
+            itemID = m.id, post = true, canPost = bags > 0, suggest = suggest,
         }
     end
     return out
@@ -108,7 +115,7 @@ function Materials.Refresh()
     for _, row in ipairs(rows) do
         if row.post then
             local loading = ns.Post.loading[row.itemID]
-            row.action = { text = loading and "..." or "Post", enabled = ns.Queue.open and not loading,
+            row.action = { text = loading and "..." or "Post", enabled = ns.Queue.open and row.canPost and not loading,
                 onClick = function() ns.Post.Open(row.itemID) end }
             if row.suggest and row.suggest.below then
                 row.warn = { title = "Below your break-even", text = Materials.WarnText(row.suggest) }
@@ -143,7 +150,7 @@ local function build()
     scan:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -30)
     status = W.Label(f, "", "GameFontHighlightSmall")
     status:SetPoint("LEFT", scan, "RIGHT", 10, 0)
-    list = W.List(f, { rowHeight = 24, actionWidth = 96 })
+    list = W.List(f, { rowHeight = 24, actionWidth = 96, actionTitle = "Post" })
     list:SetColumns(Materials.COLUMNS)
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -58)
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 44)
@@ -185,6 +192,7 @@ function Materials.Restore()
 end
 
 for _, e in ipairs({ "SALVAGER_PRICES", "SALVAGER_PRICES_DONE", "SALVAGER_LEDGER", "SALVAGER_SETTINGS", "SALVAGER_SCAN",
+    "SALVAGER_LISTINGS",
     "BAG_UPDATE_DELAYED", "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED" }) do
     ns.On(e, requestRefresh)
 end

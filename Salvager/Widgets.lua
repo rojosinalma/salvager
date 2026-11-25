@@ -273,13 +273,24 @@ function Widgets.CheckDropdown(parent, width, options, get, set, tooltip, title)
             if on then names[#names + 1] = o[2] end
         end
         self:SetText(#names > 0 and table.concat(names, ", ") or "none")
+        -- As wide as its text needs, never wider than the width asked for.
+        local label = self.GetFontString and self:GetFontString()
+        if type(label) == "table" then
+            label:SetWidth(0)   -- (measure the whole text, not the cut one)
+            local measure = label.GetUnboundedStringWidth or label.GetStringWidth
+            local textWidth = tonumber(measure(label))
+            if textWidth then
+                local w = math.max(64, math.min(width, math.ceil(textWidth) + 36))
+                self:SetWidth(w)
+                label:SetWidth(w - 32)
+            end
+        end
     end
     -- The names on the left, the arrow at the right edge.
     local label = b.GetFontString and b:GetFontString()
     if type(label) == "table" then
         label:ClearAllPoints()
         label:SetPoint("LEFT", b, "LEFT", 10, 0)
-        label:SetPoint("RIGHT", b, "RIGHT", -22, 0)
         label:SetJustifyH("LEFT")
         label:SetWordWrap(false)
     end
@@ -459,6 +470,15 @@ function Widgets.List(parent, opts)
     local headers, helps, helpText, rows = {}, {}, {}, {}
     list.headers, list.helps, list.rows = headers, helps, rows
 
+    if ACTION_W > 0 and HEAD_H > 0 and opts.actionTitle then
+        -- The title over the rows' buttons.
+        local t = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        t:SetHeight(ROW_H)
+        t:SetWidth(64)
+        t:SetJustifyH("CENTER")
+        t:SetPoint("TOPRIGHT", list, "TOPRIGHT", -BAR_W - 4, 0)
+        t:SetText(opts.actionTitle)
+    end
     for i = 1, MAX_COLS do
         local h = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         h:SetHeight(ROW_H)

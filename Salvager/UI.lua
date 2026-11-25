@@ -18,6 +18,7 @@ local VIEWS = {
     deals = {
         icon = true,
         indent = 46,
+        actionTitle = "Buy",
         header = { "Item", "Type", "iLvl", "Buyout", "Value", "Profit", "Lose %" },
         -- Shown when the mouse is over a column's title.
         help = {
@@ -38,8 +39,9 @@ local VIEWS = {
     },
     materials = {
         icon = true,
-        header = { "Material", "Price", "Units", "Age", "Bags", "Stock", "Avg cost", "Break-even" },
-        cols = { { 160, "LEFT" }, { 80, "RIGHT" }, { 45, "CENTER" }, { 36, "CENTER" }, { 40, "CENTER" }, { 40, "CENTER" },
+        actionTitle = "Post",
+        header = { "Material", "Price", "Age", "Bags", "Listed", "Sold", "Avg cost", "Break-even" },
+        cols = { { 160, "LEFT" }, { 80, "RIGHT" }, { 36, "CENTER" }, { 40, "CENTER" }, { 46, "CENTER" }, { 46, "CENTER" },
             { 85, "RIGHT" }, { 85, "RIGHT" } },   -- (the same as Materials.COLUMNS)
         help = "materials",                        -- (the titles' help is Materials.HELP)
     },
@@ -56,6 +58,7 @@ local f, rows, headers, status, footer, minProfit, playButton, stopButton, gearC
 local maxPrice, capHint
 local qualityDrop, popOut
 local headerHelp = {}
+local actionHeader
 local REFRESH_GAP, lastRefresh, refreshQueued = 0.25, 0, false
 local spinner, bigSpinner, bigSpinnerText
 
@@ -274,6 +277,7 @@ function UI.Refresh()
         headerHelp[i].help = col and help and help[i] or nil
         headerHelp[i]:SetShown(headerHelp[i].help ~= nil)
     end
+    actionHeader:SetText(view.actionTitle or "")
     for r = ROWS + 1, MAX_ROWS do rows[r]:Hide() end
     for r = 1, ROWS do
         local row, item = rows[r], data[r + UI.offset]
@@ -304,7 +308,7 @@ function UI.Refresh()
         if item and item.post then
             local loading = ns.Post.loading[item.itemID]
             row.buy:Show()
-            row.buy:SetEnabled(ns.Queue.open and not loading)
+            row.buy:SetEnabled(ns.Queue.open and item.canPost and not loading)
             row.buy:SetText(loading and "..." or "Post")
         elseif item and (item.deal or item.group) then
             local pending = item.deal and item.deal.pending
@@ -606,6 +610,12 @@ local function build()
     bar:EnableMouseWheel(true)
     bar:SetScript("OnMouseWheel", list:GetScript("OnMouseWheel"))
     UI.bar = bar
+    -- The title over the rows' buttons (Buy, Post).
+    actionHeader = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    actionHeader:SetHeight(ROW_H)
+    actionHeader:SetWidth(64)
+    actionHeader:SetJustifyH("CENTER")
+    actionHeader:SetPoint("TOPRIGHT", list, "TOPRIGHT", -4, 0)
     for i = 1, MAX_COLS do
         local h = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         h:SetHeight(ROW_H)
@@ -765,7 +775,7 @@ function UI.Show()
     f:Show()
 end
 
-for _, e in ipairs({ "SALVAGER_PRICES", "SALVAGER_PRICES_DONE", "SALVAGER_SCAN", "SALVAGER_DEALS",
+for _, e in ipairs({ "SALVAGER_PRICES", "SALVAGER_PRICES_DONE", "SALVAGER_SCAN", "SALVAGER_DEALS", "SALVAGER_LISTINGS",
     "SALVAGER_LEDGER", "SALVAGER_SETTINGS" }) do
     ns.On(e, function() UI.RequestRefresh() end)
 end
