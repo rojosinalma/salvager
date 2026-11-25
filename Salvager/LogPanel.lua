@@ -65,6 +65,7 @@ function LogPanel.Refresh()
     ROWS = math.max(1, math.min(MAX_ROWS, math.floor(h / ROW_H)))
     local data = LogPanel.mode == "results" and resultLines() or activityLines()
     LogPanel.offset = math.max(0, math.min(LogPanel.offset, #data - ROWS))
+    if LogPanel.bar then LogPanel.bar:Update(LogPanel.offset, #data - ROWS) end
     for i = 1, MAX_ROWS do
         local text = i <= ROWS and data[i + LogPanel.offset] or nil
         lines[i]:SetText(text or "")
@@ -75,7 +76,7 @@ function LogPanel.Refresh()
     end
     countText:SetText(LogPanel.mode == "activity"
         and string.format("%d lines, newest first. Saved to disk on /reload or logout.", #ns.db.log)
-        or "Scroll with the mouse wheel.")
+        or "Scroll with the mouse wheel or the bar.")
 end
 
 local function build()
@@ -107,8 +108,17 @@ local function build()
 
     local area = CreateFrame("Frame", nil, p)
     area:SetPoint("TOPLEFT", p, "TOPLEFT", 14, -60)
-    area:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -14, 28)
+    area:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -32, 28)
     LogPanel.area = area
+    local bar = W.ScrollBar(p, function(value)
+        if value ~= LogPanel.offset then
+            LogPanel.offset = value
+            LogPanel.Refresh()
+        end
+    end)
+    bar:SetPoint("TOPRIGHT", p, "TOPRIGHT", -12, -60)
+    bar:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -12, 28)
+    LogPanel.bar = bar
     area:EnableMouseWheel(true)
     area:SetScript("OnMouseWheel", function(_, delta)
         LogPanel.offset = math.max(0, LogPanel.offset - delta * 5)
@@ -117,7 +127,7 @@ local function build()
     for i = 1, MAX_ROWS do
         local fs = area:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         fs:SetPoint("TOPLEFT", area, "TOPLEFT", 0, -(i - 1) * ROW_H)
-        fs:SetWidth(WIDTH - 28)
+        fs:SetWidth(WIDTH - 46)
         fs:SetHeight(ROW_H)
         fs:SetJustifyH("LEFT")
         fs:SetWordWrap(false)

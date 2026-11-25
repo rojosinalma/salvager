@@ -36,14 +36,23 @@ end
 
 --- Adds a search. task = { commodity = itemID } or { itemKey = key }, plus
 --- onResult(task) and onFail(task). Duplicates of a queued task are dropped.
-function Queue.Add(task)
-    for _, t in ipairs(Queue.items) do
+--- With `urgent`, the task goes first and is sent even while the queue is paused
+--- (something the player just clicked).
+function Queue.Add(task, urgent)
+    for i, t in ipairs(Queue.items) do
         if (task.commodity and t.commodity == task.commodity)
             or (task.itemKey and t.itemKey and ns.KeyString(t.itemKey) == ns.KeyString(task.itemKey)) then
-            return
+            if not urgent then return end
+            table.remove(Queue.items, i)
+            break
         end
     end
-    table.insert(Queue.items, task)
+    if urgent then
+        task.urgent = true
+        table.insert(Queue.items, 1, task)
+    else
+        table.insert(Queue.items, task)
+    end
 end
 
 function Queue.Clear()
@@ -114,7 +123,8 @@ local function finish(ok)
 end
 
 local function pump()
-    if not Queue.open or Queue.paused then return end
+    if not Queue.open then return end
+    if Queue.paused and not (Queue.current or (Queue.items[1] and Queue.items[1].urgent)) then return end
     local task = Queue.current
     if task then
         if GetTime() - task.sentAt >= REPLY_TIMEOUT then
@@ -156,10 +166,4 @@ ns.On("AUCTION_HOUSE_CLOSED", function()
     Queue.Clear()
 end)
 
-local elapsedSum = 0
-ns.eventFrame:SetScript("OnUpdate", function(_, elapsed)
-    elapsedSum = elapsedSum + elapsed
-    if elapsedSum < 0.1 then return end
-    elapsedSum = 0
-    pump()
-end)
+ns.OnTick(pump)

@@ -1,41 +1,29 @@
 -- Salvager: gear scan and deals.
--- 1. One browse query lists every matching item with its lowest price (fast, not throttled).
--- 2. Items whose lowest price is under their disenchant value get an item search,
---    which lists each auction. Every auction under the buy limit becomes a deal.
+-- 1. Browse: one query per quality and gear type lists every matching item with its lowest
+--    price. Each page is judged as it arrives, from data that came with it: no item lookups.
+--    (The auction house does not return these in price order, so every page is read.)
+-- 2. Check: items whose lowest price is under their buy limit get an item search, which lists
+--    each auction. Every auction under the limit becomes a deal.
 local _, ns = ...
 
 local AH = C_AuctionHouse
-
+local Data = ns.Data
 
 local Scanner = { state = "idle", deals = {}, checked = 0, toCheck = 0, browsed = 0, auto = false, summary = nil }
 ns.Scanner = Scanner
 
-local MAX_PAGES = 50
-local BROWSE_STALL = 6     -- seconds without a browse page before carrying on
+local MAX_PAGES = 80       -- pages of 500 per pass
+local BROWSE_STALL = 6     -- seconds without a browse page before moving on
+local QUALITY_FILTER = {
+    [2] = Enum.AuctionHouseFilter.UncommonQuality, [3] = Enum.AuctionHouseFilter.RareQuality,
+    [4] = Enum.AuctionHouseFilter.EpicQuality,
+}
+local QUALITY_NAME = { [2] = "green", [3] = "blue", [4] = "epic" }
+local CLASS_NAME = { [Data.CLASS_WEAPON] = "weapons", [Data.CLASS_ARMOR] = "armor" }
+
+local scan                 -- the scan in progress: { seq, passes, index, pass, candidates, seen, sum }
 local lastBrowseAt = 0
-local watchBrowse          -- (defined below)
 local ourSend = false
-local pages = 0
-local results = {}
-
-local function qualityFilters()
-    local f, q = {}, ns.db.settings.qualities
-    if q[2] then f[#f + 1] = Enum.AuctionHouseFilter.UncommonQuality end
-    if q[3] then f[#f + 1] = Enum.AuctionHouseFilter.RareQuality end
-    if q[4] then f[#f + 1] = Enum.AuctionHouseFilter.EpicQuality end
-    return f
-end
-
-local function onlyQuality()
-    local only
-    for q, on in pairs(ns.db.settings.qualities) do
-        if on then
-            if only then return nil end
-            only = q
-        end
-    end
-    return only
-end
 
 local function setState(s)
     Scanner.state = s
@@ -46,34 +34,8 @@ local function sortDeals()
     table.sort(Scanner.deals, function(a, b) return a.profit > b.profit end)
 end
 
---- Value of an item key, using the scan's quality when the client has none yet.
---- ctx = { salvager, classes, quality } is worked out once per scan.
-local function keyValue(key, ctx)
-    if ns.NoDisenchant(key.itemID) then return nil end
-    local classID = ns.ClassOf(key.itemID)
-    if not classID or not ctx.classes[classID] then return nil end
-    local info = AH.GetItemKeyInfo(key)
-    local quality = (info and info.quality) or ns.QualityOf(key.itemID) or ctx.quality
-    local ilvl = (key.itemLevel and key.itemLevel > 0) and key.itemLevel or ns.ItemLevelOf(key.itemID)
-    if not (quality and ilvl) then return nil end
-    local v, outcomes = ns.ItemValue(key.itemID, ilvl, quality, classID, ctx.salvager)
-    if not v or ns.MissingMajor(v, outcomes) then return nil end
-    return v, ilvl, quality, classID, outcomes, ns.BuyLimit(quality, classID, outcomes.band, v.net)
-end
-
---- The highest buy limit of any band and type being scanned: an item listed above it
---- can't be a deal, so it is skipped without looking it up.
-local function ceiling(classes)
-    local top = 0
-    for _, r in ipairs(ns.Limits()) do
-        if classes[ns.Data.CLASS_ARMOR] and r.armor and r.armor.limit > top then top = r.armor.limit end
-        if classes[ns.Data.CLASS_WEAPON] and r.weapon and r.weapon.limit > top then top = r.weapon.limit end
-    end
-    return top
-end
-
 local function readAuctions(task)
-    local key, v = task.itemKey, task.value
+    local key = task.itemKey
     local maxBuy = task.limit
     -- Drop the old rows of this item, then add what is listed now.
     for i = #Scanner.deals, 1, -1 do
@@ -89,7 +51,7 @@ local function readAuctions(task)
             Scanner.deals[#Scanner.deals + 1] = {
                 auctionID = r.auctionID, itemKey = key, keyString = task.keyString,
                 link = r.itemLink, itemID = key.itemID, ilvl = task.ilvl, quality = task.quality, classID = task.classID,
-                buyout = r.buyoutAmount, value = v.net, profit = v.net - r.buyoutAmount, task = task,
+                buyout = r.buyoutAmount, value = task.net, profit = task.net - r.buyoutAmount, task = task,
             }
         end
     end
@@ -113,31 +75,107 @@ local function checkDone()
     end
 end
 
-local BATCH = 200          -- browse results valued per frame, so the game doesn't freeze
+------------------------------------------------------------------ the plan
 
-local function queueChecks(candidates, sum)
+--- What one scan looks for, worked out once: for each quality and gear type, the value and
+--- buy limit of every item level band, and the passes to browse.
+local function buildPlan()
+    local s = ns.db.settings
+    local classes = ns.GearClasses()
+    local bands = {}
+    for _, row in ipairs(ns.Limits()) do
+        bands[row.quality] = bands[row.quality] or { [Data.CLASS_ARMOR] = {}, [Data.CLASS_WEAPON] = {} }
+        for classID, x in pairs({ [Data.CLASS_ARMOR] = row.armor, [Data.CLASS_WEAPON] = row.weapon }) do
+            local list = bands[row.quality][classID]
+            list[#list + 1] = { up = row.up, net = x.value, limit = x.limit, blocked = x.blocked }
+        end
+    end
+    local passes = {}
+    for _, quality in ipairs({ 2, 3, 4 }) do
+        for _, classID in ipairs({ Data.CLASS_ARMOR, Data.CLASS_WEAPON }) do
+            if s.qualities[quality] and classes[classID] and bands[quality] then
+                local top = 0
+                for _, b in ipairs(bands[quality][classID]) do
+                    if not b.blocked and b.limit > top then top = b.limit end
+                end
+                passes[#passes + 1] = { quality = quality, classID = classID, bands = bands[quality][classID], top = top,
+                    name = QUALITY_NAME[quality] .. " " .. CLASS_NAME[classID], got = 0, pages = 0, breaks = 0 }
+            end
+        end
+    end
+    return passes
+end
+
+------------------------------------------------------------------ judging a page
+
+local function judge(r, pass, sum)
+    local key, price = r.itemKey, r.minPrice
+    sum.browsed = sum.browsed + 1
+    if not key or not price or price <= 0 then sum.noPrice = sum.noPrice + 1 return end
+    if pass.lastPrice and price < pass.lastPrice then pass.breaks = pass.breaks + 1 end
+    pass.lastPrice = price
+    -- Cheapest test first: above the highest limit of this quality and type, it can't be a deal.
+    if price > pass.top then sum.overLimit = sum.overLimit + 1 return end
+    if ns.NoDisenchant(key.itemID) then sum.noDisenchant = sum.noDisenchant + 1 return end
+    local ilvl, source = ns.Items.Level(key)
+    if not ilvl then sum.learning = sum.learning + 1 return end
+    if source == "cache" and (key.itemLevel or 0) > 0 and key.itemLevel ~= ilvl then
+        sum.levelDiffers = sum.levelDiffers + 1
+        sum.levelExample = sum.levelExample or string.format("item %d: listing says %d, the game says %d",
+            key.itemID, key.itemLevel, ilvl)
+    end
+    local band
+    for _, b in ipairs(pass.bands) do
+        if ilvl <= b.up then band = b break end
+    end
+    if not band or band.blocked then sum.noValue = sum.noValue + 1 return end
+    local margin = band.net - price
+    if not sum.best or margin > sum.best.margin then
+        local best = sum.best or {}
+        best.margin, best.itemID, best.ilvl, best.price, best.value = margin, key.itemID, ilvl, price, band.net
+        sum.best = best
+    end
+    if price > band.limit then sum.overLimit = sum.overLimit + 1 return end
+    local keyString = ns.KeyString(key)
+    if scan.seen[keyString] then return end
+    scan.seen[keyString] = true
+    scan.candidates[#scan.candidates + 1] = { key = key, keyString = keyString, net = band.net, limit = band.limit,
+        ilvl = ilvl, quality = pass.quality, classID = pass.classID, margin = margin }
+end
+
+------------------------------------------------------------------ after the browse
+
+local function queueChecks()
+    local candidates, sum = scan.candidates, scan.sum
     sum.candidates = #candidates
+    sum.seconds = GetTime() - scan.startedAt
     Scanner.summary = sum
-    ns.Log("gear scan: %d items browsed, %d over every limit, %d valued, %d without a value, %d without a buyout, "
-        .. "%d under the limit (min profit %s)", sum.browsed, sum.overCeiling, sum.valued, sum.noValue, sum.noPrice,
-        sum.candidates, ns.Money(ns.db.settings.minProfit))
+    scan = nil
+    ns.Log("gear scan: %d items in %.0fs, %d under their limit, %d over, %d not disenchantable, %d level not known yet, "
+        .. "%d without a value, %d without a buyout (min profit %s)", sum.browsed, sum.seconds, sum.candidates, sum.overLimit,
+        sum.noDisenchant, sum.learning, sum.noValue, sum.noPrice, ns.Money(ns.db.settings.minProfit))
     if sum.best then
         ns.Log("closest: item %d ilvl %s at %s, value %s, margin %s", sum.best.itemID, tostring(sum.best.ilvl),
             ns.Money(sum.best.price), ns.Money(sum.best.value), ns.Money(sum.best.margin))
     end
+    if sum.levelDiffers > 0 then
+        ns.Log("item levels: %d listings differ from the game's data (%s)", sum.levelDiffers, sum.levelExample)
+    end
+    setState("checking")
+    Scanner.toCheck, Scanner.checked = 0, 0
     table.sort(candidates, function(a, b) return a.margin > b.margin end)
     -- Each item search takes about 0.7 s: check the best ones first, at most maxChecks.
     for i = #candidates, ns.db.settings.maxChecks + 1, -1 do candidates[i] = nil end
     -- Rows of items no longer under the limit are stale.
     local live = {}
-    for _, c in ipairs(candidates) do live[ns.KeyString(c.key)] = true end
+    for _, c in ipairs(candidates) do live[c.keyString] = true end
     for i = #Scanner.deals, 1, -1 do
         if not live[Scanner.deals[i].keyString] and not Scanner.deals[i].pending then table.remove(Scanner.deals, i) end
     end
     Scanner.toCheck = #candidates
     for _, c in ipairs(candidates) do
         ns.Queue.Add({
-            itemKey = c.key, keyString = ns.KeyString(c.key), value = c.v, ilvl = c.ilvl, quality = c.quality,
+            itemKey = c.key, keyString = c.keyString, net = c.net, ilvl = c.ilvl, quality = c.quality,
             classID = c.classID, limit = c.limit,
             onResult = function(task) readAuctions(task) checkDone() end,
             onFail = function() checkDone() end,
@@ -149,53 +187,69 @@ local function queueChecks(candidates, sum)
     end
 end
 
-local function evaluate()
-    setState("checking")
-    Scanner.toCheck, Scanner.checked = 0, 0
-    local classes = ns.GearClasses()
-    local ctx = { salvager = ns.SalvagerForBuy(), classes = classes, quality = onlyQuality() }
-    local top = ceiling(classes)
-    local list, seq = results, Scanner.browseSeq
-    local candidates = {}
-    local sum = { browsed = #list, overCeiling = 0, valued = 0, noValue = 0, noPrice = 0, candidates = 0, best = nil }
-    local i = 0
-    local function step()
-        if Scanner.state ~= "checking" or Scanner.browseSeq ~= seq then return end
-        local last = math.min(#list, i + BATCH)
-        for n = i + 1, last do
-            local r = list[n]
-            local key = r.itemKey
-            if not (key and r.minPrice and r.minPrice > 0) then
-                sum.noPrice = sum.noPrice + 1
-            elseif r.minPrice > top then
-                sum.overCeiling = sum.overCeiling + 1
-            else
-                local v, ilvl, quality, classID, _, limit = keyValue(key, ctx)
-                if v then
-                    sum.valued = sum.valued + 1
-                    local margin = v.net - r.minPrice
-                    if not sum.best or margin > sum.best.margin then
-                        sum.best = { margin = margin, itemID = key.itemID, ilvl = ilvl, price = r.minPrice, value = v.net }
-                    end
-                    if r.minPrice <= limit then
-                        candidates[#candidates + 1] = { key = key, v = v, ilvl = ilvl, quality = quality,
-                            classID = classID, margin = margin, limit = limit }
-                    end
-                else
-                    sum.noValue = sum.noValue + 1
-                end
-            end
-        end
-        i = last
-        Scanner.valuedSoFar = i
-        if i < #list then
-            ns.Fire("SALVAGER_SCAN")
-            C_Timer.After(0, step)
-        else
-            queueChecks(candidates, sum)
-        end
+------------------------------------------------------------------ browsing
+
+local nextPass
+
+local function finishPass(why)
+    local pass = scan.pass
+    ns.Log("browse %s: %d items in %d pages, %.1fs%s%s", pass.name, pass.got, pass.pages, GetTime() - pass.startedAt,
+        pass.breaks > 0 and string.format(", not in price order (%d breaks)", pass.breaks) or ", in price order",
+        why and (", " .. why) or "")
+    nextPass()
+end
+
+--- The next step of the pass: another page, or the next pass.
+local function advance()
+    if Scanner.paused then scan.held = true return end
+    local pass = scan.pass
+    if AH.HasFullBrowseResults() then return finishPass() end
+    if pass.pages >= MAX_PAGES then return finishPass("page limit reached") end
+    AH.RequestMoreBrowseResults()
+    ns.Fire("SALVAGER_SCAN")
+end
+
+-- A browse page that never comes: move on with the pages that did.
+local function watchBrowse(seq)
+    C_Timer.After(BROWSE_STALL, function()
+        if not scan or Scanner.state ~= "browsing" or scan.seq ~= seq then return end
+        if Scanner.paused or GetTime() - lastBrowseAt < BROWSE_STALL then watchBrowse(seq) return end
+        lastBrowseAt = GetTime()
+        watchBrowse(seq)
+        finishPass(string.format("no page for %ds", BROWSE_STALL))
+    end)
+end
+
+function nextPass()
+    scan.index = scan.index + 1
+    local pass = scan.passes[scan.index]
+    if not pass then return queueChecks() end
+    scan.pass = pass
+    pass.startedAt = GetTime()
+    Scanner.passName = pass.name
+    if pass.top <= 0 then return finishPass("no buy limit above zero, skipped") end
+    local s = ns.db.settings
+    local query = {
+        searchString = "",
+        sorts = { { sortOrder = Enum.AuctionHouseSortOrder.Price, reverseSort = false } },
+        filters = { QUALITY_FILTER[pass.quality] },
+        itemClassFilters = { { classID = pass.classID } },
+    }
+    if s.minLevel > 0 then query.minLevel = s.minLevel end
+    if s.maxLevel > 0 then query.maxLevel = s.maxLevel end
+    lastBrowseAt = GetTime()
+    ourSend = true
+    local ok, err = pcall(AH.SendBrowseQuery, query)
+    ourSend = false
+    if not ok then
+        ns.Print("browse failed: %s", tostring(err))
+        ns.Log("ERROR browse: %s", tostring(err))
+        scan = nil
+        setState("idle")
+        scheduleNext()
+        return
     end
-    step()
+    ns.Fire("SALVAGER_SCAN")
 end
 
 --- Starts a gear scan. Needs the auction house open and material prices.
@@ -207,33 +261,62 @@ function Scanner.Scan()
         return
     end
     if not next(ns.db.prices) then ns.Print("scan material prices first") return end
-    local s = ns.db.settings
-    local query = {
-        searchString = "",
-        sorts = { { sortOrder = Enum.AuctionHouseSortOrder.Price, reverseSort = false } },
-        filters = qualityFilters(),
-        itemClassFilters = {},
-    }
-    for classID, on in pairs(ns.GearClasses()) do
-        if on then table.insert(query.itemClassFilters, { classID = classID }) end
-    end
-    if s.minLevel > 0 then query.minLevel = s.minLevel end
-    if s.maxLevel > 0 then query.maxLevel = s.maxLevel end
-    results, pages = {}, 0
-    Scanner.ceiling = ceiling(ns.GearClasses())
-    lastBrowseAt = GetTime()
+    local passes = buildPlan()
     Scanner.browseSeq = (Scanner.browseSeq or 0) + 1
-    watchBrowse(Scanner.browseSeq)
-    ns.Log("gear scan started: levels %d-%d, %d quality filters", s.minLevel, s.maxLevel, #query.filters)
+    scan = {
+        seq = Scanner.browseSeq, passes = passes, index = 0, candidates = {}, seen = {}, startedAt = GetTime(),
+        sum = { browsed = 0, overLimit = 0, noDisenchant = 0, learning = 0, noValue = 0, noPrice = 0, candidates = 0,
+            levelDiffers = 0, best = nil },
+    }
+    Scanner.browsed = 0
+    local names = {}
+    for _, p in ipairs(passes) do names[#names + 1] = p.name end
+    local s = ns.db.settings
+    ns.Log("gear scan started: %s; levels %d-%d", table.concat(names, ", "), s.minLevel, s.maxLevel)
     setState("browsing")
-    ourSend = true
-    local ok, err = pcall(AH.SendBrowseQuery, query)
-    ourSend = false
-    if not ok then
-        ns.Print("browse failed: %s", tostring(err))
-        ns.Log("ERROR browse: %s", tostring(err))
-        setState("idle")
+    watchBrowse(scan.seq)
+    nextPass()
+end
+
+--- One page of browse results. `added` = the new rows (later pages); nil = read the list (first page).
+local function onPage(added)
+    if not scan or Scanner.state ~= "browsing" or not scan.pass then return end
+    local pass, sum = scan.pass, scan.sum
+    local list, from = added, 1
+    if not list then
+        list = AH.GetBrowseResults() or {}
+        from = pass.got + 1
+        -- The same list again (the game repeats this event when item data arrives): nothing new.
+        if #list < from and pass.pages > 0 then return end
     end
+    lastBrowseAt = GetTime()
+    local ok, err = pcall(function()
+        for i = from, #list do judge(list[i], pass, sum) end
+    end)
+    if not ok then ns.Log("ERROR judging a page of %s: %s", pass.name, tostring(err)) end
+    if not scan then return end
+    pass.got = pass.got + (#list - from + 1)
+    pass.pages = pass.pages + 1
+    Scanner.browsed = sum.browsed
+    advance()
+end
+
+ns.On("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED", function() onPage(nil) end)
+ns.On("AUCTION_HOUSE_BROWSE_RESULTS_ADDED", function(added) onPage(type(added) == "table" and added or nil) end)
+ns.On("AUCTION_HOUSE_BROWSE_FAILURE", function()
+    if scan and Scanner.state == "browsing" then finishPass("the auction house reported a failure") end
+end)
+
+-- Another window's browse replaces our results: give up this scan and let Play retry.
+if hooksecurefunc then
+    hooksecurefunc(AH, "SendBrowseQuery", function()
+        if not ourSend and scan and Scanner.state == "browsing" then
+            ns.Log("gear scan dropped: another addon or window started a browse")
+            scan = nil
+            setState("idle")
+            scheduleNext()
+        end
+    end)
 end
 
 --- Play: scan the gear now and again every few seconds. Also resumes after a pause.
@@ -243,7 +326,13 @@ function Scanner.Play()
     Scanner.auto, Scanner.paused = true, false
     ns.Queue.SetPaused(false)
     ns.Log(wasPaused and "auto scan resumed" or "auto scan started")
-    if Scanner.state == "idle" and not ns.Prices.scanning then Scanner.Scan() end
+    if scan and scan.held then
+        scan.held = false
+        lastBrowseAt = GetTime()
+        advance()
+    elseif Scanner.state == "idle" and not ns.Prices.scanning then
+        Scanner.Scan()
+    end
     ns.Fire("SALVAGER_SCAN")
 end
 
@@ -262,6 +351,7 @@ function Scanner.Stop()
     ns.Queue.SetPaused(false)
     ns.Queue.Clear()
     Scanner.browseSeq = (Scanner.browseSeq or 0) + 1
+    scan = nil
     Scanner.state = "idle"
     ns.Prices.scanning = false
     ns.scanBothPending = false
@@ -274,63 +364,10 @@ function Scanner.SetAuto(on)
     if on then Scanner.Play() else Scanner.Stop() end
 end
 
--- A browse page that never comes: carry on with the pages that did.
-function watchBrowse(seq)
-    C_Timer.After(BROWSE_STALL, function()
-        if Scanner.state ~= "browsing" or Scanner.browseSeq ~= seq then return end
-        if GetTime() - lastBrowseAt < BROWSE_STALL then watchBrowse(seq) return end
-        ns.Log("browse: no page for %ds, using the %d items received", BROWSE_STALL, #results)
-        if #results > 0 then evaluate() else setState("idle") scheduleNext() end
-    end)
-end
-
-local function onBrowse()
-    if Scanner.state ~= "browsing" then return end
-    lastBrowseAt = GetTime()
-    results = AH.GetBrowseResults() or {}
-    Scanner.browsed = #results
-    ns.Log("browse page %d: %d items so far, %s", pages + 1, #results,
-        AH.HasFullBrowseResults() and "last page" or "more pages to come")
-    -- Results come cheapest first: once a whole page is above every buy limit,
-    -- the pages after it can't hold a deal.
-    local tail = results[#results]
-    local stop = tail and tail.minPrice and Scanner.ceiling and tail.minPrice > Scanner.ceiling
-    if stop and not AH.HasFullBrowseResults() then
-        ns.Log("browse: stopping, items now cost more than %s (the highest buy limit)", ns.Money(Scanner.ceiling))
-    end
-    if not stop and not AH.HasFullBrowseResults() and pages < MAX_PAGES then
-        pages = pages + 1
-        AH.RequestMoreBrowseResults()
-        ns.Fire("SALVAGER_SCAN")
-        return
-    end
-    evaluate()
-end
-
-ns.On("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED", onBrowse)
-ns.On("AUCTION_HOUSE_BROWSE_RESULTS_ADDED", onBrowse)
-ns.On("AUCTION_HOUSE_BROWSE_FAILURE", function()
-    if Scanner.state == "browsing" then
-        ns.Print("the auction house did not answer the browse; try again")
-        ns.Log("browse failure event")
-        setState("idle")
-        scheduleNext()
-    end
-end)
-
--- Another window's browse replaces our results: stop and let auto mode retry.
-if hooksecurefunc then
-    hooksecurefunc(AH, "SendBrowseQuery", function()
-        if not ourSend and Scanner.state == "browsing" then
-            setState("idle")
-            scheduleNext()
-        end
-    end)
-end
-
 ns.On("AUCTION_HOUSE_CLOSED", function()
     Scanner.auto = false
     Scanner.paused = false
+    scan = nil
     Scanner.state = "idle"
     wipe(Scanner.deals)
 end)
@@ -353,7 +390,7 @@ function Scanner.Recheck(deal)
     if not t or not ns.Queue.open then return end
     ns.Log("rechecking %s after a purchase", t.keyString)
     ns.Queue.Add({
-        itemKey = t.itemKey, keyString = t.keyString, value = t.value, ilvl = t.ilvl, quality = t.quality,
+        itemKey = t.itemKey, keyString = t.keyString, net = t.net, ilvl = t.ilvl, quality = t.quality,
         classID = t.classID, limit = t.limit,
         onResult = function(task) readAuctions(task) ns.Fire("SALVAGER_DEALS") end,
         onFail = function() ns.Fire("SALVAGER_DEALS") end,

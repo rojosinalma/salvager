@@ -22,12 +22,14 @@ local DEFAULTS = {
         maxChecks = 60,            -- item searches per gear scan (best candidates first)
         autoOpen = true,           -- open the window with the auction house
         minimap = { hide = false, angle = 215 },
+        postDuration = 2,          -- auction length for Post: 1, 2 or 3 (the game's three choices)
         limitOverride = {},        -- ["<quality>:<a|w>:<band>"] = copper: buy limits set by hand
     },
     prices = {},                   -- [matID] = { p = copper each, units, listings, t }
     ledger = {},
     auraSeen = {},                 -- [spellID] = name, auras whose name mentions the Salvager
     auraSnapshots = {},            -- helpful auras at the first disenchants (to find the Salvager's ID)
+    ilvl = {},                     -- [itemID] = item level, learned from the game (see Items.lua)
     log = {},                      -- what the addon did, newest last (written to disk on /reload or logout)
     window = {},
 }
@@ -81,6 +83,19 @@ function ns.Fire(event, ...)
 end
 
 frame:SetScript("OnEvent", function(_, event, ...) ns.Fire(event, ...) end)
+
+-- One ticker for everything that works in small steps (10 times a second).
+local ticks, tickSum = {}, 0
+function ns.OnTick(fn) ticks[#ticks + 1] = fn end
+frame:SetScript("OnUpdate", function(_, elapsed)
+    tickSum = tickSum + elapsed
+    if tickSum < 0.1 then return end
+    tickSum = 0
+    for _, fn in ipairs(ticks) do
+        local ok, err = pcall(fn)
+        if not ok then ns.Log("ERROR in ticker: %s", tostring(err)) end
+    end
+end)
 
 ------------------------------------------------------------------ item helpers
 
@@ -270,7 +285,8 @@ function ns.Limits()
         local v = Model.Value(o, ns.PriceOf, { salvager = salv, salvagerChance = s.salvagerChance, cut = s.cut })
         local limit, manual = ns.BuyLimit(quality, classID, o.band, v.net)
         return { value = v.net, recommended = ns.RecommendedLimit(v.net), limit = limit, manual = manual,
-            missing = #v.missing > 0, quality = quality, classID = classID, band = o.band }
+            missing = #v.missing > 0, blocked = ns.MissingMajor(v, o), quality = quality, classID = classID,
+            band = o.band }
     end
     for _, q in ipairs({ { 2, Data.GREEN }, { 3, Data.BLUE }, { 4, Data.PURPLE } }) do
         if s.qualities[q[1]] then

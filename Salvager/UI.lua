@@ -7,6 +7,7 @@ local UI = { view = "deals", offset = 0, expanded = {} }
 ns.UI = UI
 
 local MAX_ROWS, ROW_H = 40, 24
+local MAX_COLS = 8
 local WIDTH, HEIGHT = 800, 560
 local MIN_W, MIN_H = 800, 380
 local ROWS = 15          -- rows that fit now (set from the list height)
@@ -22,8 +23,8 @@ local VIEWS = {
     },
     materials = {
         icon = true,
-        header = { "Material", "Price", "Units", "Age", "Stock", "Avg cost", "Break-even" },
-        cols = { { 175, "LEFT" }, { 80, "RIGHT" }, { 50, "CENTER" }, { 40, "CENTER" }, { 45, "CENTER" },
+        header = { "Material", "Price", "Units", "Age", "Bags", "Stock", "Avg cost", "Break-even" },
+        cols = { { 160, "LEFT" }, { 80, "RIGHT" }, { 45, "CENTER" }, { 36, "CENTER" }, { 40, "CENTER" }, { 40, "CENTER" },
             { 85, "RIGHT" }, { 85, "RIGHT" } },
     },
     limits = {
@@ -37,6 +38,7 @@ local VIEWS = {
 local f, rows, headers, status, footer, minProfit, playButton, stopButton, gearChoice, tabs =
     nil, {}, {}, nil, nil, nil, nil, nil, nil, {}
 local qualityDrop
+local REFRESH_GAP, lastRefresh, refreshQueued = 0.25, 0, false
 local spinner, bigSpinner, bigSpinnerText
 
 local function ago(seconds)
@@ -110,6 +112,8 @@ local function materialRows()
         local s = ns.db.ledger.stock[m.id]
         local avg = Ledger.AvgCost(ns.db.ledger, m.id)
         local unknown = s and (s.unknown or 0) or 0
+        local bags = ns.Post.BagCount(m.id)
+        local suggest = bags > 0 and ns.Post.Suggest(m.id) or nil
         local be = Ledger.BreakEven(ns.db.ledger, m.id, ns.Cut())
         local priceText = price and ns.Money(price) or "-"
         if e and not e.p and e.last then
@@ -123,11 +127,11 @@ local function materialRows()
         out[#out + 1] = {
             cells = { ns.MaterialName(m.id), priceText,
                 e and e.units and e.units > 0 and (e.units .. "/" .. e.listings) or "-",
-                ageText, s and tostring(s.qty) or "-",
+                ageText, bags > 0 and tostring(bags) or "-", s and tostring(s.qty) or "-",
                 avg and (ns.Money(avg) .. (unknown > 0 and " |cff808080+" .. unknown .. "?|r" or ""))
                     or (unknown > 0 and "|cff808080unknown|r" or "-"),
                 be and ns.Money(be) or "-" },
-            itemID = m.id,
+            itemID = m.id, post = bags > 0, suggest = suggest,
         }
     end
     return out
@@ -165,9 +169,8 @@ local function statusText()
     local parts = {}
     if ns.Prices.scanning then parts[#parts + 1] = string.format("Materials %d/%d", ns.Prices.done, ns.Prices.total) end
     local s = ns.Scanner
-    if s.state == "browsing" then parts[#parts + 1] = string.format("Browsing (%d items)", s.browsed)
-    elseif s.state == "checking" and s.toCheck == 0 then
-        parts[#parts + 1] = string.format("Valuing %d/%d", s.valuedSoFar or 0, s.browsed)
+    if s.state == "browsing" then
+        parts[#parts + 1] = string.format("Browsing %s (%d items)", s.passName or "", s.browsed)
     elseif s.state == "checking" then parts[#parts + 1] = string.format("Checking %d/%d", s.checked, s.toCheck)
     elseif ns.scanBothPending and not ns.Prices.scanning then parts[#parts + 1] = "Starting gear scan"
     end
@@ -183,8 +186,11 @@ local function footerText()
         local sum = ns.Scanner.summary
         local text = string.format("%d deals.", #ns.Scanner.deals)
         if sum then
-            text = text .. string.format(" Last scan: %d items seen, %d valued, %d under the limit.", sum.browsed, sum.valued,
-                sum.candidates)
+            text = text .. string.format(" Last scan: %d items in %.0fs, %d under their limit.", sum.browsed,
+                sum.seconds or 0, sum.candidates)
+            if (sum.learning or 0) > 0 then
+                text = text .. string.format(" %d skipped while their item level loads (next scan has them).", sum.learning)
+            end
             if sum.best then
                 text = text .. string.format(" Closest: %s at %s, value %s (%s).",
                     (ns.GetItemInfo(sum.best.itemID)) or ("item " .. sum.best.itemID), ns.Money(sum.best.price),
@@ -196,7 +202,8 @@ local function footerText()
         return text
     elseif UI.view == "materials" then
         return string.format("Price = average of cheapest %d units. Red = below break-even. * = none listed, last price. "
-            .. "~ = other essence form. Unknown / +n? = units with no recorded purchase (/salv stock sets them).",
+            .. "~ = other essence form. Unknown / +n? = units with no recorded purchase (/salv stock sets them). "
+            .. "Post = sell what is in your bags; the warning sign means the price is below your break-even.",
             ns.db.settings.priceUnits)
     end
     return "Recommended = disenchant value after the 5% cut, minus your minimum profit. Type gold, silver and copper in "
@@ -214,7 +221,7 @@ end
 local function layout(view)
     local x = view.indent or (view.icon and 30 or 4)
     local w = widths(view)
-    for i = 1, 7 do
+    for i = 1, MAX_COLS do
         local col = view.cols[i]
         headers[i]:ClearAllPoints()
         headers[i]:SetPoint("TOPLEFT", headers[i]:GetParent(), "TOPLEFT", x, 0)
@@ -252,13 +259,7 @@ local function fitRows()
 end
 
 function UI.UpdateScrollBar(total)
-    if not UI.bar then return end
-    local max = math.max(0, total - ROWS)
-    UI.settingBar = true
-    UI.bar:SetMinMaxValues(0, max)
-    UI.bar:SetValue(UI.offset)
-    UI.settingBar = false
-    UI.bar:SetShown(max > 0)
+    if UI.bar then UI.bar:Update(UI.offset, total - ROWS) end
 end
 
 --- Play shows while not auto scanning (or paused); Pause shows while auto scanning.
@@ -315,8 +316,14 @@ function UI.Refresh()
         else
             row.toggle:Hide()
         end
-        local buying = item and (item.deal or item.group) and true
-        if buying then
+        local s = item and item.suggest
+        row.warn:SetShown((item and item.post and s and s.below) and true or false)
+        if item and item.post then
+            local loading = ns.Post.loading[item.itemID]
+            row.buy:Show()
+            row.buy:SetEnabled(ns.Queue.open and not loading)
+            row.buy:SetText(loading and "..." or "Post")
+        elseif item and (item.deal or item.group) then
             local pending = item.deal and item.deal.pending
             if item.group then pending = ns.Scanner.Cheapest(item.group.deals) == nil end
             row.buy:Show()
@@ -346,7 +353,20 @@ function UI.Refresh()
     gearChoice:Update()
     qualityDrop:Update()
     footer:SetText(footerText())
-    if ns.LogPanel then ns.LogPanel.Refresh() end
+    lastRefresh = GetTime()
+    if ns.LogPanel and not ns.Busy() then ns.LogPanel.Refresh() end
+end
+
+--- Redraws soon, at most four times a second (for events that come in bursts during a scan).
+function UI.RequestRefresh()
+    if not f or not f:IsShown() or refreshQueued then return end
+    local wait = REFRESH_GAP - (GetTime() - lastRefresh)
+    if wait <= 0 then UI.Refresh() return end
+    refreshQueued = true
+    C_Timer.After(wait, function()
+        refreshQueued = false
+        UI.Refresh()
+    end)
 end
 
 ------------------------------------------------------------------ building
@@ -507,31 +527,18 @@ local function build()
     UI.list = list
 
     -- Scroll bar on the right of the list.
-    local bar = CreateFrame("Slider", nil, f)
-    bar:SetOrientation("VERTICAL")
-    bar:SetWidth(14)
-    bar:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -116 - ROW_H)
-    bar:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 40)
-    local track = bar:CreateTexture(nil, "BACKGROUND")
-    track:SetAllPoints()
-    track:SetColorTexture(0, 0, 0, 0.35)
-    bar:SetThumbTexture("Interface\\Buttons\\UI-ScrollBar-Knob")
-    bar:SetValueStep(1)
-    bar:SetObeyStepOnDrag(true)
-    bar:SetMinMaxValues(0, 0)
-    bar:SetValue(0)
-    bar:SetScript("OnValueChanged", function(_, value)
-        if UI.settingBar then return end
-        value = math.floor((value or 0) + 0.5)
+    local bar = W.ScrollBar(f, function(value)
         if value ~= UI.offset then
             UI.offset = value
             UI.Refresh()
         end
     end)
+    bar:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -116 - ROW_H)
+    bar:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 40)
     bar:EnableMouseWheel(true)
     bar:SetScript("OnMouseWheel", list:GetScript("OnMouseWheel"))
     UI.bar = bar
-    for i = 1, 7 do
+    for i = 1, MAX_COLS do
         local h = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         h:SetHeight(ROW_H)
         headers[i] = h
@@ -548,7 +555,7 @@ local function build()
         row.icon:SetSize(20, 20)
         row.icon:SetPoint("LEFT", row, "LEFT", 4, 0)
         row.cells = {}
-        for i = 1, 7 do
+        for i = 1, MAX_COLS do
             local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             fs:SetHeight(ROW_H)
             fs:SetWordWrap(false)
@@ -578,9 +585,29 @@ local function build()
         row.buy = W.Button(row, "Buy", 64, function()
             local item = row.item
             if not item then return end
+            if item.post then ns.Post.Open(item.itemID) return end
             local deal = item.deal or (item.group and ns.Scanner.Cheapest(item.group.deals))
             if deal then ns.Scanner.Buy(deal) end
         end)
+        row.warn = CreateFrame("Frame", nil, row)
+        row.warn:SetSize(18, 18)
+        row.warn:SetPoint("RIGHT", row.buy, "LEFT", -4, 0)
+        local warnIcon = row.warn:CreateTexture(nil, "ARTWORK")
+        warnIcon:SetAllPoints()
+        warnIcon:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew")
+        row.warn:EnableMouse(true)
+        row.warn:SetScript("OnEnter", function(self)
+            local sug = row.item and row.item.suggest
+            if not sug then return end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText("Below your break-even", 1, 0.3, 0.3)
+            GameTooltip:AddLine(string.format("The lowest listing is %s. Your break-even is %s. Posting now loses about %s each.",
+                sug.lowest and ns.Money(sug.lowest) or "not known", ns.Money(sug.breakEven),
+                ns.Money(sug.breakEven - sug.price)), 1, 0.82, 0, true)
+            GameTooltip:Show()
+        end)
+        row.warn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        row.warn:Hide()
         row.toggle = row:CreateTexture(nil, "ARTWORK")
         row.toggle:SetSize(14, 14)
         row.toggle:SetPoint("LEFT", row, "LEFT", 4, 0)
@@ -654,7 +681,7 @@ end
 
 for _, e in ipairs({ "SALVAGER_PRICES", "SALVAGER_PRICES_DONE", "SALVAGER_SCAN", "SALVAGER_DEALS",
     "SALVAGER_LEDGER", "SALVAGER_SETTINGS" }) do
-    ns.On(e, function() UI.Refresh() end)
+    ns.On(e, function() UI.RequestRefresh() end)
 end
 
 ns.On("AUCTION_HOUSE_SHOW", function()

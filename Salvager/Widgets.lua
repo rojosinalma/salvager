@@ -130,6 +130,9 @@ function Widgets.Money(parent, onChange)
             if m.silent then return end
             if onChange then onChange(m:Get()) end
         end)
+        e:SetScript("OnTextChanged", function(_, user)
+            if user and not m.silent and m.onTyping then m.onTyping(m:Get()) end
+        end)
         m.boxes[i] = e
         prev = e
     end
@@ -232,6 +235,35 @@ function Widgets.CheckDropdown(parent, width, options, get, set, tooltip, title)
     b.list = list
     b.checks = checks
     return b
+end
+
+--- A vertical scroll bar for a list drawn by offset. onScroll(offset) runs when the player moves it.
+--- :Update(offset, max) sets it from the list; it hides itself when everything fits (max = 0).
+function Widgets.ScrollBar(parent, onScroll)
+    local bar = CreateFrame("Slider", nil, parent)
+    bar:SetOrientation("VERTICAL")
+    bar:SetWidth(14)
+    local track = bar:CreateTexture(nil, "BACKGROUND")
+    track:SetAllPoints()
+    track:SetColorTexture(0, 0, 0, 0.35)
+    bar:SetThumbTexture("Interface\\Buttons\\UI-ScrollBar-Knob")
+    bar:SetValueStep(1)
+    bar:SetObeyStepOnDrag(true)
+    bar:SetMinMaxValues(0, 0)
+    bar:SetValue(0)
+    local setting = false
+    bar:SetScript("OnValueChanged", function(_, value)
+        if setting then return end
+        onScroll(math.floor((value or 0) + 0.5))
+    end)
+    function bar.Update(_, offset, max)
+        setting = true
+        bar:SetMinMaxValues(0, math.max(0, max))
+        bar:SetValue(offset)
+        setting = false
+        bar:SetShown(max > 0)
+    end
+    return bar
 end
 
 function Widgets.Label(parent, text, template)

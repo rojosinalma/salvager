@@ -20,6 +20,8 @@ local function widget(kind)
         SetChecked = function(self, v) self.checked = v end,
         GetChecked = function(self) return self.checked end,
         HasFocus = function() return false end,
+        SetEnabled = function(self, v) self.enabled = v and true or false end,
+        IsEnabled = function(self) return self.enabled ~= false end,
         GetPoint = function() return "CENTER", nil, "CENTER", 0, 0 end,
         GetParent = function(self) return self.parent end,
         CreateFontString = function(self) local fs = widget("FontString") fs.parent = self return fs end,
@@ -45,9 +47,10 @@ function M.install()
         now = 1000, clock = 1700000000, chat = {}, timers = {}, frames = {}, tooltipCalls = {},
         items = {}, bags = {}, auras = {}, loot = {}, inbox = {}, money = 1000000,
         ah = { browse = {}, fullBrowse = true, commodities = {}, itemResults = {}, sent = {}, bids = {},
-            hasResults = {}, ready = true },
+            hasResults = {}, ready = true, posts = {} },
     }
     M.env = env
+    _G.SalvagerDB = nil   -- every install starts with fresh saved data
 
     _G.GetTime = function() return env.now end
     _G.time = function() return env.clock end
@@ -115,7 +118,12 @@ function M.install()
         GetItemNameByID = function(x) local it = item(x) return it and it.name end,
         GetItemCount = function(id) return env.bags[id] or 0 end,
     }
-    _G.C_Container = { GetContainerItemLink = function(bag, slot) return env.bagLinks and env.bagLinks[bag .. ":" .. slot] end }
+    _G.C_Container = {
+        GetContainerItemLink = function(bag, slot) return env.bagLinks and env.bagLinks[bag .. ":" .. slot] end,
+        GetContainerNumSlots = function(bag) return bag == 0 and 4 or 0 end,
+        GetContainerItemID = function(_, slot) return env.bagSlots and env.bagSlots[slot] end,
+    }
+    _G.ItemLocation = { CreateFromBagAndSlot = function(_, bag, slot) return { bag = bag, slot = slot } end }
     _G.C_UnitAuras = { GetAuraDataByIndex = function(_, i) return env.auras[i] end }
     _G.GetNumLootItems = function() return #env.loot end
     _G.GetLootSlotLink = function(i) return env.loot[i] and ("|Hitem:" .. env.loot[i].id .. "|h") end
@@ -142,8 +150,35 @@ function M.install()
         RefreshItemSearchResults = function(key) table.insert(ah.sent, { kind = "refreshI", key = key }) end,
         GetNumCommoditySearchResults = function(id) return #(ah.commodities[id] or {}) end,
         GetCommoditySearchResultInfo = function(id, i) return ah.commodities[id][i] end,
-        SendBrowseQuery = function(q) table.insert(ah.sent, { kind = "browse", query = q }) end,
-        GetBrowseResults = function() return ah.browse end,
+        SendBrowseQuery = function(q)
+            ah.query = q
+            table.insert(ah.sent, { kind = "browse", query = q })
+        end,
+        -- Like the real one: only rows that match the query's gear type and quality.
+        GetBrowseResults = function()
+            local q = ah.query
+            if not q then return ah.browse end
+            local classes, qualities = {}, {}
+            for _, c in ipairs(q.itemClassFilters or {}) do classes[c.classID] = true end
+            for _, f in ipairs(q.filters or {}) do qualities[f - 6] = true end
+            local out = {}
+            for _, r in ipairs(ah.browse) do
+                local it = env.items[r.itemKey.itemID]
+                if not it or ((not next(classes) or classes[it.classID]) and (not next(qualities) or qualities[it.quality])) then
+                    out[#out + 1] = r
+                end
+            end
+            return out
+        end,
+        PostCommodity = function(loc, duration, quantity, unitPrice)
+            table.insert(ah.posts, { loc = loc, duration = duration, quantity = quantity, unitPrice = unitPrice })
+            return ah.needsConfirm or false
+        end,
+        ConfirmPostCommodity = function(loc, duration, quantity, unitPrice)
+            table.insert(ah.posts, { loc = loc, duration = duration, quantity = quantity, unitPrice = unitPrice,
+                confirmed = true })
+        end,
+        CalculateCommodityDeposit = function(_, _, quantity) return quantity * 3 end,
         HasFullBrowseResults = function() return ah.fullBrowse end,
         RequestMoreBrowseResults = function() table.insert(ah.sent, { kind = "more" }) end,
         GetItemKeyInfo = function(key) local it = env.items[key.itemID] return it and { quality = it.quality } end,

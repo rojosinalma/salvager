@@ -12,12 +12,13 @@ ns.Prices = Prices
 --- @return table|nil { p, units, listings }
 function Prices.ReadCommodity(itemID, units)
     local n = AH.GetNumCommoditySearchResults(itemID) or 0
-    local need, sum, got, listings = units, 0, 0, 0
+    local need, sum, got, listings, lo = units, 0, 0, 0, nil
     for i = 1, n do
         local r = AH.GetCommoditySearchResultInfo(itemID, i)
         if r and r.unitPrice and r.unitPrice > 0 then
             local qty = (r.quantity or 0) - (r.numOwnerItems or 0)
             if qty > 0 then
+                lo = lo or r.unitPrice
                 local take = math.min(qty, need)
                 sum = sum + take * r.unitPrice
                 got = got + take
@@ -28,7 +29,7 @@ function Prices.ReadCommodity(itemID, units)
         end
     end
     if got == 0 then return nil end
-    return { p = math.floor(sum / got + 0.5), units = got, listings = listings }
+    return { p = math.floor(sum / got + 0.5), units = got, listings = listings, lo = lo }
 end
 
 local function store(itemID)
@@ -74,6 +75,15 @@ function Prices.Scan()
         })
     end
     ns.Fire("SALVAGER_PRICES", 0, Prices.total)
+end
+
+--- Searches one material now (ahead of everything else), then calls done(ok).
+function Prices.Refresh(itemID, done)
+    ns.Queue.Add({
+        commodity = itemID,
+        onResult = function() store(itemID) ns.Fire("SALVAGER_PRICES", Prices.done, Prices.total) done(true) end,
+        onFail = function() done(false) end,
+    }, true)
 end
 
 --- Age in seconds of a material's price, or nil.

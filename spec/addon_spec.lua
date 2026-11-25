@@ -155,6 +155,7 @@ describe("Salvager window and options", function()
         ns = wow.loadAddon()
         wow.fire(ns, "ADDON_LOADED", "Salvager")
         wow.fire(ns, "AUCTION_HOUSE_SHOW")
+        for _, id in ipairs({ 11082, 11084 }) do ns.db.prices[id] = { p = 1700, t = 0 } end
     end)
 
     it("registers the options panel and a minimap button", function()
@@ -178,7 +179,8 @@ describe("Salvager window and options", function()
             if c and c.commodity then wow.fire(ns, "COMMODITY_SEARCH_RESULTS_UPDATED", c.commodity) end
         end
         assert.are.equal("browsing", ns.Scanner.state)
-        wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
+        wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")   -- green armor: nothing listed
+        wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")   -- green weapons: nothing listed
         wow.tick(ns, 0.2)
         assert.is_false(ns.Busy())
         assert.is_table(ns.Scanner.summary)
@@ -186,6 +188,8 @@ describe("Salvager window and options", function()
 
     it("sends only the chosen gear type to the auction house", function()
         ns.db.settings.gearClasses = "weapons"
+        ns.db.settings.minProfit = 0
+        ns.db.prices[10939] = { p = 1700, t = 0 }   -- Greater Magic Essence: what low green weapons give
         ns.Scanner.Scan()
         local q
         for _, s in ipairs(env.ah.sent) do if s.kind == "browse" then q = s.query end end
@@ -240,6 +244,7 @@ end)
 
 describe("Salvager scan safety", function()
     local env, ns
+    local function row(price) return { itemKey = { itemID = 5001, itemLevel = 28, itemSuffix = 0 }, minPrice = price } end
     setup(function()
         env = wow.install()
         env.items[11083] = { name = "Soul Dust", quality = 1, ilvl = 1, classID = 7 }
@@ -247,46 +252,78 @@ describe("Salvager scan safety", function()
         ns = wow.loadAddon()
         wow.fire(ns, "ADDON_LOADED", "Salvager")
         wow.fire(ns, "AUCTION_HOUSE_SHOW")
-        ns.db.prices[11083] = { p = 433, t = 0 }
+        for _, id in ipairs({ 11083, 11082, 11084 }) do ns.db.prices[id] = { p = 433, t = 0 } end
         ns.db.settings.minProfit = 0
+        ns.db.settings.gearClasses = "armor"
     end)
 
-    it("carries on when a browse page never comes", function()
+    it("moves on when a browse page never comes", function()
         env.ah.fullBrowse = false
-        env.ah.browse = { { itemKey = { itemID = 5001, itemLevel = 28, itemSuffix = 0 }, minPrice = 1 } }
+        env.ah.browse = { row(1) }
         ns.Scanner.Scan()
         wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
         assert.are.equal("browsing", ns.Scanner.state)
-        wow.tick(ns, 20)
-        assert.are.equal("idle", ns.Scanner.state)
+        wow.tick(ns, 8)
+        assert.are.equal("checking", ns.Scanner.state)   -- the one candidate is being checked
         assert.are.equal(1, ns.Scanner.summary.browsed)
+        assert.are.equal(1, ns.Scanner.summary.candidates)
+        ns.Scanner.Stop()
     end)
 
-    it("stops loading pages once items cost more than every buy limit", function()
+    it("reads every page: the auction house does not sort by price", function()
         env.ah.fullBrowse = false
-        env.ah.browse = { { itemKey = { itemID = 5001, itemLevel = 28, itemSuffix = 0 }, minPrice = 999999 } }
+        env.ah.browse = { row(999999) }
         local before = #env.ah.sent
         ns.Scanner.Scan()
         wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
-        for i = before + 1, #env.ah.sent do assert.are_not.equal("more", env.ah.sent[i].kind) end
-        wow.tick(ns, 1)
-        assert.are.equal("idle", ns.Scanner.state)
-        assert.are.equal(1, ns.Scanner.summary.overCeiling)
+        assert.are.equal("more", env.ah.sent[#env.ah.sent].kind)
+        assert.is_true(#env.ah.sent > before)
+        env.ah.fullBrowse = true
+        wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_ADDED", { row(1) })   -- a cheap one on the last page
+        assert.are.equal(2, ns.Scanner.summary.browsed)
+        assert.are.equal(1, ns.Scanner.summary.overLimit)
+        assert.are.equal(1, ns.Scanner.summary.candidates)
+        ns.Scanner.Stop()
     end)
 
-    it("values a large browse over several frames", function()
+    it("judges a large page without item lookups", function()
         env.ah.fullBrowse = true
         env.ah.browse = {}
-        for n = 1, 1000 do
-            env.ah.browse[n] = { itemKey = { itemID = 5001, itemLevel = 28, itemSuffix = 0 }, minPrice = 999999 }
-        end
+        for n = 1, 1000 do env.ah.browse[n] = row(999999) end
+        local lookups = 0
+        local real = ns.GetItemInfo
+        ns.GetItemInfo = function(...) lookups = lookups + 1 return real(...) end
         ns.Scanner.Scan()
         wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
-        assert.are.equal("checking", ns.Scanner.state)
-        assert.is_true(ns.Scanner.valuedSoFar < 1000)
-        wow.tick(ns, 1)
+        ns.GetItemInfo = real
         assert.are.equal("idle", ns.Scanner.state)
-        assert.are.equal(1000, ns.Scanner.summary.overCeiling)
+        assert.are.equal(1000, ns.Scanner.summary.overLimit)
+        assert.are.equal(0, lookups)
+    end)
+
+    it("holds the browse while paused and continues on Play", function()
+        env.ah.fullBrowse = false
+        env.ah.browse = { row(999999) }
+        ns.Scanner.Play()
+        ns.Scanner.Pause()
+        local sent = #env.ah.sent
+        wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
+        assert.are.equal(sent, #env.ah.sent)              -- no next page while paused
+        ns.Scanner.Play()
+        assert.are.equal("more", env.ah.sent[#env.ah.sent].kind)
+        ns.Scanner.Stop()
+        env.ah.fullBrowse = true
+    end)
+
+    it("learns item levels in the background and prefers them over the listing's", function()
+        ns.db.ilvl[5001] = nil
+        local lvl, src = ns.Items.Level({ itemID = 5001, itemLevel = 23 })
+        assert.are.equal(23, lvl)
+        assert.are.equal("key", src)
+        wow.tick(ns, 0.2)
+        lvl, src = ns.Items.Level({ itemID = 5001, itemLevel = 23 })
+        assert.are.equal(28, lvl)
+        assert.are.equal("cache", src)
     end)
 
     it("does not start a material scan during a gear scan", function()
@@ -321,7 +358,7 @@ describe("Salvager deals list", function()
 
     it("groups auctions of one item and buys the cheapest first, then searches again", function()
         local task = { itemKey = { itemID = 5001, itemLevel = 28, itemSuffix = 0 }, keyString = "5001:28:0",
-            value = { net = 3000 }, limit = 2500, ilvl = 28, quality = 2, classID = 4 }
+            net = 3000, limit = 2500, ilvl = 28, quality = 2, classID = 4 }
         ns.Scanner.deals = {
             { auctionID = 2, itemID = 5001, link = LINK, buyout = 900, value = 3000, profit = 2100, classID = 4, task = task,
                 keyString = task.keyString },
@@ -377,7 +414,8 @@ describe("Salvager deals list", function()
     end)
 
     it("plays, pauses and stops", function()
-        ns.db.prices[11083] = { p = 433, t = 0 }
+        for _, id in ipairs({ 11083, 11082, 11084 }) do ns.db.prices[id] = { p = 433, t = 0 } end
+        ns.db.settings.minProfit = 0
         ns.Scanner.Play()
         assert.is_true(ns.Scanner.auto)
         assert.are.equal("browsing", ns.Scanner.state)
@@ -396,6 +434,78 @@ describe("Salvager deals list", function()
         local f = _G.SalvagerFrame
         assert.is_function(f.scripts.OnSizeChanged)
         f.scripts.OnSizeChanged(f)
+        for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
+    end)
+end)
+
+describe("Salvager posting", function()
+    local env, ns
+    local DUST = 11083
+    setup(function()
+        env = wow.install()
+        env.items[DUST] = { name = "Soul Dust", quality = 1, ilvl = 1, classID = 7 }
+        env.ah.commodities[DUST] = { { unitPrice = 500, quantity = 10, numOwnerItems = 10 },   -- your own: not counted
+            { unitPrice = 430, quantity = 50, numOwnerItems = 0 } }
+        env.bags[DUST] = 12
+        env.bagSlots = { [2] = DUST }
+        ns = wow.loadAddon()
+        wow.fire(ns, "ADDON_LOADED", "Salvager")
+        wow.fire(ns, "AUCTION_HOUSE_SHOW")
+        ns.Ledger.AddStock(ns.db.ledger, DUST, 12, 12 * 300)   -- break-even ceil(300 / 0.95) = 316
+    end)
+
+    it("gets the price first, then suggests one copper under the lowest listing", function()
+        ns.Post.Open(DUST)
+        assert.is_true(ns.Post.loading[DUST])
+        wow.tick(ns, 0.2)
+        wow.fire(ns, "COMMODITY_SEARCH_RESULTS_UPDATED", DUST)
+        assert.is_nil(ns.Post.loading[DUST])
+        assert.is_true(_G.SalvagerPostFrame:IsShown())
+        local s = ns.Post.Suggest(DUST)
+        assert.are.equal(430, s.lowest)
+        assert.are.equal(429, s.price)
+        assert.are.equal(316, s.breakEven)
+        assert.is_false(s.below)
+    end)
+
+    it("works out what the post brings", function()
+        local o = ns.Post.Outcome(DUST, 10, 429, 2)
+        assert.are.equal(4290, o.gross)
+        assert.are.equal(4076, o.net)        -- after the 5% cut
+        assert.are.equal(3000, o.cost)
+        assert.are.equal(1076, o.profit)
+        assert.are.equal(30, o.deposit)
+    end)
+
+    it("warns when the market is below the break-even", function()
+        ns.db.prices[DUST].lo = 300
+        local s = ns.Post.Suggest(DUST)
+        assert.are.equal(299, s.price)
+        assert.is_true(s.below)
+        ns.UI.view = "materials"
+        ns.UI.Refresh()
+        ns.db.prices[DUST].lo = 430
+    end)
+
+    it("posts from the bag slot, and asks again when the auction house wants a confirmation", function()
+        assert.is_true(ns.Post.Send(DUST, 12, 429, 2))
+        local p = env.ah.posts[#env.ah.posts]
+        assert.are.equal(2, p.loc.slot)
+        assert.are.equal(12, p.quantity)
+        assert.are.equal(429, p.unitPrice)
+        wow.fire(ns, "AUCTION_HOUSE_AUCTION_CREATED", 5)
+        assert.is_nil(ns.Post.pending)
+        env.ah.needsConfirm = true
+        assert.are.equal("confirm", ns.Post.Send(DUST, 12, 100, 2))
+        assert.is_true(ns.Post.Send(DUST, 12, 100, 2, true))
+        assert.is_true(env.ah.posts[#env.ah.posts].confirmed)
+    end)
+
+    it("refuses when none is in the bags", function()
+        env.bagSlots = {}
+        local ok, why = ns.Post.Send(DUST, 1, 429, 2)
+        assert.is_false(ok)
+        assert.is_string(why)
         for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
     end)
 end)
