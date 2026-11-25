@@ -157,8 +157,20 @@ function UI.Refresh()
     autoCheck:SetChecked(ns.Scanner.auto)
     if not minProfitBox:HasFocus() then minProfitBox:SetText(Util.FormatMoney(ns.db.settings.minProfit)) end
     if UI.view == "deals" then
-        footer:SetText(string.format("%d deals. Buy limit = disenchant value after cut - minimum profit. Click Buy once per item.",
-            #ns.Scanner.deals))
+        local sum = ns.Scanner.summary
+        local text = string.format("%d deals.", #ns.Scanner.deals)
+        if sum then
+            text = text .. string.format(" Last scan: %d items seen, %d valued, %d under the limit.", sum.browsed, sum.valued,
+                sum.candidates)
+            if sum.best then
+                text = text .. string.format(" Closest: %s at %s, value %s (%s).",
+                    (ns.GetItemInfo(sum.best.itemID)) or ("item " .. sum.best.itemID), ns.Money(sum.best.price),
+                    ns.Money(sum.best.value), ns.Money(sum.best.margin))
+            end
+        else
+            text = text .. " No gear scan yet: scan materials first, then gear."
+        end
+        footer:SetText(text)
     elseif UI.view == "materials" then
         footer:SetText(string.format(
             "Price = average of cheapest %d units. Red = below break-even. * = none listed, last price. ~ = other essence form.",

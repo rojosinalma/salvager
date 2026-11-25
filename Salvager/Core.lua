@@ -25,6 +25,7 @@ local DEFAULTS = {
     ledger = {},
     auraSeen = {},                 -- [spellID] = name, auras whose name mentions the Salvager
     auraSnapshots = {},            -- helpful auras at the first disenchants (to find the Salvager's ID)
+    log = {},                      -- what the addon did, newest last (written to disk on /reload or logout)
     window = {},
 }
 
@@ -36,6 +37,18 @@ function ns.Print(fmt, ...)
 end
 
 function ns.Money(copper) return Util.FormatMoney(copper) end
+
+local LOG_MAX = 600
+
+--- Adds a line to the activity log (SalvagerDB.log).
+function ns.Log(fmt, ...)
+    if not ns.db then return end
+    local ok, msg = pcall(string.format, fmt, ...)
+    if not ok then msg = tostring(fmt) end
+    local log = ns.db.log
+    log[#log + 1] = date("%H:%M:%S") .. " " .. msg
+    Util.Cap(log, LOG_MAX)
+end
 
 ------------------------------------------------------------------ events
 
@@ -56,7 +69,10 @@ function ns.Fire(event, ...)
     if not list then return end
     for _, fn in ipairs(list) do
         local ok, err = pcall(fn, ...)
-        if not ok then ns.Print("error in %s: %s", event, tostring(err)) end
+        if not ok then
+            ns.Print("error in %s: %s", event, tostring(err))
+            ns.Log("ERROR in %s: %s", event, tostring(err))
+        end
     end
 end
 
@@ -174,6 +190,7 @@ ns.On("ADDON_LOADED", function(name)
     Util.Defaults(SalvagerDB, DEFAULTS)
     ns.db = SalvagerDB
     Ledger.Init(ns.db.ledger)
+    ns.Log("loaded %s, salvager for buys: %s", ns.VERSION, tostring(ns.SalvagerForBuy()))
     ns.Fire("SALVAGER_READY")
 end)
 
@@ -194,6 +211,7 @@ local HELP = {
     "/salv stock <item> <quantity> <cost each> - opening stock, e.g. /salv stock 11137 40 6s",
     "/salv report - disenchant results by band",
     "/salv auras - list your buffs (to find the Salvager's)",
+    "/salv log [n] - the last n lines of the activity log (default 15)",
     "/salv reset ledger confirm - clear all purchases, stock and history",
 }
 
@@ -245,6 +263,10 @@ SlashCmdList.SALVAGER = function(msg)
         ns.Fire("SALVAGER_LEDGER")
     elseif cmd == "report" then
         if ns.Report then ns.Report.Print() end
+    elseif cmd == "log" then
+        local n = tonumber(args[2]) or 15
+        local log = ns.db.log
+        for i = math.max(1, #log - n + 1), #log do ns.Print(log[i]) end
     elseif cmd == "auras" then
         if ns.Disenchant then ns.Disenchant.PrintAuras() end
     elseif cmd == "reset" and args[2] == "ledger" and args[3] == "confirm" then

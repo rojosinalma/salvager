@@ -33,6 +33,9 @@ end
 
 local function store(itemID)
     local e = Prices.ReadCommodity(itemID, ns.db.settings.priceUnits)
+    ns.Log("price %s (%d): %s, %d results", ns.MaterialName(itemID), itemID,
+        e and (ns.Money(e.p) .. " over " .. e.units .. " units") or "none listed",
+        AH.GetNumCommoditySearchResults(itemID) or 0)
     if e then
         e.t = time()
         ns.db.prices[itemID] = e
@@ -58,6 +61,7 @@ function Prices.Scan()
     if not ns.Queue.open then ns.Print("open the auction house first") return end
     if Prices.scanning then return end
     Prices.scanning, Prices.done, Prices.total = true, 0, #Data.MATERIALS
+    ns.Log("material scan started")
     for _, m in ipairs(Data.MATERIALS) do
         ns.Queue.Add({
             commodity = m.id,

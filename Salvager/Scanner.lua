@@ -7,7 +7,7 @@ local _, ns = ...
 local AH = C_AuctionHouse
 local Model = ns.Model
 
-local Scanner = { state = "idle", deals = {}, checked = 0, toCheck = 0, browsed = 0, auto = false }
+local Scanner = { state = "idle", deals = {}, checked = 0, toCheck = 0, browsed = 0, auto = false, summary = nil }
 ns.Scanner = Scanner
 
 local MAX_PAGES = 50
@@ -65,6 +65,7 @@ local function readAuctions(task)
         end
     end
     local n = AH.GetNumItemSearchResults(key) or 0
+    local before = #Scanner.deals
     for i = 1, n do
         local r = AH.GetItemSearchResultInfo(key, i)
         if r and r.buyoutAmount and r.buyoutAmount > 0 and not r.containsOwnerItem and r.buyoutAmount <= maxBuy then
@@ -75,6 +76,7 @@ local function readAuctions(task)
             }
         end
     end
+    ns.Log("checked %s: %d auctions, %d under %s", task.keyString, n, #Scanner.deals - before, ns.Money(maxBuy))
     sortDeals()
 end
 
@@ -99,15 +101,35 @@ local function evaluate()
     Scanner.toCheck, Scanner.checked = 0, 0
     local minProfit = ns.db.settings.minProfit
     local candidates = {}
+    local sum = { browsed = #results, valued = 0, noValue = 0, noPrice = 0, candidates = 0, best = nil }
     for _, r in ipairs(results) do
         local key = r.itemKey
         if key and r.minPrice and r.minPrice > 0 then
             local v, ilvl, quality, classID = keyValue(key)
-            if v and r.minPrice <= Model.MaxBuy(v.net, minProfit) then
-                candidates[#candidates + 1] = { key = key, v = v, ilvl = ilvl, quality = quality, classID = classID,
-                    margin = v.net - r.minPrice }
+            if v then
+                sum.valued = sum.valued + 1
+                local margin = v.net - r.minPrice
+                if not sum.best or margin > sum.best.margin then
+                    sum.best = { margin = margin, itemID = key.itemID, ilvl = ilvl, price = r.minPrice, value = v.net }
+                end
+                if r.minPrice <= Model.MaxBuy(v.net, minProfit) then
+                    candidates[#candidates + 1] = { key = key, v = v, ilvl = ilvl, quality = quality, classID = classID,
+                        margin = margin }
+                end
+            else
+                sum.noValue = sum.noValue + 1
             end
+        else
+            sum.noPrice = sum.noPrice + 1
         end
+    end
+    sum.candidates = #candidates
+    Scanner.summary = sum
+    ns.Log("gear scan: %d items browsed, %d valued, %d without a value, %d without a buyout, %d under the limit (min profit %s)",
+        sum.browsed, sum.valued, sum.noValue, sum.noPrice, sum.candidates, ns.Money(minProfit))
+    if sum.best then
+        ns.Log("closest: item %d ilvl %s at %s, value %s, margin %s", sum.best.itemID, tostring(sum.best.ilvl),
+            ns.Money(sum.best.price), ns.Money(sum.best.value), ns.Money(sum.best.margin))
     end
     table.sort(candidates, function(a, b) return a.margin > b.margin end)
     -- Each item search takes about 0.7 s: check the best ones first, at most maxChecks.
@@ -147,12 +169,14 @@ function Scanner.Scan()
     if s.minLevel > 0 then query.minLevel = s.minLevel end
     if s.maxLevel > 0 then query.maxLevel = s.maxLevel end
     results, pages = {}, 0
+    ns.Log("gear scan started: levels %d-%d, %d quality filters", s.minLevel, s.maxLevel, #query.filters)
     setState("browsing")
     ourSend = true
     local ok, err = pcall(AH.SendBrowseQuery, query)
     ourSend = false
     if not ok then
         ns.Print("browse failed: %s", tostring(err))
+        ns.Log("ERROR browse: %s", tostring(err))
         setState("idle")
     end
 end
@@ -167,6 +191,7 @@ local function onBrowse()
     if Scanner.state ~= "browsing" then return end
     results = AH.GetBrowseResults() or {}
     Scanner.browsed = #results
+    ns.Log("browse page %d: %d items so far, full %s", pages, #results, tostring(AH.HasFullBrowseResults()))
     if not AH.HasFullBrowseResults() and pages < MAX_PAGES then
         pages = pages + 1
         AH.RequestMoreBrowseResults()
@@ -181,6 +206,7 @@ ns.On("AUCTION_HOUSE_BROWSE_RESULTS_ADDED", onBrowse)
 ns.On("AUCTION_HOUSE_BROWSE_FAILURE", function()
     if Scanner.state == "browsing" then
         ns.Print("the auction house did not answer the browse; try again")
+        ns.Log("browse failure event")
         setState("idle")
         scheduleNext()
     end

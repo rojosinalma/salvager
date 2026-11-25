@@ -59,6 +59,10 @@ function ns.KeyString(key)
     return string.format("%d:%d:%d", key.itemID or 0, key.itemLevel or 0, key.itemSuffix or 0)
 end
 
+local function describe(task)
+    return task.commodity and ("commodity " .. task.commodity) or ("item " .. ns.KeyString(task.itemKey))
+end
+
 local function send(task)
     task.sentAt = GetTime()
     task.refreshed = false
@@ -84,10 +88,14 @@ local function finish(ok)
     local task = Queue.current
     Queue.current = nil
     if not task then return end
+    if not ok then ns.Log("search: no answer for %s after %.1fs", describe(task), GetTime() - task.sentAt) end
     local fn = ok and task.onResult or task.onFail
     if fn then
         local good, err = pcall(fn, task)
-        if not good then ns.Print("search result error: %s", tostring(err)) end
+        if not good then
+            ns.Print("search result error: %s", tostring(err))
+            ns.Log("ERROR reading %s: %s", describe(task), tostring(err))
+        end
     end
 end
 
@@ -106,6 +114,7 @@ local function pump()
     local ok, err = pcall(send, Queue.current)
     if not ok then
         ns.Print("search failed: %s", tostring(err))
+        ns.Log("ERROR sending %s: %s", describe(Queue.current), tostring(err))
         finish(false)
     end
 end
@@ -123,7 +132,10 @@ end)
 ns.On("ITEM_SEARCH_RESULTS_UPDATED", function(key)
     answered(function(t) return t.itemKey and key and t.itemKey.itemID == key.itemID end)
 end)
-ns.On("AUCTION_HOUSE_SHOW", function() Queue.open = true end)
+ns.On("AUCTION_HOUSE_SHOW", function()
+    Queue.open = true
+    ns.Log("auction house opened")
+end)
 ns.On("AUCTION_HOUSE_CLOSED", function()
     Queue.open = false
     Queue.Clear()
