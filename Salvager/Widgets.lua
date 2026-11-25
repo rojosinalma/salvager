@@ -137,20 +137,29 @@ end
 
 --- Three boxes (gold, silver, copper) in one frame. onChange(copper) runs when a box loses focus.
 function Widgets.Money(parent, onChange)
+    -- Layout: [box] coin  [box] coin  [box] coin. Each coin sits right after its own box, and the
+    -- frame is as wide as all of it, so whatever comes next starts after the last coin.
+    local BOX_W, SMALL_W, COIN, COIN_GAP, NEXT_GAP, LEFT_PAD = 48, 30, 13, 3, 11, 6
     local frame = CreateFrame("Frame", nil, parent)
-    frame:SetSize(170, 20)
+    frame:SetSize(LEFT_PAD + BOX_W + 2 * SMALL_W + 3 * (COIN_GAP + COIN) + 2 * NEXT_GAP + 2, 20)
     local m = { boxes = {}, frame = frame }
-    local prev
-    for i, coin in ipairs({ ns.Util.COIN.g, ns.Util.COIN.s, ns.Util.COIN.c }) do
-        local e = Widgets.Edit(frame, i == 1 and 48 or 30, true)
+    local prevCoin
+    for i, icon in ipairs({ "UI-GoldIcon", "UI-SilverIcon", "UI-CopperIcon" }) do
+        local e = Widgets.Edit(frame, i == 1 and BOX_W or SMALL_W, true)
         e:SetMaxLetters(i == 1 and 6 or 2)
         e:SetJustifyH("RIGHT")
-        -- The template's border reaches about 5 px past the box on each side: keep the digits inside it.
+        -- The template's border is drawn around the box: keep the digits inside it.
         e:SetTextInsets(2, 4, 0, 0)
-        if prev then e:SetPoint("LEFT", prev, "RIGHT", 26, 0) else e:SetPoint("LEFT", frame, "LEFT", 8, 0) end
-        local l = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        l:SetPoint("LEFT", e, "RIGHT", 7, 0)
-        l:SetText(coin)
+        if prevCoin then
+            e:SetPoint("LEFT", prevCoin, "RIGHT", NEXT_GAP, 0)
+        else
+            e:SetPoint("LEFT", frame, "LEFT", LEFT_PAD, 0)
+        end
+        local coin = frame:CreateTexture(nil, "ARTWORK")
+        coin:SetSize(COIN, COIN)
+        coin:SetTexture("Interface\\MoneyFrame\\" .. icon)
+        coin:SetPoint("LEFT", e, "RIGHT", COIN_GAP, 0)
+        prevCoin = coin
         e:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
         e:SetScript("OnTabPressed", function()
             local nextBox = m.boxes[i % 3 + 1]
@@ -164,7 +173,6 @@ function Widgets.Money(parent, onChange)
             if user and not m.silent and m.onTyping then m.onTyping(m:Get()) end
         end)
         m.boxes[i] = e
-        prev = e
     end
     function m:Get()
         local g = tonumber(self.boxes[1]:GetText()) or 0
@@ -249,8 +257,21 @@ function Widgets.CheckDropdown(parent, width, options, get, set, tooltip, title)
             checks[i]:SetChecked(on)
             if on then names[#names + 1] = o[2] end
         end
-        self:SetText((#names > 0 and table.concat(names, ", ") or "none") .. " |TInterface\\Buttons\\Arrow-Down-Up:12:12|t")
+        self:SetText(#names > 0 and table.concat(names, ", ") or "none")
     end
+    -- The names on the left, the arrow at the right edge.
+    local label = b.GetFontString and b:GetFontString()
+    if type(label) == "table" then
+        label:ClearAllPoints()
+        label:SetPoint("LEFT", b, "LEFT", 10, 0)
+        label:SetPoint("RIGHT", b, "RIGHT", -22, 0)
+        label:SetJustifyH("LEFT")
+        label:SetWordWrap(false)
+    end
+    local arrow = b:CreateTexture(nil, "OVERLAY")
+    arrow:SetSize(12, 12)
+    arrow:SetTexture("Interface\\Buttons\\Arrow-Down-Up")
+    arrow:SetPoint("RIGHT", b, "RIGHT", -7, -2)
     for i, o in ipairs(options) do
         local c = Widgets.Check(list, o[2], nil, function(on)
             set(o[1], on)
