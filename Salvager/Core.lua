@@ -15,11 +15,13 @@ local DEFAULTS = {
         priceUnits = 20,           -- material price = average of the cheapest N units
         priceMaxAge = 6 * 3600,    -- seconds before a material price counts as old
         qualities = { [2] = true, [3] = false, [4] = false },
+        gearClasses = "both",      -- "weapons" | "armor" | "both"
         minLevel = 0,              -- required-level filter for the gear scan (0 = none)
         maxLevel = 0,
         autoInterval = 20,         -- seconds between gear scans in auto mode
         maxChecks = 60,            -- item searches per gear scan (best candidates first)
         autoOpen = true,           -- open the window with the auction house
+        minimap = { hide = false, angle = 215 },
     },
     prices = {},                   -- [matID] = { p = copper each, units, listings, t }
     ledger = {},
@@ -182,6 +184,60 @@ function ns.MissingMajor(value, outcomes)
     return false
 end
 
+--- Is any scan running?
+function ns.Busy()
+    return (ns.Prices and ns.Prices.scanning) or (ns.Scanner and ns.Scanner.state ~= "idle") or ns.scanBothPending or false
+end
+
+--- Material prices first, then the gear scan.
+function ns.ScanBoth()
+    if not ns.Queue.open then ns.Print("open the auction house first") return end
+    if ns.Busy() then return end
+    ns.scanBothPending = true
+    ns.Log("scan both: materials, then gear")
+    ns.Prices.Scan()
+    ns.Fire("SALVAGER_SCAN")
+end
+
+--- Which item classes the gear scan includes: { [2] = bool, [4] = bool }.
+function ns.GearClasses()
+    local g = ns.db.settings.gearClasses
+    return { [Data.CLASS_WEAPON] = g ~= "armor", [Data.CLASS_ARMOR] = g ~= "weapons" }
+end
+
+ns.On("SALVAGER_PRICES_DONE", function()
+    if ns.scanBothPending then
+        ns.scanBothPending = false
+        ns.Scanner.Scan()
+    end
+end)
+ns.On("AUCTION_HOUSE_CLOSED", function() ns.scanBothPending = false end)
+
+--- Buy limits per disenchant band, for the Limits tab.
+--- @return table  rows { quality, lo, up, armor = {value, limit, missing}, weapon = {...} }
+function ns.Limits()
+    local rows, s = {}, ns.db.settings
+    local salv = ns.SalvagerForBuy()
+    local function one(quality, classID, ilvl)
+        local o = Model.Outcomes(quality, classID, ilvl)
+        if not o then return nil end
+        local v = Model.Value(o, ns.PriceOf, { salvager = salv, salvagerChance = s.salvagerChance, cut = s.cut })
+        return { value = v.net, limit = Model.MaxBuy(v.net, s.minProfit), missing = #v.missing > 0 }
+    end
+    for _, q in ipairs({ { 2, Data.GREEN }, { 3, Data.BLUE }, { 4, Data.PURPLE } }) do
+        if s.qualities[q[1]] then
+            local lo = 1
+            for _, row in ipairs(q[2]) do
+                local ilvl = math.min(row.up, 70)
+                rows[#rows + 1] = { quality = q[1], lo = lo, up = row.up,
+                    armor = one(q[1], Data.CLASS_ARMOR, ilvl), weapon = one(q[1], Data.CLASS_WEAPON, ilvl) }
+                lo = row.up + 1
+            end
+        end
+    end
+    return rows
+end
+
 ------------------------------------------------------------------ load
 
 ns.On("ADDON_LOADED", function(name)
@@ -206,6 +262,8 @@ local HELP = {
     "/salv minprofit 20s - lowest profit a deal must make",
     "/salv salvager auto|on|off - Arcane Salvager bonus in buy prices",
     "/salv quality uncommon|rare|both - which gear the scan looks at",
+    "/salv gear weapons|armor|both - which item types the scan looks at",
+    "/salv config - the options panel",
     "/salv levels 20 60 - required level range for the gear scan (0 0 = all)",
     "/salv interval 20 - seconds between gear scans in auto mode",
     "/salv stock <item> <quantity> <cost each> - opening stock, e.g. /salv stock 11137 40 6s",
@@ -242,6 +300,14 @@ SlashCmdList.SALVAGER = function(msg)
         elseif q == "both" then s.qualities = { [2] = true, [3] = true, [4] = false }
         else ns.Print("usage: /salv quality uncommon|rare|both") return end
         ns.Print("gear scan quality: %s", q)
+    elseif cmd == "gear" then
+        local g = (args[2] or ""):lower()
+        if g ~= "weapons" and g ~= "armor" and g ~= "both" then ns.Print("usage: /salv gear weapons|armor|both") return end
+        s.gearClasses = g
+        ns.Print("gear scan: %s", g)
+        ns.Fire("SALVAGER_SETTINGS")
+    elseif cmd == "config" or cmd == "options" then
+        if ns.Options then ns.Options.Open() end
     elseif cmd == "levels" then
         local lo, hi = tonumber(args[2]), tonumber(args[3])
         if not lo or not hi then ns.Print("usage: /salv levels 20 60") return end

@@ -12,12 +12,14 @@ Copy the `Salvager` folder into `World of Warcraft/_forever_/Interface/AddOns/`,
 
 ## Use
 
-1. Open the auction house. The Salvager window opens next to it.
-2. Click **Scan materials** (about 20 seconds: one search per material).
-3. Click **Scan gear**, or tick **Auto** to scan again every 20 seconds.
+1. Open the auction house. The Salvager window opens with it (also: minimap button or `/salv`).
+2. Click **Scan both**: material prices first (about 20 seconds), then the gear.
+3. Tick **Auto** to scan the gear again every 20 seconds.
 4. **Deals** lists every auction below the buy limit, best profit first. Click **Buy**.
 5. Take your "Auction won" mail, disenchant, and sell the materials as usual. Salvager books each step.
-6. **Materials** shows price, stock, average cost and break-even. **Log** shows results.
+6. **Materials** shows price, stock, average cost and break-even. **Limits** shows the buy limit per
+   item level band for armor and weapons. **Log** opens a side panel with results and the activity log.
+7. Options: Esc > Options > AddOns > Salvager, the **Options** button, or right-click the minimap button.
 
 ## How the value is calculated
 

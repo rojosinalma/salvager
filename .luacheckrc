@@ -16,5 +16,6 @@ read_globals = {
     "GetInboxHeaderInfo", "GetInboxInvoiceInfo", "GetInboxItemLink", "GetLootSlotInfo", "GetLootSlotLink",
     "GetMoney", "GetNumLootItems", "GetTime", "IsPlayerSpell", "IsShiftKeyDown", "ItemRefTooltip",
     "TooltipDataProcessor", "UIParent", "UISpecialFrames", "ATTACHMENTS_MAX_RECEIVE",
+    "Settings", "InterfaceOptions_AddCategory", "InterfaceOptionsFrame_OpenToCategory", "GetCursorPosition",
     "date", "hooksecurefunc", "time", "tinsert", "wipe",
 }

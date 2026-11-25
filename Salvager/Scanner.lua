@@ -48,6 +48,7 @@ local function keyValue(key)
     local info = AH.GetItemKeyInfo(key)
     local quality = (info and info.quality) or ns.QualityOf(key.itemID) or onlyQuality()
     local classID = ns.ClassOf(key.itemID)
+    if classID and not ns.GearClasses()[classID] then return nil end
     local ilvl = (key.itemLevel and key.itemLevel > 0) and key.itemLevel or ns.ItemLevelOf(key.itemID)
     if not (quality and classID and ilvl) then return nil end
     local v, outcomes = ns.ItemValue(key.itemID, ilvl, quality, classID)
@@ -71,7 +72,7 @@ local function readAuctions(task)
         if r and r.buyoutAmount and r.buyoutAmount > 0 and not r.containsOwnerItem and r.buyoutAmount <= maxBuy then
             Scanner.deals[#Scanner.deals + 1] = {
                 auctionID = r.auctionID, itemKey = key, keyString = task.keyString,
-                link = r.itemLink, itemID = key.itemID, ilvl = task.ilvl, quality = task.quality,
+                link = r.itemLink, itemID = key.itemID, ilvl = task.ilvl, quality = task.quality, classID = task.classID,
                 buyout = r.buyoutAmount, value = v.net, profit = v.net - r.buyoutAmount,
             }
         end
@@ -144,6 +145,7 @@ local function evaluate()
     for _, c in ipairs(candidates) do
         ns.Queue.Add({
             itemKey = c.key, keyString = ns.KeyString(c.key), value = c.v, ilvl = c.ilvl, quality = c.quality,
+            classID = c.classID,
             onResult = function(task) readAuctions(task) checkDone() end,
             onFail = function() checkDone() end,
         })
@@ -164,8 +166,11 @@ function Scanner.Scan()
         searchString = "",
         sorts = { { sortOrder = Enum.AuctionHouseSortOrder.Price, reverseSort = false } },
         filters = qualityFilters(),
-        itemClassFilters = { { classID = ns.Data.CLASS_WEAPON }, { classID = ns.Data.CLASS_ARMOR } },
+        itemClassFilters = {},
     }
+    for classID, on in pairs(ns.GearClasses()) do
+        if on then table.insert(query.itemClassFilters, { classID = classID }) end
+    end
     if s.minLevel > 0 then query.minLevel = s.minLevel end
     if s.maxLevel > 0 then query.maxLevel = s.maxLevel end
     results, pages = {}, 0

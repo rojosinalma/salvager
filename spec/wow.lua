@@ -24,7 +24,17 @@ local function widget(kind)
         GetParent = function(self) return self.parent end,
         CreateFontString = function(self) local fs = widget("FontString") fs.parent = self return fs end,
         CreateTexture = function(self) local t = widget("Texture") t.parent = self return t end,
-        Click = function(self) if self.scripts.OnClick then self.scripts.OnClick(self) end end,
+        Click = function(self, button) if self.scripts.OnClick then self.scripts.OnClick(self, button) end end,
+        CreateAnimationGroup = function() return widget("AnimationGroup") end,
+        CreateAnimation = function() return widget("Animation") end,
+        GetWidth = function() return 140 end,
+        GetHeight = function() return 560 end,
+        GetCenter = function() return 500, 500 end,
+        GetEffectiveScale = function() return 1 end,
+        HookScript = function(self, name, fn)
+            local old = self.scripts[name]
+            self.scripts[name] = function(...) if old then old(...) end fn(...) end
+        end,
     }
     return setmetatable(w, { __index = function(_, k) return methods[k] or noop end })
 end
@@ -70,6 +80,13 @@ function M.install()
     _G.GetMoney = function() return env.money end
     _G.TooltipDataProcessor = { AddTooltipPostCall = function(_, fn) env.tooltipPost = fn end }
     _G.ATTACHMENTS_MAX_RECEIVE = 16
+    _G.Minimap = widget("Minimap")
+    _G.GetCursorPosition = function() return 600, 500 end
+    _G.Settings = {
+        RegisterCanvasLayoutCategory = function() return { GetID = function() return 1 end } end,
+        RegisterAddOnCategory = function() env.settingsRegistered = true end,
+        OpenToCategory = function() env.settingsOpened = true end,
+    }
 
     _G.Enum = {
         AuctionHouseSortOrder = { Price = 0, Name = 1, Level = 2, Bid = 3, Buyout = 4 },

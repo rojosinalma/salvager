@@ -1,28 +1,37 @@
--- Salvager: the window. Tabs: Deals (buy), Materials (prices, stock, break-even), Log (results).
+-- Salvager: the main window (Deals, Materials, Limits) and the Log panel attached to its right side.
 local _, ns = ...
 
-local Util, Ledger, Data = ns.Util, ns.Ledger, ns.Data
+local Ledger, Data, W = ns.Ledger, ns.Data, ns.Widgets
 
 local UI = { view = "deals", offset = 0 }
 ns.UI = UI
 
-local ROWS, ROW_H = 16, 22
-local W, H = 660, 520
+local ROWS, ROW_H = 15, 24
+local WIDTH, HEIGHT = 720, 560
+local QUALITY_COLOR = { [2] = "|cff1eff00", [3] = "|cff0070dd", [4] = "|cffa335ee" }
+local CLASS_NAME = { [2] = "Weapon", [4] = "Armor" }
 
 local VIEWS = {
     deals = {
-        header = { "Item", "iLvl", "Buyout", "Value", "Profit" },
-        cols = { { 215, "LEFT" }, { 40, "CENTER" }, { 95, "RIGHT" }, { 95, "RIGHT" }, { 95, "RIGHT" } },
+        icon = true,
+        header = { "Item", "Type", "iLvl", "Buyout", "Value", "Profit" },
+        cols = { { 205, "LEFT" }, { 50, "CENTER" }, { 34, "CENTER" }, { 88, "RIGHT" }, { 88, "RIGHT" }, { 88, "RIGHT" } },
     },
     materials = {
+        icon = true,
         header = { "Material", "Price", "Units", "Age", "Stock", "Avg cost", "Break-even" },
-        cols = { { 175, "LEFT" }, { 80, "RIGHT" }, { 50, "CENTER" }, { 50, "CENTER" }, { 50, "CENTER" },
+        cols = { { 175, "LEFT" }, { 80, "RIGHT" }, { 50, "CENTER" }, { 40, "CENTER" }, { 45, "CENTER" },
             { 85, "RIGHT" }, { 85, "RIGHT" } },
     },
-    log = { header = { "" }, cols = { { 620, "LEFT" } } },
+    limits = {
+        icon = false,
+        header = { "Item level", "Req. level", "Armor value", "Armor: buy below", "Weapon value", "Weapon: buy below" },
+        cols = { { 80, "LEFT" }, { 70, "CENTER" }, { 105, "RIGHT" }, { 120, "RIGHT" }, { 105, "RIGHT" }, { 120, "RIGHT" } },
+    },
 }
 
-local f, rows, headers, status, footer, minProfitBox, autoCheck, tabs = nil, {}, {}, nil, nil, nil, nil, {}
+local f, rows, headers, status, footer, minProfit, autoCheck, gearChoice, tabs = nil, {}, {}, nil, nil, nil, nil, nil, {}
+local spinner, bigSpinner, bigSpinnerText
 
 local function ago(seconds)
     if not seconds then return "-" end
@@ -31,15 +40,15 @@ local function ago(seconds)
     return math.floor(seconds / 3600) .. "h"
 end
 
------------------------------------------------------------------- data per view
+------------------------------------------------------------------ rows per view
 
 local function dealRows()
     local out = {}
     for _, d in ipairs(ns.Scanner.deals) do
         out[#out + 1] = {
-            cells = { d.link or ("item " .. d.itemID), tostring(d.ilvl or ""), ns.Money(d.buyout), ns.Money(d.value),
-                "|cff40ff40" .. ns.Money(d.profit) .. "|r" },
-            link = d.link, deal = d,
+            cells = { d.link or ("item " .. d.itemID), CLASS_NAME[d.classID or ns.ClassOf(d.itemID)] or "",
+                tostring(d.ilvl or ""), ns.Money(d.buyout), ns.Money(d.value), "|cff40ff40" .. ns.Money(d.profit) .. "|r" },
+            link = d.link, itemID = d.itemID, deal = d,
         }
     end
     return out
@@ -57,15 +66,16 @@ local function materialRows()
         local be = Ledger.BreakEven(ns.db.ledger, m.id, ns.Cut())
         local priceText = price and ns.Money(price) or "-"
         if e and not e.p and e.last then
-            priceText = "*" .. priceText                                    -- none listed now: last price seen
+            priceText = "*" .. priceText
         elseif e and not e.p and price then
-            priceText = "~" .. priceText                                    -- filled from the other essence form
+            priceText = "~" .. priceText
         end
         if price and be and price < be then priceText = "|cffff4040" .. priceText .. "|r" end
         local ageText = ago(age)
         if age and age > maxAge then ageText = "|cffff8040" .. ageText .. "|r" end
         out[#out + 1] = {
-            cells = { ns.MaterialName(m.id), priceText, e and e.units and e.units > 0 and (e.units .. "/" .. e.listings) or "-",
+            cells = { ns.MaterialName(m.id), priceText,
+                e and e.units and e.units > 0 and (e.units .. "/" .. e.listings) or "-",
                 ageText, s and tostring(s.qty) or "-", avg and ns.Money(avg) or "-", be and ns.Money(be) or "-" },
             itemID = m.id,
         }
@@ -73,59 +83,95 @@ local function materialRows()
     return out
 end
 
-local function logRows()
+local function limitText(x, dim)
+    if not x then return "-", "-" end
+    local v, l = ns.Money(x.value), ns.Money(x.limit)
+    if x.missing then v = v .. "?" end
+    if dim then return "|cff808080" .. v .. "|r", "|cff808080" .. l .. "|r" end
+    return v, "|cffffd100" .. l .. "|r"
+end
+
+local function limitRows()
     local out = {}
-    local t = ns.Report.Totals()
-    local add = function(text) out[#out + 1] = { cells = { text } } end
-    add(string.format("|cffffd100%d disenchants|r: paid %s, materials worth %s now (after cut).",
-        t.n, ns.Money(t.cost), ns.Money(t.value)))
-    add(string.format("|cffffd100Sales|r: %d materials for %s after cut, profit %s.", t.sold, ns.Money(t.soldNet),
-        ns.Money(t.soldProfit)))
-    add(" ")
-    add("|cffffd100Recent disenchants|r")
-    local list = ns.db.ledger.disenchants
-    for i = #list, math.max(1, #list - 9), -1 do
-        local r = list[i]
-        local parts = {}
-        for id, qty in pairs(r.got or {}) do parts[#parts + 1] = qty .. "x " .. ns.MaterialName(id) end
-        add(string.format("%s %s: %s = %s (planned %s%s)%s", date("%m-%d %H:%M", r.t), r.link or "?",
-            table.concat(parts, ", "), ns.Money(r.value), ns.Money(r.planned),
-            r.costKnown and (", paid " .. ns.Money(r.cost)) or "", r.salvager and " [Salvager]" or ""))
+    local classes = ns.GearClasses()
+    for _, r in ipairs(ns.Limits()) do
+        local av, al = limitText(r.armor, not classes[Data.CLASS_ARMOR])
+        local wv, wl = limitText(r.weapon, not classes[Data.CLASS_WEAPON])
+        local up = r.up >= 999 and "+" or ("-" .. r.up)
+        local reqUp = r.up >= 999 and "+" or ("-" .. math.max(1, r.up - 5))
+        out[#out + 1] = {
+            cells = { (QUALITY_COLOR[r.quality] or "") .. r.lo .. up .. "|r", "~" .. math.max(1, r.lo - 5) .. reqUp,
+                av, al, wv, wl },
+        }
     end
-    add(" ")
-    add("|cffffd100By band|r (needs about 15+ disenchants per band to mean much)")
-    for _, line in ipairs(ns.Report.Lines()) do add(line) end
     return out
 end
 
-local SOURCES = { deals = dealRows, materials = materialRows, log = logRows }
+local SOURCES = { deals = dealRows, materials = materialRows, limits = limitRows }
 
 ------------------------------------------------------------------ drawing
 
 local function statusText()
     local parts = {}
-    if ns.Prices.scanning then
-        parts[#parts + 1] = string.format("Materials %d/%d", ns.Prices.done, ns.Prices.total)
-    end
+    if ns.Prices.scanning then parts[#parts + 1] = string.format("Materials %d/%d", ns.Prices.done, ns.Prices.total) end
     local s = ns.Scanner
     if s.state == "browsing" then parts[#parts + 1] = string.format("Browsing (%d items)", s.browsed)
     elseif s.state == "checking" then parts[#parts + 1] = string.format("Checking %d/%d", s.checked, s.toCheck)
+    elseif ns.scanBothPending and not ns.Prices.scanning then parts[#parts + 1] = "Starting gear scan"
     end
     if #parts == 0 then parts[1] = ns.Queue.open and "Ready" or "Auction house closed" end
     parts[#parts + 1] = "Salvager " .. (ns.SalvagerForBuy() and "|cff40ff40on|r" or "off")
-    return table.concat(parts, "  -  ")
+    return table.concat(parts, "  ·  ")
+end
+
+local function footerText()
+    if UI.view == "deals" then
+        local sum = ns.Scanner.summary
+        local text = string.format("%d deals.", #ns.Scanner.deals)
+        if sum then
+            text = text .. string.format(" Last scan: %d items seen, %d valued, %d under the limit.", sum.browsed, sum.valued,
+                sum.candidates)
+            if sum.best then
+                text = text .. string.format(" Closest: %s at %s, value %s (%s).",
+                    (ns.GetItemInfo(sum.best.itemID)) or ("item " .. sum.best.itemID), ns.Money(sum.best.price),
+                    ns.Money(sum.best.value), ns.Money(sum.best.margin))
+            end
+        else
+            text = text .. " No gear scan yet: click Scan both."
+        end
+        return text
+    elseif UI.view == "materials" then
+        return string.format("Price = average of cheapest %d units. Red = below break-even. * = none listed, last price. "
+            .. "~ = other essence form.", ns.db.settings.priceUnits)
+    end
+    return "Buy below = disenchant value after the 5% cut, minus your minimum profit. Grey = type not scanned. "
+        .. "? = a material has no price."
+end
+
+local function layout(view)
+    local x = view.icon and 30 or 4
+    for i = 1, 7 do
+        local col = view.cols[i]
+        headers[i]:ClearAllPoints()
+        headers[i]:SetPoint("TOPLEFT", headers[i]:GetParent(), "TOPLEFT", x, 0)
+        for _, row in ipairs(rows) do
+            row.cells[i]:ClearAllPoints()
+            row.cells[i]:SetPoint("LEFT", row, "LEFT", x, 0)
+        end
+        if col then x = x + col[1] + 6 end
+    end
 end
 
 function UI.Refresh()
     if not f or not f:IsShown() then return end
     local view = VIEWS[UI.view]
+    layout(view)
     local data = SOURCES[UI.view]()
-    UI.data = data
     UI.offset = math.max(0, math.min(UI.offset, #data - ROWS))
     for i, h in ipairs(headers) do
         local col = view.cols[i]
         if col then
-            h:SetWidth(col[1]); h:SetJustifyH(col[2]); h:SetText(view.header[i] or ""); h:Show()
+            h:SetWidth(col[1]) h:SetJustifyH(col[2]) h:SetText(view.header[i] or "") h:Show()
         else
             h:Hide()
         end
@@ -136,11 +182,13 @@ function UI.Refresh()
         for i, fs in ipairs(row.cells) do
             local col = view.cols[i]
             if col and item then
-                fs:SetWidth(col[1]); fs:SetJustifyH(col[2]); fs:SetText(item.cells[i] or ""); fs:Show()
+                fs:SetWidth(col[1]) fs:SetJustifyH(col[2]) fs:SetText(item.cells[i] or "") fs:Show()
             else
                 fs:Hide()
             end
         end
+        local icon = item and view.icon and W.IconOf(item.itemID)
+        if icon then row.icon:SetTexture(icon) row.icon:Show() else row.icon:Hide() end
         if item and item.deal then
             row.buy:Show()
             row.buy:SetEnabled(not item.deal.pending)
@@ -154,50 +202,42 @@ function UI.Refresh()
         if name == UI.view then b:LockHighlight() else b:UnlockHighlight() end
     end
     status:SetText(statusText())
-    autoCheck:SetChecked(ns.Scanner.auto)
-    if not minProfitBox:HasFocus() then minProfitBox:SetText(Util.FormatMoney(ns.db.settings.minProfit)) end
-    if UI.view == "deals" then
-        local sum = ns.Scanner.summary
-        local text = string.format("%d deals.", #ns.Scanner.deals)
-        if sum then
-            text = text .. string.format(" Last scan: %d items seen, %d valued, %d under the limit.", sum.browsed, sum.valued,
-                sum.candidates)
-            if sum.best then
-                text = text .. string.format(" Closest: %s at %s, value %s (%s).",
-                    (ns.GetItemInfo(sum.best.itemID)) or ("item " .. sum.best.itemID), ns.Money(sum.best.price),
-                    ns.Money(sum.best.value), ns.Money(sum.best.margin))
-            end
-        else
-            text = text .. " No gear scan yet: scan materials first, then gear."
-        end
-        footer:SetText(text)
-    elseif UI.view == "materials" then
-        footer:SetText(string.format(
-            "Price = average of cheapest %d units. Red = below break-even. * = none listed, last price. ~ = other essence form.",
-            ns.db.settings.priceUnits))
+    if ns.Busy() then spinner:Start() else spinner:Stop() end
+    local dealsBusy = UI.view == "deals" and (ns.Scanner.state ~= "idle" or ns.scanBothPending)
+    if dealsBusy and #data == 0 then
+        bigSpinner:Start()
+        bigSpinnerText:SetText(statusText():match("^[^·]+") or "Scanning")
+        bigSpinnerText:Show()
     else
-        footer:SetText("/salv report prints this in chat. /salv stock sets opening stock.")
+        bigSpinner:Stop()
+        bigSpinnerText:Hide()
     end
+    autoCheck:SetChecked(ns.Scanner.auto)
+    minProfit:Set(ns.db.settings.minProfit)
+    gearChoice:Set(ns.db.settings.gearClasses)
+    footer:SetText(footerText())
+    if ns.LogPanel then ns.LogPanel.Refresh() end
 end
 
 ------------------------------------------------------------------ building
-
-local function button(parent, text, width, onClick)
-    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    b:SetSize(width, 22)
-    b:SetText(text)
-    b:SetScript("OnClick", onClick)
-    return b
-end
 
 local function savePosition()
     local point, _, rel, x, y = f:GetPoint()
     ns.db.window = { point = point, rel = rel, x = x, y = y }
 end
 
+local function rowTooltip(self)
+    local item = self.item
+    local link = item and (item.link or (item.itemID and ("item:" .. item.itemID)))
+    if not link then return end
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetHyperlink(link)
+    GameTooltip:Show()
+end
+
 local function build()
     f = CreateFrame("Frame", "SalvagerFrame", UIParent, "BasicFrameTemplateWithInset")
-    f:SetSize(W, H)
+    f:SetSize(WIDTH, HEIGHT)
     f:SetFrameStrata("HIGH")
     f:SetClampedToScreen(true)
     f:SetMovable(true)
@@ -209,7 +249,7 @@ local function build()
     if pos and pos.point then
         f:SetPoint(pos.point, UIParent, pos.rel or pos.point, pos.x or 0, pos.y or 0)
     else
-        f:SetPoint("CENTER", UIParent, "CENTER", 300, 0)
+        f:SetPoint("CENTER", UIParent, "CENTER", 200, 0)
     end
     local title = f.TitleText
     if type(title) ~= "table" then
@@ -219,73 +259,84 @@ local function build()
     title:SetText("Salvager " .. ns.VERSION)
     tinsert(UISpecialFrames, "SalvagerFrame")
 
+    -- Row 1: views, log, options.
     local x = 12
-    for _, t in ipairs({ { "deals", "Deals" }, { "materials", "Materials" }, { "log", "Log" } }) do
-        local b = button(f, t[2], 90, function() UI.view = t[1] UI.offset = 0 UI.Refresh() end)
+    for _, t in ipairs({ { "deals", "Deals" }, { "materials", "Materials" }, { "limits", "Limits" } }) do
+        local b = W.Button(f, t[2], 90, function() UI.view = t[1] UI.offset = 0 UI.Refresh() end)
         b:SetPoint("TOPLEFT", f, "TOPLEFT", x, -30)
         tabs[t[1]] = b
         x = x + 94
     end
+    local options = W.Button(f, "Options", 80, function() ns.Options.Open() end)
+    options:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -30)
+    local log = W.Button(f, "Log", 80, function() ns.LogPanel.Toggle() end,
+        "Opens the log panel: disenchant results, sales, and the activity log for debugging.")
+    log:SetPoint("RIGHT", options, "LEFT", -6, 0)
 
-    local scanMats = button(f, "Scan materials", 120, function() ns.Prices.Scan() end)
+    -- Row 2: scans.
+    local scanMats = W.Button(f, "Scan materials", 115, function() ns.Prices.Scan() end,
+        "Searches each disenchanting material once (about 20 seconds) and stores its price.")
     scanMats:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -58)
-    local scanGear = button(f, "Scan gear", 100, function() ns.Scanner.Scan() end)
+    local scanGear = W.Button(f, "Scan gear", 90, function() ns.Scanner.Scan() end,
+        "Lists the gear on the auction house and checks each item that is below its buy limit.")
     scanGear:SetPoint("LEFT", scanMats, "RIGHT", 6, 0)
-
-    autoCheck = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
-    autoCheck:SetSize(24, 24)
-    autoCheck:SetPoint("LEFT", scanGear, "RIGHT", 8, 0)
-    autoCheck:SetScript("OnClick", function(self) ns.Scanner.SetAuto(self:GetChecked()) end)
-    local autoLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    autoLabel:SetPoint("LEFT", autoCheck, "RIGHT", 0, 0)
-    autoLabel:SetText("Auto")
-
-    local mpLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    mpLabel:SetPoint("LEFT", autoLabel, "RIGHT", 16, 0)
-    mpLabel:SetText("Min profit")
-    minProfitBox = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
-    minProfitBox:SetSize(70, 20)
-    minProfitBox:SetAutoFocus(false)
-    minProfitBox:SetPoint("LEFT", mpLabel, "RIGHT", 10, 0)
-    minProfitBox:SetScript("OnEnterPressed", function(self)
-        local c = Util.ParseMoney(self:GetText())
-        if c then
-            ns.db.settings.minProfit = c
-            ns.Fire("SALVAGER_SETTINGS")
-        end
-        self:ClearFocus()
-        UI.Refresh()
-    end)
-    minProfitBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() UI.Refresh() end)
-
+    local scanBoth = W.Button(f, "Scan both", 90, function() ns.ScanBoth() end,
+        "Scans the material prices first, then the gear.")
+    scanBoth:SetPoint("LEFT", scanGear, "RIGHT", 6, 0)
+    autoCheck = W.Check(f, "Auto", "Scans the gear again every " .. ns.db.settings.autoInterval
+        .. " seconds while the auction house is open, so new cheap listings show up by themselves. "
+        .. "Material prices are not rescanned: use Scan materials from time to time. You still click Buy yourself.",
+        function(on) ns.Scanner.SetAuto(on) end)
+    autoCheck:SetPoint("LEFT", scanBoth, "RIGHT", 10, 0)
+    spinner = W.Spinner(f, 22)
+    spinner:SetPoint("LEFT", autoCheck.label, "RIGHT", 14, 0)
     status = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    status:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -34)
-    status:SetJustifyH("RIGHT")
+    status:SetPoint("LEFT", spinner, "RIGHT", 6, 0)
+    status:SetPoint("RIGHT", f, "RIGHT", -14, 0)
+    status:SetJustifyH("LEFT")
 
+    -- Row 3: minimum profit and gear type.
+    local mpLabel = W.Label(f, "Min profit")
+    mpLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -92)
+    minProfit = W.Money(f, function(copper)
+        ns.db.settings.minProfit = copper
+        ns.Log("min profit set to %s", ns.Money(copper))
+        ns.Fire("SALVAGER_SETTINGS")
+    end)
+    minProfit:SetPoint("LEFT", mpLabel, "RIGHT", 10, 0)
+    local gearLabel = W.Label(f, "Gear")
+    gearLabel:SetPoint("LEFT", minProfit:Right(), "RIGHT", 30, 0)
+    gearChoice = W.Choice(f, { { "weapons", "Weapons" }, { "armor", "Armor" }, { "both", "Both" } }, function(v)
+        ns.db.settings.gearClasses = v
+        ns.Log("gear type set to %s", v)
+        ns.Fire("SALVAGER_SETTINGS")
+    end, "Which gear the scan looks at. Armor gives mostly dust, weapons mostly essence. The Limits tab shows the buy limits.")
+    gearChoice:SetPoint("LEFT", gearLabel, "RIGHT", 6, 0)
+
+    -- The list.
     local list = CreateFrame("Frame", nil, f)
-    list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -88)
-    list:SetSize(W - 24, (ROWS + 1) * ROW_H)
+    list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -116)
+    list:SetSize(WIDTH - 24, (ROWS + 1) * ROW_H)
     list:EnableMouseWheel(true)
     list:SetScript("OnMouseWheel", function(_, delta)
         UI.offset = math.max(0, UI.offset - delta * 3)
         UI.Refresh()
     end)
-
-    local hx = 4
     for i = 1, 7 do
         local h = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        h:SetPoint("TOPLEFT", list, "TOPLEFT", hx, 0)
         h:SetHeight(ROW_H)
         headers[i] = h
     end
-
     for r = 1, ROWS do
         local row = CreateFrame("Button", nil, list)
-        row:SetSize(W - 24, ROW_H)
+        row:SetSize(WIDTH - 24, ROW_H)
         row:SetPoint("TOPLEFT", list, "TOPLEFT", 0, -r * ROW_H)
         local hl = row:CreateTexture(nil, "HIGHLIGHT")
         hl:SetAllPoints()
         hl:SetColorTexture(1, 1, 1, 0.08)
+        row.icon = row:CreateTexture(nil, "ARTWORK")
+        row.icon:SetSize(20, 20)
+        row.icon:SetPoint("LEFT", row, "LEFT", 4, 0)
         row.cells = {}
         for i = 1, 7 do
             local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -293,55 +344,32 @@ local function build()
             fs:SetWordWrap(false)
             row.cells[i] = fs
         end
-        row.buy = button(row, "Buy", 56, function()
+        row.buy = W.Button(row, "Buy", 56, function()
             local item = row.item
             if item and item.deal then ns.Scanner.Buy(item.deal) end
         end)
         row.buy:SetPoint("RIGHT", row, "RIGHT", -4, 0)
-        row:SetScript("OnEnter", function(self)
-            local item = self.item
-            local link = item and (item.link or (item.itemID and ("item:" .. item.itemID)))
-            if link then
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetHyperlink(link)
-                GameTooltip:Show()
-            end
-        end)
+        row:SetScript("OnEnter", rowTooltip)
         row:SetScript("OnLeave", function() GameTooltip:Hide() end)
         rows[r] = row
     end
+    bigSpinner = W.Spinner(list, 64)
+    bigSpinner:SetPoint("CENTER", list, "CENTER", 0, 10)
+    bigSpinnerText = list:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    bigSpinnerText:SetPoint("TOP", bigSpinner, "BOTTOM", 0, -6)
 
     footer = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    footer:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 14, 12)
-    footer:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 12)
+    footer:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 14, 10)
+    footer:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 10)
     footer:SetJustifyH("LEFT")
+    footer:SetWordWrap(true)
 
     f:SetScript("OnShow", function() UI.Refresh() end)
+    f:SetScript("OnHide", function() if ns.LogPanel then ns.LogPanel.Hide() end end)
     f:Hide()
 end
 
--- Column x positions follow the view's widths.
-local function layout()
-    local view = VIEWS[UI.view]
-    local x = 4
-    for i = 1, 7 do
-        local col = view.cols[i]
-        headers[i]:ClearAllPoints()
-        headers[i]:SetPoint("TOPLEFT", headers[i]:GetParent(), "TOPLEFT", x, 0)
-        for _, row in ipairs(rows) do
-            row.cells[i]:ClearAllPoints()
-            row.cells[i]:SetPoint("LEFT", row, "LEFT", x, 0)
-        end
-        if col then x = x + col[1] + 6 end
-    end
-end
-
-local refresh = UI.Refresh
-function UI.Refresh()
-    if not f then return end
-    layout()
-    refresh()
-end
+function UI.Frame() return f end
 
 function UI.Toggle()
     if not f then build() end
