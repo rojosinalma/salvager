@@ -271,6 +271,7 @@ function UI.UpdatePlay()
         playButton:SetIcon("Interface\\ChatFrame\\ChatFrameExpandArrow", 14, 14)
     end
     stopButton:SetEnabled(s.auto or ns.Busy())
+    stopButton:UpdateGlyph()
 end
 
 function UI.Refresh()
@@ -451,7 +452,7 @@ local function build()
     playButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
     stopButton = W.IconButton(f, 24, function() ns.Scanner.Stop() end)
     stopButton:SetPoint("LEFT", playButton, "RIGHT", 4, 0)
-    stopButton:SetSquare(0.85, 0.2, 0.2)
+    stopButton:SetStopGlyph()
     W.Tooltip(stopButton, "Stop", "Ends auto scanning and drops the scan that is running. Deals found so far stay in the list.")
     spinner = W.Spinner(f, 22)
     spinner:SetPoint("LEFT", stopButton, "RIGHT", 12, 0)

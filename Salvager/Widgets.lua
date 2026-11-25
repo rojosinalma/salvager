@@ -29,9 +29,23 @@ function Widgets.IconButton(parent, size, onClick)
         icon:SetTexture(path)
         icon:SetVertexColor(1, 1, 1)
     end
-    function b.SetSquare(_, r, g, bl)
-        icon:SetSize(size - 12, size - 12)
-        icon:SetColorTexture(r, g, bl, 1)
+    -- A media "stop" glyph in the same gold as the play arrow: a small square with a dark outline,
+    -- greyed while the button is disabled.
+    local outline
+    function b.SetStopGlyph()
+        if not outline then
+            outline = b:CreateTexture(nil, "ARTWORK")
+            outline:SetPoint("CENTER", b, "CENTER", 0, 0)
+            outline:SetSize(12, 12)
+            outline:SetColorTexture(0, 0, 0, 0.85)
+        end
+        icon:SetSize(10, 10)
+        icon:SetColorTexture(1, 1, 1, 1)
+        b:UpdateGlyph()
+    end
+    function b.UpdateGlyph()
+        if not outline then return end
+        if b:IsEnabled() then icon:SetVertexColor(1, 0.82, 0) else icon:SetVertexColor(0.45, 0.45, 0.45) end
     end
     b:SetScript("OnClick", onClick)
     return b
