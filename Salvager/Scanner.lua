@@ -61,7 +61,7 @@ local function readAuctions(task)
             }
         end
     end
-    ns.Log("checked %s: %d auctions, %d under %s", task.keyString, n, #Scanner.deals - before, ns.Money(maxBuy))
+    ns.Log("checked item %s: %d auctions, %d under %s", task.keyString, n, #Scanner.deals - before, ns.Money(maxBuy))
     sortDeals()
 end
 
@@ -461,7 +461,7 @@ end
 function Scanner.Recheck(deal)
     local t = deal and deal.task
     if not t or not ns.Queue.open then return end
-    ns.Log("rechecking %s after a purchase", t.keyString)
+    ns.Log("rechecking item %s after a purchase", t.keyString)
     ns.Queue.Add({
         itemKey = t.itemKey, keyString = t.keyString, net = t.net, ilvl = t.ilvl, quality = t.quality,
         classID = t.classID, limit = t.limit,

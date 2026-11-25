@@ -509,6 +509,7 @@ function Widgets.List(parent, opts)
         local cols = self.columns
         local fit = math.max(1, math.min(MAX_ROWS, math.floor(((self:GetHeight() or 0) - HEAD_H) / ROW_H)))
         self.offset = math.max(0, math.min(self.offset, self.count - fit))
+        self.atBottom = self.offset >= self.count - fit   -- (a log follows its last line while this is true)
         bar:Update(self.offset, self.count - fit)
         -- Column positions. The first column takes what is left of the width and shrinks with the
         -- window; a column that still does not fit is left out, from the right.

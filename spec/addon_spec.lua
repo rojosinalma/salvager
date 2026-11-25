@@ -956,3 +956,50 @@ describe("Salvager listings", function()
         for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
     end)
 end)
+
+describe("Salvager log window", function()
+    local env, ns
+    setup(function()
+        env = wow.install()
+        env.items[11083] = { name = "Soul Dust", quality = 1, ilvl = 1, classID = 7 }
+        env.items[7048] = { name = "Azure Silk Hood", quality = 2, ilvl = 29, classID = 4 }
+        ns = wow.loadAddon()
+        wow.fire(ns, "ADDON_LOADED", "Salvager")
+    end)
+
+    it("shows the items of a line by name, with the item as the line's tooltip", function()
+        local row = ns.LogWindow.Row("19:00:01 price Soul Dust (11083): 4s 30c over 20 units, 19 results")
+        assert.are.equal("item:11083", row.link)
+        assert.is_truthy(row.cells[1]:find("[Soul Dust]", 1, true))
+        assert.is_nil(row.cells[1]:find("(11083)", 1, true))
+        row = ns.LogWindow.Row("19:00:02 search: no answer for commodity 11083 after 2.0s, trying again")
+        assert.are.equal("item:11083", row.link)
+        assert.is_truthy(row.cells[1]:find("[Soul Dust]", 1, true))
+        row = ns.LogWindow.Row("19:00:03 checked item 7048:29:0: 12 auctions, 3 under 12s")
+        assert.are.equal("item:7048", row.link)
+        row = ns.LogWindow.Row("19:00:04 search: no answer for item 7048:29:0 after 2.0s, trying again")
+        assert.are.equal("item:7048", row.link)
+        assert.is_truthy(row.cells[1]:find("[Azure Silk Hood]", 1, true))
+        assert.is_truthy(row.cells[1]:find("(level 29)", 1, true))
+        row = ns.LogWindow.Row("19:00:05 bought |cff1eff00|Hitem:7048::::::::30:::::|h[Azure Silk Hood]|h|r for 11s 47c")
+        assert.are.equal("item:7048", row.link)
+        row = ns.LogWindow.Row("19:00:06 auction house opened")
+        assert.is_nil(row.link)
+        assert.are.equal("19:00:06 auction house opened", row.cells[1])
+    end)
+
+    it("lists the newest line at the bottom and follows it", function()
+        for i = 1, 200 do ns.Log("line %d", i) end
+        ns.LogWindow.Show()
+        local list
+        for _, fr in ipairs(env.frames) do if rawget(fr, "getRow") and rawget(fr, "count") then list = fr end end
+        assert.is_truthy(list.getRow(list.count).cells[1]:find("line 200", 1, true))
+        assert.is_true(list.atBottom)
+        list.offset = 0                                      -- scrolled up to read
+        list:Refresh()
+        ns.Log("one more")
+        ns.LogWindow.Refresh()
+        assert.are.equal(0, list.offset)                     -- stays where you are reading
+        for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
+    end)
+end)
