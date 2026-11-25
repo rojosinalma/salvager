@@ -51,6 +51,12 @@ function Queue.Clear()
     Queue.current = nil
 end
 
+--- Holds the queue: nothing new goes out until resumed. An answer already on its way still counts.
+function Queue.SetPaused(on)
+    Queue.paused = on and true or false
+    if Queue.current then Queue.current.sentAt = GetTime() end
+end
+
 function Queue.Pending()
     return #Queue.items + (Queue.current and 1 or 0)
 end
@@ -108,7 +114,7 @@ local function finish(ok)
 end
 
 local function pump()
-    if not Queue.open then return end
+    if not Queue.open or Queue.paused then return end
     local task = Queue.current
     if task then
         if GetTime() - task.sentAt >= REPLY_TIMEOUT then
@@ -146,6 +152,7 @@ ns.On("AUCTION_HOUSE_SHOW", function()
 end)
 ns.On("AUCTION_HOUSE_CLOSED", function()
     Queue.open = false
+    Queue.paused = false
     Queue.Clear()
 end)
 

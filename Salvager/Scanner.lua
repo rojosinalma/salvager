@@ -100,7 +100,7 @@ end
 local function scheduleNext()
     if not Scanner.auto then return end
     C_Timer.After(ns.db.settings.autoInterval, function()
-        if Scanner.auto and Scanner.state == "idle" and ns.Queue.open then Scanner.Scan() end
+        if Scanner.auto and not Scanner.paused and Scanner.state == "idle" and ns.Queue.open then Scanner.Scan() end
     end)
 end
 
@@ -236,10 +236,42 @@ function Scanner.Scan()
     end
 end
 
-function Scanner.SetAuto(on)
-    Scanner.auto = on and true or false
-    if Scanner.auto and Scanner.state == "idle" then Scanner.Scan() end
+--- Play: scan the gear now and again every few seconds. Also resumes after a pause.
+function Scanner.Play()
+    if not ns.Queue.open then ns.Print("open the auction house first") return end
+    local wasPaused = Scanner.paused
+    Scanner.auto, Scanner.paused = true, false
+    ns.Queue.SetPaused(false)
+    ns.Log(wasPaused and "auto scan resumed" or "auto scan started")
+    if Scanner.state == "idle" and not ns.Prices.scanning then Scanner.Scan() end
     ns.Fire("SALVAGER_SCAN")
+end
+
+--- Pause: hold every search where it is. Play continues from there.
+function Scanner.Pause()
+    if not Scanner.auto and not ns.Busy() then return end
+    Scanner.paused = true
+    ns.Queue.SetPaused(true)
+    ns.Log("scanning paused")
+    ns.Fire("SALVAGER_SCAN")
+end
+
+--- Stop: end auto scanning and drop the scan that is running. Deals found so far stay.
+function Scanner.Stop()
+    Scanner.auto, Scanner.paused = false, false
+    ns.Queue.SetPaused(false)
+    ns.Queue.Clear()
+    Scanner.browseSeq = (Scanner.browseSeq or 0) + 1
+    Scanner.state = "idle"
+    ns.Prices.scanning = false
+    ns.scanBothPending = false
+    ns.Log("scanning stopped")
+    ns.Fire("SALVAGER_SCAN")
+end
+
+--- (Kept for /salv and older callers.)
+function Scanner.SetAuto(on)
+    if on then Scanner.Play() else Scanner.Stop() end
 end
 
 -- A browse page that never comes: carry on with the pages that did.
@@ -298,6 +330,7 @@ end
 
 ns.On("AUCTION_HOUSE_CLOSED", function()
     Scanner.auto = false
+    Scanner.paused = false
     Scanner.state = "idle"
     wipe(Scanner.deals)
 end)

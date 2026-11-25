@@ -202,6 +202,25 @@ function ns.ScanBoth()
     ns.Fire("SALVAGER_SCAN")
 end
 
+--- Is this gear type ("weapons" or "armor") scanned?
+function ns.GearTypeOn(kind)
+    local g = ns.db.settings.gearClasses
+    return g == "both" or g == kind
+end
+
+--- Turns one gear type on or off. At least one stays on.
+function ns.SetGearType(kind, on)
+    local w = kind == "weapons" and on or (kind ~= "weapons" and ns.GearTypeOn("weapons"))
+    local a = kind == "armor" and on or (kind ~= "armor" and ns.GearTypeOn("armor"))
+    if not (w or a) then
+        ns.Print("at least one gear type must stay on")
+    else
+        ns.db.settings.gearClasses = (w and a) and "both" or (w and "weapons" or "armor")
+    end
+    ns.Log("gear type set to %s", ns.db.settings.gearClasses)
+    ns.Fire("SALVAGER_SETTINGS")
+end
+
 --- Which item classes the gear scan includes: { [2] = bool, [4] = bool }.
 function ns.GearClasses()
     local g = ns.db.settings.gearClasses

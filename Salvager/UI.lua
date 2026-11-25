@@ -34,7 +34,8 @@ local VIEWS = {
     },
 }
 
-local f, rows, headers, status, footer, minProfit, autoCheck, gearChoice, tabs = nil, {}, {}, nil, nil, nil, nil, nil, {}
+local f, rows, headers, status, footer, minProfit, playButton, stopButton, gearChoice, tabs =
+    nil, {}, {}, nil, nil, nil, nil, nil, nil, {}
 local qualityDrop
 local spinner, bigSpinner, bigSpinnerText
 
@@ -170,7 +171,9 @@ local function statusText()
     elseif s.state == "checking" then parts[#parts + 1] = string.format("Checking %d/%d", s.checked, s.toCheck)
     elseif ns.scanBothPending and not ns.Prices.scanning then parts[#parts + 1] = "Starting gear scan"
     end
-    if #parts == 0 then parts[1] = ns.Queue.open and "Ready" or "Auction house closed" end
+    if s.paused then table.insert(parts, 1, "|cffffd100Paused|r") end
+    if #parts == 0 then parts[1] = ns.Queue.open and (s.auto and "Waiting for the next scan" or "Ready")
+        or "Auction house closed" end
     if ns.SalvagerForBuy() then parts[#parts + 1] = "|cff40ff40Arcane Salvager bonus included|r" end
     return table.concat(parts, "  ·  ")
 end
@@ -258,6 +261,18 @@ function UI.UpdateScrollBar(total)
     UI.bar:SetShown(max > 0)
 end
 
+--- Play shows while not auto scanning (or paused); Pause shows while auto scanning.
+function UI.UpdatePlay()
+    if not playButton then return end
+    local s = ns.Scanner
+    if s.auto and not s.paused then
+        playButton:SetIcon("Interface\\TimeManager\\PauseButton", 16, 16)
+    else
+        playButton:SetIcon("Interface\\ChatFrame\\ChatFrameExpandArrow", 14, 14)
+    end
+    stopButton:SetEnabled(s.auto or ns.Busy())
+end
+
 function UI.Refresh()
     if not f or not f:IsShown() then return end
     local view = VIEWS[UI.view]
@@ -305,7 +320,7 @@ function UI.Refresh()
             if item.group then pending = ns.Scanner.Cheapest(item.group.deals) == nil end
             row.buy:Show()
             row.buy:SetEnabled(not pending)
-            row.buy:SetText(pending and "..." or (item.group and "Buy 1st" or "Buy"))
+            row.buy:SetText(pending and "..." or "Buy")
         else
             row.buy:Hide()
         end
@@ -325,9 +340,9 @@ function UI.Refresh()
         bigSpinner:Stop()
         bigSpinnerText:Hide()
     end
-    autoCheck:SetChecked(ns.Scanner.auto)
+    UI.UpdatePlay()
     minProfit:Set(ns.db.settings.minProfit)
-    gearChoice:Set(ns.db.settings.gearClasses)
+    gearChoice:Update()
     qualityDrop:Update()
     footer:SetText(footerText())
     if ns.LogPanel then ns.LogPanel.Refresh() end
@@ -413,13 +428,33 @@ local function build()
     local scanBoth = W.Button(f, "Scan both", 90, function() ns.ScanBoth() end,
         "Scans the material prices first, then the gear.")
     scanBoth:SetPoint("LEFT", scanGear, "RIGHT", 6, 0)
-    autoCheck = W.Check(f, "Auto", "Scans the gear again every " .. ns.db.settings.autoInterval
-        .. " seconds while the auction house is open, so new cheap listings show up by themselves. "
-        .. "Material prices are not rescanned: use Scan materials from time to time. You still click Buy yourself.",
-        function(on) ns.Scanner.SetAuto(on) end)
-    autoCheck:SetPoint("LEFT", scanBoth, "RIGHT", 10, 0)
+    playButton = W.IconButton(f, 24, function()
+        local s = ns.Scanner
+        if s.auto and not s.paused then s.Pause() else s.Play() end
+    end)
+    playButton:SetPoint("LEFT", scanBoth, "RIGHT", 12, 0)
+    playButton:SetScript("OnEnter", function(self)
+        local s = ns.Scanner
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        if s.auto and not s.paused then
+            GameTooltip:SetText("Pause", 1, 1, 1)
+            GameTooltip:AddLine("Holds every search where it is. Play continues from there.", 1, 0.82, 0, true)
+        else
+            GameTooltip:SetText(s.paused and "Resume" or "Play", 1, 1, 1)
+            GameTooltip:AddLine("Scans the gear now and again every " .. ns.db.settings.autoInterval
+                .. " seconds while the auction house is open, so new cheap listings show up by themselves. "
+                .. "Material prices are not rescanned: use Scan materials from time to time. You still click Buy yourself.",
+                1, 0.82, 0, true)
+        end
+        GameTooltip:Show()
+    end)
+    playButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    stopButton = W.IconButton(f, 24, function() ns.Scanner.Stop() end)
+    stopButton:SetPoint("LEFT", playButton, "RIGHT", 4, 0)
+    stopButton:SetSquare(0.85, 0.2, 0.2)
+    W.Tooltip(stopButton, "Stop", "Ends auto scanning and drops the scan that is running. Deals found so far stay in the list.")
     spinner = W.Spinner(f, 22)
-    spinner:SetPoint("LEFT", autoCheck.label, "RIGHT", 14, 0)
+    spinner:SetPoint("LEFT", stopButton, "RIGHT", 12, 0)
     status = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     status:SetPoint("LEFT", spinner, "RIGHT", 6, 0)
     status:SetPoint("RIGHT", f, "RIGHT", -14, 0)
@@ -436,15 +471,14 @@ local function build()
     minProfit:SetPoint("LEFT", mpLabel, "RIGHT", 10, 0)
     local gearLabel = W.Label(f, "Gear")
     gearLabel:SetPoint("LEFT", minProfit:Right(), "RIGHT", 30, 0)
-    gearChoice = W.Choice(f, { { "weapons", "Weapons" }, { "armor", "Armor" }, { "both", "Both" } }, function(v)
-        ns.db.settings.gearClasses = v
-        ns.Log("gear type set to %s", v)
-        ns.Fire("SALVAGER_SETTINGS")
-    end, "Which gear the scan looks at. Armor gives mostly dust, weapons mostly essence. The Limits tab shows the buy limits.")
-    gearChoice:SetPoint("LEFT", gearLabel, "RIGHT", 6, 0)
+    gearChoice = W.CheckDropdown(f, 150, { { "weapons", "Weapons" }, { "armor", "Armor" } },
+        ns.GearTypeOn, ns.SetGearType,
+        "Which gear the scan looks at. Armor gives mostly dust, weapons mostly essence. The Limits tab shows the buy limits.",
+        "Gear")
+    gearChoice:SetPoint("LEFT", gearLabel, "RIGHT", 8, 0)
 
     local qLabel = W.Label(f, "Quality")
-    qLabel:SetPoint("LEFT", gearChoice.buttons[#gearChoice.buttons].button.label, "RIGHT", 24, 0)
+    qLabel:SetPoint("LEFT", gearChoice, "RIGHT", 24, 0)
     qualityDrop = W.CheckDropdown(f, 170, {
         { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" }, { 4, "|cffa335eeEpic|r" },
     }, function(q) return ns.db.settings.qualities[q] end, function(q, on)
@@ -457,7 +491,7 @@ local function build()
         ns.Log("quality %d = %s", q, tostring(qs[q]))
         ns.Fire("SALVAGER_SETTINGS")
     end, "Which gear qualities the scan looks at. Green gives dust and essence, blue one shard, epic 2-4 shards "
-        .. "or Nexus Crystals.")
+        .. "or Nexus Crystals.", "Quality")
     qualityDrop:SetPoint("LEFT", qLabel, "RIGHT", 8, 0)
 
     -- The list.

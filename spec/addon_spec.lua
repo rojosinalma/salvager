@@ -351,7 +351,9 @@ describe("Salvager deals list", function()
 
     it("picks qualities in the drop-down and keeps at least one", function()
         local drop
-        for _, fr in ipairs(env.frames) do if rawget(fr, "checks") then drop = fr end end
+        for _, fr in ipairs(env.frames) do
+            if rawget(fr, "checks") and #fr.checks == 3 and not drop then drop = fr end
+        end
         assert.is_table(drop)
         drop.scripts.OnClick(drop)
         assert.is_true(drop.list:IsShown())
@@ -362,6 +364,32 @@ describe("Salvager deals list", function()
         drop.checks[1]:SetChecked(false)
         drop.checks[1].scripts.OnClick(drop.checks[1])   -- uncommon off: refused
         assert.is_true(ns.db.settings.qualities[2])
+    end)
+
+    it("picks gear types in the drop-down and keeps at least one", function()
+        ns.db.settings.gearClasses = "both"
+        ns.SetGearType("armor", false)
+        assert.are.equal("weapons", ns.db.settings.gearClasses)
+        ns.SetGearType("weapons", false)
+        assert.are.equal("weapons", ns.db.settings.gearClasses)
+        ns.SetGearType("armor", true)
+        assert.are.equal("both", ns.db.settings.gearClasses)
+    end)
+
+    it("plays, pauses and stops", function()
+        ns.db.prices[11083] = { p = 433, t = 0 }
+        ns.Scanner.Play()
+        assert.is_true(ns.Scanner.auto)
+        assert.are.equal("browsing", ns.Scanner.state)
+        ns.Scanner.Pause()
+        assert.is_true(ns.Scanner.paused)
+        assert.is_true(ns.Queue.paused)
+        ns.Scanner.Play()
+        assert.is_false(ns.Scanner.paused)
+        ns.Scanner.Stop()
+        assert.is_false(ns.Scanner.auto)
+        assert.are.equal("idle", ns.Scanner.state)
+        assert.are.equal(0, ns.Queue.Pending())
     end)
 
     it("resizes from the corner and keeps the size", function()

@@ -59,11 +59,10 @@ local function build()
 
     local gearLabel = W.Label(panel, "Gear to scan", "GameFontHighlightSmall")
     at(gearLabel, 24)
-    local gear = W.Choice(panel, { { "weapons", "Weapons" }, { "armor", "Armor" }, { "both", "Both" } },
-        function(v) s.gearClasses = v changed("gearClasses", v) end,
-        "Armor gives mostly dust, weapons mostly essence.")
+    local gear = W.CheckDropdown(panel, 150, { { "weapons", "Weapons" }, { "armor", "Armor" } },
+        ns.GearTypeOn, ns.SetGearType, "Armor gives mostly dust, weapons mostly essence.", "Gear")
     gear:SetPoint("LEFT", gearLabel, "RIGHT", 12, 0)
-    controls[#controls + 1] = { refresh = function() gear:Set(s.gearClasses) end }
+    controls[#controls + 1] = { refresh = function() gear:Update() end }
 
     local qLabel = W.Label(panel, "Quality", "GameFontHighlightSmall")
     at(qLabel, 24)
@@ -89,10 +88,10 @@ local function build()
         function() return s.maxLevel end, function(n) s.maxLevel = math.max(0, math.floor(n)) changed("maxLevel", n) end)
     toL:SetPoint("LEFT", minE, "RIGHT", 12, 0)
 
-    local intL = numberBox(panel, "Auto scan every (seconds)", 36,
+    local intL = numberBox(panel, "Play: scan the gear every (seconds)", 36,
         function() return s.autoInterval end,
         function(n) s.autoInterval = math.max(5, math.floor(n)) changed("autoInterval", s.autoInterval) end,
-        "How often Auto scans the gear again. 5 or more.")
+        "How often Play scans the gear again. 5 or more.")
     at(intL, 24)
     local chkL = numberBox(panel, "Item checks per scan", 36,
         function() return s.maxChecks end,

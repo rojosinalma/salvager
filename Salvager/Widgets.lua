@@ -15,6 +15,28 @@ function Widgets.Button(parent, text, width, onClick, tooltip)
     return b
 end
 
+--- A small square button with an icon. :SetIcon(path) or :SetSquare(r, g, b) changes it.
+function Widgets.IconButton(parent, size, onClick)
+    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    b:SetSize(size, size)
+    b:SetText("")
+    local icon = b:CreateTexture(nil, "OVERLAY")
+    icon:SetPoint("CENTER", b, "CENTER", 0, 0)
+    b.icon = icon
+    function b.SetIcon(_, path, w, h)
+        icon:SetSize(w or size - 8, h or size - 8)
+        icon:SetTexCoord(0, 1, 0, 1)
+        icon:SetTexture(path)
+        icon:SetVertexColor(1, 1, 1)
+    end
+    function b.SetSquare(_, r, g, bl)
+        icon:SetSize(size - 12, size - 12)
+        icon:SetColorTexture(r, g, bl, 1)
+    end
+    b:SetScript("OnClick", onClick)
+    return b
+end
+
 --- Shows a title and text when the mouse is over `frame`.
 function Widgets.Tooltip(frame, title, text)
     frame:HookScript("OnEnter", function(self)
@@ -148,7 +170,7 @@ end
 
 --- A button that opens a small list of check boxes.
 --- options = { {value, label}, ... }; get(value) -> bool; set(value, bool). Returns the button.
-function Widgets.CheckDropdown(parent, width, options, get, set, tooltip)
+function Widgets.CheckDropdown(parent, width, options, get, set, tooltip, title)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetSize(width, 22)
     local list = CreateFrame("Frame", nil, b, BackdropTemplateMixin and "BackdropTemplate" or nil)
@@ -192,7 +214,7 @@ function Widgets.CheckDropdown(parent, width, options, get, set, tooltip)
     end
     b:SetScript("OnClick", function() list:SetShown(not list:IsShown()) end)
     b:SetScript("OnHide", function() list:Hide() end)
-    if tooltip then Widgets.Tooltip(b, "Quality", tooltip) end
+    if tooltip then Widgets.Tooltip(b, title or "Choose", tooltip) end
     b.list = list
     b.checks = checks
     return b
