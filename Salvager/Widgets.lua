@@ -78,6 +78,7 @@ function Widgets.Money(parent, onChange)
     for i, unit in ipairs({ { "g", "ffd700" }, { "s", "c7c7cf" }, { "c", "eda55f" } }) do
         local e = Widgets.Edit(frame, i == 1 and 44 or 28, true)
         e:SetMaxLetters(i == 1 and 6 or 2)
+        e:SetJustifyH("RIGHT")
         if prev then e:SetPoint("LEFT", prev, "RIGHT", 18, 0) else e:SetPoint("LEFT", frame, "LEFT", 6, 0) end
         local l = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         l:SetPoint("LEFT", e, "RIGHT", 3, 0)
