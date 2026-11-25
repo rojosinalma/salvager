@@ -1,4 +1,4 @@
--- Salvager: the Results window. A window of its own (move it, resize it), with three views:
+-- Salvager: the Ledger window. A window of its own (move it, resize it), with three views:
 --   Purchases: every item bought, and under it what it was disenchanted into.
 --   Sales:     every material sale, with its profit against what the materials cost you.
 --   Odds:      per item level band, what your disenchants gave against the table.
@@ -6,8 +6,8 @@ local _, ns = ...
 
 local Ledger, Data, Model, W = ns.Ledger, ns.Data, ns.Model, ns.Widgets
 
-local Results = { view = "purchases" }
-ns.Results = Results
+local Window = { view = "purchases" }
+ns.LedgerWindow = Window
 
 local GREY, GOLD, GREEN, RED = "|cff808080", "|cffffd100", "|cff40ff40", "|cffff4040"
 local INDENT = 22
@@ -38,7 +38,7 @@ local function note(text) return { cells = { GREY .. text .. "|r" } } end
 ------------------------------------------------------------------ rows
 
 --- Purchases: one row per item, its materials indented under it.
-function Results.PurchaseRows()
+function Window.PurchaseRows()
     local rows = {}
     for _, e in ipairs(Ledger.History(ns.db.ledger)) do
         local name = itemName(e.itemID, e.link) .. (e.salvager and "  |cff9370db[Salvager]|r" or "")
@@ -69,7 +69,7 @@ function Results.PurchaseRows()
 end
 
 --- Sales, newest first. Profit = what you got after the cut - what those materials cost you.
-function Results.SaleRows()
+function Window.SaleRows()
     local rows = {}
     local sales = ns.db.ledger.sales
     for i = #sales, 1, -1 do
@@ -103,7 +103,7 @@ local function bandRange(quality, up)
 end
 
 --- Odds: per band, what your disenchants gave against the table.
-function Results.OddsRows()
+function Window.OddsRows()
     local rows = {}
     local by = Ledger.Report(ns.db.ledger)
     local keys = {}
@@ -145,7 +145,7 @@ function Results.OddsRows()
 end
 
 --- The two lines above the list.
-function Results.Summary()
+function Window.Summary()
     local bought, spent, done, got, waiting, waitingCost = 0, 0, 0, 0, 0, 0
     for _, e in ipairs(Ledger.History(ns.db.ledger)) do
         if e.paid then bought, spent = bought + 1, spent + e.paid end
@@ -166,26 +166,26 @@ function Results.Summary()
     return line1, line2
 end
 
-local SOURCES = { purchases = Results.PurchaseRows, sales = Results.SaleRows, odds = Results.OddsRows }
+local SOURCES = { purchases = Window.PurchaseRows, sales = Window.SaleRows, odds = Window.OddsRows }
 
 ------------------------------------------------------------------ the window
 
-function Results.Refresh()
+function Window.Refresh()
     if not f or not f:IsShown() then return end
-    local rows = SOURCES[Results.view]()
-    list:SetColumns(COLUMNS[Results.view])
+    local rows = SOURCES[Window.view]()
+    list:SetColumns(COLUMNS[Window.view])
     list:SetSource(#rows, function(i) return rows[i] end)
     list:Refresh()
-    local a, b = Results.Summary()
+    local a, b = Window.Summary()
     summary[1]:SetText(a)
     summary[2]:SetText(b)
     for name, button in pairs(tabs) do
-        if name == Results.view then button:LockHighlight() else button:UnlockHighlight() end
+        if name == Window.view then button:LockHighlight() else button:UnlockHighlight() end
     end
 end
 
 local function build()
-    f = W.Window("SalvagerResultsFrame", "Salvager results", "results", 780, 480, 700, 260)
+    f = W.Window("SalvagerLedgerFrame", "Salvager ledger", "ledger", 780, 480, 700, 260)
     summary = {}
     for i = 1, 2 do
         local l = W.Label(f, "", "GameFontHighlightSmall")
@@ -198,9 +198,9 @@ local function build()
     local x = 12
     for _, t in ipairs({ { "purchases", "Purchases" }, { "sales", "Sales" }, { "odds", "Odds" } }) do
         local b = W.Button(f, t[2], 96, function()
-            Results.view = t[1]
+            Window.view = t[1]
             list.offset = 0
-            Results.Refresh()
+            Window.Refresh()
         end)
         b:SetPoint("TOPLEFT", f, "TOPLEFT", x, -68)
         tabs[t[1]] = b
@@ -213,20 +213,20 @@ local function build()
     list = W.List(f, { rowHeight = 22 })
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98)
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
-    f.onResize = Results.Refresh
-    f:SetScript("OnShow", Results.Refresh)
+    f.onResize = Window.Refresh
+    f:SetScript("OnShow", Window.Refresh)
 end
 
-function Results.Toggle()
+function Window.Toggle()
     if not f then build() end
     f:SetShown(not f:IsShown())
 end
 
-function Results.Show()
+function Window.Show()
     if not f then build() end
     f:Show()
 end
 
 for _, e in ipairs({ "SALVAGER_LEDGER", "SALVAGER_PRICES_DONE", "SALVAGER_SETTINGS" }) do
-    ns.On(e, function() Results.Refresh() end)
+    ns.On(e, function() Window.Refresh() end)
 end

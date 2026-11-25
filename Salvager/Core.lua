@@ -33,7 +33,7 @@ local DEFAULTS = {
     ilvl = {},                     -- [itemID] = item level, learned from the game (see Items.lua)
     log = {},                      -- what the addon did, newest last (written to disk on /reload or logout)
     window = {},
-    windows = {},                  -- place and size of the Results and Activity windows
+    windows = {},                  -- place and size of the Ledger and Log windows
 }
 
 ------------------------------------------------------------------ output
@@ -320,6 +320,10 @@ ns.On("ADDON_LOADED", function(name)
     Util.Defaults(SalvagerDB, DEFAULTS)
     ns.db = SalvagerDB
     Ledger.Init(ns.db.ledger)
+    -- Windows renamed in 0.3.4: keep their place and size.
+    local w = ns.db.windows
+    if w.results then w.ledger, w.results = w.ledger or w.results, nil end
+    if w.activity then w.log, w.activity = w.log or w.activity, nil end
     ns.Log("loaded %s, salvager for buys: %s", ns.VERSION, tostring(ns.SalvagerForBuy()))
     ns.Fire("SALVAGER_READY")
 end)
@@ -344,9 +348,8 @@ local HELP = {
     "/salv stock <item> <quantity> <cost each> - opening stock, e.g. /salv stock 11137 40 6s",
     "/salv report - disenchant results by band",
     "/salv auras - list your buffs (to find the Salvager's)",
-    "/salv results - the results window (purchases, sales, odds)",
-    "/salv activity - the activity log window",
-    "/salv log [n] - the last n lines of the activity log in chat (default 15)",
+    "/salv ledger - the ledger window (purchases, sales, odds)",
+    "/salv log - the log window; /salv log 20 prints the last 20 lines in chat",
     "/salv reset ledger confirm - clear all purchases, stock and history",
 }
 
@@ -415,12 +418,12 @@ SlashCmdList.SALVAGER = function(msg)
         ns.Fire("SALVAGER_LEDGER")
     elseif cmd == "report" then
         if ns.Report then ns.Report.Print() end
-    elseif cmd == "results" then
-        ns.Results.Toggle()
-    elseif cmd == "activity" then
-        ns.Activity.Toggle()
+    elseif cmd == "ledger" or cmd == "results" then
+        ns.LedgerWindow.Toggle()
+    elseif cmd == "log" and not tonumber(args[2]) or cmd == "activity" then
+        ns.LogWindow.Toggle()
     elseif cmd == "log" then
-        local n = tonumber(args[2]) or 15
+        local n = tonumber(args[2])
         local log = ns.db.log
         for i = math.max(1, #log - n + 1), #log do ns.Print(log[i]) end
     elseif cmd == "auras" then

@@ -434,13 +434,13 @@ local function build()
     end
     local options = W.Button(f, "Options", 80, function() ns.Options.Open() end)
     options:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -30)
-    local activity = W.Button(f, "Activity", 80, function() ns.Activity.Toggle() end,
-        "Opens the activity log in its own window: what the addon did, and any error. For debugging.")
-    activity:SetPoint("RIGHT", options, "LEFT", -6, 0)
-    local results = W.Button(f, "Results", 80, function() ns.Results.Toggle() end,
-        "Opens the results in their own window: what you bought, what each item was disenchanted into, "
+    local log = W.Button(f, "Log", 80, function() ns.LogWindow.Toggle() end,
+        "Opens the log in its own window: what the addon did, and any error. For debugging.")
+    log:SetPoint("RIGHT", options, "LEFT", -6, 0)
+    local ledger = W.Button(f, "Ledger", 80, function() ns.LedgerWindow.Toggle() end,
+        "Opens the ledger in its own window: what you bought, what each item was disenchanted into, "
         .. "your sales and their profit.")
-    results:SetPoint("RIGHT", activity, "LEFT", -6, 0)
+    ledger:SetPoint("RIGHT", log, "LEFT", -6, 0)
 
     -- Row 2: scans.
     local scanMats = W.Button(f, "Scan materials", 115, function() ns.Prices.Scan() end,

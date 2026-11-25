@@ -48,8 +48,8 @@ flipping is out of scope for now.
     The post itself needs the player's click (`PostCommodity` is hardware-event restricted); when the game
     asks to confirm a low price, a second click calls `ConfirmPostCommodity`. A warning shows when the price
     is below the break-even (average cost ÷ 0.95); posting stays allowed.
-16. **Results and Activity** are windows of their own (`Widgets.Window`: movable, resizable, place and size in
-    `SalvagerDB.windows`). Results is built from `Ledger.History`: one entry per item (waiting purchases from
+16. **Ledger and Log** (`LedgerWindow.lua`, `LogWindow.lua`) are windows of their own (`Widgets.Window`: movable, resizable, place and size in
+    `SalvagerDB.windows`). The Ledger window is built from `Ledger.History`: one entry per item (waiting purchases from
     the FIFO, finished ones from the disenchant records, which keep the purchase time, the cost given to each
     material and each material's value then).
 17. **Material price cadence:** while Play runs, the material prices are scanned again before a gear scan when
@@ -69,4 +69,4 @@ flipping is out of scope for now.
 ## Open
 
 1. The Salvager aura's spell ID: read it from `/salv auras` during the first session with a Salvager.
-2. Whether Forever's disenchant results match the Classic table: the Log tab compares observed odds per band.
+2. Whether Forever's disenchant results match the Classic table: the Ledger window (Odds) compares observed odds per band.

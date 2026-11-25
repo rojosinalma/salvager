@@ -111,19 +111,19 @@ describe("Salvager in a simulated client", function()
     end)
 
     it("shows the purchase with its materials under it, and the sale with its profit", function()
-        local rows = ns.Results.PurchaseRows()
+        local rows = ns.LedgerWindow.PurchaseRows()
         assert.are.equal(2, #rows)
         assert.are.equal(BOOTS, rows[1].itemID)               -- the item, once
         assert.is_truthy(rows[1].cells[3]:find("5", 1, true)) -- paid 5s
         assert.are.equal(11083, rows[2].itemID)               -- what it gave, indented
         assert.is_true(rows[2].indent > 0)
         assert.is_truthy(rows[2].cells[1]:find("2x Soul Dust", 1, true))
-        local sales = ns.Results.SaleRows()
+        local sales = ns.LedgerWindow.SaleRows()
         assert.are.equal(1, #sales)
         assert.is_truthy(sales[1].cells[1]:find("2x Soul Dust", 1, true))
-        local odds = ns.Results.OddsRows()
+        local odds = ns.LedgerWindow.OddsRows()
         assert.are.equal(2, #odds)
-        local a, b = ns.Results.Summary()
+        local a, b = ns.LedgerWindow.Summary()
         assert.is_truthy(a:find("Bought", 1, true))
         assert.is_truthy(b:find("Sold", 1, true))
     end)
@@ -240,15 +240,15 @@ describe("Salvager window and options", function()
         end
         ns.UI.view = "limits"
         ns.UI.Refresh()
-        ns.Results.Toggle()
+        ns.LedgerWindow.Toggle()
         for _, v in ipairs({ "purchases", "sales", "odds" }) do
-            ns.Results.view = v
-            ns.Results.Refresh()
+            ns.LedgerWindow.view = v
+            ns.LedgerWindow.Refresh()
         end
-        ns.Activity.Toggle()
-        ns.Activity.Refresh()
-        assert.is_true(_G.SalvagerResultsFrame:IsShown())
-        assert.is_true(_G.SalvagerActivityFrame:IsShown())
+        ns.LogWindow.Toggle()
+        ns.LogWindow.Refresh()
+        assert.is_true(_G.SalvagerLedgerFrame:IsShown())
+        assert.is_true(_G.SalvagerLogFrame:IsShown())
         assert.is_true(#ns.db.log > 0)
         for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
     end)
