@@ -77,6 +77,21 @@ function Widgets.IconButton(parent, size, onClick)
         if not outline then return end
         if b:IsEnabled() then icon:SetVertexColor(1, 0.82, 0) else icon:SetVertexColor(0.45, 0.45, 0.45) end
     end
+    -- A "window of its own" glyph: a square with a second one behind it, up and to the right.
+    function b.SetPopOutGlyph()
+        icon:Hide()
+        local box = CreateFrame("Frame", nil, b)
+        box:SetSize(14, 14)
+        box:SetPoint("CENTER", b, "CENTER", 0, 0)
+        local function line(x, y, w, h)
+            local t = box:CreateTexture(nil, "OVERLAY")
+            t:SetColorTexture(1, 0.82, 0, 1)
+            t:SetPoint("BOTTOMLEFT", box, "BOTTOMLEFT", x, y)
+            t:SetSize(w, h)
+        end
+        line(0, 0, 10, 2) line(0, 8, 10, 2) line(0, 0, 2, 10) line(8, 0, 2, 10)   -- the front square
+        line(4, 12, 10, 2) line(12, 4, 2, 10)                                     -- the one behind it
+    end
     b:SetScript("OnClick", onClick)
     return b
 end

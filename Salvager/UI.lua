@@ -255,7 +255,7 @@ function UI.Refresh()
     local out = ns.Materials.IsPoppedOut()
     if out and UI.view == "materials" then UI.view, UI.offset = "deals", 0 end
     tabs.materials:SetAlpha(out and 0.5 or 1)
-    popOut:SetShown(UI.view == "materials")
+    if out then popOut:LockHighlight() else popOut:UnlockHighlight() end
     local view = VIEWS[UI.view]
     ROWS = fitRows()
     local w = layout(view)
@@ -545,17 +545,31 @@ local function build()
         b:SetPoint("TOPLEFT", f, "TOPLEFT", x, -131)
         tabs[t[1]] = b
         x = x + 98
+        if t[1] == "materials" then
+            -- Right next to the Materials tab: its list in a window of its own, and back.
+            popOut = W.IconButton(f, 22, function()
+                if ns.Materials.IsPoppedOut() then ns.Materials.PutBack() else ns.Materials.PopOut() end
+            end)
+            popOut:SetPoint("LEFT", b, "RIGHT", 0, 0)
+            popOut:SetPopOutGlyph()
+            popOut:SetScript("OnEnter", function(self)
+                local out = ns.Materials.IsPoppedOut()
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(out and "Put the materials list back" or "Pop out the materials list", 1, 1, 1)
+                GameTooltip:AddLine(out and "Closes its window and shows the list in the Materials tab again."
+                    or "Moves the materials list to a window of its own, so you can watch it next to the deals. "
+                        .. "Scans keep running. Click again, or close that window, to put it back.", 1, 0.82, 0, true)
+                GameTooltip:Show()
+            end)
+            popOut:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            x = x + 26
+        end
     end
     W.Tooltip(tabs.deals, "Deals", "The auctions that cost no more than their buy limit, best profit first.")
     W.Tooltip(tabs.materials, "Materials", "Prices, stock and break-even of the disenchanting materials. "
         .. "While the list is in its own window (Pop out), a click here puts it back.")
     W.Tooltip(tabs.limits, "Limits", "The most the addon lets you pay per item level band, for armor and for weapons. "
         .. "You can set your own.")
-    popOut = W.Button(f, "Pop out", 76, function() ns.Materials.PopOut() end,
-        "Moves the materials list to a window of its own, so you can watch it next to the deals. "
-        .. "Scans keep running. Close that window to put the list back here.")
-    popOut:SetPoint("TOPLEFT", f, "TOPLEFT", x + 6, -131)
-    popOut:Hide()
 
     ---------------------------------------------------------------- the list, in its own sunken panel
     local inset = W.Panel(f, 0, 0, 0, 0.5)
