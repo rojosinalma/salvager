@@ -112,6 +112,9 @@ flipping is out of scope for now.
     pay the full limit; "-" when the limit is 0). Titles: Expected (the table), You got, Value now, Buy below,
     Lose %, Your average. `Widgets.List` columns take `help = { title, text }`, shown over the column title.
     The lose colors are in one place (`ns.LoseText`), shared with the Deals list.
+32. **Each gear round starts with an empty Deals list** (the user's choice, 2026-11-26): the list is cleared
+    when a round starts and filled again as its candidates are checked, so it never shows auctions of an
+    earlier round.
 15. **UI redraws** from events are limited to four per second; the log panel is not rebuilt during a scan.
 
 ## Data

@@ -450,6 +450,16 @@ describe("Salvager scan safety", function()
         assert.are.equal("cache", src)
     end)
 
+    it("starts every round with an empty deals list", function()
+        ns.Scanner.deals = { { auctionID = 9, itemID = 5001, buyout = 1, value = 2, profit = 1, keyString = "5001:28:0" } }
+        env.ah.fullBrowse = true
+        env.ah.browse = {}
+        ns.Scanner.Scan()
+        assert.are.equal(0, #ns.Scanner.deals)             -- cleared when the round starts, not when it ends
+        assert.are.equal("browsing", ns.Scanner.state)
+        ns.Scanner.Stop()
+    end)
+
     it("does not start a material scan during a gear scan", function()
         ns.Scanner.state = "browsing"
         ns.Prices.Scan()

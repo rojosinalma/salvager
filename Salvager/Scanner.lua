@@ -192,12 +192,6 @@ local function queueChecks()
     table.sort(candidates, function(a, b) return a.margin > b.margin end)
     -- Each item search takes about 0.7 s: check the best ones first, at most maxChecks.
     for i = #candidates, ns.db.settings.maxChecks + 1, -1 do candidates[i] = nil end
-    -- Rows of items no longer under the limit are stale.
-    local live = {}
-    for _, c in ipairs(candidates) do live[c.keyString] = true end
-    for i = #Scanner.deals, 1, -1 do
-        if not live[Scanner.deals[i].keyString] and not Scanner.deals[i].pending then table.remove(Scanner.deals, i) end
-    end
     Scanner.toCheck = #candidates
     for _, c in ipairs(candidates) do
         ns.Queue.Add({
@@ -321,6 +315,9 @@ function Scanner.Scan()
             levelDiffers = 0, best = nil },
     }
     Scanner.browsed = 0
+    -- A new round starts with an empty list: what it finds is listed again as it is checked.
+    wipe(Scanner.deals)
+    ns.Fire("SALVAGER_DEALS")
     local names = {}
     for _, p in ipairs(passes) do names[#names + 1] = p.name end
     local s = ns.db.settings
