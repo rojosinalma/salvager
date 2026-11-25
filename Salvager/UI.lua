@@ -354,7 +354,6 @@ function UI.Refresh()
     qualityDrop:Update()
     footer:SetText(footerText())
     lastRefresh = GetTime()
-    if ns.LogPanel and not ns.Busy() then ns.LogPanel.Refresh() end
 end
 
 --- Redraws soon, at most four times a second (for events that come in bursts during a scan).
@@ -435,9 +434,13 @@ local function build()
     end
     local options = W.Button(f, "Options", 80, function() ns.Options.Open() end)
     options:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -30)
-    local log = W.Button(f, "Log", 80, function() ns.LogPanel.Toggle() end,
-        "Opens the log panel: disenchant results, sales, and the activity log for debugging.")
-    log:SetPoint("RIGHT", options, "LEFT", -6, 0)
+    local activity = W.Button(f, "Activity", 80, function() ns.Activity.Toggle() end,
+        "Opens the activity log in its own window: what the addon did, and any error. For debugging.")
+    activity:SetPoint("RIGHT", options, "LEFT", -6, 0)
+    local results = W.Button(f, "Results", 80, function() ns.Results.Toggle() end,
+        "Opens the results in their own window: what you bought, what each item was disenchanted into, "
+        .. "your sales and their profit.")
+    results:SetPoint("RIGHT", activity, "LEFT", -6, 0)
 
     -- Row 2: scans.
     local scanMats = W.Button(f, "Scan materials", 115, function() ns.Prices.Scan() end,
@@ -663,7 +666,6 @@ local function build()
     f:SetScript("OnSizeChanged", function() UI.Refresh() end)
 
     f:SetScript("OnShow", function() UI.Refresh() end)
-    f:SetScript("OnHide", function() if ns.LogPanel then ns.LogPanel.Hide() end end)
     f:Hide()
 end
 
@@ -689,3 +691,5 @@ ns.On("AUCTION_HOUSE_SHOW", function()
     UI.Refresh()
 end)
 ns.On("AUCTION_HOUSE_CLOSED", function() UI.Refresh() end)
+-- Bag counts (the Bags column, the Post buttons) follow the bags.
+ns.On("BAG_UPDATE_DELAYED", function() UI.RequestRefresh() end)

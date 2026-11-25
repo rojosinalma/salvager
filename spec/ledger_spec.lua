@@ -101,6 +101,34 @@ describe("Ledger", function()
         assert.are.equal(2250, state.stock[2].cost)
     end)
 
+    it("lists purchases newest first, each with what it gave", function()
+        local prices = { [1] = 1000, [2] = 3000 }
+        local priceOf = function(id) return prices[id] end
+        Ledger.AddPurchase(state, 77, 1, 3000, 3500, 10, "link77")
+        Ledger.AddPurchase(state, 88, 1, 500, 900, 20, "link88")
+        Ledger.Disenchant(state, { t = 30, itemID = 77, link = "link77", got = { [1] = 1, [2] = 1 } },
+            Ledger.TakePurchase(state, 77), priceOf, 0.05)
+        Ledger.Disenchant(state, { t = 5, itemID = 99, got = { [1] = 2 } }, nil, priceOf, 0.05)
+        local h = Ledger.History(state)
+        assert.are.equal(3, #h)
+        -- newest first: the disenchant of 77, the waiting purchase of 88, the disenchant with no purchase
+        assert.are.equal(77, h[1].itemID)
+        assert.is_true(h[1].done)
+        assert.are.equal(3000, h[1].paid)
+        assert.are.equal(10, h[1].boughtAt)
+        assert.are.equal(3800, h[1].got)
+        assert.are.equal(800, h[1].result)
+        assert.are.equal(2, h[1].mats[1].id)              -- the more valuable material first
+        assert.are.equal(2250, h[1].mats[1].share)
+        assert.are.equal(2850, h[1].mats[1].value)
+        assert.are.equal(88, h[2].itemID)
+        assert.is_false(h[2].done)
+        assert.are.equal(500, h[2].paid)
+        assert.are.equal(99, h[3].itemID)
+        assert.is_nil(h[3].paid)
+        assert.is_nil(h[3].result)
+    end)
+
     it("summarises disenchants by band", function()
         local priceOf = function() return 100 end
         Ledger.Disenchant(state, { t = 1, quality = 2, classID = 4, band = 30, planned = 90, got = { [11083] = 2 } }, nil, priceOf)

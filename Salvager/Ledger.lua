@@ -31,32 +31,32 @@ function Ledger.Init(state)
 end
 
 --- A purchase of `count` items for `total` copper. `ev` = expected net value each at that time.
-function Ledger.AddPurchase(state, itemID, count, total, ev, t)
+function Ledger.AddPurchase(state, itemID, count, total, ev, t, link)
     count = math.max(1, count or 1)
     local list = state.purchases[itemID] or {}
     state.purchases[itemID] = list
     local each = math.floor(total / count + 0.5)
-    for _ = 1, count do list[#list + 1] = { each = each, ev = ev, t = t } end
+    for _ = 1, count do list[#list + 1] = { each = each, ev = ev, t = t, link = link } end
     Util.Cap(list, Ledger.MAX_PURCHASES_PER_ITEM)
 end
 
 --- A purchase seen at the auction house. The "Auction won" mail for it comes later
 --- and is matched by Ledger.MailPurchase, so nothing counts twice.
-function Ledger.AuctionPurchase(state, itemID, total, ev, t)
-    Ledger.AddPurchase(state, itemID, 1, total, ev, t)
+function Ledger.AuctionPurchase(state, itemID, total, ev, t, link)
+    Ledger.AddPurchase(state, itemID, 1, total, ev, t, link)
     state.bought[#state.bought + 1] = { itemID = itemID, each = total, t = t }
     Util.Cap(state.bought, Ledger.MAX_RECORDS)
 end
 
 --- An "Auction won" mail. Returns false when the purchase was already recorded at the auction house.
-function Ledger.MailPurchase(state, itemID, count, total, ev, t)
+function Ledger.MailPurchase(state, itemID, count, total, ev, t, link)
     for _, b in ipairs(state.bought) do
         if not b.mail and b.itemID == itemID and b.each * count == total then
             b.mail = true
             return false
         end
     end
-    Ledger.AddPurchase(state, itemID, count, total, ev, t)
+    Ledger.AddPurchase(state, itemID, count, total, ev, t, link)
     return true
 end
 
@@ -170,14 +170,55 @@ function Ledger.Disenchant(state, rec, purchase, priceOf, cut)
     rec.cost = purchase and purchase.each or 0
     rec.costKnown = purchase ~= nil
     rec.evAtBuy = purchase and purchase.ev or nil
+    rec.boughtAt = purchase and purchase.t or nil
     local shares = purchase and Ledger.Allocate(rec.cost, rec.got, priceOf) or {}
     for id, qty in pairs(rec.got) do Ledger.AddStock(state, id, qty, purchase and (shares[id] or 0) or nil) end
+    rec.shares = purchase and shares or nil
+    -- What each material was worth then, after the cut.
+    local keep = 1 - (cut or 0.05)
     local value = 0
-    for id, qty in pairs(rec.got) do value = value + (priceOf(id) or 0) * qty end
-    rec.value = math.floor(value * (1 - (cut or 0.05)))
+    rec.vals = {}
+    for id, qty in pairs(rec.got) do
+        local v = (priceOf(id) or 0) * qty
+        rec.vals[id] = math.floor(v * keep + 0.5)
+        value = value + v
+    end
+    rec.value = math.floor(value * keep)
     state.disenchants[#state.disenchants + 1] = rec
     Util.Cap(state.disenchants, Ledger.MAX_RECORDS)
     return rec
+end
+
+--- Every item bought or disenchanted, newest first: one entry per item, with what it gave.
+--- @return table  entries {
+---   t, itemID, link, paid (nil = no purchase recorded), expected (value expected when bought, or at the
+---   disenchant), done (disenchanted), got (value of what it gave), result (got - paid), salvager,
+---   mats = { { id, qty, share (cost given to it), value }, ... }  best first }
+function Ledger.History(state)
+    local out = {}
+    for itemID, list in pairs(state.purchases) do
+        for _, p in ipairs(list) do
+            out[#out + 1] = { t = p.t or 0, itemID = itemID, link = p.link, paid = p.each, expected = p.ev, done = false }
+        end
+    end
+    for _, r in ipairs(state.disenchants) do
+        local mats = {}
+        for id, qty in pairs(r.got or {}) do
+            mats[#mats + 1] = { id = id, qty = qty, share = r.shares and r.shares[id] or nil, value = r.vals and r.vals[id] or nil }
+        end
+        table.sort(mats, function(a, b)
+            if (a.value or 0) ~= (b.value or 0) then return (a.value or 0) > (b.value or 0) end
+            return a.id < b.id
+        end)
+        local paid = r.costKnown and r.cost or nil
+        out[#out + 1] = {
+            t = r.t or 0, boughtAt = r.boughtAt, itemID = r.itemID, link = r.link, paid = paid,
+            expected = r.evAtBuy or r.planned, done = true, got = r.value, result = paid and ((r.value or 0) - paid) or nil,
+            salvager = r.salvager, mats = mats,
+        }
+    end
+    table.sort(out, function(a, b) return a.t > b.t end)
+    return out
 end
 
 --- Summary per disenchant band: counts, planned vs actual, observed odds.

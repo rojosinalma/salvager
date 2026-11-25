@@ -48,6 +48,10 @@ flipping is out of scope for now.
     The post itself needs the player's click (`PostCommodity` is hardware-event restricted); when the game
     asks to confirm a low price, a second click calls `ConfirmPostCommodity`. A warning shows when the price
     is below the break-even (average cost ÷ 0.95); posting stays allowed.
+16. **Results and Activity** are windows of their own (`Widgets.Window`: movable, resizable, place and size in
+    `SalvagerDB.windows`). Results is built from `Ledger.History`: one entry per item (waiting purchases from
+    the FIFO, finished ones from the disenchant records, which keep the purchase time, the cost given to each
+    material and each material's value then).
 15. **UI redraws** from events are limited to four per second; the log panel is not rebuilt during a scan.
 
 ## Data

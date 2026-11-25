@@ -51,7 +51,7 @@ local function readMail(index)
         if classID ~= Data.CLASS_WEAPON and classID ~= Data.CLASS_ARMOR then return end
         seen[fp] = true
         local v = ns.ItemValue(link or itemID)
-        local added = Ledger.MailPurchase(ns.db.ledger, itemID, count, bid or 0, v and v.net, time())
+        local added = Ledger.MailPurchase(ns.db.ledger, itemID, count, bid or 0, v and v.net, time(), link)
         ns.Log("mail: bought %s for %s%s", link or itemID, ns.Money(bid or 0),
             added and "" or " (already recorded at the auction house)")
         ns.Fire("SALVAGER_LEDGER")

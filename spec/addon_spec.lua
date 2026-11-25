@@ -110,6 +110,24 @@ describe("Salvager in a simulated client", function()
         assert.is_nil(ns.db.ledger.stock[11083])
     end)
 
+    it("shows the purchase with its materials under it, and the sale with its profit", function()
+        local rows = ns.Results.PurchaseRows()
+        assert.are.equal(2, #rows)
+        assert.are.equal(BOOTS, rows[1].itemID)               -- the item, once
+        assert.is_truthy(rows[1].cells[3]:find("5", 1, true)) -- paid 5s
+        assert.are.equal(11083, rows[2].itemID)               -- what it gave, indented
+        assert.is_true(rows[2].indent > 0)
+        assert.is_truthy(rows[2].cells[1]:find("2x Soul Dust", 1, true))
+        local sales = ns.Results.SaleRows()
+        assert.are.equal(1, #sales)
+        assert.is_truthy(sales[1].cells[1]:find("2x Soul Dust", 1, true))
+        local odds = ns.Results.OddsRows()
+        assert.are.equal(2, #odds)
+        local a, b = ns.Results.Summary()
+        assert.is_truthy(a:find("Bought", 1, true))
+        assert.is_truthy(b:find("Sold", 1, true))
+    end)
+
     it("adds tooltip lines without errors", function()
         local lines = {}
         GameTooltip.AddDoubleLine = function(_, l, r) lines[#lines + 1] = l .. " = " .. tostring(r) end
@@ -222,11 +240,15 @@ describe("Salvager window and options", function()
         end
         ns.UI.view = "limits"
         ns.UI.Refresh()
-        ns.LogPanel.Toggle()
-        ns.LogPanel.mode = "activity"
-        ns.LogPanel.Refresh()
-        ns.LogPanel.mode = "results"
-        ns.LogPanel.Refresh()
+        ns.Results.Toggle()
+        for _, v in ipairs({ "purchases", "sales", "odds" }) do
+            ns.Results.view = v
+            ns.Results.Refresh()
+        end
+        ns.Activity.Toggle()
+        ns.Activity.Refresh()
+        assert.is_true(_G.SalvagerResultsFrame:IsShown())
+        assert.is_true(_G.SalvagerActivityFrame:IsShown())
         assert.is_true(#ns.db.log > 0)
         for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
     end)

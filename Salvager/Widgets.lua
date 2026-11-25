@@ -266,6 +266,211 @@ function Widgets.ScrollBar(parent, onScroll)
     return bar
 end
 
+--- A window of its own: movable, resizable from the bottom right corner, closed with Escape.
+--- Its place and size are kept in SalvagerDB.windows[key]. f.onResize runs when the size changes.
+function Widgets.Window(globalName, title, key, w, h, minW, minH)
+    local f = CreateFrame("Frame", globalName, UIParent, "BasicFrameTemplateWithInset")
+    local saved = ns.db.windows[key] or {}
+    ns.db.windows[key] = saved
+    f:SetSize(math.max(minW, saved.w or w), math.max(minH, saved.h or h))
+    f:SetFrameStrata("HIGH")
+    f:SetToplevel(true)
+    f:SetClampedToScreen(true)
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    if saved.x and saved.y then
+        f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", saved.x, saved.y)
+    else
+        f:SetPoint("CENTER", UIParent, "CENTER", saved.dx or 0, saved.dy or 0)
+    end
+    -- Pinned by its top left corner, so sizing moves only the bottom right one.
+    local function pin()
+        local left, top = f:GetLeft(), f:GetTop()
+        if not (left and top) then return end
+        f:ClearAllPoints()
+        f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+        saved.x, saved.y = left, top
+    end
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", function()
+        f:StopMovingOrSizing()
+        pin()
+    end)
+    local text = f.TitleText
+    if type(text) ~= "table" then
+        text = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        text:SetPoint("TOP", f, "TOP", 0, -5)
+    end
+    text:SetText(title)
+    tinsert(UISpecialFrames, globalName)
+
+    f:SetResizable(true)
+    local maxW, maxH = UIParent:GetWidth(), UIParent:GetHeight()
+    if f.SetResizeBounds then
+        f:SetResizeBounds(minW, minH, maxW, maxH)
+    elseif f.SetMinResize then
+        f:SetMinResize(minW, minH)
+    end
+    local grip = CreateFrame("Button", nil, f)
+    grip:SetSize(16, 16)
+    grip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -4, 4)
+    grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+    grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+    grip:SetScript("OnMouseDown", function()
+        pin()
+        f:StartSizing("BOTTOMRIGHT", true)
+    end)
+    grip:SetScript("OnMouseUp", function()
+        f:StopMovingOrSizing()
+        saved.w, saved.h = math.floor(f:GetWidth()), math.floor(f:GetHeight())
+        pin()
+        if f.onResize then f.onResize() end
+    end)
+    f:SetScript("OnSizeChanged", function() if f.onResize then f.onResize() end end)
+    f:Hide()
+    return f
+end
+
+--- A scrolling table. The caller anchors the returned frame.
+---   list:SetColumns({ { title, width, justify }, ... })   the first column takes the spare width
+---   list:SetSource(count, getRow)                         getRow(i) -> row, only called for rows on screen
+---   list:Refresh()
+--- row = { cells = { text, ... }, itemID = icon and tooltip, link = tooltip, indent = pixels }
+--- opts = { rowHeight = 22, header = true }
+function Widgets.List(parent, opts)
+    opts = opts or {}
+    local ROW_H = opts.rowHeight or 22
+    local HEAD_H = opts.header == false and 0 or ROW_H
+    local MAX_ROWS, MAX_COLS, GAP, BAR_W = 60, 8, 6, 18
+    local list = CreateFrame("Frame", nil, parent)
+    list.offset, list.count, list.columns = 0, 0, {}
+    local headers, rows = {}, {}
+
+    for i = 1, MAX_COLS do
+        local h = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        h:SetHeight(ROW_H)
+        headers[i] = h
+    end
+    for r = 1, MAX_ROWS do
+        local row = CreateFrame("Button", nil, list)
+        row:SetHeight(ROW_H)
+        row:SetPoint("TOPLEFT", list, "TOPLEFT", 0, -HEAD_H - (r - 1) * ROW_H)
+        row:SetPoint("RIGHT", list, "RIGHT", -BAR_W, 0)
+        local hl = row:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints()
+        hl:SetColorTexture(1, 1, 1, 0.08)
+        row.icon = row:CreateTexture(nil, "ARTWORK")
+        row.icon:SetSize(ROW_H - 4, ROW_H - 4)
+        row.cells = {}
+        for i = 1, MAX_COLS do
+            local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            fs:SetHeight(ROW_H)
+            fs:SetWordWrap(false)
+            row.cells[i] = fs
+        end
+        row:SetScript("OnEnter", function(self)
+            local data = self.data
+            local link = data and (data.link or (data.itemID and ("item:" .. data.itemID)))
+            if not link then return end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetHyperlink(link)
+            GameTooltip:Show()
+        end)
+        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        row:Hide()
+        rows[r] = row
+    end
+
+    local bar = Widgets.ScrollBar(list, function(value)
+        if value ~= list.offset then
+            list.offset = value
+            list:Refresh()
+        end
+    end)
+    bar:SetPoint("TOPRIGHT", list, "TOPRIGHT", 0, -HEAD_H)
+    bar:SetPoint("BOTTOMRIGHT", list, "BOTTOMRIGHT", 0, 0)
+    local function wheel(_, delta)
+        list.offset = math.max(0, list.offset - delta * 3)
+        list:Refresh()
+    end
+    list:EnableMouseWheel(true)
+    list:SetScript("OnMouseWheel", wheel)
+    bar:EnableMouseWheel(true)
+    bar:SetScript("OnMouseWheel", wheel)
+
+    function list:SetColumns(cols) self.columns = cols end
+
+    function list:SetSource(count, getRow)
+        self.count, self.getRow = count, getRow
+    end
+
+    function list:Refresh()
+        local cols = self.columns
+        local fit = math.max(1, math.min(MAX_ROWS, math.floor(((self:GetHeight() or 0) - HEAD_H) / ROW_H)))
+        self.offset = math.max(0, math.min(self.offset, self.count - fit))
+        bar:Update(self.offset, self.count - fit)
+        -- Column positions: the first column takes what is left of the width.
+        local fixed = 0
+        for i = 2, #cols do fixed = fixed + cols[i][2] + GAP end
+        local first = math.max(cols[1] and cols[1][2] or 0, (self:GetWidth() or 0) - BAR_W - 8 - fixed)
+        local xs, ws, x = {}, {}, 4
+        for i, col in ipairs(cols) do
+            xs[i], ws[i] = x, (i == 1 and first or col[2])
+            x = x + ws[i] + GAP
+        end
+        for i = 1, MAX_COLS do
+            local h, col = headers[i], cols[i]
+            if col and HEAD_H > 0 then
+                h:ClearAllPoints()
+                h:SetPoint("TOPLEFT", self, "TOPLEFT", xs[i], 0)
+                h:SetWidth(ws[i]) h:SetJustifyH(col[3] or "LEFT") h:SetText(col[1]) h:Show()
+            else
+                h:Hide()
+            end
+        end
+        for r = 1, MAX_ROWS do
+            local row = rows[r]
+            local data = r <= fit and (r + self.offset) <= self.count and self.getRow(r + self.offset) or nil
+            row.data = data
+            if not data then
+                row:Hide()
+            else
+                local indent = data.indent or 0
+                local icon = data.itemID and Widgets.IconOf(data.itemID)
+                local textIndent = indent + (icon and ROW_H or 0)
+                if icon then
+                    row.icon:ClearAllPoints()
+                    row.icon:SetPoint("LEFT", row, "LEFT", 4 + indent, 0)
+                    row.icon:SetTexture(icon)
+                    row.icon:Show()
+                else
+                    row.icon:Hide()
+                end
+                for i = 1, MAX_COLS do
+                    local fs, col = row.cells[i], cols[i]
+                    if col then
+                        local extra = i == 1 and textIndent or 0
+                        fs:ClearAllPoints()
+                        fs:SetPoint("LEFT", row, "LEFT", xs[i] + extra, 0)
+                        fs:SetWidth(math.max(10, ws[i] - extra))
+                        fs:SetJustifyH(col[3] or "LEFT")
+                        fs:SetText(data.cells[i] or "")
+                        fs:Show()
+                    else
+                        fs:Hide()
+                    end
+                end
+                row:Show()
+            end
+        end
+    end
+
+    list:SetScript("OnSizeChanged", function() list:Refresh() end)
+    return list
+end
+
 function Widgets.Label(parent, text, template)
     local l = parent:CreateFontString(nil, "OVERLAY", template or "GameFontNormalSmall")
     l:SetText(text)

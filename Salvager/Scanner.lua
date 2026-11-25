@@ -416,7 +416,7 @@ ns.On("AUCTION_HOUSE_PURCHASE_COMPLETED", function(auctionID)
     local d = Scanner.buying
     if d and d.auctionID == auctionID then
         ns.Print("bought %s for %s (expected profit %s)", d.link or "item", ns.Money(d.buyout), ns.Money(d.profit))
-        ns.Ledger.AuctionPurchase(ns.db.ledger, d.itemID, d.buyout, d.value, time())
+        ns.Ledger.AuctionPurchase(ns.db.ledger, d.itemID, d.buyout, d.value, time(), d.link)
         ns.Log("bought %s for %s, value %s", d.link or d.itemID, ns.Money(d.buyout), ns.Money(d.value))
         ns.Fire("SALVAGER_LEDGER")
         Scanner.buying = nil

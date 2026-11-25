@@ -32,6 +32,7 @@ local DEFAULTS = {
     ilvl = {},                     -- [itemID] = item level, learned from the game (see Items.lua)
     log = {},                      -- what the addon did, newest last (written to disk on /reload or logout)
     window = {},
+    windows = {},                  -- place and size of the Results and Activity windows
 }
 
 ------------------------------------------------------------------ output
@@ -53,6 +54,7 @@ function ns.Log(fmt, ...)
     msg = Util.PlainMoney(msg)
     local log = ns.db.log
     log[#log + 1] = date("%H:%M:%S") .. " " .. msg
+    ns.logChanged = true
     Util.Cap(log, LOG_MAX)
 end
 
@@ -333,7 +335,9 @@ local HELP = {
     "/salv stock <item> <quantity> <cost each> - opening stock, e.g. /salv stock 11137 40 6s",
     "/salv report - disenchant results by band",
     "/salv auras - list your buffs (to find the Salvager's)",
-    "/salv log [n] - the last n lines of the activity log (default 15)",
+    "/salv results - the results window (purchases, sales, odds)",
+    "/salv activity - the activity log window",
+    "/salv log [n] - the last n lines of the activity log in chat (default 15)",
     "/salv reset ledger confirm - clear all purchases, stock and history",
 }
 
@@ -395,6 +399,10 @@ SlashCmdList.SALVAGER = function(msg)
         ns.Fire("SALVAGER_LEDGER")
     elseif cmd == "report" then
         if ns.Report then ns.Report.Print() end
+    elseif cmd == "results" then
+        ns.Results.Toggle()
+    elseif cmd == "activity" then
+        ns.Activity.Toggle()
     elseif cmd == "log" then
         local n = tonumber(args[2]) or 15
         local log = ns.db.log
