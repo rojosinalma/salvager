@@ -126,8 +126,9 @@ describe("Salvager in a simulated client", function()
         assert.is_true(rows[2].indent > 0)
         assert.is_truthy(rows[2].cells[1]:find("2x Soul Dust", 1, true))
         local sales = ns.LedgerWindow.SaleRows()
-        assert.are.equal(1, #sales)
-        assert.is_truthy(sales[1].cells[1]:find("2x Soul Dust", 1, true))
+        local paid
+        for _, r in ipairs(sales) do if r.itemID == 11083 then paid = r end end
+        assert.is_truthy(paid.cells[1]:find("2x Soul Dust", 1, true))
         local odds = ns.LedgerWindow.OddsRows()
         -- Every band of every quality and type is there, with or without data: 24 bands twice,
         -- and at least two rows each.
@@ -140,6 +141,12 @@ describe("Salvager in a simulated client", function()
         assert.are.equal(11083, dust.itemID)
         assert.is_truthy(dust.cells[3]:find("75%", 1, true))       -- the table
         assert.is_truthy(dust.cells[4]:find("100%", 1, true))      -- yours
+        -- Filters: only blue weapons.
+        ns.db.windows.ledger = { oddsQuality = { [3] = true }, oddsType = { w = true } }
+        local few = ns.LedgerWindow.OddsRows()
+        assert.are.equal(#ns.Data.BLUE * 2, #few)                  -- each band: its row and its one shard
+        assert.is_truthy(few[1].cells[1]:find("Blue weapons", 1, true))
+        ns.db.windows.ledger = nil
         local a, b = ns.LedgerWindow.Summary()
         assert.is_truthy(a:find("Bought", 1, true))
         assert.is_truthy(b:find("Sold", 1, true))
@@ -794,6 +801,89 @@ describe("Salvager layout", function()
         wow.fire(ns, "AUCTION_HOUSE_CLOSED")
         wow.fire(ns, "AUCTION_HOUSE_SHOW")
         assert.is_false(_G.SalvagerLedgerFrame:IsShown())
+        for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
+    end)
+end)
+
+describe("Salvager listings", function()
+    local env, ns
+    local DUST, VISION = 11083, 11137
+    local function answer()
+        for _ = 1, 20 do
+            wow.tick(ns, 0.2)
+            local c = ns.Queue.current
+            if c and c.commodity then wow.fire(ns, "COMMODITY_SEARCH_RESULTS_UPDATED", c.commodity) end
+        end
+    end
+    setup(function()
+        env = wow.install()
+        env.items[DUST] = { name = "Soul Dust", quality = 1, ilvl = 1, classID = 7 }
+        env.items[VISION] = { name = "Vision Dust", quality = 1, ilvl = 1, classID = 7 }
+        env.ah.owned = {
+            { auctionID = 1, itemKey = { itemID = DUST }, status = 0, quantity = 20, timeLeftSeconds = 40000, buyoutAmount = 500 },
+            { auctionID = 2, itemKey = { itemID = VISION }, status = 0, quantity = 10, timeLeftSeconds = 40000, buyoutAmount = 900 },
+            { auctionID = 3, itemKey = { itemID = DUST }, status = 1, quantity = 5, timeLeftSeconds = 2400, buyoutAmount = 480 },
+        }
+        -- Soul Dust: someone else is cheaper. Vision Dust: only your own listing.
+        env.ah.commodities[DUST] = { { unitPrice = 430, quantity = 50, numOwnerItems = 0 },
+            { unitPrice = 500, quantity = 20, numOwnerItems = 20 } }
+        env.ah.commodities[VISION] = { { unitPrice = 900, quantity = 10, numOwnerItems = 10 } }
+        ns = wow.loadAddon()
+        wow.fire(ns, "ADDON_LOADED", "Salvager")
+        wow.fire(ns, "AUCTION_HOUSE_SHOW")
+        ns.Ledger.AddStock(ns.db.ledger, DUST, 25, 25 * 300)
+    end)
+
+    it("reads your auctions when the auction house opens", function()
+        wow.tick(ns, 0.5)
+        local rows = ns.db.listings.rows
+        assert.are.equal(3, #rows)
+        assert.are.equal(500, rows[1].each)
+        assert.is_true(rows[3].sold)
+        assert.is_true(rows[1].commodity)
+    end)
+
+    it("shows them in the Sales view: listed, and sold with the wait for the money", function()
+        local rows = ns.LedgerWindow.SaleRows()
+        local listed, sold
+        for _, r in ipairs(rows) do
+            if r.cells[1]:find("20x", 1, true) then listed = r end
+            if r.cells[1]:find("5x", 1, true) then sold = r end
+        end
+        assert.is_truthy(listed.cells[2]:find("listed", 1, true))          -- not checked yet
+        assert.is_truthy(sold.cells[2]:find("money in 40 min", 1, true))
+        assert.is_truthy(listed.cells[7]:find("35", 1, true))              -- 20 x 500 x 0.95 - 20 x 300 = 35s profit
+    end)
+
+    it("finds the undercut listings", function()
+        ns.Listings.Check()
+        assert.is_table(ns.Listings.checking)
+        answer()
+        assert.is_nil(ns.Listings.checking)
+        assert.are.equal(1, ns.Listings.CountUndercut())
+        local rows = ns.db.listings.rows
+        assert.are.equal(70, ns.Listings.Undercut(rows[1]))        -- 500 against 430
+        assert.is_nil(ns.Listings.Undercut(rows[2]))               -- nobody else lists it
+        assert.is_false(ns.Listings.Lowest(rows[2]))
+        assert.is_nil(ns.Listings.Undercut(rows[3]))               -- sold: nothing to cancel
+        local sale = ns.LedgerWindow.SaleRows()
+        local found
+        for _, r in ipairs(sale) do if r.cells[2] and r.cells[2]:find("undercut by", 1, true) then found = true end end
+        assert.is_true(found)
+    end)
+
+    it("cancels one undercut listing per click", function()
+        assert.is_true(ns.Listings.CancelNext())
+        assert.are.equal(1, env.ah.cancels[1])
+        assert.is_false(ns.Listings.CancelNext())                  -- the first one is still on its way
+        wow.fire(ns, "AUCTION_CANCELED", 1)
+        assert.are.equal(2, #ns.db.listings.rows)
+        assert.are.equal(0, ns.Listings.CountUndercut())
+        assert.is_false(ns.Listings.CancelNext())                  -- nothing left to cancel
+        assert.are.equal(1, #env.ah.cancels)
+        ns.LedgerWindow.Show()
+        ns.LedgerWindow.view = "sales"
+        ns.LedgerWindow.Refresh()
         for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
     end)
 end)

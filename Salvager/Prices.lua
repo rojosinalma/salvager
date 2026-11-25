@@ -47,6 +47,8 @@ local function store(itemID)
     end
 end
 
+Prices.Store = store
+
 local function stepDone()
     Prices.done = Prices.done + 1
     ns.Fire("SALVAGER_PRICES", Prices.done, Prices.total)
@@ -63,6 +65,10 @@ function Prices.Scan()
     if Prices.scanning then return end
     if ns.Scanner.state ~= "idle" then
         ns.Print("wait for the gear scan to finish (or use Scan both)")
+        return
+    end
+    if ns.Listings and ns.Listings.checking then
+        ns.Print("wait for the undercut check to finish")
         return
     end
     Prices.scanning, Prices.done, Prices.total = true, 0, #Data.MATERIALS

@@ -98,6 +98,15 @@ flipping is out of scope for now.
     material without a price worth nothing). Example measured 2026-11-25: Azure Silk Hood at 11s 46c, value
     12s 57c, lose chance 75% (every dust result loses). The Ledger's Odds view lists every band of every
     quality and gear type with the table, today's value and the player's own results where there are any.
+29. **Your auctions** (`Listings.lua`). Read on every `OWNED_AUCTIONS_UPDATED` (whoever asked), asked for at
+    auction house open and after a post or cancel, kept in `SalvagerDB.listings` so the Ledger shows them
+    with the auction house closed ("as of"). A sold auction's `timeLeftSeconds` is the wait for its money.
+    Price each: the unit price of a post made through Salvager is known for sure (`SalvagerDB.posted`); if a
+    listing's reported price equals that times its quantity, this client reports totals and the rest are
+    divided. Undercut = the lowest listing that is not yours is below your price each (one commodity search
+    per listed material). Cancel needs a click per auction (`CancelAuction` is hardware-event restricted) and
+    loses the deposit; searches wait while a cancel is on its way. Not verified in the game yet.
+30. **Odds filters:** quality and gear type, kept with the Ledger window.
 15. **UI redraws** from events are limited to four per second; the log panel is not rebuilt during a scan.
 
 ## Data

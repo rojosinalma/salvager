@@ -47,7 +47,7 @@ function M.install()
         now = 1000, clock = 1700000000, chat = {}, timers = {}, frames = {}, tooltipCalls = {},
         items = {}, bags = {}, auras = {}, loot = {}, inbox = {}, money = 1000000,
         ah = { browse = {}, fullBrowse = true, commodities = {}, itemResults = {}, sent = {}, bids = {},
-            hasResults = {}, ready = true, posts = {} },
+            hasResults = {}, ready = true, posts = {}, owned = {}, cancels = {} },
     }
     M.env = env
     _G.SalvagerDB = nil   -- every install starts with fresh saved data
@@ -97,6 +97,7 @@ function M.install()
         AuctionHouseSortOrder = { Price = 0, Name = 1, Level = 2, Bid = 3, Buyout = 4 },
         AuctionHouseFilter = { UncommonQuality = 8, RareQuality = 9, EpicQuality = 10 },
         TooltipDataType = { Item = 0 },
+        AuctionStatus = { Active = 0, Sold = 1 },
     }
 
     -- Items: env.items[id] = { name, quality, ilvl, req, classID }
@@ -182,6 +183,15 @@ function M.install()
                 confirmed = true })
         end,
         CalculateCommodityDeposit = function(_, _, quantity) return quantity * 3 end,
+        QueryOwnedAuctions = function()
+            table.insert(ah.sent, { kind = "owned" })
+            ah.ownedAsked = true
+        end,
+        GetNumOwnedAuctions = function() return #ah.owned end,
+        GetOwnedAuctionInfo = function(i) return ah.owned[i] end,
+        CanCancelAuction = function() return true end,
+        GetCancelCost = function() return 12 end,
+        CancelAuction = function(id) table.insert(ah.cancels, id) end,
         HasFullBrowseResults = function() return ah.fullBrowse end,
         RequestMoreBrowseResults = function() table.insert(ah.sent, { kind = "more" }) end,
         GetItemKeyInfo = function(key) local it = env.items[key.itemID] return it and { quality = it.quality } end,
@@ -216,6 +226,10 @@ function M.tick(ns, seconds)
     local n = math.floor(seconds / step + 0.5)
     for _ = 1, n do
         env.now = env.now + step
+        if env.ah.ownedAsked then    -- the auction house answers a request for your auctions
+            env.ah.ownedAsked = false
+            M.fire(ns, "OWNED_AUCTIONS_UPDATED")
+        end
         ns.eventFrame.scripts.OnUpdate(ns.eventFrame, step)
         for i = #env.timers, 1, -1 do
             local t = env.timers[i]

@@ -41,7 +41,7 @@ end
 --- (something the player just clicked).
 function Queue.Add(task, urgent)
     for i, t in ipairs(Queue.items) do
-        if (task.commodity and t.commodity == task.commodity)
+        if (task.owned and t.owned) or (task.commodity and t.commodity == task.commodity)
             or (task.itemKey and t.itemKey and ns.KeyString(t.itemKey) == ns.KeyString(task.itemKey)) then
             if not urgent then return end
             table.remove(Queue.items, i)
@@ -76,13 +76,16 @@ function ns.KeyString(key)
 end
 
 local function describe(task)
+    if task.owned then return "your auctions" end
     return task.commodity and ("commodity " .. task.commodity) or ("item " .. ns.KeyString(task.itemKey))
 end
 
 local function send(task)
     task.sentAt = GetTime()
     task.refreshed = false
-    if task.commodity then
+    if task.owned then
+        AH.QueryOwnedAuctions({})
+    elseif task.commodity then
         local key = AH.MakeItemKey(task.commodity, 0, 0, 0)
         if AH.HasSearchResults(key) then
             task.refreshed = true
@@ -106,7 +109,7 @@ local function finish(ok)
     if not task then return end
     if not ok then
         Queue.lost = Queue.lost + 1
-        local again = (task.tries or 0) < MAX_TRIES
+        local again = not task.once and (task.tries or 0) < MAX_TRIES
         ns.Log("search: no answer for %s after %.1fs%s", describe(task), GetTime() - task.sentAt,
             again and ", trying again" or ", skipped (another addon may be using the auction house)")
         if again then
@@ -128,6 +131,7 @@ end
 
 --- Does the client hold results for this task now?
 local function hasResults(task)
+    if task.owned then return false end
     if task.commodity then return (AH.GetNumCommoditySearchResults(task.commodity) or 0) > 0 end
     return AH.HasSearchResults(task.itemKey) and true or false
 end
@@ -161,6 +165,7 @@ local function pump()
     if ns.Scanner and ns.Scanner.state == "browsing" and not Queue.items[1].urgent then return end
     -- Buying first: while a purchase is on its way, or Buy was clicked a moment ago, searches wait.
     if ns.Scanner and ns.Scanner.Buying() then return end
+    if ns.Listings and ns.Listings.Cancelling() then return end
     if not ready() then return end
     Queue.current = table.remove(Queue.items, 1)
     local ok, err = pcall(send, Queue.current)
@@ -184,6 +189,7 @@ end
 local function itemAnswer(key)
     answered(function(t) return t.itemKey and type(key) == "table" and t.itemKey.itemID == key.itemID end)
 end
+ns.On("OWNED_AUCTIONS_UPDATED", function() answered(function(t) return t.owned end) end)
 ns.On("COMMODITY_SEARCH_RESULTS_UPDATED", commodityAnswer)
 ns.On("COMMODITY_SEARCH_RESULTS_ADDED", commodityAnswer)
 ns.On("ITEM_SEARCH_RESULTS_UPDATED", itemAnswer)

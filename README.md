@@ -22,7 +22,8 @@ Copy the `Salvager` folder into `World of Warcraft/_forever_/Interface/AddOns/`,
    **Pop out** moves the materials list to a window of its own; close it to put the list back.
    **Limits** shows the buy limit per item level band for armor and weapons.
    **Ledger** opens a window of its own: what you bought with what each item was disenchanted into,
-   your sales with their profit, and your disenchant odds. **Log** opens the activity log.
+   your auctions (listed, sold and waiting for the money, undercut) and the sales already paid with their
+   profit, and the disenchant odds of every band. **Log** opens the activity log.
 7. Options: Esc > Options > AddOns > Salvager, the **Options** button, or right-click the minimap button.
 
 ## How the value is calculated

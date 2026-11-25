@@ -35,6 +35,8 @@ local DEFAULTS = {
     log = {},                      -- what the addon did, newest last (written to disk on /reload or logout)
     window = {},
     windows = {},                  -- place and size of the Ledger and Log windows
+    listings = {},                 -- your auctions as last read: { t, rows, lowest = { [itemID] = { lo, t } } }
+    posted = {},                   -- posts made through Salvager: { auctionID, itemID, qty, each, t }
 }
 
 ------------------------------------------------------------------ output

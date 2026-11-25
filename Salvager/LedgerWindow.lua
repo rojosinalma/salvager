@@ -16,13 +16,23 @@ local QUALITY_NAME = { [2] = "Green", [3] = "Blue", [4] = "Epic" }
 local COLUMNS = {
     purchases = { { "Item", 220 }, { "Bought", 82 }, { "Paid", 84, "RIGHT" }, { "Expected", 84, "RIGHT" },
         { "Got", 96, "RIGHT" }, { "Result", 84, "RIGHT" } },
-    sales = { { "Material", 190 }, { "Sold", 82 }, { "Price", 84, "RIGHT" }, { "Cut", 70, "RIGHT" },
-        { "You got", 84, "RIGHT" }, { "Cost", 96, "RIGHT" }, { "Profit", 84, "RIGHT" } },
+    sales = { { "Material", 170 }, { "Status", 132 }, { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
+        { "You get", 76, "RIGHT" }, { "Cost", 84, "RIGHT" }, { "Profit", 76, "RIGHT" } },
     odds = { { "Band / material", 230 }, { "Count", 50, "CENTER" }, { "Table", 84, "CENTER" }, { "Yours", 90, "CENTER" },
         { "Value now", 96, "RIGHT" }, { "Your average", 90, "RIGHT" } },
 }
 
 local f, list, summary, tabs = nil, nil, nil, {}
+local checkButton, cancelButton, qualityFilter, typeFilter
+
+--- Which bands the Odds view shows: { quality = { [2], [3], [4] }, type = { a, w } }, kept with the window.
+local function oddsFilter()
+    local saved = ns.db.windows.ledger or {}
+    ns.db.windows.ledger = saved
+    saved.oddsQuality = saved.oddsQuality or { [2] = true, [3] = true, [4] = true }
+    saved.oddsType = saved.oddsType or { a = true, w = true }
+    return saved.oddsQuality, saved.oddsType
+end
 
 local function when(t) return (t and t > 0) and date("%m-%d %H:%M", t) or "-" end
 local function money(c) return c and ns.Money(c) or "-" end
@@ -70,9 +80,59 @@ function Window.PurchaseRows()
     return rows
 end
 
---- Sales, newest first. Profit = what you got after the cut - what those materials cost you.
+local function duration(seconds)
+    if not seconds then return "?" end
+    if seconds < 3600 then return math.max(1, math.floor(seconds / 60 + 0.5)) .. " min" end
+    return string.format("%.0f h", seconds / 3600)
+end
+
+--- Your auctions as last read: what is listed, what is sold and waiting for its money.
+local function listingRows(rows)
+    local l = ns.db.listings
+    local mine = l.rows or {}
+    rows[#rows + 1] = { cells = { GOLD .. "On the auction house|r",
+        l.t and (GREY .. "as of " .. date("%H:%M", l.t) .. "|r") or "" } }
+    if #mine == 0 then
+        rows[#rows + 1] = note(l.t and "   Nothing listed." or "   Not read yet: open the auction house.")
+        return
+    end
+    for _, r in ipairs(mine) do
+        local gross = r.qty * r.each
+        local net = math.floor(gross * (1 - ns.Cut()) + 0.5)
+        local avg = Ledger.AvgCost(ns.db.ledger, r.itemID)
+        local cost = avg and math.floor(avg * r.qty + 0.5) or nil
+        local left = ns.Listings.TimeLeft(r)
+        local status
+        if r.sold then
+            status = GOLD .. "sold|r, money in " .. duration(left)
+        else
+            local under, lowest = ns.Listings.Undercut(r), ns.Listings.Lowest(r)
+            if under then
+                status = RED .. "undercut by " .. ns.Money(under) .. "|r"
+            elseif lowest == false then
+                status = GREEN .. "only yours|r, " .. duration(left) .. " left"
+            elseif lowest then
+                status = GREEN .. "lowest|r, " .. duration(left) .. " left"
+            else
+                status = "listed, " .. duration(left) .. " left"
+            end
+        end
+        rows[#rows + 1] = {
+            itemID = r.itemID, link = r.link,
+            cells = { r.qty .. "x " .. ((r.link and r.link:match("%[(.-)%]")) or ns.MaterialName(r.itemID)), status,
+                ns.Money(r.each), ns.Money(gross), ns.Money(net), cost and ns.Money(cost) or (GREY .. "not known|r"),
+                cost and signed(net - cost) or "" },
+        }
+    end
+end
+
+--- Sales: your auctions first (listed, and sold with the money on its way), then the sales
+--- already paid, newest first. Profit = what you get after the cut - what those materials cost you.
 function Window.SaleRows()
     local rows = {}
+    listingRows(rows)
+    rows[#rows + 1] = { cells = { " " } }
+    rows[#rows + 1] = { cells = { GOLD .. "Paid|r" } }
     local sales = ns.db.ledger.sales
     for i = #sales, 1, -1 do
         local s = sales[i]
@@ -86,11 +146,13 @@ function Window.SaleRows()
         end
         rows[#rows + 1] = {
             itemID = s.id,
-            cells = { s.count .. "x " .. ns.MaterialName(s.id), when(s.t), ns.Money(s.gross), ns.Money(s.cut), ns.Money(s.net),
-                cost, profit },
+            cells = { s.count .. "x " .. ns.MaterialName(s.id), when(s.t), ns.Money(math.floor(s.gross / s.count + 0.5)),
+                ns.Money(s.gross), ns.Money(s.net), cost, profit },
         }
     end
-    if #rows == 0 then rows[1] = note("No sales yet. Sales are recorded when you take the \"Auction successful\" mail.") end
+    if #sales == 0 then
+        rows[#rows + 1] = note("   No sales paid yet. A sale is recorded when you take the \"Auction successful\" mail.")
+    end
     return rows
 end
 
@@ -116,9 +178,10 @@ function Window.OddsRows()
     local by = Ledger.Report(ns.db.ledger)
     local s = ns.db.settings
     local opts = { salvager = ns.SalvagerForBuy(), salvagerChance = s.salvagerChance, cut = s.cut }
+    local showQuality, showType = oddsFilter()
     for _, q in ipairs({ { 2, Data.GREEN }, { 3, Data.BLUE }, { 4, Data.PURPLE } }) do
         for _, c in ipairs({ { Data.CLASS_ARMOR, "a", " armor" }, { Data.CLASS_WEAPON, "w", " weapons" } }) do
-            for _, band in ipairs(q[2]) do
+            for _, band in ipairs((showQuality[q[1]] and showType[c[2]]) and q[2] or {}) do
                 local quality, classID, up = q[1], c[1], band.up
                 local outcomes = Model.Outcomes(quality, classID, up)
                 local mine = by[string.format("%d:%s:%d", quality, c[2], up)]
@@ -156,6 +219,7 @@ function Window.OddsRows()
             end
         end
     end
+    if #rows == 0 then rows[1] = note("Nothing selected: pick a quality and a gear type above.") end
     return rows
 end
 
@@ -197,10 +261,29 @@ function Window.Refresh()
     for name, button in pairs(tabs) do
         if name == Window.view then button:LockHighlight() else button:UnlockHighlight() end
     end
+    -- The two filters belong to the Odds view.
+    local odds = Window.view == "odds"
+    qualityFilter:SetShown(odds)
+    typeFilter:SetShown(odds)
+    if odds then
+        qualityFilter:Update()
+        typeFilter:Update()
+    end
+    -- The two listing buttons belong to the Sales view.
+    local sales = Window.view == "sales"
+    checkButton:SetShown(sales)
+    cancelButton:SetShown(sales)
+    if sales then
+        local c, n = ns.Listings.checking, ns.Listings.CountUndercut()
+        checkButton:SetText(c and string.format("Checking %d/%d", c.done, c.total) or "Check undercuts")
+        checkButton:SetEnabled(ns.Queue.open and not c)
+        cancelButton:SetText(ns.Listings.Cancelling() and "Cancelling..." or string.format("Cancel undercut (%d)", n))
+        cancelButton:SetEnabled(ns.Queue.open and n > 0 and not ns.Listings.Cancelling())
+    end
 end
 
 local function build()
-    f = W.Window("SalvagerLedgerFrame", "Salvager ledger", "ledger", 780, 480, 700, 260)
+    f = W.Window("SalvagerLedgerFrame", "Salvager ledger", "ledger", 820, 480, 780, 260)
     summary = {}
     for i = 1, 2 do
         local l = W.Label(f, "", "GameFontHighlightSmall")
@@ -224,7 +307,8 @@ local function build()
     end
     W.Tooltip(tabs.purchases, "Purchases", "Every item you bought, newest first. Under each one: what it was disenchanted "
         .. "into, the part of its price given to each material, and what each was worth then.")
-    W.Tooltip(tabs.sales, "Sales", "Every material sale. Profit = what you got after the cut, minus what those materials cost you.")
+    W.Tooltip(tabs.sales, "Sales", "Your auctions: what is listed, and what is sold with its money on the way. Below "
+        .. "them, every sale already paid. Profit = what you get after the cut, minus what those materials cost you.")
     W.Tooltip(tabs.odds, "Odds", "Every item level band of every quality and gear type. Table = how often each material "
         .. "comes and how many (the table the addon uses). Yours = what your own disenchants gave. Value now = what "
         .. "one disenchant is worth on average at today's prices, after the cut.")
@@ -232,6 +316,30 @@ local function build()
         "Removes the list of purchases, disenchants and sales, and with them the Odds. Your material stock and its "
         .. "costs stay, and so do purchases you have not disenchanted yet. It asks first.")
     clear:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -68)
+    cancelButton = W.Button(f, "Cancel undercut (0)", 150, function() ns.Listings.CancelNext() end,
+        "Cancels one undercut listing per click (the game wants a click for each). The materials come back by mail, "
+        .. "and the auction house keeps its deposit. Needs the auction house open, and a check first.")
+    cancelButton:SetPoint("RIGHT", clear, "LEFT", -6, 0)
+    checkButton = W.Button(f, "Check undercuts", 130, function() ns.Listings.Check() end,
+        "Searches each material you have listed and compares your price with the lowest listing that is not yours. "
+        .. "About one second per material. Needs the auction house open.")
+    checkButton:SetPoint("RIGHT", cancelButton, "LEFT", -6, 0)
+    typeFilter = W.CheckDropdown(f, 150, { { "a", "Armor" }, { "w", "Weapons" } },
+        function(k) return select(2, oddsFilter())[k] end,
+        function(k, on)
+            select(2, oddsFilter())[k] = on
+            list.offset = 0
+            Window.Refresh()
+        end, "Which gear types the Odds view lists.", "Gear type")
+    typeFilter:SetPoint("RIGHT", clear, "LEFT", -6, 0)
+    qualityFilter = W.CheckDropdown(f, 170, {
+        { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" }, { 4, "|cffa335eeEpic|r" },
+    }, function(q) return (oddsFilter())[q] end, function(q, on)
+        (oddsFilter())[q] = on
+        list.offset = 0
+        Window.Refresh()
+    end, "Which qualities the Odds view lists.", "Quality")
+    qualityFilter:SetPoint("RIGHT", typeFilter, "LEFT", -6, 0)
     list = W.List(f, { rowHeight = 22 })
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98)
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
@@ -275,6 +383,7 @@ function Window.Restore()
     f:Show()
 end
 
-for _, e in ipairs({ "SALVAGER_LEDGER", "SALVAGER_PRICES_DONE", "SALVAGER_SETTINGS" }) do
+for _, e in ipairs({ "SALVAGER_LEDGER", "SALVAGER_PRICES_DONE", "SALVAGER_SETTINGS", "SALVAGER_LISTINGS",
+    "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED" }) do
     ns.On(e, function() Window.Refresh() end)
 end

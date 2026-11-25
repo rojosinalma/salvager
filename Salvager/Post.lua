@@ -84,10 +84,12 @@ function Post.Send(itemID, quantity, unitPrice, duration, confirmed)
     return true
 end
 
-ns.On("AUCTION_HOUSE_AUCTION_CREATED", function()
+ns.On("AUCTION_HOUSE_AUCTION_CREATED", function(auctionID)
     local p = Post.pending
     if not p then return end
     Post.pending = nil
+    if auctionID then ns.Listings.NotePost(auctionID, p.itemID, p.quantity, p.unitPrice) end
+    ns.Listings.Refresh()
     ns.Print("posted %dx %s at %s each", p.quantity, ns.MaterialName(p.itemID), ns.Money(p.unitPrice))
     ns.Log("posted %dx %s at %s each", p.quantity, ns.MaterialName(p.itemID), ns.Money(p.unitPrice))
     ns.Fire("SALVAGER_LEDGER")
