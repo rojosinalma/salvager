@@ -7,7 +7,8 @@ local W = ns.Widgets
 local LogPanel = { mode = "results", offset = 0 }
 ns.LogPanel = LogPanel
 
-local ROWS, ROW_H = 30, 15
+local MAX_ROWS, ROW_H = 80, 15
+local ROWS = 30           -- lines that fit now (set from the panel height)
 local WIDTH = 560
 
 local p, lines, modeButtons, countText = nil, {}, {}, nil
@@ -60,11 +61,14 @@ end
 
 function LogPanel.Refresh()
     if not p or not p:IsShown() then return end
+    local h = LogPanel.area and LogPanel.area:GetHeight() or 0
+    ROWS = math.max(1, math.min(MAX_ROWS, math.floor(h / ROW_H)))
     local data = LogPanel.mode == "results" and resultLines() or activityLines()
     LogPanel.offset = math.max(0, math.min(LogPanel.offset, #data - ROWS))
-    for i = 1, ROWS do
-        local text = data[i + LogPanel.offset]
+    for i = 1, MAX_ROWS do
+        local text = i <= ROWS and data[i + LogPanel.offset] or nil
         lines[i]:SetText(text or "")
+        lines[i]:SetShown(i <= ROWS)
     end
     for mode, b in pairs(modeButtons) do
         if mode == LogPanel.mode then b:LockHighlight() else b:UnlockHighlight() end
@@ -77,8 +81,10 @@ end
 local function build()
     local main = ns.UI.Frame()
     p = CreateFrame("Frame", "SalvagerLogFrame", main, "BasicFrameTemplateWithInset")
-    p:SetSize(WIDTH, main:GetHeight())
+    -- Same height as the main window, always: pinned to its top and bottom right corners.
+    p:SetWidth(WIDTH)
     p:SetPoint("TOPLEFT", main, "TOPRIGHT", -2, 0)
+    p:SetPoint("BOTTOMLEFT", main, "BOTTOMRIGHT", -2, 0)
     local title = p.TitleText
     if type(title) ~= "table" then
         title = p:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -101,13 +107,14 @@ local function build()
 
     local area = CreateFrame("Frame", nil, p)
     area:SetPoint("TOPLEFT", p, "TOPLEFT", 14, -60)
-    area:SetSize(WIDTH - 28, ROWS * ROW_H)
+    area:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -14, 28)
+    LogPanel.area = area
     area:EnableMouseWheel(true)
     area:SetScript("OnMouseWheel", function(_, delta)
         LogPanel.offset = math.max(0, LogPanel.offset - delta * 5)
         LogPanel.Refresh()
     end)
-    for i = 1, ROWS do
+    for i = 1, MAX_ROWS do
         local fs = area:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         fs:SetPoint("TOPLEFT", area, "TOPLEFT", 0, -(i - 1) * ROW_H)
         fs:SetWidth(WIDTH - 28)
@@ -119,6 +126,7 @@ local function build()
     countText = p:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     countText:SetPoint("BOTTOMLEFT", p, "BOTTOMLEFT", 14, 10)
     p:SetScript("OnShow", function() LogPanel.Refresh() end)
+    p:SetScript("OnSizeChanged", function() LogPanel.Refresh() end)
     p:Hide()
 end
 
