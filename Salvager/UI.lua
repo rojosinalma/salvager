@@ -7,8 +7,8 @@ local UI = { view = "deals", offset = 0, expanded = {} }
 ns.UI = UI
 
 local MAX_ROWS, ROW_H = 40, 24
-local WIDTH, HEIGHT = 720, 560
-local MIN_W, MIN_H = 680, 380
+local WIDTH, HEIGHT = 800, 560
+local MIN_W, MIN_H = 800, 380
 local ROWS = 15          -- rows that fit now (set from the list height)
 local QUALITY_COLOR = { [2] = "|cff1eff00", [3] = "|cff0070dd", [4] = "|cffa335ee" }
 local CLASS_NAME = { [2] = "Weapon", [4] = "Armor" }

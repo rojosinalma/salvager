@@ -149,17 +149,25 @@ end
 function Widgets.CheckDropdown(parent, width, options, get, set, tooltip)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetSize(width, 22)
-    local list = CreateFrame("Frame", nil, b)
+    local list = CreateFrame("Frame", nil, b, BackdropTemplateMixin and "BackdropTemplate" or nil)
     list:SetFrameStrata("DIALOG")
     list:SetPoint("TOPLEFT", b, "BOTTOMLEFT", 0, -2)
-    list:SetSize(width, #options * 22 + 8)
-    local bg = list:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetColorTexture(0.05, 0.05, 0.08, 0.95)
-    local edge = list:CreateTexture(nil, "BORDER")
-    edge:SetPoint("TOPLEFT", -1, 1)
-    edge:SetPoint("BOTTOMRIGHT", 1, -1)
-    edge:SetColorTexture(0.4, 0.35, 0.55, 1)
+    list:SetSize(width, #options * 22 + 12)
+    if list.SetBackdrop then
+        -- The game's tooltip look: near-black fill, grey border.
+        list:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 16, edgeSize = 16,
+            insets = { left = 4, right = 4, top = 4, bottom = 4 },
+        })
+        list:SetBackdropColor(0, 0, 0, 0.92)
+        list:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+    else
+        local bg = list:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(0, 0, 0, 0.92)
+    end
     list:EnableMouse(true)
     list:Hide()
     local checks = {}
@@ -177,7 +185,7 @@ function Widgets.CheckDropdown(parent, width, options, get, set, tooltip)
             set(o[1], on)
             b:Update()
         end)
-        c:SetPoint("TOPLEFT", list, "TOPLEFT", 6, -4 - (i - 1) * 22)
+        c:SetPoint("TOPLEFT", list, "TOPLEFT", 8, -6 - (i - 1) * 22)
         checks[i] = c
     end
     b:SetScript("OnClick", function() list:SetShown(not list:IsShown()) end)
