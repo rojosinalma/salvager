@@ -416,21 +416,12 @@ local function build()
         .. "your sales and their profit.")
     ledger:SetPoint("RIGHT", log, "LEFT", -6, 0)
 
-    -- Row 2: scans.
-    local scanMats = W.Button(f, "Scan materials", 115, function() ns.Prices.Scan() end,
-        "Searches each disenchanting material once (about 20 seconds) and stores its price.")
-    scanMats:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -58)
-    local scanGear = W.Button(f, "Scan gear", 90, function() ns.Scanner.Scan() end,
-        "Lists the gear on the auction house and checks each item that is below its buy limit.")
-    scanGear:SetPoint("LEFT", scanMats, "RIGHT", 6, 0)
-    local scanBoth = W.Button(f, "Scan both", 90, function() ns.ScanBoth() end,
-        "Scans the material prices first, then the gear.")
-    scanBoth:SetPoint("LEFT", scanGear, "RIGHT", 6, 0)
+    -- Row 2: Play and Stop first, then what is happening; the one-off scans on the right.
     playButton = W.IconButton(f, 24, function()
         local s = ns.Scanner
         if s.auto and not s.paused then s.Pause() else s.Play() end
     end)
-    playButton:SetPoint("LEFT", scanBoth, "RIGHT", 12, 0)
+    playButton:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -57)
     playButton:SetScript("OnEnter", function(self)
         local s = ns.Scanner
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -455,10 +446,20 @@ local function build()
     W.Tooltip(stopButton, "Stop", "Ends auto scanning and drops the scan that is running. Deals found so far stay in the list.")
     spinner = W.Spinner(f, 22)
     spinner:SetPoint("LEFT", stopButton, "RIGHT", 12, 0)
+    local scanBoth = W.Button(f, "Scan both", 90, function() ns.ScanBoth() end,
+        "Once: scans the material prices first, then the gear.")
+    scanBoth:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -58)
+    local scanGear = W.Button(f, "Scan gear", 90, function() ns.Scanner.Scan() end,
+        "Once: lists the gear on the auction house and checks each item that is below its buy limit.")
+    scanGear:SetPoint("RIGHT", scanBoth, "LEFT", -6, 0)
+    local scanMats = W.Button(f, "Scan materials", 115, function() ns.Prices.Scan() end,
+        "Once: searches each disenchanting material (about 20 seconds) and stores its price.")
+    scanMats:SetPoint("RIGHT", scanGear, "LEFT", -6, 0)
     status = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     status:SetPoint("LEFT", spinner, "RIGHT", 6, 0)
-    status:SetPoint("RIGHT", f, "RIGHT", -14, 0)
+    status:SetPoint("RIGHT", scanMats, "LEFT", -10, 0)
     status:SetJustifyH("LEFT")
+    status:SetWordWrap(false)
 
     -- Row 3: minimum profit and gear type.
     local mpLabel = W.Label(f, "Min profit")
