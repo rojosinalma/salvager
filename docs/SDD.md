@@ -93,6 +93,11 @@ flipping is out of scope for now.
     While a purchase is on its way, or Buy was clicked in the last second, the search queue waits and a
     reported drop is not answered with a resend: the dropped request may be the purchase.
 27. **The Post window** is a window of its own (`Widgets.Window`, fixed size), not pinned to the main window.
+28. **Value is an average; Lose % is the chance for one item.** Deals show `Model.LossChance`: the chance that
+    one disenchant is worth less than the price (quantities equally likely, Salvager bonus included when on, a
+    material without a price worth nothing). Example measured 2026-11-25: Azure Silk Hood at 11s 46c, value
+    12s 57c, lose chance 75% (every dust result loses). The Ledger's Odds view lists every band of every
+    quality and gear type with the table, today's value and the player's own results where there are any.
 15. **UI redraws** from events are limited to four per second; the log panel is not rebuilt during a scan.
 
 ## Data

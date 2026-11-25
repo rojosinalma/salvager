@@ -18,8 +18,9 @@ local VIEWS = {
     deals = {
         icon = true,
         indent = 46,
-        header = { "Item", "Type", "iLvl", "Buyout", "Value", "Profit" },
-        cols = { { 205, "LEFT" }, { 50, "CENTER" }, { 34, "CENTER" }, { 88, "RIGHT" }, { 88, "RIGHT" }, { 88, "RIGHT" } },
+        header = { "Item", "Type", "iLvl", "Buyout", "Value", "Profit", "Lose %" },
+        cols = { { 205, "LEFT" }, { 46, "CENTER" }, { 34, "CENTER" }, { 80, "RIGHT" }, { 80, "RIGHT" }, { 80, "RIGHT" },
+            { 54, "CENTER" } },
     },
     materials = {
         icon = true,
@@ -47,9 +48,17 @@ local function dealName(d)
     return (d.link and d.link:match("%[(.-)%]")) or (ns.GetItemInfo(d.itemID)) or ("item " .. d.itemID)
 end
 
+--- The chance that one disenchant of this deal is worth less than its price: green, yellow or red.
+local function loseText(lose)
+    if not lose then return "-" end
+    local pct = math.floor(lose * 100 + 0.5)
+    local color = pct >= 60 and "|cffff4040" or pct >= 30 and "|cffffd100" or "|cff40ff40"
+    return color .. pct .. "%|r"
+end
+
 local function dealCells(d, label)
     return { label, CLASS_NAME[d.classID or ns.ClassOf(d.itemID)] or "", tostring(d.ilvl or ""), ns.Money(d.buyout),
-        ns.Money(d.value), "|cff40ff40" .. ns.Money(d.profit) .. "|r" }
+        ns.Money(d.value), "|cff40ff40" .. ns.Money(d.profit) .. "|r", loseText(d.lose) }
 end
 
 --- Deals grouped by item name, best profit first. A group with more than one
@@ -157,6 +166,8 @@ local function footerText()
         else
             text = text .. " No gear scan yet: click Scan both."
         end
+        text = text .. " Value = the average over many disenchants. Lose % = the chance that one disenchant is worth "
+            .. "less than the price."
         return text
     elseif UI.view == "materials" then
         return ns.Materials.Legend()

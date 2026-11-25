@@ -47,6 +47,9 @@ local function readAuctions(task)
     end
     local n = AH.GetNumItemSearchResults(key) or 0
     local before = #Scanner.deals
+    local outcomes = ns.Model.Outcomes(task.quality, task.classID, task.ilvl)
+    local s = ns.db.settings
+    local odds = { salvager = ns.SalvagerForBuy(), salvagerChance = s.salvagerChance, cut = s.cut }
     for i = 1, n do
         local r = AH.GetItemSearchResultInfo(key, i)
         if r and r.buyoutAmount and r.buyoutAmount > 0 and not r.containsOwnerItem and r.buyoutAmount <= maxBuy then
@@ -54,6 +57,7 @@ local function readAuctions(task)
                 auctionID = r.auctionID, itemKey = key, keyString = task.keyString,
                 link = r.itemLink, itemID = key.itemID, ilvl = task.ilvl, quality = task.quality, classID = task.classID,
                 buyout = r.buyoutAmount, value = task.net, profit = task.net - r.buyoutAmount, task = task,
+                lose = outcomes and ns.Model.LossChance(outcomes, ns.PriceOf, odds, r.buyoutAmount) or nil,
             }
         end
     end

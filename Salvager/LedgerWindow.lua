@@ -18,8 +18,8 @@ local COLUMNS = {
         { "Got", 96, "RIGHT" }, { "Result", 84, "RIGHT" } },
     sales = { { "Material", 190 }, { "Sold", 82 }, { "Price", 84, "RIGHT" }, { "Cut", 70, "RIGHT" },
         { "You got", 84, "RIGHT" }, { "Cost", 96, "RIGHT" }, { "Profit", 84, "RIGHT" } },
-    odds = { { "Band / material", 230 }, { "Count", 50, "CENTER" }, { "Planned", 84, "RIGHT" }, { "Got", 84, "RIGHT" },
-        { "Table", 56, "CENTER" }, { "Yours", 56, "CENTER" }, { "Each", 50, "CENTER" } },
+    odds = { { "Band / material", 230 }, { "Count", 50, "CENTER" }, { "Table", 84, "CENTER" }, { "Yours", 90, "CENTER" },
+        { "Value now", 96, "RIGHT" }, { "Your average", 90, "RIGHT" } },
 }
 
 local f, list, summary, tabs = nil, nil, nil, {}
@@ -104,45 +104,58 @@ local function bandRange(quality, up)
     return lo .. (up >= 999 and "+" or ("-" .. up))
 end
 
---- Odds: per band, what your disenchants gave against the table.
+--- "75% · 1-2": how often a material comes and how many.
+local function oddsText(chance, min, max)
+    return string.format("%d%% · %s", math.floor(chance * 100 + 0.5), min == max and tostring(min) or (min .. "-" .. max))
+end
+
+--- Odds: every item level band of every quality and gear type, with the table the addon uses
+--- and, where you have disenchanted, what you got.
 function Window.OddsRows()
     local rows = {}
     local by = Ledger.Report(ns.db.ledger)
-    local keys = {}
-    for k in pairs(by) do keys[#keys + 1] = k end
-    table.sort(keys, function(a, b)
-        local qa, ca, ba = a:match("(%d+):(%a):(%d+)")
-        local qb, cb, bb = b:match("(%d+):(%a):(%d+)")
-        if qa ~= qb then return qa < qb end
-        if ca ~= cb then return ca < cb end
-        return tonumber(ba) < tonumber(bb)
-    end)
-    for _, k in ipairs(keys) do
-        local b = by[k]
-        local q, c, up = k:match("(%d+):(%a):(%d+)")
-        q, up = tonumber(q), tonumber(up)
-        local classID = c == "w" and Data.CLASS_WEAPON or Data.CLASS_ARMOR
-        rows[#rows + 1] = {
-            cells = { GOLD .. (QUALITY_NAME[q] or "?") .. (c == "w" and " weapons, " or " armor, ") .. "item level "
-                .. bandRange(q, up) .. "|r", tostring(b.n), ns.Money(b.planned / b.n), ns.Money(b.value / b.n), "", "", "" },
-        }
-        local expected = {}
-        local outcomes = Model.Outcomes(q, classID, math.min(up, 70))
-        if outcomes then for _, r in ipairs(outcomes.results) do expected[r.id] = r end end
-        local mats = {}
-        for id, m in pairs(b.mats) do mats[#mats + 1] = { id = id, hits = m.hits, qty = m.qty } end
-        table.sort(mats, function(x, y) return x.hits > y.hits end)
-        for _, m in ipairs(mats) do
-            local e = expected[m.id]
-            rows[#rows + 1] = {
-                itemID = m.id, indent = INDENT,
-                cells = { ns.MaterialName(m.id), tostring(m.hits), "", "",
-                    e and (math.floor(e.chance * 100 + 0.5) .. "%") or (RED .. "none|r"),
-                    math.floor(m.hits / b.n * 100 + 0.5) .. "%", string.format("%.2f", m.qty / m.hits) },
-            }
+    local s = ns.db.settings
+    local opts = { salvager = ns.SalvagerForBuy(), salvagerChance = s.salvagerChance, cut = s.cut }
+    for _, q in ipairs({ { 2, Data.GREEN }, { 3, Data.BLUE }, { 4, Data.PURPLE } }) do
+        for _, c in ipairs({ { Data.CLASS_ARMOR, "a", " armor" }, { Data.CLASS_WEAPON, "w", " weapons" } }) do
+            for _, band in ipairs(q[2]) do
+                local quality, classID, up = q[1], c[1], band.up
+                local outcomes = Model.Outcomes(quality, classID, up)
+                local mine = by[string.format("%d:%s:%d", quality, c[2], up)]
+                local n = mine and mine.n or 0
+                local v = Model.Value(outcomes, ns.PriceOf, opts)
+                rows[#rows + 1] = {
+                    cells = { GOLD .. QUALITY_NAME[quality] .. c[3] .. ", item level " .. bandRange(quality, up) .. "|r",
+                        n > 0 and tostring(n) or (GREY .. "0|r"), "", "",
+                        ns.Money(v.net) .. (#v.missing > 0 and (GREY .. "?|r") or ""),
+                        n > 0 and ns.Money(mine.value / n) or (GREY .. "-|r") },
+                }
+                local inTable = {}
+                for _, r in ipairs(outcomes.results) do
+                    inTable[r.id] = true
+                    local m = mine and mine.mats[r.id]
+                    local price = ns.PriceOf(r.id)
+                    rows[#rows + 1] = {
+                        itemID = r.id, indent = INDENT,
+                        cells = { ns.MaterialName(r.id), m and tostring(m.hits) or (GREY .. "0|r"), oddsText(r.chance, r.min, r.max),
+                            n > 0 and string.format("%d%%%s", math.floor((m and m.hits or 0) / n * 100 + 0.5),
+                                m and string.format(" · %.2f", m.qty / m.hits) or "") or (GREY .. "-|r"),
+                            price and (ns.Money(price) .. " each") or (GREY .. "no price|r"), "" },
+                    }
+                end
+                -- What came that the table does not have for this band.
+                for id, m in pairs(mine and mine.mats or {}) do
+                    if not inTable[id] then
+                        rows[#rows + 1] = {
+                            itemID = id, indent = INDENT,
+                            cells = { ns.MaterialName(id), tostring(m.hits), RED .. "not in the table|r",
+                                string.format("%d%% · %.2f", math.floor(m.hits / n * 100 + 0.5), m.qty / m.hits), "", "" },
+                        }
+                    end
+                end
+            end
         end
     end
-    if #rows == 0 then rows[1] = note("No disenchants yet.") end
     return rows
 end
 
@@ -212,7 +225,9 @@ local function build()
     W.Tooltip(tabs.purchases, "Purchases", "Every item you bought, newest first. Under each one: what it was disenchanted "
         .. "into, the part of its price given to each material, and what each was worth then.")
     W.Tooltip(tabs.sales, "Sales", "Every material sale. Profit = what you got after the cut, minus what those materials cost you.")
-    W.Tooltip(tabs.odds, "Odds", "For each item level band: how often each material came, against the table the addon uses.")
+    W.Tooltip(tabs.odds, "Odds", "Every item level band of every quality and gear type. Table = how often each material "
+        .. "comes and how many (the table the addon uses). Yours = what your own disenchants gave. Value now = what "
+        .. "one disenchant is worth on average at today's prices, after the cut.")
     local clear = W.Button(f, "Clear history", 110, function() StaticPopup_Show("SALVAGER_CLEAR_LEDGER") end,
         "Removes the list of purchases, disenchants and sales, and with them the Odds. Your material stock and its "
         .. "costs stay, and so do purchases you have not disenchanted yet. It asks first.")

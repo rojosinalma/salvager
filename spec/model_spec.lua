@@ -61,6 +61,19 @@ describe("Model", function()
         assert.is_false(ns.NoDisenchant(6423))
     end)
 
+    it("works out the chance that one disenchant is worth less than the price", function()
+        -- An item level 29 hood at 11s 46c: dust 4s 30c, essence 16s 88c, shard 66s 60c.
+        local p = { [Data.DUST.soul] = 430, [Data.ESS.gastral] = 1688, [Data.SHARD.lglim] = 6660 }
+        local priceOf = function(id) return p[id] end
+        local o = Model.Outcomes(2, Data.CLASS_ARMOR, 29)
+        assert.is_true(math.abs(Model.LossChance(o, priceOf, {}, 1146) - 0.75) < 1e-9)   -- every dust result loses
+        assert.is_true(math.abs(Model.LossChance(o, priceOf, {}, 500) - 0.375) < 1e-9)   -- only a single dust loses
+        assert.are.equal(0, Model.LossChance(o, priceOf, {}, 100))
+        -- With the Salvager, one dust becomes two half of the time.
+        local with = Model.LossChance(o, priceOf, { salvager = true, salvagerChance = 0.5 }, 500)
+        assert.is_true(math.abs(with - 0.1875) < 1e-9)
+    end)
+
     it("refuses non-gear and common items", function()
         assert.is_nil(Model.Outcomes(2, 15, 30))
         assert.is_nil(Model.Outcomes(1, Data.CLASS_ARMOR, 30))

@@ -85,6 +85,26 @@ function Model.Value(outcomes, priceOf, opts)
     return { gross = gross, net = math.floor(gross * (1 - cut) + 0.5), missing = missing, parts = parts }
 end
 
+--- The chance that one disenchant is worth less than `paid`, after the cut.
+--- Each result's quantities are equally likely; with the Salvager, dust and essence get one more
+--- with the given chance. A material with no price counts as worth nothing.
+--- @return number  0 to 1
+function Model.LossChance(outcomes, priceOf, opts, paid)
+    opts = opts or {}
+    local keep = 1 - (opts.cut or Model.DEFAULT_CUT)
+    local lose = 0
+    for _, r in ipairs(outcomes.results) do
+        local price = priceOf(r.id) or 0
+        local each = r.chance / (r.max - r.min + 1)
+        local bonus = (opts.salvager and r.bonus) and (opts.salvagerChance or 0.5) or 0
+        for qty = r.min, r.max do
+            if qty * price * keep < paid then lose = lose + each * (1 - bonus) end
+            if bonus > 0 and (qty + 1) * price * keep < paid then lose = lose + each * bonus end
+        end
+    end
+    return lose
+end
+
 --- Value of materials actually received, after the cut.
 --- @param got table  { [itemID] = quantity }
 function Model.ValueOf(got, priceOf, cut)

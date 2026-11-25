@@ -62,6 +62,8 @@ describe("Salvager in a simulated client", function()
         assert.are.equal("idle", ns.Scanner.state)
         assert.are.equal(1, #ns.Scanner.deals)
         local deal = ns.Scanner.deals[1]
+        assert.is_number(deal.lose)
+        assert.is_true(deal.lose >= 0 and deal.lose <= 1)
         assert.are.equal(77, deal.auctionID)
         assert.is_true(deal.profit > 0)
         ns.UI.view = "deals"
@@ -127,7 +129,17 @@ describe("Salvager in a simulated client", function()
         assert.are.equal(1, #sales)
         assert.is_truthy(sales[1].cells[1]:find("2x Soul Dust", 1, true))
         local odds = ns.LedgerWindow.OddsRows()
-        assert.are.equal(2, #odds)
+        -- Every band of every quality and type is there, with or without data: 24 bands twice,
+        -- and at least two rows each.
+        assert.is_true(#odds > 2 * 24 * 2)
+        local band, dust
+        for i, r in ipairs(odds) do
+            if r.cells[1]:find("Green armor, item level 26-30", 1, true) then band, dust = r, odds[i + 1] end
+        end
+        assert.are.equal("1", band.cells[2])                       -- the one disenchant
+        assert.are.equal(11083, dust.itemID)
+        assert.is_truthy(dust.cells[3]:find("75%", 1, true))       -- the table
+        assert.is_truthy(dust.cells[4]:find("100%", 1, true))      -- yours
         local a, b = ns.LedgerWindow.Summary()
         assert.is_truthy(a:find("Bought", 1, true))
         assert.is_truthy(b:find("Sold", 1, true))
