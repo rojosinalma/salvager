@@ -223,8 +223,26 @@ local function advance()
     if AH.HasFullBrowseResults() then return finishPass() end
     if pass.pages >= MAX_PAGES then return finishPass("page limit reached") end
     AH.RequestMoreBrowseResults()
+    scan.askedAt = GetTime()
     ns.Fire("SALVAGER_SCAN")
 end
+
+-- The auction house threw a request away just after we asked for a page: ask again at once.
+ns.On("AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED", function()
+    if not scan or Scanner.state ~= "browsing" or Scanner.paused or not scan.pass then return end
+    local pass = scan.pass
+    if not scan.askedAt or GetTime() - scan.askedAt > 2 or (pass.resends or 0) >= 3 then return end
+    pass.resends = (pass.resends or 0) + 1
+    ns.Log("browse %s: the auction house dropped the request for page %d (busy with another request), asking again",
+        pass.name, pass.pages + 1)
+    C_Timer.After(0.8, function()
+        if scan and scan.pass == pass and Scanner.state == "browsing" and not Scanner.paused then
+            lastBrowseAt = GetTime()
+            scan.askedAt = GetTime()
+            AH.RequestMoreBrowseResults()
+        end
+    end)
+end)
 
 -- A browse page that never comes: move on with the pages that did.
 local function watchBrowse(seq)

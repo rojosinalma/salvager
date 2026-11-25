@@ -1,4 +1,8 @@
--- Salvager: options panel in the game's AddOns settings (Esc > Options > AddOns > Salvager).
+-- Salvager: the options. The same controls are shown in two places:
+--   a window of its own (the Options button, the minimap button's right-click, /salv config), which
+--   opens without closing anything; and
+--   the game's AddOns settings (Esc > Options > AddOns > Salvager). The game closes other windows
+--   when its settings open, so the addon's own buttons do not go there.
 local _, ns = ...
 
 local W = ns.Widgets
@@ -6,7 +10,8 @@ local W = ns.Widgets
 local Options = {}
 ns.Options = Options
 
-local panel, category, controls = nil, nil, {}
+local gamePanel, ownWindow, category
+local controls   -- the controls of the panel being filled (see populate)
 
 local function changed(what, value)
     ns.Log("option %s = %s", what, tostring(value))
@@ -29,11 +34,12 @@ local function numberBox(parent, label, width, get, set, help)
     return l, e
 end
 
-local function build()
+--- Fills `panel` with the option controls. `standalone` = the addon's own window (it has a title bar).
+local function populate(panel, standalone)
     local s = ns.db.settings
-    panel = CreateFrame("Frame", "SalvagerOptionsPanel")
-    panel.name = "Salvager"
-    local y = -16
+    controls = {}
+    panel.controls = controls
+    local y = standalone and -32 or -16
     local function at(region, x, gap)
         y = y - (gap or 0)
         region:SetPoint("TOPLEFT", panel, "TOPLEFT", x or 16, y)
@@ -44,8 +50,10 @@ local function build()
         at(h, 16, 10)
     end
 
-    local title = W.Label(panel, "Salvager", "GameFontNormalLarge")
-    at(title)
+    if not standalone then
+        local title = W.Label(panel, "Salvager", "GameFontNormalLarge")
+        at(title)
+    end
     local sub = W.Label(panel, "Disenchant trading: what gear to buy, and what your materials cost you.",
         "GameFontHighlightSmall")
     at(sub, 16, -8)
@@ -133,35 +141,46 @@ local function build()
     at(mini, 20)
     controls[#controls + 1] = { refresh = function() autoOpen:SetChecked(s.autoOpen) mini:SetChecked(not s.minimap.hide) end }
 
-    local open = W.Button(panel, "Open Salvager", 120, function() ns.UI.Show() end)
-    at(open, 24, 8)
+    if not standalone then
+        local open = W.Button(panel, "Open Salvager", 120, function() ns.UI.Show() end)
+        at(open, 24, 8)
+    end
 
     local version = W.Label(panel, "Version " .. ns.VERSION, "GameFontDisableSmall")
     version:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 16, 16)
-
+    panel.contentHeight = -y
     panel:SetScript("OnShow", function() Options.Refresh() end)
+end
 
-    if Settings and Settings.RegisterCanvasLayoutCategory then
-        category = Settings.RegisterCanvasLayoutCategory(panel, "Salvager")
-        Settings.RegisterAddOnCategory(category)
-    elseif InterfaceOptions_AddCategory then
-        InterfaceOptions_AddCategory(panel)
-    end
+local function refresh(panel)
+    if not panel or not panel:IsShown() then return end
+    for _, c in ipairs(panel.controls) do if c.refresh then c.refresh() end end
 end
 
 function Options.Refresh()
-    if not panel then return end
-    for _, c in ipairs(controls) do if c.refresh then c.refresh() end end
+    refresh(gamePanel)
+    refresh(ownWindow)
 end
 
+--- Opens the addon's own options window. Nothing else closes.
 function Options.Open()
-    if not panel then return end
-    if Settings and Settings.OpenToCategory and category then
-        Settings.OpenToCategory(category:GetID())
-    elseif InterfaceOptionsFrame_OpenToCategory then
-        InterfaceOptionsFrame_OpenToCategory(panel)
+    if not ownWindow then
+        ownWindow = W.Window("SalvagerOptionsFrame", "Salvager options", "options", 560, 590, 560, 590, true)
+        populate(ownWindow, true)
     end
+    ownWindow:SetShown(not ownWindow:IsShown())
+    if ownWindow:IsShown() and ownWindow.Raise then ownWindow:Raise() end
 end
 
-ns.On("SALVAGER_READY", function() build() end)
-ns.On("SALVAGER_SETTINGS", function() if panel and panel:IsShown() then Options.Refresh() end end)
+ns.On("SALVAGER_READY", function()
+    gamePanel = CreateFrame("Frame", "SalvagerOptionsPanel")
+    gamePanel.name = "Salvager"
+    populate(gamePanel, false)
+    if Settings and Settings.RegisterCanvasLayoutCategory then
+        category = Settings.RegisterCanvasLayoutCategory(gamePanel, "Salvager")
+        Settings.RegisterAddOnCategory(category)
+    elseif InterfaceOptions_AddCategory then
+        InterfaceOptions_AddCategory(gamePanel)
+    end
+end)
+ns.On("SALVAGER_SETTINGS", function() Options.Refresh() end)

@@ -105,7 +105,7 @@ local function finish(ok)
     if not task then return end
     if not ok then
         ns.Log("search: no answer for %s after %.1fs%s", describe(task), GetTime() - task.sentAt,
-            (task.tries or 0) < 1 and ", trying again" or ", skipped")
+            (task.tries or 0) < 1 and ", trying again" or ", skipped (another addon may be using the auction house)")
         if (task.tries or 0) < 1 then
             task.tries = (task.tries or 0) + 1
             table.insert(Queue.items, task)
@@ -160,6 +160,23 @@ end)
 ns.On("ITEM_SEARCH_RESULTS_UPDATED", function(key)
     answered(function(t) return t.itemKey and key and t.itemKey.itemID == key.itemID end)
 end)
+-- The auction house takes one request at a time from all addons together. When two arrive close
+-- to each other it throws one away and says so, without saying which. If one of ours went out a
+-- moment ago, it is sent again as soon as the auction house is ready, instead of waiting 3 s for
+-- an answer that will not come.
+local MAX_RESENDS = 3
+ns.On("AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED", function()
+    local task = Queue.current
+    if not task or GetTime() - task.sentAt > 2 or (task.resends or 0) >= MAX_RESENDS then return end
+    task.resends = (task.resends or 0) + 1
+    Queue.dropped = (Queue.dropped or 0) + 1
+    ns.Log("search: the auction house dropped %s (busy with another request), sending it again (%d of %d)",
+        describe(task), task.resends, MAX_RESENDS)
+    Queue.current = nil
+    table.insert(Queue.items, 1, task)
+end)
+ns.On("AUCTION_HOUSE_THROTTLED_SYSTEM_READY", function() pump() end)
+
 ns.On("AUCTION_HOUSE_SHOW", function()
     Queue.open = true
     ns.Log("auction house opened")

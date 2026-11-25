@@ -8,7 +8,7 @@ files["spec/**"] = {
     read_globals = { "TakeInboxItem", "TakeInboxMoney", "AutoLootMailItem" },
 }
 
-globals = { "SalvagerDB", "SlashCmdList", "SLASH_SALVAGER1", "SLASH_SALVAGER2" }
+globals = { "SalvagerDB", "SlashCmdList", "SLASH_SALVAGER1", "SLASH_SALVAGER2", "StaticPopupDialogs" }
 
 read_globals = {
     "C_AddOns", "C_AuctionHouse", "C_Container", "C_Item", "C_Timer", "C_UnitAuras",
@@ -16,6 +16,6 @@ read_globals = {
     "GetInboxHeaderInfo", "GetInboxInvoiceInfo", "GetInboxItemLink", "GetInboxNumItems", "GetLootSlotInfo", "GetLootSlotLink",
     "GetMoney", "GetNumLootItems", "GetTime", "IsPlayerSpell", "IsShiftKeyDown", "ItemRefTooltip",
     "TooltipDataProcessor", "UIParent", "UISpecialFrames", "ATTACHMENTS_MAX_RECEIVE",
-    "BackdropTemplateMixin", "ItemLocation", "Settings", "InterfaceOptions_AddCategory", "InterfaceOptionsFrame_OpenToCategory", "GetCursorPosition",
+    "BackdropTemplateMixin", "StaticPopup_Show", "ItemLocation", "Settings", "InterfaceOptions_AddCategory", "InterfaceOptionsFrame_OpenToCategory", "GetCursorPosition",
     "date", "hooksecurefunc", "time", "tinsert", "wipe",
 }

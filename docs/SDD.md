@@ -67,6 +67,16 @@ flipping is out of scope for now.
     Known limit: with more than 50 mails, an identical one can slide into view and hide a take.
 20. **Materials pop-out:** the materials list is one row builder (`Materials.Rows`) shown either in the main
     window's tab or in its own window, never both. Closing the window puts it back. Scans are not touched.
+21. **Options open in the addon's own window.** The game's Settings panel closes other windows when it
+    opens (it closed the main window, 2026-11-25), so the Options button, the minimap right-click and
+    `/salv config` open `SalvagerOptionsFrame`. The same controls are also registered under the game's
+    AddOns settings (`populate` fills both).
+22. **Dropped requests:** the auction house takes one request at a time from all addons together and reports
+    a dropped one with `AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED`, without saying whose. A search or page
+    request of ours sent in the last 2 s is sent again at once (at most 3 times); otherwise the 3 s wait and
+    one retry apply.
+23. **Clear history** (Ledger window, with a confirmation) removes disenchants, sales and the purchase record.
+    Stock and its costs stay; purchases not disenchanted yet stay, except items that can never be disenchanted.
 15. **UI redraws** from events are limited to four per second; the log panel is not rebuilt during a scan.
 
 ## Data

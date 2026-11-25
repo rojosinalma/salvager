@@ -266,9 +266,9 @@ function Widgets.ScrollBar(parent, onScroll)
     return bar
 end
 
---- A window of its own: movable, resizable from the bottom right corner, closed with Escape.
+--- A window of its own: movable, resizable from the bottom right corner (unless `fixed`), closed with Escape.
 --- Its place and size are kept in SalvagerDB.windows[key]. f.onResize runs when the size changes.
-function Widgets.Window(globalName, title, key, w, h, minW, minH)
+function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
     local f = CreateFrame("Frame", globalName, UIParent, "BasicFrameTemplateWithInset")
     local saved = ns.db.windows[key] or {}
     ns.db.windows[key] = saved
@@ -304,6 +304,11 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH)
     end
     text:SetText(title)
     tinsert(UISpecialFrames, globalName)
+    if fixed then
+        f:SetSize(w, h)
+        f:Hide()
+        return f
+    end
 
     f:SetResizable(true)
     local maxW, maxH = UIParent:GetWidth(), UIParent:GetHeight()

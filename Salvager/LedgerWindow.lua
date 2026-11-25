@@ -212,12 +212,33 @@ local function build()
         .. "into, the part of its price given to each material, and what each was worth then.")
     W.Tooltip(tabs.sales, "Sales", "Every material sale. Profit = what you got after the cut, minus what those materials cost you.")
     W.Tooltip(tabs.odds, "Odds", "For each item level band: how often each material came, against the table the addon uses.")
+    local clear = W.Button(f, "Clear history", 110, function() StaticPopup_Show("SALVAGER_CLEAR_LEDGER") end,
+        "Removes the list of purchases, disenchants and sales, and with them the Odds. Your material stock and its "
+        .. "costs stay, and so do purchases you have not disenchanted yet. It asks first.")
+    clear:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -68)
     list = W.List(f, { rowHeight = 22 })
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98)
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
     f.onResize = Window.Refresh
     f:SetScript("OnShow", Window.Refresh)
 end
+
+StaticPopupDialogs["SALVAGER_CLEAR_LEDGER"] = {
+    text = "Clear the Salvager ledger history?\n\nThis removes the list of purchases, disenchants and sales, and the Odds "
+        .. "learned from them. Your material stock and its costs stay, and so do purchases you have not disenchanted yet.",
+    button1 = "Clear history",
+    button2 = "Cancel",
+    OnAccept = function()
+        local n = Ledger.ClearHistory(ns.db.ledger, ns.NoDisenchant)
+        ns.Print("ledger history cleared (%d entries)", n)
+        ns.Log("ledger history cleared (%d entries)", n)
+        ns.Fire("SALVAGER_LEDGER")
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
 
 function Window.Toggle()
     if not f then build() end

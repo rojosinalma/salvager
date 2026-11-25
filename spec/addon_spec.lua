@@ -133,6 +133,24 @@ describe("Salvager in a simulated client", function()
         assert.is_truthy(b:find("Sold", 1, true))
     end)
 
+    it("clears the history after a confirmation, and keeps the stock", function()
+        ns.Ledger.AddStock(ns.db.ledger, 11137, 3, 900)
+        ns.Ledger.AddPurchase(ns.db.ledger, 11287, 1, 150, 259, 1)   -- a wand: can never be disenchanted
+        ns.Ledger.AddPurchase(ns.db.ledger, BOOTS, 1, 700, 900, 2)   -- still to disenchant
+        ns.LedgerWindow.Show()
+        local button
+        for _, fr in ipairs(env.frames) do if fr.text == "Clear history" then button = fr end end
+        button:Click()
+        assert.are.equal("SALVAGER_CLEAR_LEDGER", env.popup)
+        assert.is_true(#ns.db.ledger.disenchants > 0)       -- nothing cleared before the answer
+        StaticPopupDialogs.SALVAGER_CLEAR_LEDGER.OnAccept()
+        assert.are.equal(0, #ns.db.ledger.disenchants)
+        assert.are.equal(0, #ns.db.ledger.sales)
+        assert.is_nil(ns.db.ledger.purchases[11287])
+        assert.are.equal(1, #ns.db.ledger.purchases[BOOTS])
+        assert.are.equal(3, ns.db.ledger.stock[11137].qty)
+    end)
+
     it("adds tooltip lines without errors", function()
         local lines = {}
         GameTooltip.AddDoubleLine = function(_, l, r) lines[#lines + 1] = l .. " = " .. tostring(r) end
@@ -185,7 +203,10 @@ describe("Salvager window and options", function()
         assert.is_true(env.settingsRegistered)
         assert.is_table(_G.SalvagerMinimapButton)
         _G.SalvagerMinimapButton:Click("RightButton")
-        assert.is_true(env.settingsOpened)
+        assert.is_true(_G.SalvagerOptionsFrame:IsShown())   -- the addon's own options window
+        assert.is_nil(env.settingsOpened)                   -- not the game's settings: those close other windows
+        assert.is_true(_G.SalvagerFrame:IsShown())
+        ns.Options.Refresh()
         _G.SalvagerOptionsPanel:Show()
         ns.db.settings.minimap.hide = true
         ns.Fire("SALVAGER_SETTINGS")
@@ -391,6 +412,20 @@ describe("Salvager scan safety", function()
         ns.Prices.Scan()
         assert.is_false(ns.Prices.scanning)
         ns.Scanner.state = "idle"
+    end)
+
+    it("sends a search again at once when the auction house drops it", function()
+        ns.Queue.Clear()
+        ns.Queue.Add({ commodity = 11083, onResult = function() end, onFail = function() end })
+        wow.tick(ns, 0.2)
+        local sent = #env.ah.sent
+        assert.are.equal(11083, ns.Queue.current.commodity)
+        wow.fire(ns, "AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED")
+        assert.is_nil(ns.Queue.current)
+        wow.tick(ns, 0.2)                                  -- well before the 3 s wait for an answer
+        assert.are.equal(sent + 1, #env.ah.sent)
+        assert.are.equal(11083, ns.Queue.current.commodity)
+        ns.Queue.Clear()
     end)
 
     it("tries a search once more when it gets no answer", function()

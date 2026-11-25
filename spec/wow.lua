@@ -69,6 +69,8 @@ function M.install()
     _G.GameTooltip = widget("GameTooltip")
     _G.ItemRefTooltip = widget("GameTooltip")
     _G.SlashCmdList = {}
+    _G.StaticPopupDialogs = {}
+    _G.StaticPopup_Show = function(name) env.popup = name end
     _G.CreateFrame = function(kind, name, parent)
         local f = widget(kind)
         f.parent = parent

@@ -189,6 +189,22 @@ function Ledger.Disenchant(state, rec, purchase, priceOf, cut)
     return rec
 end
 
+--- Clears the history: disenchants, sales and the record of auction purchases. The material stock and
+--- its costs stay. Purchases not disenchanted yet stay too, so their cost still follows them, except
+--- those for which drop(itemID) is true (items that can never be disenchanted).
+--- @return number  entries removed
+function Ledger.ClearHistory(state, drop)
+    local n = #state.disenchants + #state.sales
+    state.disenchants, state.sales, state.bought = {}, {}, {}
+    for itemID, list in pairs(state.purchases) do
+        if drop and drop(itemID) then
+            n = n + #list
+            state.purchases[itemID] = nil
+        end
+    end
+    return n
+end
+
 --- Every item bought or disenchanted, newest first: one entry per item, with what it gave.
 --- @return table  entries {
 ---   t, itemID, link, paid (nil = no purchase recorded), expected (value expected when bought, or at the
