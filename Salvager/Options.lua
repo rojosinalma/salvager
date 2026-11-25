@@ -69,6 +69,7 @@ local function build()
     at(qLabel, 24)
     local green = W.Check(panel, "|cff1eff00Uncommon|r", "Green gear: dust, essences and a small shard chance.",
         function(on) s.qualities[2] = on changed("uncommon", on) end)
+    -- (The main window has the same choice as a drop-down.)
     green:SetPoint("LEFT", qLabel, "RIGHT", 12, 0)
     local blue = W.Check(panel, "|cff0070ddRare|r", "Blue gear: always one shard.",
         function(on) s.qualities[3] = on changed("rare", on) end)

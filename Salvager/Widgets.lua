@@ -144,6 +144,50 @@ function Widgets.Spinner(parent, size)
     return f
 end
 
+--- A button that opens a small list of check boxes.
+--- options = { {value, label}, ... }; get(value) -> bool; set(value, bool). Returns the button.
+function Widgets.CheckDropdown(parent, width, options, get, set, tooltip)
+    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    b:SetSize(width, 22)
+    local list = CreateFrame("Frame", nil, b)
+    list:SetFrameStrata("DIALOG")
+    list:SetPoint("TOPLEFT", b, "BOTTOMLEFT", 0, -2)
+    list:SetSize(width, #options * 22 + 8)
+    local bg = list:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0.05, 0.05, 0.08, 0.95)
+    local edge = list:CreateTexture(nil, "BORDER")
+    edge:SetPoint("TOPLEFT", -1, 1)
+    edge:SetPoint("BOTTOMRIGHT", 1, -1)
+    edge:SetColorTexture(0.4, 0.35, 0.55, 1)
+    list:EnableMouse(true)
+    list:Hide()
+    local checks = {}
+    function b:Update()
+        local names = {}
+        for i, o in ipairs(options) do
+            local on = get(o[1]) and true or false
+            checks[i]:SetChecked(on)
+            if on then names[#names + 1] = o[2] end
+        end
+        self:SetText((#names > 0 and table.concat(names, ", ") or "none") .. " |TInterface\\Buttons\\Arrow-Down-Up:12:12|t")
+    end
+    for i, o in ipairs(options) do
+        local c = Widgets.Check(list, o[2], nil, function(on)
+            set(o[1], on)
+            b:Update()
+        end)
+        c:SetPoint("TOPLEFT", list, "TOPLEFT", 6, -4 - (i - 1) * 22)
+        checks[i] = c
+    end
+    b:SetScript("OnClick", function() list:SetShown(not list:IsShown()) end)
+    b:SetScript("OnHide", function() list:Hide() end)
+    if tooltip then Widgets.Tooltip(b, "Quality", tooltip) end
+    b.list = list
+    b.checks = checks
+    return b
+end
+
 function Widgets.Label(parent, text, template)
     local l = parent:CreateFontString(nil, "OVERLAY", template or "GameFontNormalSmall")
     l:SetText(text)

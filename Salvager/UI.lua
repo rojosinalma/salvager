@@ -35,6 +35,7 @@ local VIEWS = {
 }
 
 local f, rows, headers, status, footer, minProfit, autoCheck, gearChoice, tabs = nil, {}, {}, nil, nil, nil, nil, nil, {}
+local qualityDrop
 local spinner, bigSpinner, bigSpinnerText
 
 local function ago(seconds)
@@ -327,6 +328,7 @@ function UI.Refresh()
     autoCheck:SetChecked(ns.Scanner.auto)
     minProfit:Set(ns.db.settings.minProfit)
     gearChoice:Set(ns.db.settings.gearClasses)
+    qualityDrop:Update()
     footer:SetText(footerText())
     if ns.LogPanel then ns.LogPanel.Refresh() end
 end
@@ -427,6 +429,23 @@ local function build()
         ns.Fire("SALVAGER_SETTINGS")
     end, "Which gear the scan looks at. Armor gives mostly dust, weapons mostly essence. The Limits tab shows the buy limits.")
     gearChoice:SetPoint("LEFT", gearLabel, "RIGHT", 6, 0)
+
+    local qLabel = W.Label(f, "Quality")
+    qLabel:SetPoint("LEFT", gearChoice.buttons[#gearChoice.buttons].button.label, "RIGHT", 24, 0)
+    qualityDrop = W.CheckDropdown(f, 170, {
+        { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" }, { 4, "|cffa335eeEpic|r" },
+    }, function(q) return ns.db.settings.qualities[q] end, function(q, on)
+        local qs = ns.db.settings.qualities
+        qs[q] = on
+        if not (qs[2] or qs[3] or qs[4]) then
+            qs[q] = true
+            ns.Print("at least one quality must stay on")
+        end
+        ns.Log("quality %d = %s", q, tostring(qs[q]))
+        ns.Fire("SALVAGER_SETTINGS")
+    end, "Which gear qualities the scan looks at. Green gives dust and essence, blue one shard, epic 2-4 shards "
+        .. "or Nexus Crystals.")
+    qualityDrop:SetPoint("LEFT", qLabel, "RIGHT", 8, 0)
 
     -- The list.
     local list = CreateFrame("Frame", nil, f)

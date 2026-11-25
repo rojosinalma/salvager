@@ -349,6 +349,21 @@ describe("Salvager deals list", function()
         assert.is_nil(row)
     end)
 
+    it("picks qualities in the drop-down and keeps at least one", function()
+        local drop
+        for _, fr in ipairs(env.frames) do if rawget(fr, "checks") then drop = fr end end
+        assert.is_table(drop)
+        drop.scripts.OnClick(drop)
+        assert.is_true(drop.list:IsShown())
+        drop.checks[2]:SetChecked(true)                  -- the game ticks the box, then runs OnClick
+        drop.checks[2].scripts.OnClick(drop.checks[2])
+        assert.is_true(ns.db.settings.qualities[3])
+        ns.db.settings.qualities = { [2] = true, [3] = false, [4] = false }
+        drop.checks[1]:SetChecked(false)
+        drop.checks[1].scripts.OnClick(drop.checks[1])   -- uncommon off: refused
+        assert.is_true(ns.db.settings.qualities[2])
+    end)
+
     it("resizes from the corner and keeps the size", function()
         local f = _G.SalvagerFrame
         assert.is_function(f.scripts.OnSizeChanged)
