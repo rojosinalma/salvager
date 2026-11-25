@@ -335,6 +335,15 @@ end
 
 ------------------------------------------------------------------ building
 
+--- Pins the window by its top left corner where it is now, so resizing
+--- from the bottom right corner moves only that corner.
+local function anchorTopLeft()
+    local left, top = f:GetLeft(), f:GetTop()
+    if not (left and top) then return end
+    f:ClearAllPoints()
+    f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+end
+
 local function savePosition()
     local point, _, rel, x, y = f:GetPoint()
     local win = ns.db.window
@@ -361,7 +370,11 @@ local function build()
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", function() f:StopMovingOrSizing() savePosition() end)
+    f:SetScript("OnDragStop", function()
+        f:StopMovingOrSizing()
+        anchorTopLeft()
+        savePosition()
+    end)
     local pos = ns.db.window
     if pos and pos.point then
         f:SetPoint(pos.point, UIParent, pos.rel or pos.point, pos.x or 0, pos.y or 0)
@@ -562,14 +575,23 @@ local function build()
 
     -- Resize from the bottom right corner.
     f:SetResizable(true)
-    if f.SetResizeBounds then f:SetResizeBounds(MIN_W, MIN_H) elseif f.SetMinResize then f:SetMinResize(MIN_W, MIN_H) end
+    local maxW, maxH = UIParent:GetWidth(), UIParent:GetHeight()
+    if f.SetResizeBounds then
+        f:SetResizeBounds(MIN_W, MIN_H, maxW, maxH)
+    elseif f.SetMinResize then
+        f:SetMinResize(MIN_W, MIN_H)
+        if f.SetMaxResize then f:SetMaxResize(maxW, maxH) end
+    end
     local grip = CreateFrame("Button", nil, f)
     grip:SetSize(16, 16)
     grip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -4, 4)
     grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
     grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
     grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
-    grip:SetScript("OnMouseDown", function() f:StartSizing("BOTTOMRIGHT") end)
+    grip:SetScript("OnMouseDown", function()
+        anchorTopLeft()
+        f:StartSizing("BOTTOMRIGHT", true)
+    end)
     grip:SetScript("OnMouseUp", function()
         f:StopMovingOrSizing()
         ns.db.window.w, ns.db.window.h = math.floor(f:GetWidth()), math.floor(f:GetHeight())
