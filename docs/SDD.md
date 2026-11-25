@@ -77,6 +77,11 @@ flipping is out of scope for now.
     one retry apply.
 23. **Clear history** (Ledger window, with a confirmation) removes disenchants, sales and the purchase record.
     Stock and its costs stay; purchases not disenchanted yet stay, except items that can never be disenchanted.
+24. **Layout is remembered.** `SalvagerDB.windows[key].open` is set only by deliberate actions (the addon's
+    buttons and commands, a window's X). Escape and the auction house closing hide every window at once and
+    do not change it. When the auction house opens (and `autoOpen`, `restoreWindows` are on) the Ledger, Log
+    and Materials windows that were open are shown again. The main window's tab and the Ledger's view are
+    kept too.
 15. **UI redraws** from events are limited to four per second; the log panel is not rebuilt during a scan.
 
 ## Data

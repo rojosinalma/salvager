@@ -201,6 +201,7 @@ local function build()
     for _, t in ipairs({ { "purchases", "Purchases" }, { "sales", "Sales" }, { "odds", "Odds" } }) do
         local b = W.Button(f, t[2], 96, function()
             Window.view = t[1]
+            f.saved.view = t[1]
             list.offset = 0
             Window.Refresh()
         end)
@@ -219,6 +220,7 @@ local function build()
     list = W.List(f, { rowHeight = 22 })
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98)
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
+    if SOURCES[f.saved.view] then Window.view = f.saved.view end
     f.onResize = Window.Refresh
     f:SetScript("OnShow", Window.Refresh)
 end
@@ -242,10 +244,18 @@ StaticPopupDialogs["SALVAGER_CLEAR_LEDGER"] = {
 
 function Window.Toggle()
     if not f then build() end
-    f:SetShown(not f:IsShown())
+    f.UserToggle()
 end
 
 function Window.Show()
+    if not f then build() end
+    f.UserShow()
+end
+
+--- Opens the window again if it was open the last time (the auction house opened).
+function Window.Restore()
+    local saved = ns.db.windows.ledger
+    if not (saved and saved.open) then return end
     if not f then build() end
     f:Show()
 end

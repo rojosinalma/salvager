@@ -391,6 +391,7 @@ local function build()
             -- The Materials tab, while its list is in its own window: put it back here.
             if t[1] == "materials" then ns.Materials.PutBack() end
             UI.view = t[1]
+            ns.db.window.view = t[1]
             UI.offset = 0
             UI.Refresh()
         end)
@@ -639,6 +640,7 @@ local function build()
     end)
     f:SetScript("OnSizeChanged", function() UI.Refresh() end)
 
+    if VIEWS[ns.db.window.view] then UI.view = ns.db.window.view end
     f:SetScript("OnShow", function() UI.Refresh() end)
     f:Hide()
 end
@@ -661,7 +663,15 @@ for _, e in ipairs({ "SALVAGER_PRICES", "SALVAGER_PRICES_DONE", "SALVAGER_SCAN",
 end
 
 ns.On("AUCTION_HOUSE_SHOW", function()
-    if ns.db.settings.autoOpen then UI.Show() end
+    if ns.db.settings.autoOpen then
+        UI.Show()
+        -- The layout of last time: the windows that were open, and the tab that was showing.
+        if ns.db.settings.restoreWindows then
+            ns.LedgerWindow.Restore()
+            ns.LogWindow.Restore()
+            ns.Materials.Restore()
+        end
+    end
     UI.Refresh()
 end)
 ns.On("AUCTION_HOUSE_CLOSED", function() UI.Refresh() end)

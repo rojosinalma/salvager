@@ -48,10 +48,18 @@ end
 
 function Window.Toggle()
     if not f then build() end
-    f:SetShown(not f:IsShown())
+    f.UserToggle()
 end
 
 function Window.Show()
+    if not f then build() end
+    f.UserShow()
+end
+
+--- Opens the window again if it was open the last time (the auction house opened).
+function Window.Restore()
+    local saved = ns.db.windows.log
+    if not (saved and saved.open) then return end
     if not f then build() end
     f:Show()
 end

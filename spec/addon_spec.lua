@@ -698,3 +698,49 @@ describe("Salvager mail", function()
         assert.are.equal(7, #ns.db.ledger.purchases[HOOD])
     end)
 end)
+
+describe("Salvager layout", function()
+    local env, ns
+    setup(function()
+        env = wow.install()
+        ns = wow.loadAddon()
+        wow.fire(ns, "ADDON_LOADED", "Salvager")
+        wow.fire(ns, "AUCTION_HOUSE_SHOW")
+    end)
+
+    it("reopens the windows that were open when the auction house opens again", function()
+        ns.LedgerWindow.Toggle()
+        ns.LogWindow.Toggle()
+        ns.Materials.PopOut()
+        -- Escape, or leaving the auction house: everything hides at once.
+        for _, name in ipairs({ "SalvagerFrame", "SalvagerLedgerFrame", "SalvagerLogFrame", "SalvagerMaterialsFrame" }) do
+            _G[name]:Hide()
+        end
+        wow.fire(ns, "AUCTION_HOUSE_CLOSED")
+        wow.fire(ns, "AUCTION_HOUSE_SHOW")
+        assert.is_true(_G.SalvagerFrame:IsShown())
+        assert.is_true(_G.SalvagerLedgerFrame:IsShown())
+        assert.is_true(_G.SalvagerLogFrame:IsShown())
+        assert.is_true(ns.Materials.IsPoppedOut())
+    end)
+
+    it("leaves closed what the player closed on purpose", function()
+        ns.LogWindow.Toggle()                               -- the Log button: closed on purpose
+        ns.Materials.PutBack()
+        for _, name in ipairs({ "SalvagerFrame", "SalvagerLedgerFrame" }) do _G[name]:Hide() end
+        wow.fire(ns, "AUCTION_HOUSE_CLOSED")
+        wow.fire(ns, "AUCTION_HOUSE_SHOW")
+        assert.is_true(_G.SalvagerLedgerFrame:IsShown())
+        assert.is_false(_G.SalvagerLogFrame:IsShown())
+        assert.is_false(ns.Materials.IsPoppedOut())
+    end)
+
+    it("can be turned off", function()
+        ns.db.settings.restoreWindows = false
+        _G.SalvagerLedgerFrame:Hide()
+        wow.fire(ns, "AUCTION_HOUSE_CLOSED")
+        wow.fire(ns, "AUCTION_HOUSE_SHOW")
+        assert.is_false(_G.SalvagerLedgerFrame:IsShown())
+        for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
+    end)
+end)

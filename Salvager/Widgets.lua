@@ -272,6 +272,7 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
     local f = CreateFrame("Frame", globalName, UIParent, "BasicFrameTemplateWithInset")
     local saved = ns.db.windows[key] or {}
     ns.db.windows[key] = saved
+    f.saved = saved
     f:SetSize(math.max(minW, saved.w or w), math.max(minH, saved.h or h))
     f:SetFrameStrata("HIGH")
     f:SetToplevel(true)
@@ -304,6 +305,23 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
     end
     text:SetText(title)
     tinsert(UISpecialFrames, globalName)
+    -- "Open" is remembered from what the player does on purpose: the addon's own buttons and
+    -- commands, and the window's X. Escape and the auction house closing hide every window at
+    -- once; that is not a choice about this one, so it does not change what is remembered.
+    function f.UserShow()
+        saved.open = true
+        f:Show()
+    end
+    function f.UserHide()
+        saved.open = false
+        f:Hide()
+    end
+    function f.UserToggle()
+        if f:IsShown() then f.UserHide() else f.UserShow() end
+    end
+    if type(f.CloseButton) == "table" then
+        f.CloseButton:HookScript("OnClick", function() saved.open = false end)
+    end
     if fixed then
         f:SetSize(w, h)
         f:Hide()

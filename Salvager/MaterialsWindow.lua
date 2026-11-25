@@ -145,16 +145,24 @@ end
 --- Moves the list to its own window.
 function Materials.PopOut()
     if not f then build() end
-    f:Show()
+    f.UserShow()
     ns.Log("materials list popped out")
 end
 
 --- Puts the list back in the main window's tab.
 function Materials.PutBack()
     if f and f:IsShown() then
-        f:Hide()
+        f.UserHide()
         ns.Log("materials list put back")
     end
+end
+
+--- Pops the list out again if it was out the last time (the auction house opened).
+function Materials.Restore()
+    local saved = ns.db.windows.materials
+    if not (saved and saved.open) then return end
+    if not f then build() end
+    f:Show()
 end
 
 for _, e in ipairs({ "SALVAGER_PRICES", "SALVAGER_PRICES_DONE", "SALVAGER_LEDGER", "SALVAGER_SETTINGS", "SALVAGER_SCAN",

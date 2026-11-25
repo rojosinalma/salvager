@@ -22,6 +22,7 @@ local DEFAULTS = {
         autoInterval = 20,         -- seconds between gear scans in auto mode
         maxChecks = 60,            -- item searches per gear scan (best candidates first)
         autoOpen = true,           -- open the window with the auction house
+        restoreWindows = true,     -- and with it the Ledger, Log and Materials windows that were open last time
         minimap = { hide = false, angle = 215 },
         postDuration = 2,          -- auction length for Post: 1, 2 or 3 (the game's three choices)
         limitOverride = {},        -- ["<quality>:<a|w>:<band>"] = copper: buy limits set by hand
