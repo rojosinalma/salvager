@@ -5,7 +5,7 @@
 local _, ns = ...
 
 local AH = C_AuctionHouse
-local Model = ns.Model
+
 
 local Scanner = { state = "idle", deals = {}, checked = 0, toCheck = 0, browsed = 0, auto = false, summary = nil }
 ns.Scanner = Scanner
@@ -53,12 +53,12 @@ local function keyValue(key)
     if not (quality and classID and ilvl) then return nil end
     local v, outcomes = ns.ItemValue(key.itemID, ilvl, quality, classID)
     if not v or ns.MissingMajor(v, outcomes) then return nil end
-    return v, ilvl, quality, classID, outcomes
+    return v, ilvl, quality, classID, outcomes, ns.BuyLimit(quality, classID, outcomes.band, v.net)
 end
 
 local function readAuctions(task)
     local key, v = task.itemKey, task.value
-    local maxBuy = Model.MaxBuy(v.net, ns.db.settings.minProfit)
+    local maxBuy = task.limit
     -- Drop the old rows of this item, then add what is listed now.
     for i = #Scanner.deals, 1, -1 do
         if Scanner.deals[i].keyString == task.keyString and not Scanner.deals[i].pending then
@@ -106,16 +106,16 @@ local function evaluate()
     for _, r in ipairs(results) do
         local key = r.itemKey
         if key and r.minPrice and r.minPrice > 0 then
-            local v, ilvl, quality, classID = keyValue(key)
+            local v, ilvl, quality, classID, _, limit = keyValue(key)
             if v then
                 sum.valued = sum.valued + 1
                 local margin = v.net - r.minPrice
                 if not sum.best or margin > sum.best.margin then
                     sum.best = { margin = margin, itemID = key.itemID, ilvl = ilvl, price = r.minPrice, value = v.net }
                 end
-                if r.minPrice <= Model.MaxBuy(v.net, minProfit) then
+                if r.minPrice <= limit then
                     candidates[#candidates + 1] = { key = key, v = v, ilvl = ilvl, quality = quality, classID = classID,
-                        margin = margin }
+                        margin = margin, limit = limit }
                 end
             else
                 sum.noValue = sum.noValue + 1
@@ -145,7 +145,7 @@ local function evaluate()
     for _, c in ipairs(candidates) do
         ns.Queue.Add({
             itemKey = c.key, keyString = ns.KeyString(c.key), value = c.v, ilvl = c.ilvl, quality = c.quality,
-            classID = c.classID,
+            classID = c.classID, limit = c.limit,
             onResult = function(task) readAuctions(task) checkDone() end,
             onFail = function() checkDone() end,
         })

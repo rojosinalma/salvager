@@ -44,7 +44,7 @@ local function build()
         at(h, 16, 10)
     end
 
-    local title = W.Label(panel, "Salvager " .. ns.VERSION, "GameFontNormalLarge")
+    local title = W.Label(panel, "Salvager", "GameFontNormalLarge")
     at(title)
     local sub = W.Label(panel, "Disenchant trading: what gear to buy, and what your materials cost you.",
         "GameFontHighlightSmall")
@@ -124,6 +124,9 @@ local function build()
 
     local open = W.Button(panel, "Open Salvager", 120, function() ns.UI.Show() end)
     at(open, 24, 8)
+
+    local version = W.Label(panel, "Version " .. ns.VERSION, "GameFontDisableSmall")
+    version:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 16, 16)
 
     panel:SetScript("OnShow", function() Options.Refresh() end)
 

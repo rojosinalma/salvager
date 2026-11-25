@@ -22,6 +22,7 @@ local DEFAULTS = {
         maxChecks = 60,            -- item searches per gear scan (best candidates first)
         autoOpen = true,           -- open the window with the auction house
         minimap = { hide = false, angle = 215 },
+        limitOverride = {},        -- ["<quality>:<a|w>:<band>"] = copper: buy limits set by hand
     },
     prices = {},                   -- [matID] = { p = copper each, units, listings, t }
     ledger = {},
@@ -213,8 +214,32 @@ ns.On("SALVAGER_PRICES_DONE", function()
 end)
 ns.On("AUCTION_HOUSE_CLOSED", function() ns.scanBothPending = false end)
 
+function ns.BandKey(quality, classID, band)
+    return string.format("%d:%s:%d", quality, classID == Data.CLASS_WEAPON and "w" or "a", band)
+end
+
+--- The recommended buy limit: value after cut minus the minimum profit.
+function ns.RecommendedLimit(net)
+    return Model.MaxBuy(net, ns.db.settings.minProfit)
+end
+
+--- The buy limit in use: the one set by hand for this band, else the recommended one.
+--- @return number copper, boolean manual
+function ns.BuyLimit(quality, classID, band, net)
+    local o = band and ns.db.settings.limitOverride[ns.BandKey(quality, classID, band)]
+    if o then return o, true end
+    return ns.RecommendedLimit(net), false
+end
+
+function ns.SetLimitOverride(quality, classID, band, copper)
+    local key = ns.BandKey(quality, classID, band)
+    ns.db.settings.limitOverride[key] = copper
+    ns.Log("buy limit %s = %s", key, copper and ns.Money(copper) or "recommended")
+    ns.Fire("SALVAGER_SETTINGS")
+end
+
 --- Buy limits per disenchant band, for the Limits tab.
---- @return table  rows { quality, lo, up, armor = {value, limit, missing}, weapon = {...} }
+--- @return table  rows { quality, lo, up, armor = {value, recommended, limit, manual, missing}, weapon = {...} }
 function ns.Limits()
     local rows, s = {}, ns.db.settings
     local salv = ns.SalvagerForBuy()
@@ -222,7 +247,9 @@ function ns.Limits()
         local o = Model.Outcomes(quality, classID, ilvl)
         if not o then return nil end
         local v = Model.Value(o, ns.PriceOf, { salvager = salv, salvagerChance = s.salvagerChance, cut = s.cut })
-        return { value = v.net, limit = Model.MaxBuy(v.net, s.minProfit), missing = #v.missing > 0 }
+        local limit, manual = ns.BuyLimit(quality, classID, o.band, v.net)
+        return { value = v.net, recommended = ns.RecommendedLimit(v.net), limit = limit, manual = manual,
+            missing = #v.missing > 0, quality = quality, classID = classID, band = o.band }
     end
     for _, q in ipairs({ { 2, Data.GREEN }, { 3, Data.BLUE }, { 4, Data.PURPLE } }) do
         if s.qualities[q[1]] then

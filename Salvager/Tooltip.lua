@@ -1,7 +1,7 @@
 -- Salvager: tooltip lines for gear (disenchant value, buy limit) and materials (price, stock, break-even).
 local _, ns = ...
 
-local Data, Ledger, Model = ns.Data, ns.Ledger, ns.Model
+local Data, Ledger = ns.Data, ns.Ledger
 
 local COLOR = "|cff9370db"
 
@@ -31,7 +31,11 @@ local function addLines(tooltip, link)
     if #v.missing > 0 then text = text .. " (some prices missing)" end
     tooltip:AddDoubleLine(COLOR .. "Salvager disenchant value|r", text, 1, 1, 1, 1, 1, 1)
     tooltip:AddDoubleLine(COLOR .. "Salvager buy below|r",
-        ns.Money(Model.MaxBuy(v.net, ns.db.settings.minProfit)) .. (ns.SalvagerForBuy() and " (with Salvager)" or ""),
+        (function()
+            local limit, manual = ns.BuyLimit(ns.QualityOf(link), classID, outcomes and outcomes.band, v.net)
+            return ns.Money(limit) .. (manual and " (set by hand)" or "")
+                .. (ns.SalvagerForBuy() and " (Arcane Salvager bonus)" or "")
+        end)(),
         1, 1, 1, 1, 1, 1)
     if outcomes and IsShiftKeyDown() then
         for _, r in ipairs(outcomes.results) do

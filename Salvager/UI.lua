@@ -25,8 +25,9 @@ local VIEWS = {
     },
     limits = {
         icon = false,
-        header = { "Item level", "Req. level", "Armor value", "Armor: buy below", "Weapon value", "Weapon: buy below" },
-        cols = { { 80, "LEFT" }, { 70, "CENTER" }, { 105, "RIGHT" }, { 120, "RIGHT" }, { 105, "RIGHT" }, { 120, "RIGHT" } },
+        header = { "Item level", "Armor recommended", "Armor buy below", "Weapon recommended", "Weapon buy below" },
+        cols = { { 90, "LEFT" }, { 125, "RIGHT" }, { 125, "RIGHT" }, { 125, "RIGHT" }, { 125, "RIGHT" } },
+        edit = { [3] = "armor", [5] = "weapon" },
     },
 }
 
@@ -83,25 +84,25 @@ local function materialRows()
     return out
 end
 
-local function limitText(x, dim)
-    if not x then return "-", "-" end
-    local v, l = ns.Money(x.value), ns.Money(x.limit)
-    if x.missing then v = v .. "?" end
-    if dim then return "|cff808080" .. v .. "|r", "|cff808080" .. l .. "|r" end
-    return v, "|cffffd100" .. l .. "|r"
+local function recommendedText(x, dim)
+    if not x then return "-" end
+    local t = ns.Money(x.recommended)
+    if x.missing then t = t .. "?" end
+    if dim then return "|cff808080" .. t .. "|r" end
+    return t
 end
 
 local function limitRows()
     local out = {}
     local classes = ns.GearClasses()
     for _, r in ipairs(ns.Limits()) do
-        local av, al = limitText(r.armor, not classes[Data.CLASS_ARMOR])
-        local wv, wl = limitText(r.weapon, not classes[Data.CLASS_WEAPON])
         local up = r.up >= 999 and "+" or ("-" .. r.up)
-        local reqUp = r.up >= 999 and "+" or ("-" .. math.max(1, r.up - 5))
         out[#out + 1] = {
-            cells = { (QUALITY_COLOR[r.quality] or "") .. r.lo .. up .. "|r", "~" .. math.max(1, r.lo - 5) .. reqUp,
-                av, al, wv, wl },
+            cells = { (QUALITY_COLOR[r.quality] or "") .. r.lo .. up .. "|r",
+                recommendedText(r.armor, not classes[Data.CLASS_ARMOR]), "",
+                recommendedText(r.weapon, not classes[Data.CLASS_WEAPON]), "" },
+            limits = { armor = r.armor, weapon = r.weapon },
+            dim = { armor = not classes[Data.CLASS_ARMOR], weapon = not classes[Data.CLASS_WEAPON] },
         }
     end
     return out
@@ -120,7 +121,7 @@ local function statusText()
     elseif ns.scanBothPending and not ns.Prices.scanning then parts[#parts + 1] = "Starting gear scan"
     end
     if #parts == 0 then parts[1] = ns.Queue.open and "Ready" or "Auction house closed" end
-    parts[#parts + 1] = "Salvager " .. (ns.SalvagerForBuy() and "|cff40ff40on|r" or "off")
+    if ns.SalvagerForBuy() then parts[#parts + 1] = "|cff40ff40Arcane Salvager bonus included|r" end
     return table.concat(parts, "  ·  ")
 end
 
@@ -144,8 +145,8 @@ local function footerText()
         return string.format("Price = average of cheapest %d units. Red = below break-even. * = none listed, last price. "
             .. "~ = other essence form.", ns.db.settings.priceUnits)
     end
-    return "Buy below = disenchant value after the 5% cut, minus your minimum profit. Grey = type not scanned. "
-        .. "? = a material has no price."
+    return "Recommended = disenchant value after the 5% cut, minus your minimum profit. Type a price in Buy below "
+        .. "to set your own (yellow). Clear the box to use the recommended one again. Grey = type not scanned."
 end
 
 local function layout(view)
@@ -157,9 +158,28 @@ local function layout(view)
         for _, row in ipairs(rows) do
             row.cells[i]:ClearAllPoints()
             row.cells[i]:SetPoint("LEFT", row, "LEFT", x, 0)
+            local which = view.edit and view.edit[i]
+            if which then
+                local e = row.edits[which]
+                e:ClearAllPoints()
+                e:SetPoint("LEFT", row, "LEFT", x + 8, 0)
+                e:SetWidth(col[1] - 8)
+            end
         end
         if col then x = x + col[1] + 6 end
     end
+end
+
+--- Shows one buy-limit box: yellow when set by hand, white for the recommended limit.
+local function showEdit(e, x, dim)
+    e.limit = x
+    if not x then e:Hide() return end
+    e:Show()
+    if e:HasFocus() then return end
+    e:SetText(ns.Money(x.limit))
+    if dim then e:SetTextColor(0.5, 0.5, 0.5)
+    elseif x.manual then e:SetTextColor(1, 0.82, 0)
+    else e:SetTextColor(1, 1, 1) end
 end
 
 function UI.Refresh()
@@ -186,6 +206,9 @@ function UI.Refresh()
             else
                 fs:Hide()
             end
+        end
+        for which, e in pairs(row.edits) do
+            if item and item.limits then showEdit(e, item.limits[which], item.dim[which]) else e:Hide() end
         end
         local icon = item and view.icon and W.IconOf(item.itemID)
         if icon then row.icon:SetTexture(icon) row.icon:Show() else row.icon:Hide() end
@@ -256,7 +279,7 @@ local function build()
         title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         title:SetPoint("TOP", f, "TOP", 0, -5)
     end
-    title:SetText("Salvager " .. ns.VERSION)
+    title:SetText("Salvager")
     tinsert(UISpecialFrames, "SalvagerFrame")
 
     -- Row 1: views, log, options.
@@ -343,6 +366,32 @@ local function build()
             fs:SetHeight(ROW_H)
             fs:SetWordWrap(false)
             row.cells[i] = fs
+        end
+        row.edits = {}
+        for _, which in ipairs({ "armor", "weapon" }) do
+            local e = W.Edit(row, 100, false)
+            e:SetJustifyH("RIGHT")
+            e:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+            e:SetScript("OnEditFocusLost", function(self)
+                local lim = self.limit
+                if not lim then return end
+                local text = self:GetText():gsub("^%s+", ""):gsub("%s+$", "")
+                local copper = text ~= "" and ns.Util.ParseMoney(text) or nil
+                if text == "" or copper == lim.recommended then
+                    if lim.manual then ns.SetLimitOverride(lim.quality, lim.classID, lim.band, nil) end
+                elseif copper ~= lim.limit and copper then
+                    ns.SetLimitOverride(lim.quality, lim.classID, lim.band, copper)
+                elseif copper then
+                    UI.Refresh()
+                else
+                    ns.Print("not a price: %s (examples: 1g20s, 45s, 80)", text)
+                    UI.Refresh()
+                end
+            end)
+            W.Tooltip(e, "Buy below", "Type a price, for example 1g20s or 45s (a plain number is silver). "
+                .. "Clear the box to use the recommended price again.")
+            e:Hide()
+            row.edits[which] = e
         end
         row.buy = W.Button(row, "Buy", 56, function()
             local item = row.item

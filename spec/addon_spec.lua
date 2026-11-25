@@ -198,6 +198,15 @@ describe("Salvager window and options", function()
         local r = rows[5]  -- item level 31-35: soul dust
         assert.is_true(r.armor.value > 0)
         assert.are.equal(math.max(0, r.armor.value - ns.db.settings.minProfit), r.armor.limit)
+        assert.is_false(r.armor.manual)
+        ns.SetLimitOverride(2, 4, r.armor.band, 123)
+        local again = ns.Limits()[5]
+        assert.are.equal(123, again.armor.limit)
+        assert.is_true(again.armor.manual)
+        assert.are.equal(r.armor.recommended, again.armor.recommended)
+        assert.are.equal(123, (ns.BuyLimit(2, 4, r.armor.band, 99999)))
+        ns.SetLimitOverride(2, 4, r.armor.band, nil)
+        assert.is_false(ns.Limits()[5].armor.manual)
     end)
 
     it("draws every view and the log panel without errors", function()
