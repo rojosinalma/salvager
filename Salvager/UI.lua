@@ -26,8 +26,10 @@ local VIEWS = {
             [6] = { "Profit", "Value minus the buyout: the average profit per item over many disenchants. "
                 .. "It is not what one item will give." },
             [7] = { "Lose %", "The chance that ONE disenchant of this item is worth less than its buyout, after the cut.\n\n"
-                .. "Example: a hood at 11s 46c gives dust 75% of the time, worth 4s or 8s, so Lose % is 75%. The rare "
-                .. "essence or shard pays for the losses.\n\nGreen: under 30%. Yellow: 30% or more. Red: 60% or more.\n\n"
+                .. "Example: you pay 10s for an item. 3 times out of 4 it gives dust worth 5s: you lose 5s. 1 time "
+                .. "out of 4 it gives an essence worth 30s: you gain 20s. Lose % is 75%. Over many items you still "
+                .. "gain: the average is 11s 25c per item, so 1s 25c of profit each.\n\n"
+                .. "Green: under 30%. Yellow: 30% or more. Red: 60% or more.\n\n"
                 .. "A high Lose % with a good Profit needs many items before the average shows. A low Lose % is safe "
                 .. "even for a few items." },
         },
@@ -61,17 +63,9 @@ local function dealName(d)
     return (d.link and d.link:match("%[(.-)%]")) or (ns.GetItemInfo(d.itemID)) or ("item " .. d.itemID)
 end
 
---- The chance that one disenchant of this deal is worth less than its price: green, yellow or red.
-local function loseText(lose)
-    if not lose then return "-" end
-    local pct = math.floor(lose * 100 + 0.5)
-    local color = pct >= 60 and "|cffff4040" or pct >= 30 and "|cffffd100" or "|cff40ff40"
-    return color .. pct .. "%|r"
-end
-
 local function dealCells(d, label)
     return { label, CLASS_NAME[d.classID or ns.ClassOf(d.itemID)] or "", tostring(d.ilvl or ""), ns.Money(d.buyout),
-        ns.Money(d.value), "|cff40ff40" .. ns.Money(d.profit) .. "|r", loseText(d.lose) }
+        ns.Money(d.value), "|cff40ff40" .. ns.Money(d.profit) .. "|r", ns.LoseText(d.lose) }
 end
 
 --- Deals grouped by item name, best profit first. A group with more than one

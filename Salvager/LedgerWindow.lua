@@ -1,7 +1,7 @@
 -- Salvager: the Ledger window. A window of its own (move it, resize it), with three views:
 --   Purchases: every item bought, and under it what it was disenchanted into.
 --   Sales:     every material sale, with its profit against what the materials cost you.
---   Odds:      per item level band, what your disenchants gave against the table.
+--   Odds:      per item level band, what your disenchants gave against the table, the buy limit and its risk.
 local _, ns = ...
 
 local Ledger, Data, Model, W = ns.Ledger, ns.Data, ns.Model, ns.Widgets
@@ -18,8 +18,20 @@ local COLUMNS = {
         { "Got", 96, "RIGHT" }, { "Result", 84, "RIGHT" } },
     sales = { { "Material", 170 }, { "Status", 132 }, { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
         { "You get", 76, "RIGHT" }, { "Cost", 84, "RIGHT" }, { "Profit", 76, "RIGHT" } },
-    odds = { { "Band / material", 230 }, { "Count", 50, "CENTER" }, { "Table", 84, "CENTER" }, { "Yours", 90, "CENTER" },
-        { "Value now", 96, "RIGHT" }, { "Your average", 90, "RIGHT" } },
+    odds = { { "Band / material", 230 }, { "Count", 46, "CENTER" },
+        { "Expected", 84, "CENTER", help = { "Expected", "How often this material comes from one disenchant in this "
+            .. "band, and how many, by the odds table the addon uses (Classic's table; not confirmed for Forever)." } },
+        { "You got", 84, "CENTER", help = { "You got", "How often it came in your own disenchants in this band, and "
+            .. "how many on average." } },
+        { "Value now", 84, "RIGHT", help = { "Value now", "What ONE disenchant in this band is worth on average over "
+            .. "many disenchants, at today's material prices, after the 5% cut. It is not the buy limit." } },
+        { "Buy below", 84, "RIGHT", help = { "Buy below", "The most the addon lets you pay in this band: Value now "
+            .. "minus your minimum profit, or the limit you set by hand in the Limits tab." } },
+        { "Lose %", 50, "CENTER", help = { "Lose %", "The chance that one disenchant is worth less than Buy below, so "
+            .. "the risk when you pay the full limit. Paying less lowers it." } },
+        { "Your average", 84, "RIGHT", help = { "Your average", "What your own disenchants in this band gave on "
+            .. "average, at the material prices of the moment of each disenchant, after the cut. Compare it with "
+            .. "Value now." } } },
 }
 
 local f, list, summary, tabs = nil, nil, nil, {}
@@ -187,11 +199,14 @@ function Window.OddsRows()
                 local mine = by[string.format("%d:%s:%d", quality, c[2], up)]
                 local n = mine and mine.n or 0
                 local v = Model.Value(outcomes, ns.PriceOf, opts)
+                local limit = ns.BuyLimit(quality, classID, up, v.net)
                 local first = #rows + 1
                 rows[first] = {
                     cells = { GOLD .. QUALITY_NAME[quality] .. c[3] .. ", item level " .. bandRange(quality, up) .. "|r",
                         n > 0 and tostring(n) or (GREY .. "0|r"), "", "",
                         ns.Money(v.net) .. (#v.missing > 0 and (GREY .. "?|r") or ""),
+                        ns.Money(limit),
+                        limit > 0 and ns.LoseText(Model.LossChance(outcomes, ns.PriceOf, opts, limit)) or (GREY .. "-|r"),
                         n > 0 and ns.Money(mine.value / n) or (GREY .. "-|r") },
                 }
                 local inTable = {}
@@ -204,7 +219,7 @@ function Window.OddsRows()
                         cells = { ns.MaterialName(r.id), m and tostring(m.hits) or (GREY .. "0|r"), oddsText(r.chance, r.min, r.max),
                             n > 0 and string.format("%d%%%s", math.floor((m and m.hits or 0) / n * 100 + 0.5),
                                 m and string.format(" · %.2f", m.qty / m.hits) or "") or (GREY .. "-|r"),
-                            price and (ns.Money(price) .. " each") or (GREY .. "no price|r"), "" },
+                            price and (ns.Money(price) .. " each") or (GREY .. "no price|r"), "", "", "" },
                     }
                 end
                 -- "Only bands with my data": take the band out again when it has none.
@@ -216,8 +231,9 @@ function Window.OddsRows()
                     if not inTable[id] then
                         rows[#rows + 1] = {
                             itemID = id, indent = INDENT,
-                            cells = { ns.MaterialName(id), tostring(m.hits), RED .. "not in the table|r",
-                                string.format("%d%% · %.2f", math.floor(m.hits / n * 100 + 0.5), m.qty / m.hits), "", "" },
+                            cells = { ns.MaterialName(id), tostring(m.hits), RED .. "not expected|r",
+                                string.format("%d%% · %.2f", math.floor(m.hits / n * 100 + 0.5), m.qty / m.hits),
+                                "", "", "", "" },
                         }
                     end
                 end
@@ -293,7 +309,7 @@ function Window.Refresh()
 end
 
 local function build()
-    f = W.Window("SalvagerLedgerFrame", "Salvager ledger", "ledger", 820, 480, 780, 260)
+    f = W.Window("SalvagerLedgerFrame", "Salvager ledger", "ledger", 860, 480, 800, 260)
     summary = {}
     for i = 1, 2 do
         local l = W.Label(f, "", "GameFontHighlightSmall")
@@ -319,9 +335,10 @@ local function build()
         .. "into, the part of its price given to each material, and what each was worth then.")
     W.Tooltip(tabs.sales, "Sales", "Your auctions: what is listed, and what is sold with its money on the way. Below "
         .. "them, every sale already paid. Profit = what you get after the cut, minus what those materials cost you.")
-    W.Tooltip(tabs.odds, "Odds", "Every item level band of every quality and gear type. Table = how often each material "
-        .. "comes and how many (the table the addon uses). Yours = what your own disenchants gave. Value now = what "
-        .. "one disenchant is worth on average at today's prices, after the cut.")
+    W.Tooltip(tabs.odds, "Odds", "Every item level band of every quality and gear type. Expected = how often each "
+        .. "material comes and how many (the table the addon uses). You got = what your own disenchants gave. Value "
+        .. "now = what one disenchant is worth on average at today's prices, after the cut. Buy below = the buy "
+        .. "limit; Lose % = the chance one disenchant is worth less than it. Point at a column title for more.")
     local clear = W.Button(f, "Clear history", 110, function() StaticPopup_Show("SALVAGER_CLEAR_LEDGER") end,
         "Removes the list of purchases, disenchants and sales, and with them the Odds. Your material stock and its "
         .. "costs stay, and so do purchases you have not disenchanted yet. It asks first.")

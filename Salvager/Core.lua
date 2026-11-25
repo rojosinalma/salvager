@@ -280,6 +280,14 @@ function ns.BuyLimit(quality, classID, band, net)
     return ns.RecommendedLimit(net), false
 end
 
+--- A lose chance (0 to 1) as text: green under 30%, yellow 30% or more, red 60% or more.
+function ns.LoseText(lose)
+    if not lose then return "-" end
+    local pct = math.floor(lose * 100 + 0.5)
+    local color = pct >= 60 and "|cffff4040" or pct >= 30 and "|cffffd100" or "|cff40ff40"
+    return color .. pct .. "%|r"
+end
+
 function ns.SetLimitOverride(quality, classID, band, copper)
     local key = ns.BandKey(quality, classID, band)
     ns.db.settings.limitOverride[key] = copper

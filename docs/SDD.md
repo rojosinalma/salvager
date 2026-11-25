@@ -107,6 +107,11 @@ flipping is out of scope for now.
     per listed material). Cancel needs a click per auction (`CancelAuction` is hardware-event restricted) and
     loses the deposit; searches wait while a cancel is on its way. Not verified in the game yet.
 30. **Odds filters:** quality and gear type, kept with the Ledger window.
+31. **Odds columns:** each band row shows Buy below (`ns.BuyLimit`: the hand-set limit, else value minus the
+    minimum profit) and Lose % at that limit (`Model.LossChance` with the limit as the price: the risk when you
+    pay the full limit; "-" when the limit is 0). Titles: Expected (the table), You got, Value now, Buy below,
+    Lose %, Your average. `Widgets.List` columns take `help = { title, text }`, shown over the column title.
+    The lose colors are in one place (`ns.LoseText`), shared with the Deals list.
 15. **UI redraws** from events are limited to four per second; the log panel is not rebuilt during a scan.
 
 ## Data

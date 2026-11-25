@@ -139,8 +139,27 @@ describe("Salvager in a simulated client", function()
         end
         assert.are.equal("1", band.cells[2])                       -- the one disenchant
         assert.are.equal(11083, dust.itemID)
-        assert.is_truthy(dust.cells[3]:find("75%", 1, true))       -- the table
-        assert.is_truthy(dust.cells[4]:find("100%", 1, true))      -- yours
+        assert.is_truthy(dust.cells[3]:find("75%", 1, true))       -- expected
+        assert.is_truthy(dust.cells[4]:find("100%", 1, true))      -- you got
+        -- The band row: its buy limit and the chance one disenchant is worth less than it.
+        local v = ns.Model.Value(ns.Model.Outcomes(2, ns.Data.CLASS_ARMOR, 30), ns.PriceOf,
+            { cut = ns.db.settings.cut })
+        local limit = ns.BuyLimit(2, ns.Data.CLASS_ARMOR, 30, v.net)
+        assert.is_true(limit > 0)
+        assert.are.equal(ns.Money(limit), band.cells[6])
+        assert.is_truthy(band.cells[7]:find("%d+%%"))
+        assert.are.equal("", dust.cells[6])                         -- a material row: no limit, no risk
+        assert.are.equal("", dust.cells[7])
+        assert.are.equal(8, #ns.LedgerWindow.OddsRows()[1].cells)
+        -- A material the table does not have for the band.
+        local des = ns.db.ledger.disenchants
+        des[#des + 1] = { quality = 2, classID = ns.Data.CLASS_ARMOR, band = 30, value = 0, got = { [10940] = 1 } }
+        local odd
+        for _, r in ipairs(ns.LedgerWindow.OddsRows()) do
+            if r.itemID == 10940 and r.cells[3]:find("not expected", 1, true) then odd = r end
+        end
+        des[#des] = nil
+        assert.is_table(odd)
         -- Only the bands with data: the one band, its table rows.
         ns.db.windows.ledger = { oddsDataOnly = true }
         local mine = ns.LedgerWindow.OddsRows()
@@ -561,6 +580,25 @@ describe("Salvager deals list", function()
         assert.is_false(ns.Scanner.auto)
         assert.are.equal("idle", ns.Scanner.state)
         assert.are.equal(0, ns.Queue.Pending())
+    end)
+
+    it("shows help over the column titles that have it", function()
+        local list = ns.Widgets.List(_G.UIParent, {})
+        list:SetColumns({ { "Item", 220 }, { "Paid", 84, "RIGHT", help = { "Paid", "What you paid." } } })
+        list:SetSource(0, function() end)
+        list.GetWidth = function() return 600 end
+        list:Refresh()
+        assert.is_false(list.helps[1]:IsShown())
+        assert.is_true(list.helps[2]:IsShown())
+        list.helps[2]:GetScript("OnEnter")(list.helps[2])
+        assert.are.equal("Paid", _G.GameTooltip:GetText())
+        list.GetWidth = function() return 120 end      -- the column is left out, and so is its help
+        list:Refresh()
+        assert.is_false(list.helps[2]:IsShown())
+        list:SetColumns({ { "Item", 220 } })
+        list.GetWidth = function() return 600 end
+        list:Refresh()
+        assert.is_false(list.helps[2]:IsShown())
     end)
 
     it("leaves out columns that do not fit a narrow window", function()

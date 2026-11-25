@@ -357,7 +357,9 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
 end
 
 --- A scrolling table. The caller anchors the returned frame.
----   list:SetColumns({ { title, width, justify }, ... })   the first column takes the spare width
+---   list:SetColumns({ { title, width, justify, help = { title, text } }, ... })
+---                                                         the first column takes the spare width; help shows
+---                                                         on the column title
 ---   list:SetSource(count, getRow)                         getRow(i) -> row, only called for rows on screen
 ---   list:Refresh()
 --- row = { cells = { text, ... }, itemID = icon and tooltip, link = tooltip, indent = pixels }
@@ -372,13 +374,28 @@ function Widgets.List(parent, opts)
     local list = CreateFrame("Frame", nil, parent)
     if list.SetClipsChildren then list:SetClipsChildren(true) end
     list.offset, list.count, list.columns = 0, 0, {}
-    local headers, rows = {}, {}
-    list.headers, list.rows = headers, rows
+    local headers, helps, helpText, rows = {}, {}, {}, {}
+    list.headers, list.helps, list.rows = headers, helps, rows
 
     for i = 1, MAX_COLS do
         local h = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         h:SetHeight(ROW_H)
         headers[i] = h
+        -- An invisible area over the title, for its help text.
+        local area = CreateFrame("Frame", nil, list)
+        area:SetAllPoints(h)
+        area:EnableMouse(true)
+        area:SetScript("OnEnter", function(self)
+            local help = helpText[i]
+            if not help then return end
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(help[1], 1, 1, 1)
+            GameTooltip:AddLine(help[2], 1, 0.82, 0, true)
+            GameTooltip:Show()
+        end)
+        area:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        area:Hide()
+        helps[i] = area
     end
     for r = 1, MAX_ROWS do
         local row = CreateFrame("Button", nil, list)
@@ -478,13 +495,16 @@ function Widgets.List(parent, opts)
         if not fits[2] and cols[1] then ws[1] = math.max(10, avail - 4) end
         for i = 1, MAX_COLS do
             local h, col = headers[i], cols[i]
-            if col and fits[i] and HEAD_H > 0 then
+            local on = col and fits[i] and HEAD_H > 0
+            if on then
                 h:ClearAllPoints()
                 h:SetPoint("TOPLEFT", self, "TOPLEFT", xs[i], 0)
                 h:SetWidth(ws[i]) h:SetJustifyH(col[3] or "LEFT") h:SetText(col[1]) h:Show()
             else
                 h:Hide()
             end
+            helpText[i] = on and col.help or nil
+            helps[i]:SetShown(helpText[i] ~= nil)
         end
         for r = 1, MAX_ROWS do
             local row = rows[r]
