@@ -7,8 +7,22 @@ ns.Util = Util
 
 local SILVER, GOLD = 100, 10000
 
+Util.COIN = {
+    g = "|TInterface\\MoneyFrame\\UI-GoldIcon:0:0:2:0|t",
+    s = "|TInterface\\MoneyFrame\\UI-SilverIcon:0:0:2:0|t",
+    c = "|TInterface\\MoneyFrame\\UI-CopperIcon:0:0:2:0|t",
+}
+
+--- Replaces coin icons with g, s and c (for the log).
+function Util.PlainMoney(text)
+    return (text:gsub("|TInterface\\MoneyFrame\\UI%-(%a+)Icon[^|]*|t", function(kind)
+        return kind == "Gold" and "g" or kind == "Silver" and "s" or "c"
+    end))
+end
+
 --- "1g 2s 3c" style text for a copper amount. Negative amounts get a minus sign.
-function Util.FormatMoney(copper)
+--- With `icons`, coin icons replace the letters.
+function Util.FormatMoney(copper, icons)
     if copper == nil then return "-" end
     copper = math.floor(copper + 0.5)
     local sign = ""
@@ -16,10 +30,12 @@ function Util.FormatMoney(copper)
     local g = math.floor(copper / GOLD)
     local s = math.floor((copper % GOLD) / SILVER)
     local c = copper % SILVER
+    local G, S, C = "g", "s", "c"
+    if icons then G, S, C = Util.COIN.g, Util.COIN.s, Util.COIN.c end
     local parts = {}
-    if g > 0 then parts[#parts + 1] = g .. "g" end
-    if s > 0 or (g > 0 and c > 0) then parts[#parts + 1] = s .. "s" end
-    if c > 0 or #parts == 0 then parts[#parts + 1] = c .. "c" end
+    if g > 0 then parts[#parts + 1] = g .. G end
+    if s > 0 or (g > 0 and c > 0) then parts[#parts + 1] = s .. S end
+    if c > 0 or #parts == 0 then parts[#parts + 1] = c .. C end
     return sign .. table.concat(parts, " ")
 end
 

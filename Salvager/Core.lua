@@ -39,7 +39,7 @@ function ns.Print(fmt, ...)
     DEFAULT_CHAT_FRAME:AddMessage("|cff9370dbSalvager|r: " .. msg)
 end
 
-function ns.Money(copper) return Util.FormatMoney(copper) end
+function ns.Money(copper) return Util.FormatMoney(copper, true) end
 
 local LOG_MAX = 600
 
@@ -48,6 +48,7 @@ function ns.Log(fmt, ...)
     if not ns.db then return end
     local ok, msg = pcall(string.format, fmt, ...)
     if not ok then msg = tostring(fmt) end
+    msg = Util.PlainMoney(msg)
     local log = ns.db.log
     log[#log + 1] = date("%H:%M:%S") .. " " .. msg
     Util.Cap(log, LOG_MAX)

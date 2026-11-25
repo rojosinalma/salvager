@@ -75,14 +75,14 @@ function Widgets.Money(parent, onChange)
     frame:SetSize(150, 20)
     local m = { boxes = {}, frame = frame }
     local prev
-    for i, unit in ipairs({ { "g", "ffd700" }, { "s", "c7c7cf" }, { "c", "eda55f" } }) do
+    for i, coin in ipairs({ ns.Util.COIN.g, ns.Util.COIN.s, ns.Util.COIN.c }) do
         local e = Widgets.Edit(frame, i == 1 and 44 or 28, true)
         e:SetMaxLetters(i == 1 and 6 or 2)
         e:SetJustifyH("RIGHT")
         if prev then e:SetPoint("LEFT", prev, "RIGHT", 18, 0) else e:SetPoint("LEFT", frame, "LEFT", 6, 0) end
         local l = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         l:SetPoint("LEFT", e, "RIGHT", 3, 0)
-        l:SetText("|cff" .. unit[2] .. unit[1] .. "|r")
+        l:SetText(coin)
         e:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
         e:SetScript("OnTabPressed", function()
             local nextBox = m.boxes[i % 3 + 1]
