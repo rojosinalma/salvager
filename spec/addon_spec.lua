@@ -229,3 +229,45 @@ describe("Salvager window and options", function()
         assert.are.equal(12345, m:Get())
     end)
 end)
+
+describe("Salvager scan safety", function()
+    local env, ns
+    setup(function()
+        env = wow.install()
+        env.items[11083] = { name = "Soul Dust", quality = 1, ilvl = 1, classID = 7 }
+        env.items[5001] = { name = "Test Boots", quality = 2, ilvl = 28, classID = 4 }
+        ns = wow.loadAddon()
+        wow.fire(ns, "ADDON_LOADED", "Salvager")
+        wow.fire(ns, "AUCTION_HOUSE_SHOW")
+        ns.db.prices[11083] = { p = 433, t = 0 }
+    end)
+
+    it("carries on when a browse page never comes", function()
+        env.ah.fullBrowse = false
+        env.ah.browse = { { itemKey = { itemID = 5001, itemLevel = 28, itemSuffix = 0 }, minPrice = 999999 } }
+        ns.Scanner.Scan()
+        wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
+        assert.are.equal("browsing", ns.Scanner.state)
+        wow.tick(ns, 13)
+        assert.are.equal("idle", ns.Scanner.state)
+        assert.are.equal(1, ns.Scanner.summary.browsed)
+    end)
+
+    it("does not start a material scan during a gear scan", function()
+        ns.Scanner.state = "browsing"
+        ns.Prices.Scan()
+        assert.is_false(ns.Prices.scanning)
+        ns.Scanner.state = "idle"
+    end)
+
+    it("tries a search once more when it gets no answer", function()
+        ns.Prices.Scan()
+        local first = ns.Queue.items[1] and ns.Queue.items[1].commodity
+        wow.tick(ns, 0.2)
+        assert.are.equal(first, ns.Queue.current.commodity)
+        wow.tick(ns, 3.2)
+        local again = false
+        for _, t in ipairs(ns.Queue.items) do if t.commodity == first then again = true end end
+        assert.is_true(again)
+    end)
+end)

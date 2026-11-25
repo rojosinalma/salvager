@@ -11,6 +11,9 @@ local Scanner = { state = "idle", deals = {}, checked = 0, toCheck = 0, browsed 
 ns.Scanner = Scanner
 
 local MAX_PAGES = 50
+local BROWSE_STALL = 6     -- seconds without a browse page before carrying on
+local lastBrowseAt = 0
+local watchBrowse          -- (defined below)
 local ourSend = false
 local pages = 0
 local results = {}
@@ -160,6 +163,10 @@ end
 function Scanner.Scan()
     if not ns.Queue.open then ns.Print("open the auction house first") return end
     if Scanner.state ~= "idle" then return end
+    if ns.Prices.scanning then
+        ns.Print("wait for the material scan to finish")
+        return
+    end
     if not next(ns.db.prices) then ns.Print("scan material prices first") return end
     local s = ns.db.settings
     local query = {
@@ -174,6 +181,9 @@ function Scanner.Scan()
     if s.minLevel > 0 then query.minLevel = s.minLevel end
     if s.maxLevel > 0 then query.maxLevel = s.maxLevel end
     results, pages = {}, 0
+    lastBrowseAt = GetTime()
+    Scanner.browseSeq = (Scanner.browseSeq or 0) + 1
+    watchBrowse(Scanner.browseSeq)
     ns.Log("gear scan started: levels %d-%d, %d quality filters", s.minLevel, s.maxLevel, #query.filters)
     setState("browsing")
     ourSend = true
@@ -192,8 +202,19 @@ function Scanner.SetAuto(on)
     ns.Fire("SALVAGER_SCAN")
 end
 
+-- A browse page that never comes: carry on with the pages that did.
+function watchBrowse(seq)
+    C_Timer.After(BROWSE_STALL, function()
+        if Scanner.state ~= "browsing" or Scanner.browseSeq ~= seq then return end
+        if GetTime() - lastBrowseAt < BROWSE_STALL then watchBrowse(seq) return end
+        ns.Log("browse: no page for %ds, using the %d items received", BROWSE_STALL, #results)
+        if #results > 0 then evaluate() else setState("idle") scheduleNext() end
+    end)
+end
+
 local function onBrowse()
     if Scanner.state ~= "browsing" then return end
+    lastBrowseAt = GetTime()
     results = AH.GetBrowseResults() or {}
     Scanner.browsed = #results
     ns.Log("browse page %d: %d items so far, full %s", pages, #results, tostring(AH.HasFullBrowseResults()))

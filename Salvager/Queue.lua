@@ -88,7 +88,15 @@ local function finish(ok)
     local task = Queue.current
     Queue.current = nil
     if not task then return end
-    if not ok then ns.Log("search: no answer for %s after %.1fs", describe(task), GetTime() - task.sentAt) end
+    if not ok then
+        ns.Log("search: no answer for %s after %.1fs%s", describe(task), GetTime() - task.sentAt,
+            (task.tries or 0) < 1 and ", trying again" or ", skipped")
+        if (task.tries or 0) < 1 then
+            task.tries = (task.tries or 0) + 1
+            table.insert(Queue.items, task)
+            return
+        end
+    end
     local fn = ok and task.onResult or task.onFail
     if fn then
         local good, err = pcall(fn, task)
