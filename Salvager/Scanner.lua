@@ -217,7 +217,8 @@ local function onBrowse()
     lastBrowseAt = GetTime()
     results = AH.GetBrowseResults() or {}
     Scanner.browsed = #results
-    ns.Log("browse page %d: %d items so far, full %s", pages, #results, tostring(AH.HasFullBrowseResults()))
+    ns.Log("browse page %d: %d items so far, %s", pages + 1, #results,
+        AH.HasFullBrowseResults() and "last page" or "more pages to come")
     if not AH.HasFullBrowseResults() and pages < MAX_PAGES then
         pages = pages + 1
         AH.RequestMoreBrowseResults()
