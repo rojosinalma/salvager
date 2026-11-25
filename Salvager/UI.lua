@@ -117,6 +117,8 @@ local function statusText()
     if ns.Prices.scanning then parts[#parts + 1] = string.format("Materials %d/%d", ns.Prices.done, ns.Prices.total) end
     local s = ns.Scanner
     if s.state == "browsing" then parts[#parts + 1] = string.format("Browsing (%d items)", s.browsed)
+    elseif s.state == "checking" and s.toCheck == 0 then
+        parts[#parts + 1] = string.format("Valuing %d/%d", s.valuedSoFar or 0, s.browsed)
     elseif s.state == "checking" then parts[#parts + 1] = string.format("Checking %d/%d", s.checked, s.toCheck)
     elseif ns.scanBothPending and not ns.Prices.scanning then parts[#parts + 1] = "Starting gear scan"
     end

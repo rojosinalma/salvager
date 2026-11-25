@@ -57,7 +57,7 @@ describe("Salvager in a simulated client", function()
             { auctionID = 77, buyoutAmount = 500, itemLink = BOOTS_LINK, containsOwnerItem = false },
             { auctionID = 78, buyoutAmount = 5000, itemLink = BOOTS_LINK, containsOwnerItem = false },
         }
-        wow.tick(ns, 0.3)
+        wow.tick(ns, 0.5)
         wow.fire(ns, "ITEM_SEARCH_RESULTS_UPDATED", { itemID = BOOTS, itemLevel = 28, itemSuffix = 0 })
         assert.are.equal("idle", ns.Scanner.state)
         assert.are.equal(1, #ns.Scanner.deals)
@@ -178,6 +178,7 @@ describe("Salvager window and options", function()
         end
         assert.are.equal("browsing", ns.Scanner.state)
         wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
+        wow.tick(ns, 0.2)
         assert.is_false(ns.Busy())
         assert.is_table(ns.Scanner.summary)
     end)
@@ -257,6 +258,22 @@ describe("Salvager scan safety", function()
         wow.tick(ns, 13)
         assert.are.equal("idle", ns.Scanner.state)
         assert.are.equal(1, ns.Scanner.summary.browsed)
+        assert.are.equal(1, ns.Scanner.summary.overCeiling)
+    end)
+
+    it("values a large browse over several frames", function()
+        env.ah.fullBrowse = true
+        env.ah.browse = {}
+        for n = 1, 1000 do
+            env.ah.browse[n] = { itemKey = { itemID = 5001, itemLevel = 28, itemSuffix = 0 }, minPrice = 999999 }
+        end
+        ns.Scanner.Scan()
+        wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
+        assert.are.equal("checking", ns.Scanner.state)
+        assert.is_true(ns.Scanner.valuedSoFar < 1000)
+        wow.tick(ns, 1)
+        assert.are.equal("idle", ns.Scanner.state)
+        assert.are.equal(1000, ns.Scanner.summary.overCeiling)
     end)
 
     it("does not start a material scan during a gear scan", function()

@@ -47,16 +47,28 @@ local function sortDeals()
 end
 
 --- Value of an item key, using the scan's quality when the client has none yet.
-local function keyValue(key)
-    local info = AH.GetItemKeyInfo(key)
-    local quality = (info and info.quality) or ns.QualityOf(key.itemID) or onlyQuality()
+--- ctx = { salvager, classes, quality } is worked out once per scan.
+local function keyValue(key, ctx)
     local classID = ns.ClassOf(key.itemID)
-    if classID and not ns.GearClasses()[classID] then return nil end
+    if not classID or not ctx.classes[classID] then return nil end
+    local info = AH.GetItemKeyInfo(key)
+    local quality = (info and info.quality) or ns.QualityOf(key.itemID) or ctx.quality
     local ilvl = (key.itemLevel and key.itemLevel > 0) and key.itemLevel or ns.ItemLevelOf(key.itemID)
-    if not (quality and classID and ilvl) then return nil end
-    local v, outcomes = ns.ItemValue(key.itemID, ilvl, quality, classID)
+    if not (quality and ilvl) then return nil end
+    local v, outcomes = ns.ItemValue(key.itemID, ilvl, quality, classID, ctx.salvager)
     if not v or ns.MissingMajor(v, outcomes) then return nil end
     return v, ilvl, quality, classID, outcomes, ns.BuyLimit(quality, classID, outcomes.band, v.net)
+end
+
+--- The highest buy limit of any band and type being scanned: an item listed above it
+--- can't be a deal, so it is skipped without looking it up.
+local function ceiling(classes)
+    local top = 0
+    for _, r in ipairs(ns.Limits()) do
+        if classes[ns.Data.CLASS_ARMOR] and r.armor and r.armor.limit > top then top = r.armor.limit end
+        if classes[ns.Data.CLASS_WEAPON] and r.weapon and r.weapon.limit > top then top = r.weapon.limit end
+    end
+    return top
 end
 
 local function readAuctions(task)
@@ -100,37 +112,14 @@ local function checkDone()
     end
 end
 
-local function evaluate()
-    setState("checking")
-    Scanner.toCheck, Scanner.checked = 0, 0
-    local minProfit = ns.db.settings.minProfit
-    local candidates = {}
-    local sum = { browsed = #results, valued = 0, noValue = 0, noPrice = 0, candidates = 0, best = nil }
-    for _, r in ipairs(results) do
-        local key = r.itemKey
-        if key and r.minPrice and r.minPrice > 0 then
-            local v, ilvl, quality, classID, _, limit = keyValue(key)
-            if v then
-                sum.valued = sum.valued + 1
-                local margin = v.net - r.minPrice
-                if not sum.best or margin > sum.best.margin then
-                    sum.best = { margin = margin, itemID = key.itemID, ilvl = ilvl, price = r.minPrice, value = v.net }
-                end
-                if r.minPrice <= limit then
-                    candidates[#candidates + 1] = { key = key, v = v, ilvl = ilvl, quality = quality, classID = classID,
-                        margin = margin, limit = limit }
-                end
-            else
-                sum.noValue = sum.noValue + 1
-            end
-        else
-            sum.noPrice = sum.noPrice + 1
-        end
-    end
+local BATCH = 200          -- browse results valued per frame, so the game doesn't freeze
+
+local function queueChecks(candidates, sum)
     sum.candidates = #candidates
     Scanner.summary = sum
-    ns.Log("gear scan: %d items browsed, %d valued, %d without a value, %d without a buyout, %d under the limit (min profit %s)",
-        sum.browsed, sum.valued, sum.noValue, sum.noPrice, sum.candidates, ns.Money(minProfit))
+    ns.Log("gear scan: %d items browsed, %d over every limit, %d valued, %d without a value, %d without a buyout, "
+        .. "%d under the limit (min profit %s)", sum.browsed, sum.overCeiling, sum.valued, sum.noValue, sum.noPrice,
+        sum.candidates, ns.Money(ns.db.settings.minProfit))
     if sum.best then
         ns.Log("closest: item %d ilvl %s at %s, value %s, margin %s", sum.best.itemID, tostring(sum.best.ilvl),
             ns.Money(sum.best.price), ns.Money(sum.best.value), ns.Money(sum.best.margin))
@@ -157,6 +146,55 @@ local function evaluate()
         Scanner.toCheck = 1
         checkDone()
     end
+end
+
+local function evaluate()
+    setState("checking")
+    Scanner.toCheck, Scanner.checked = 0, 0
+    local classes = ns.GearClasses()
+    local ctx = { salvager = ns.SalvagerForBuy(), classes = classes, quality = onlyQuality() }
+    local top = ceiling(classes)
+    local list, seq = results, Scanner.browseSeq
+    local candidates = {}
+    local sum = { browsed = #list, overCeiling = 0, valued = 0, noValue = 0, noPrice = 0, candidates = 0, best = nil }
+    local i = 0
+    local function step()
+        if Scanner.state ~= "checking" or Scanner.browseSeq ~= seq then return end
+        local last = math.min(#list, i + BATCH)
+        for n = i + 1, last do
+            local r = list[n]
+            local key = r.itemKey
+            if not (key and r.minPrice and r.minPrice > 0) then
+                sum.noPrice = sum.noPrice + 1
+            elseif r.minPrice > top then
+                sum.overCeiling = sum.overCeiling + 1
+            else
+                local v, ilvl, quality, classID, _, limit = keyValue(key, ctx)
+                if v then
+                    sum.valued = sum.valued + 1
+                    local margin = v.net - r.minPrice
+                    if not sum.best or margin > sum.best.margin then
+                        sum.best = { margin = margin, itemID = key.itemID, ilvl = ilvl, price = r.minPrice, value = v.net }
+                    end
+                    if r.minPrice <= limit then
+                        candidates[#candidates + 1] = { key = key, v = v, ilvl = ilvl, quality = quality,
+                            classID = classID, margin = margin, limit = limit }
+                    end
+                else
+                    sum.noValue = sum.noValue + 1
+                end
+            end
+        end
+        i = last
+        Scanner.valuedSoFar = i
+        if i < #list then
+            ns.Fire("SALVAGER_SCAN")
+            C_Timer.After(0, step)
+        else
+            queueChecks(candidates, sum)
+        end
+    end
+    step()
 end
 
 --- Starts a gear scan. Needs the auction house open and material prices.
