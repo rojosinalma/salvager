@@ -9,10 +9,29 @@ local Ledger, Data, W = ns.Ledger, ns.Data, ns.Widgets
 local Materials = {}
 ns.Materials = Materials
 
+-- Shown when the mouse is over a column title, in the tab and in the window.
+Materials.HELP = {
+    [2] = { "Price", "The price of one, as the average of the cheapest units on the auction house (20 by default), "
+        .. "without your own listings. Red = below your break-even. * = none listed now, the last price seen. "
+        .. "~ = worked out from the other essence form." },
+    [3] = { "Units", "What the price rests on, as units / listings. 20/1 = the 20 cheapest units all come from one "
+        .. "listing. 20/8 = they come from 8 listings. A first number under 20, such as 9/4, means only 9 units are "
+        .. "listed at all: a thin market, so the price can jump." },
+    [4] = { "Age", "How long ago this price was scanned. Orange = older than twice your rescan setting." },
+    [5] = { "Bags", "How many you carry now. Post sells these." },
+    [6] = { "Stock", "How many the ledger counts as yours: what your disenchants gave, minus what you sold. "
+        .. "It still counts the ones you have posted." },
+    [7] = { "Avg cost", "What one cost you on average: the price of the items you disenchanted, shared out over the "
+        .. "materials they gave. +2? = 2 more units with no recorded purchase." },
+    [8] = { "Break-even", "The lowest price each at which a sale does not lose money: average cost with the 5% "
+        .. "auction house cut added." },
+}
+
 Materials.COLUMNS = {
     { "Material", 160 }, { "Price", 80, "RIGHT" }, { "Units", 45, "CENTER" }, { "Age", 36, "CENTER" },
     { "Bags", 40, "CENTER" }, { "Stock", 40, "CENTER" }, { "Avg cost", 85, "RIGHT" }, { "Break-even", 85, "RIGHT" },
 }
+for i, help in pairs(Materials.HELP) do Materials.COLUMNS[i].help = help end
 
 local function ago(seconds)
     if not seconds then return "-" end

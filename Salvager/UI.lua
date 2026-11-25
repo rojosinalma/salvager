@@ -41,6 +41,7 @@ local VIEWS = {
         header = { "Material", "Price", "Units", "Age", "Bags", "Stock", "Avg cost", "Break-even" },
         cols = { { 160, "LEFT" }, { 80, "RIGHT" }, { 45, "CENTER" }, { 36, "CENTER" }, { 40, "CENTER" }, { 40, "CENTER" },
             { 85, "RIGHT" }, { 85, "RIGHT" } },   -- (the same as Materials.COLUMNS)
+        help = "materials",                        -- (the titles' help is Materials.HELP)
     },
     limits = {
         icon = false,
@@ -269,7 +270,8 @@ function UI.Refresh()
         else
             h:Hide()
         end
-        headerHelp[i].help = col and view.help and view.help[i] or nil
+        local help = view.help == "materials" and ns.Materials.HELP or view.help
+        headerHelp[i].help = col and help and help[i] or nil
         headerHelp[i]:SetShown(headerHelp[i].help ~= nil)
     end
     for r = ROWS + 1, MAX_ROWS do rows[r]:Hide() end
