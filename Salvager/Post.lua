@@ -147,18 +147,9 @@ local function recalc()
 end
 
 local function build()
-    local main = ns.UI.Frame()
-    d = CreateFrame("Frame", "SalvagerPostFrame", main, "BasicFrameTemplateWithInset")
-    d:SetSize(380, 300)
-    d:SetPoint("CENTER", main, "CENTER", 0, 0)
+    -- A window of its own: drag it where you want it, and it opens there the next time.
+    d = W.Window("SalvagerPostFrame", "Post on the auction house", "post", 380, 300, 380, 300, true)
     d:SetFrameStrata("DIALOG")
-    d:EnableMouse(true)
-    local title = d.TitleText
-    if type(title) ~= "table" then
-        title = d:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        title:SetPoint("TOP", d, "TOP", 0, -5)
-    end
-    d.title = title
 
     d.icon = d:CreateTexture(nil, "ARTWORK")
     d.icon:SetSize(28, 28)
@@ -225,7 +216,6 @@ local function show(itemID, stale)
     if not d then build() end
     local s = Post.Suggest(itemID)
     d.itemID, d.stale, d.confirm = itemID, stale, nil
-    d.title:SetText("Post on the auction house")
     d.icon:SetTexture(W.IconOf(itemID))
     d.name:SetText(ns.MaterialName(itemID))
     d.qty:SetText(tostring(Post.BagCount(itemID)))

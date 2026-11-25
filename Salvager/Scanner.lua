@@ -25,6 +25,7 @@ local CLASS_NAME = { [Data.CLASS_WEAPON] = "weapons", [Data.CLASS_ARMOR] = "armo
 local scan                 -- the scan in progress: { seq, passes, index, pass, candidates, seen, sum }
 local lastBrowseAt = 0
 local ourSend = false
+local pendingBuys = {}     -- [auctionID] = deal, purchases on their way
 
 local function setState(s)
     Scanner.state = s
@@ -412,6 +413,7 @@ function Scanner.SetAuto(on)
 end
 
 ns.On("AUCTION_HOUSE_CLOSED", function()
+    wipe(pendingBuys)
     Scanner.auto = false
     Scanner.paused = false
     scan = nil
@@ -421,12 +423,32 @@ end)
 
 ------------------------------------------------------------------ buying
 
+local BUY_QUIET = 1.0      -- seconds after a Buy click in which searches wait (more clicks may follow)
+local BUY_EXPIRES = 10     -- seconds after which a purchase with no answer is given up
+local lastBuyAt = 0
+
+--- Is a purchase on its way, or was Buy clicked a moment ago? Then nothing else talks to the
+--- auction house: a search sent now would be dropped, or would make it drop the purchase.
+function Scanner.Buying()
+    if GetTime() - lastBuyAt < BUY_QUIET then return true end
+    for id, d in pairs(pendingBuys) do
+        if GetTime() - d.clickedAt < BUY_EXPIRES then return true end
+        -- No answer at all: free the row again.
+        pendingBuys[id] = nil
+        d.pending = false
+        ns.Log("purchase of %s got no answer in %ds", d.link or d.itemID, BUY_EXPIRES)
+    end
+    return false
+end
+
 --- Buys a deal. Must run from a click (the server needs a hardware event).
 function Scanner.Buy(deal)
     if deal.pending then return end
     if GetMoney() < deal.buyout then ns.Print("not enough money for %s", deal.link or "this item") return end
     deal.pending = true
-    Scanner.buying = deal
+    deal.clickedAt = GetTime()
+    lastBuyAt = deal.clickedAt
+    pendingBuys[deal.auctionID] = deal
     AH.PlaceBid(deal.auctionID, deal.buyout)
     ns.Fire("SALVAGER_DEALS")
 end
@@ -460,27 +482,31 @@ local function removeDeal(auctionID)
 end
 
 ns.On("AUCTION_HOUSE_PURCHASE_COMPLETED", function(auctionID)
-    local d = Scanner.buying
-    if d and d.auctionID == auctionID then
+    local d = pendingBuys[auctionID]
+    pendingBuys[auctionID] = nil
+    removeDeal(auctionID)
+    if d then
         ns.Print("bought %s for %s (expected profit %s)", d.link or "item", ns.Money(d.buyout), ns.Money(d.profit))
         ns.Ledger.AuctionPurchase(ns.db.ledger, d.itemID, d.buyout, d.value, time(), d.link)
         ns.Log("bought %s for %s, value %s", d.link or d.itemID, ns.Money(d.buyout), ns.Money(d.value))
         ns.Fire("SALVAGER_LEDGER")
-        Scanner.buying = nil
+        Scanner.Recheck(d)
     end
-    removeDeal(auctionID)
-    if d and d.auctionID == auctionID then Scanner.Recheck(d) end
     ns.Fire("SALVAGER_DEALS")
 end)
 
+-- The error does not say which purchase it is about: it is the oldest one still on its way.
 ns.On("AUCTION_HOUSE_SHOW_ERROR", function()
-    local d = Scanner.buying
-    if d then
-        d.pending = false
-        removeDeal(d.auctionID)
-        Scanner.buying = nil
-        ns.Print("could not buy %s (sold or changed)", d.link or "item")
-        Scanner.Recheck(d)
-        ns.Fire("SALVAGER_DEALS")
+    local d
+    for _, x in pairs(pendingBuys) do
+        if not d or x.clickedAt < d.clickedAt then d = x end
     end
+    if not d then return end
+    pendingBuys[d.auctionID] = nil
+    d.pending = false
+    removeDeal(d.auctionID)
+    ns.Print("could not buy %s (sold or changed)", d.link or "item")
+    ns.Log("could not buy %s for %s", d.link or d.itemID, ns.Money(d.buyout))
+    Scanner.Recheck(d)
+    ns.Fire("SALVAGER_DEALS")
 end)

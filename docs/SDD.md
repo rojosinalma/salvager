@@ -88,6 +88,11 @@ flipping is out of scope for now.
     is tried up to 3 times and stays next in line, the `_ADDED` result events also count as answers, and at
     the timeout the results are used if the game holds them. A refresh with no new answer uses the held
     results and logs it. Each round logs its check time and both counts.
+26. **Buying first.** Purchases on their way are kept per auction ID (a fast run of Buy clicks used to
+    overwrite the one being tracked, so 2 of 19 purchases were recorded only from their mail, 2026-11-25).
+    While a purchase is on its way, or Buy was clicked in the last second, the search queue waits and a
+    reported drop is not answered with a resend: the dropped request may be the purchase.
+27. **The Post window** is a window of its own (`Widgets.Window`, fixed size), not pinned to the main window.
 15. **UI redraws** from events are limited to four per second; the log panel is not rebuilt during a scan.
 
 ## Data

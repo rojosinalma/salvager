@@ -159,6 +159,8 @@ local function pump()
     -- A search sent while the gear browse loads its pages makes the auction house drop a page:
     -- searches wait for the browse, except one the player just asked for.
     if ns.Scanner and ns.Scanner.state == "browsing" and not Queue.items[1].urgent then return end
+    -- Buying first: while a purchase is on its way, or Buy was clicked a moment ago, searches wait.
+    if ns.Scanner and ns.Scanner.Buying() then return end
     if not ready() then return end
     Queue.current = table.remove(Queue.items, 1)
     local ok, err = pcall(send, Queue.current)
@@ -194,6 +196,8 @@ local MAX_RESENDS = 3
 ns.On("AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED", function()
     local task = Queue.current
     if not task or GetTime() - task.sentAt > 2 or (task.resends or 0) >= MAX_RESENDS then return end
+    -- With a purchase on its way the dropped request may be the purchase: do not push more at it.
+    if ns.Scanner and ns.Scanner.Buying() then return end
     task.resends = (task.resends or 0) + 1
     Queue.dropped = (Queue.dropped or 0) + 1
     ns.Log("search: the auction house dropped %s (busy with another request), sending it again (%d of %d)",

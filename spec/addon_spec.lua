@@ -558,6 +558,34 @@ describe("Salvager deals list", function()
         assert.is_true(list.headers[1]:IsShown())
     end)
 
+    it("records every purchase of a fast run of Buy clicks, and holds searches meanwhile", function()
+        local task = { itemKey = { itemID = 5001, itemLevel = 28, itemSuffix = 0 }, keyString = "5001:28:0",
+            net = 3000, limit = 2500, ilvl = 28, quality = 2, classID = 4 }
+        local function deal(id, price)
+            return { auctionID = id, itemID = 5001, link = LINK, buyout = price, value = 3000, profit = 3000 - price,
+                classID = 4, task = task, keyString = task.keyString }
+        end
+        local a, b, c = deal(11, 500), deal(12, 501), deal(13, 502)
+        ns.Scanner.deals = { a, b, c }
+        local before = #(ns.db.ledger.purchases[5001] or {})
+        ns.Scanner.Buy(a)
+        ns.Scanner.Buy(b)                                  -- clicked before the first one came back
+        ns.Scanner.Buy(c)
+        assert.is_true(ns.Scanner.Buying())
+        ns.Queue.Add({ commodity = 11083, onResult = function() end, onFail = function() end })
+        wow.tick(ns, 0.5)
+        assert.is_nil(ns.Queue.current)                    -- searches wait for the purchases
+        wow.fire(ns, "AUCTION_HOUSE_PURCHASE_COMPLETED", 11)
+        wow.fire(ns, "AUCTION_HOUSE_PURCHASE_COMPLETED", 12)
+        wow.fire(ns, "AUCTION_HOUSE_SHOW_ERROR", 5)        -- the third was sold to someone else
+        assert.are.equal(before + 2, #ns.db.ledger.purchases[5001])
+        assert.is_false(c.pending)
+        wow.tick(ns, 1.5)
+        assert.is_false(ns.Scanner.Buying())
+        assert.is_table(ns.Queue.current)                  -- and go on afterwards
+        ns.Queue.Clear()
+    end)
+
     it("resizes from the corner and keeps the size", function()
         local f = _G.SalvagerFrame
         assert.is_function(f.scripts.OnSizeChanged)
