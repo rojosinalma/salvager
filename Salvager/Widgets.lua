@@ -15,6 +15,36 @@ function Widgets.Button(parent, text, width, onClick, tooltip)
     return b
 end
 
+--- A flat panel: a filled background with a thin border. Used to set a list or a group of
+--- controls apart from the window behind it. Returns the frame (anchor it yourself).
+function Widgets.Panel(parent, r, g, b, a)
+    local p = CreateFrame("Frame", nil, parent)
+    local bg = p:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(r or 0, g or 0, b or 0, a or 0.4)
+    local function edge(point1, point2, horizontal)
+        local t = p:CreateTexture(nil, "BORDER")
+        t:SetColorTexture(0.45, 0.42, 0.35, 0.9)
+        t:SetPoint(point1, p, point1, 0, 0)
+        t:SetPoint(point2, p, point2, 0, 0)
+        if horizontal then t:SetHeight(1) else t:SetWidth(1) end
+    end
+    edge("TOPLEFT", "TOPRIGHT", true)
+    edge("BOTTOMLEFT", "BOTTOMRIGHT", true)
+    edge("TOPLEFT", "BOTTOMLEFT", false)
+    edge("TOPRIGHT", "BOTTOMRIGHT", false)
+    return p
+end
+
+--- Help text for a label: an invisible area over `region` that shows a tooltip.
+function Widgets.HelpArea(parent, region, title, text)
+    local area = CreateFrame("Frame", nil, parent)
+    area:SetAllPoints(region)
+    area:EnableMouse(true)
+    Widgets.Tooltip(area, title, text)
+    return area
+end
+
 --- A small square button with an icon. :SetIcon(path) or :SetSquare(r, g, b) changes it.
 function Widgets.IconButton(parent, size, onClick)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")

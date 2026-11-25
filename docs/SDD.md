@@ -115,6 +115,11 @@ flipping is out of scope for now.
 32. **Each gear round starts with an empty Deals list** (the user's choice, 2026-11-26): the list is cleared
     when a round starts and filled again as its candidates are checked, so it never shows auctions of an
     earlier round.
+33. **Max price** (`maxPrice`, 0 = no limit): the most to pay for one item, whatever it is worth. The scan uses
+    min(buy limit, max price) per band. It also keeps expensive items from taking the candidate checks.
+34. **Main window layout:** top bar (Play, Stop, status; Ledger, Log, Options), a settings box with a "Scan" row
+    (gear, quality, one-off scans) and a "Buy" row (min profit, max price), the tabs, then the list in its own
+    dark bordered panel with a title band and striped rows (`Widgets.Panel`, no game template needed).
 15. **UI redraws** from events are limited to four per second; the log panel is not rebuilt during a scan.
 
 ## Data

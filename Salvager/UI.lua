@@ -9,7 +9,7 @@ ns.UI = UI
 local MAX_ROWS, ROW_H = 40, 24
 local MAX_COLS = 8
 local WIDTH, HEIGHT = 800, 560
-local MIN_W, MIN_H = 800, 380
+local MIN_W, MIN_H = 800, 440
 local ROWS = 15          -- rows that fit now (set from the list height)
 local QUALITY_COLOR = { [2] = "|cff1eff00", [3] = "|cff0070dd", [4] = "|cffa335ee" }
 local CLASS_NAME = { [2] = "Weapon", [4] = "Armor" }
@@ -52,6 +52,7 @@ local VIEWS = {
 
 local f, rows, headers, status, footer, minProfit, playButton, stopButton, gearChoice, tabs =
     nil, {}, {}, nil, nil, nil, nil, nil, nil, {}
+local maxPrice, capHint
 local qualityDrop, popOut
 local headerHelp = {}
 local REFRESH_GAP, lastRefresh, refreshQueued = 0.25, 0, false
@@ -330,6 +331,8 @@ function UI.Refresh()
     end
     UI.UpdatePlay()
     minProfit:Set(ns.db.settings.minProfit)
+    maxPrice:Set(ns.db.settings.maxPrice)
+    capHint:SetText(ns.db.settings.maxPrice > 0 and "" or "no limit")
     gearChoice:Update()
     qualityDrop:Update()
     footer:SetText(footerText())
@@ -404,44 +407,12 @@ local function build()
     title:SetText("Salvager")
     tinsert(UISpecialFrames, "SalvagerFrame")
 
-    -- Row 1: views, log, options.
-    local x = 12
-    for _, t in ipairs({ { "deals", "Deals" }, { "materials", "Materials" }, { "limits", "Limits" } }) do
-        local b = W.Button(f, t[2], 90, function()
-            -- The Materials tab, while its list is in its own window: put it back here.
-            if t[1] == "materials" then ns.Materials.PutBack() end
-            UI.view = t[1]
-            ns.db.window.view = t[1]
-            UI.offset = 0
-            UI.Refresh()
-        end)
-        b:SetPoint("TOPLEFT", f, "TOPLEFT", x, -30)
-        tabs[t[1]] = b
-        x = x + 94
-    end
-    W.Tooltip(tabs.materials, "Materials", "Prices, stock and break-even of the disenchanting materials. "
-        .. "While the list is in its own window (Pop out), a click here puts it back.")
-    popOut = W.Button(f, "Pop out", 76, function() ns.Materials.PopOut() end,
-        "Moves the materials list to a window of its own, so you can watch it next to the deals. "
-        .. "Scans keep running. Close that window to put the list back here.")
-    popOut:SetPoint("TOPLEFT", f, "TOPLEFT", x + 6, -30)
-    popOut:Hide()
-    local options = W.Button(f, "Options", 80, function() ns.Options.Open() end)
-    options:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -30)
-    local log = W.Button(f, "Log", 80, function() ns.LogWindow.Toggle() end,
-        "Opens the log in its own window: what the addon did, and any error. For debugging.")
-    log:SetPoint("RIGHT", options, "LEFT", -6, 0)
-    local ledger = W.Button(f, "Ledger", 80, function() ns.LedgerWindow.Toggle() end,
-        "Opens the ledger in its own window: what you bought, what each item was disenchanted into, "
-        .. "your sales and their profit.")
-    ledger:SetPoint("RIGHT", log, "LEFT", -6, 0)
-
-    -- Row 2: Play and Stop first, then what is happening; the one-off scans on the right.
+    ---------------------------------------------------------------- top bar: run, status, windows
     playButton = W.IconButton(f, 24, function()
         local s = ns.Scanner
         if s.auto and not s.paused then s.Pause() else s.Play() end
     end)
-    playButton:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -57)
+    playButton:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -29)
     playButton:SetScript("OnEnter", function(self)
         local s = ns.Scanner
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -466,41 +437,48 @@ local function build()
     W.Tooltip(stopButton, "Stop", "Ends auto scanning and drops the scan that is running. Deals found so far stay in the list.")
     spinner = W.Spinner(f, 22)
     spinner:SetPoint("LEFT", stopButton, "RIGHT", 12, 0)
-    local scanBoth = W.Button(f, "Scan both", 90, function() ns.ScanBoth() end,
-        "Once: scans the material prices first, then the gear.")
-    scanBoth:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -58)
-    local scanGear = W.Button(f, "Scan gear", 90, function() ns.Scanner.Scan() end,
-        "Once: lists the gear on the auction house and checks each item that is below its buy limit.")
-    scanGear:SetPoint("RIGHT", scanBoth, "LEFT", -6, 0)
-    local scanMats = W.Button(f, "Scan materials", 115, function() ns.Prices.Scan() end,
-        "Once: searches each disenchanting material (about 20 seconds) and stores its price.")
-    scanMats:SetPoint("RIGHT", scanGear, "LEFT", -6, 0)
+
+    local options = W.Button(f, "Options", 80, function() ns.Options.Open() end)
+    options:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -30)
+    local log = W.Button(f, "Log", 80, function() ns.LogWindow.Toggle() end,
+        "Opens the log in its own window: what the addon did, and any error. For debugging.")
+    log:SetPoint("RIGHT", options, "LEFT", -6, 0)
+    local ledger = W.Button(f, "Ledger", 80, function() ns.LedgerWindow.Toggle() end,
+        "Opens the ledger in its own window: what you bought, what each item was disenchanted into, "
+        .. "your sales and their profit.")
+    ledger:SetPoint("RIGHT", log, "LEFT", -6, 0)
     status = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     status:SetPoint("LEFT", spinner, "RIGHT", 6, 0)
-    status:SetPoint("RIGHT", scanMats, "LEFT", -10, 0)
+    status:SetPoint("RIGHT", ledger, "LEFT", -10, 0)
     status:SetJustifyH("LEFT")
     status:SetWordWrap(false)
 
-    -- Row 3: minimum profit and gear type.
-    local mpLabel = W.Label(f, "Min profit")
-    mpLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -92)
-    minProfit = W.Money(f, function(copper)
-        ns.db.settings.minProfit = copper
-        ns.Log("min profit set to %s", ns.Money(copper))
-        ns.Fire("SALVAGER_SETTINGS")
-    end)
-    minProfit:SetPoint("LEFT", mpLabel, "RIGHT", 10, 0)
-    local gearLabel = W.Label(f, "Gear")
-    gearLabel:SetPoint("LEFT", minProfit:Right(), "RIGHT", 30, 0)
-    gearChoice = W.CheckDropdown(f, 150, { { "weapons", "Weapons" }, { "armor", "Armor" } },
+    ---------------------------------------------------------------- settings box: what to scan, what to pay
+    local box = W.Panel(f, 1, 1, 1, 0.04)
+    box:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -60)
+    box:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -60)
+    box:SetHeight(64)
+    local CAPTION_W = 46
+    local function caption(text, y)
+        local l = W.Label(box, text, "GameFontNormal")
+        l:SetPoint("TOPLEFT", box, "TOPLEFT", 10, y)
+        l:SetWidth(CAPTION_W)
+        l:SetJustifyH("LEFT")
+        return l
+    end
+
+    -- Row "Scan": which gear, which quality; on the right the one-off scans.
+    local scanCaption = caption("Scan", -10)
+    local gearLabel = W.Label(box, "Gear", "GameFontHighlightSmall")
+    gearLabel:SetPoint("LEFT", scanCaption, "RIGHT", 6, 0)
+    gearChoice = W.CheckDropdown(box, 140, { { "weapons", "Weapons" }, { "armor", "Armor" } },
         ns.GearTypeOn, ns.SetGearType,
         "Which gear the scan looks at. Armor gives mostly dust, weapons mostly essence. The Limits tab shows the buy limits.",
         "Gear")
-    gearChoice:SetPoint("LEFT", gearLabel, "RIGHT", 8, 0)
-
-    local qLabel = W.Label(f, "Quality")
-    qLabel:SetPoint("LEFT", gearChoice, "RIGHT", 24, 0)
-    qualityDrop = W.CheckDropdown(f, 170, {
+    gearChoice:SetPoint("LEFT", gearLabel, "RIGHT", 6, 0)
+    local qLabel = W.Label(box, "Quality", "GameFontHighlightSmall")
+    qLabel:SetPoint("LEFT", gearChoice, "RIGHT", 14, 0)
+    qualityDrop = W.CheckDropdown(box, 160, {
         { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" }, { 4, "|cffa335eeEpic|r" },
     }, function(q) return ns.db.settings.qualities[q] end, function(q, on)
         local qs = ns.db.settings.qualities
@@ -513,12 +491,85 @@ local function build()
         ns.Fire("SALVAGER_SETTINGS")
     end, "Which gear qualities the scan looks at. Green gives dust and essence, blue one shard, epic 2-4 shards "
         .. "or Nexus Crystals.", "Quality")
-    qualityDrop:SetPoint("LEFT", qLabel, "RIGHT", 8, 0)
+    qualityDrop:SetPoint("LEFT", qLabel, "RIGHT", 6, 0)
 
-    -- The list.
-    local list = CreateFrame("Frame", nil, f)
-    list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -116)
-    list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -30, 40)
+    local scanBoth = W.Button(box, "Both", 58, function() ns.ScanBoth() end,
+        "Once: scans the material prices first, then the gear.")
+    scanBoth:SetPoint("TOPRIGHT", box, "TOPRIGHT", -8, -6)
+    local scanGear = W.Button(box, "Gear", 58, function() ns.Scanner.Scan() end,
+        "Once: lists the gear on the auction house and checks each item that is below its buy limit.")
+    scanGear:SetPoint("RIGHT", scanBoth, "LEFT", -4, 0)
+    local scanMats = W.Button(box, "Materials", 84, function() ns.Prices.Scan() end,
+        "Once: searches each disenchanting material (about 20 seconds) and stores its price.")
+    scanMats:SetPoint("RIGHT", scanGear, "LEFT", -4, 0)
+    local onceLabel = W.Label(box, "Scan once", "GameFontHighlightSmall")
+    onceLabel:SetPoint("RIGHT", scanMats, "LEFT", -8, 0)
+    W.HelpArea(box, onceLabel, "Scan once", "A single scan by hand. Play does all of this by itself, again and again.")
+
+    -- Row "Buy": the least profit, the most to pay.
+    local buyCaption = caption("Buy", -38)
+    local mpLabel = W.Label(box, "Min profit", "GameFontHighlightSmall")
+    mpLabel:SetPoint("LEFT", buyCaption, "RIGHT", 6, 0)
+    W.HelpArea(box, mpLabel, "Min profit", "The least profit an item must make on average: an item is a deal when it "
+        .. "costs no more than its disenchant value minus this.")
+    minProfit = W.Money(box, function(copper)
+        ns.db.settings.minProfit = copper
+        ns.Log("min profit set to %s", ns.Money(copper))
+        ns.Fire("SALVAGER_SETTINGS")
+    end)
+    minProfit:SetPoint("LEFT", mpLabel, "RIGHT", 4, 0)
+    local capLabel = W.Label(box, "Max price", "GameFontHighlightSmall")
+    capLabel:SetPoint("LEFT", minProfit:Right(), "RIGHT", 16, 0)
+    W.HelpArea(box, capLabel, "Max price", "The most you pay for one item, whatever it is worth. An item above this "
+        .. "is never listed. All zeroes = no limit.")
+    maxPrice = W.Money(box, function(copper)
+        ns.db.settings.maxPrice = copper
+        ns.Log("max price set to %s", copper > 0 and ns.Money(copper) or "none")
+        ns.Fire("SALVAGER_SETTINGS")
+    end)
+    maxPrice:SetPoint("LEFT", capLabel, "RIGHT", 4, 0)
+    capHint = W.Label(box, "", "GameFontDisableSmall")
+    capHint:SetPoint("LEFT", maxPrice:Right(), "RIGHT", 8, 0)
+
+    ---------------------------------------------------------------- tabs, above the list they switch
+    local x = 12
+    for _, t in ipairs({ { "deals", "Deals" }, { "materials", "Materials" }, { "limits", "Limits" } }) do
+        local b = W.Button(f, t[2], 96, function()
+            -- The Materials tab, while its list is in its own window: put it back here.
+            if t[1] == "materials" then ns.Materials.PutBack() end
+            UI.view = t[1]
+            ns.db.window.view = t[1]
+            UI.offset = 0
+            UI.Refresh()
+        end)
+        b:SetPoint("TOPLEFT", f, "TOPLEFT", x, -131)
+        tabs[t[1]] = b
+        x = x + 98
+    end
+    W.Tooltip(tabs.deals, "Deals", "The auctions that cost no more than their buy limit, best profit first.")
+    W.Tooltip(tabs.materials, "Materials", "Prices, stock and break-even of the disenchanting materials. "
+        .. "While the list is in its own window (Pop out), a click here puts it back.")
+    W.Tooltip(tabs.limits, "Limits", "The most the addon lets you pay per item level band, for armor and for weapons. "
+        .. "You can set your own.")
+    popOut = W.Button(f, "Pop out", 76, function() ns.Materials.PopOut() end,
+        "Moves the materials list to a window of its own, so you can watch it next to the deals. "
+        .. "Scans keep running. Close that window to put the list back here.")
+    popOut:SetPoint("TOPLEFT", f, "TOPLEFT", x + 6, -131)
+    popOut:Hide()
+
+    ---------------------------------------------------------------- the list, in its own sunken panel
+    local inset = W.Panel(f, 0, 0, 0, 0.5)
+    inset:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -156)
+    inset:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, 40)
+    local titleBand = inset:CreateTexture(nil, "BACKGROUND", nil, 1)
+    titleBand:SetPoint("TOPLEFT", inset, "TOPLEFT", 1, -1)
+    titleBand:SetPoint("TOPRIGHT", inset, "TOPRIGHT", -1, -1)
+    titleBand:SetHeight(ROW_H)
+    titleBand:SetColorTexture(1, 1, 1, 0.07)
+
+    local list = CreateFrame("Frame", nil, inset)
+    list:SetPoint("TOPLEFT", inset, "TOPLEFT", 2, -1)
+    list:SetPoint("BOTTOMRIGHT", inset, "BOTTOMRIGHT", -20, 2)
     list:EnableMouseWheel(true)
     list:SetScript("OnMouseWheel", function(_, delta)
         UI.offset = math.max(0, UI.offset - delta * 3)
@@ -527,15 +578,15 @@ local function build()
     UI.list = list
     if list.SetClipsChildren then list:SetClipsChildren(true) end
 
-    -- Scroll bar on the right of the list.
-    local bar = W.ScrollBar(f, function(value)
+    -- Scroll bar on the right, inside the panel.
+    local bar = W.ScrollBar(inset, function(value)
         if value ~= UI.offset then
             UI.offset = value
             UI.Refresh()
         end
     end)
-    bar:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -116 - ROW_H)
-    bar:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 40)
+    bar:SetPoint("TOPRIGHT", inset, "TOPRIGHT", -3, -ROW_H - 3)
+    bar:SetPoint("BOTTOMRIGHT", inset, "BOTTOMRIGHT", -3, 3)
     bar:EnableMouseWheel(true)
     bar:SetScript("OnMouseWheel", list:GetScript("OnMouseWheel"))
     UI.bar = bar
@@ -566,6 +617,12 @@ local function build()
         local hl = row:CreateTexture(nil, "HIGHLIGHT")
         hl:SetAllPoints()
         hl:SetColorTexture(1, 1, 1, 0.08)
+        if r % 2 == 0 then
+            -- Every second row a shade lighter, so the list reads as lines.
+            local stripe = row:CreateTexture(nil, "BACKGROUND")
+            stripe:SetAllPoints()
+            stripe:SetColorTexture(1, 1, 1, 0.035)
+        end
         row.icon = row:CreateTexture(nil, "ARTWORK")
         row.icon:SetSize(20, 20)
         row.icon:SetPoint("LEFT", row, "LEFT", 4, 0)

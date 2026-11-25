@@ -460,6 +460,22 @@ describe("Salvager scan safety", function()
         ns.Scanner.Stop()
     end)
 
+    it("never lists an item above the most you pay for one item", function()
+        env.ah.fullBrowse = true
+        env.ah.browse = { row(50), row(300) }             -- both far under the item's value
+        ns.db.settings.maxPrice = 100                      -- but you pay at most 1s for anything
+        ns.Scanner.Scan()
+        wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
+        assert.are.equal(1, ns.Scanner.summary.candidates)
+        assert.are.equal(1, ns.Scanner.summary.overLimit)
+        ns.Scanner.Stop()
+        ns.db.settings.maxPrice = 0
+        ns.Scanner.Scan()
+        wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
+        assert.are.equal(1, ns.Scanner.summary.candidates) -- the same item key: still one candidate, now with no cap
+        ns.Scanner.Stop()
+    end)
+
     it("does not start a material scan during a gear scan", function()
         ns.Scanner.state = "browsing"
         ns.Prices.Scan()

@@ -106,12 +106,14 @@ end
 local function buildPlan()
     local s = ns.db.settings
     local classes = ns.GearClasses()
+    local cap = s.maxPrice > 0 and s.maxPrice or math.huge
     local bands = {}
     for _, row in ipairs(ns.Limits()) do
         bands[row.quality] = bands[row.quality] or { [Data.CLASS_ARMOR] = {}, [Data.CLASS_WEAPON] = {} }
         for classID, x in pairs({ [Data.CLASS_ARMOR] = row.armor, [Data.CLASS_WEAPON] = row.weapon }) do
             local list = bands[row.quality][classID]
-            list[#list + 1] = { up = row.up, net = x.value, limit = x.limit, blocked = x.blocked }
+            -- Never above the most the player pays for one item.
+            list[#list + 1] = { up = row.up, net = x.value, limit = math.min(x.limit, cap), blocked = x.blocked }
         end
     end
     local passes = {}
@@ -321,7 +323,8 @@ function Scanner.Scan()
     local names = {}
     for _, p in ipairs(passes) do names[#names + 1] = p.name end
     local s = ns.db.settings
-    ns.Log("gear scan started: %s; levels %d-%d", table.concat(names, ", "), s.minLevel, s.maxLevel)
+    ns.Log("gear scan started: %s; levels %d-%d; min profit %s, max price %s", table.concat(names, ", "), s.minLevel,
+        s.maxLevel, ns.Money(s.minProfit), s.maxPrice > 0 and ns.Money(s.maxPrice) or "none")
     setState("browsing")
     watchBrowse(scan.seq)
     nextPass()

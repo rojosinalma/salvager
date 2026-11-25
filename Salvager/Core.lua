@@ -9,6 +9,7 @@ ns.VERSION = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetada
 local DEFAULTS = {
     settings = {
         minProfit = 1000,          -- copper; deals below this profit are hidden
+        maxPrice = 0,              -- copper; the most to pay for one item, whatever it is worth (0 = no limit)
         salvager = "auto",         -- "auto" | "on" | "off": add the Arcane Salvager bonus when valuing buys
         salvagerChance = 0.5,      -- chance of one extra dust or essence with the Salvager
         cut = 0.05,                -- auction house cut on sales

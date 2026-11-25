@@ -65,6 +65,12 @@ local function populate(panel, standalone)
     money:SetPoint("LEFT", mpLabel, "RIGHT", 12, 0)
     controls[#controls + 1] = { refresh = function() money:Set(s.minProfit) end }
 
+    local capLabel = W.Label(panel, "Maximum price per item (0 = no limit)", "GameFontHighlightSmall")
+    at(capLabel, 24)
+    local cap = W.Money(panel, function(c) s.maxPrice = c changed("maxPrice", c) end)
+    cap:SetPoint("LEFT", capLabel, "RIGHT", 12, 0)
+    controls[#controls + 1] = { refresh = function() cap:Set(s.maxPrice) end }
+
     local gearLabel = W.Label(panel, "Gear to scan", "GameFontHighlightSmall")
     at(gearLabel, 24)
     local gear = W.CheckDropdown(panel, 150, { { "weapons", "Weapons" }, { "armor", "Armor" } },
@@ -172,7 +178,7 @@ end
 --- Opens the addon's own options window. Nothing else closes.
 function Options.Open()
     if not ownWindow then
-        ownWindow = W.Window("SalvagerOptionsFrame", "Salvager options", "options", 560, 620, 560, 620, true)
+        ownWindow = W.Window("SalvagerOptionsFrame", "Salvager options", "options", 560, 650, 560, 650, true)
         populate(ownWindow, true)
     end
     ownWindow:SetShown(not ownWindow:IsShown())
