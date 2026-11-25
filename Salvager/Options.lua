@@ -93,6 +93,12 @@ local function build()
         function(n) s.autoInterval = math.max(5, math.floor(n)) changed("autoInterval", s.autoInterval) end,
         "How often Play scans the gear again. 5 or more.")
     at(intL, 24)
+    local rescanL = numberBox(panel, "Play: scan material prices again after (minutes, 0 = never)", 36,
+        function() return s.priceRescan end,
+        function(n) s.priceRescan = math.max(0, math.floor(n)) changed("priceRescan", s.priceRescan) end,
+        "While Play runs, the material prices are scanned again before a gear scan when they are older than this. "
+            .. "A material scan takes about 20 seconds. 10 minutes suits prices that move a few percent per hour.")
+    at(rescanL, 24)
     local chkL = numberBox(panel, "Item checks per scan", 36,
         function() return s.maxChecks end,
         function(n) s.maxChecks = math.max(1, math.floor(n)) changed("maxChecks", s.maxChecks) end,

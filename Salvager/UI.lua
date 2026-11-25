@@ -104,7 +104,7 @@ end
 
 local function materialRows()
     local out = {}
-    local maxAge = ns.db.settings.priceMaxAge
+    local maxAge = ns.PriceOldAfter()
     for _, m in ipairs(Data.MATERIALS) do
         local e = ns.db.prices[m.id]
         local price = ns.PriceOf(m.id)
@@ -465,10 +465,12 @@ local function build()
             GameTooltip:AddLine("Holds every search where it is. Play continues from there.", 1, 0.82, 0, true)
         else
             GameTooltip:SetText(s.paused and "Resume" or "Play", 1, 1, 1)
+            local every = ns.db.settings.priceRescan
             GameTooltip:AddLine("Scans the gear now and again every " .. ns.db.settings.autoInterval
                 .. " seconds while the auction house is open, so new cheap listings show up by themselves. "
-                .. "Material prices are not rescanned: use Scan materials from time to time. You still click Buy yourself.",
-                1, 0.82, 0, true)
+                .. (every > 0 and ("Material prices are scanned again when they are older than " .. every .. " minutes. ")
+                    or "Material prices are not scanned again (see the options). ")
+                .. "You still click Buy yourself.", 1, 0.82, 0, true)
         end
         GameTooltip:Show()
     end)

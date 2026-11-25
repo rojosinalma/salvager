@@ -13,7 +13,8 @@ local Scanner = { state = "idle", deals = {}, checked = 0, toCheck = 0, browsed 
 ns.Scanner = Scanner
 
 local MAX_PAGES = 80       -- pages of 500 per pass
-local BROWSE_STALL = 6     -- seconds without a browse page before moving on
+local BROWSE_STALL = 4     -- seconds without a browse page before asking again
+local STALL_RETRIES = 2    -- times a page is asked for again before the pass is given up
 local QUALITY_FILTER = {
     [2] = Enum.AuctionHouseFilter.UncommonQuality, [3] = Enum.AuctionHouseFilter.RareQuality,
     [4] = Enum.AuctionHouseFilter.EpicQuality,
@@ -59,10 +60,26 @@ local function readAuctions(task)
     sortDeals()
 end
 
+--- One round of Play: the material prices first when they are older than the setting, then the gear.
+local function startCycle()
+    local every = ns.db.settings.priceRescan
+    local age = ns.Prices.OldestAge()
+    if every > 0 and age >= every * 60 and not ns.Busy() then
+        ns.Log("material prices are %s old (limit %d min): scanning them first",
+            age == math.huge and "missing or" or (math.floor(age / 60) .. " min"), every)
+        ns.ScanBoth()
+    else
+        Scanner.Scan()
+    end
+end
+
 local function scheduleNext()
     if not Scanner.auto then return end
     C_Timer.After(ns.db.settings.autoInterval, function()
-        if Scanner.auto and not Scanner.paused and Scanner.state == "idle" and ns.Queue.open then Scanner.Scan() end
+        if Scanner.auto and not Scanner.paused and Scanner.state == "idle" and ns.Queue.open
+            and not ns.Prices.scanning then
+            startCycle()
+        end
     end)
 end
 
@@ -216,7 +233,15 @@ local function watchBrowse(seq)
         if Scanner.paused or GetTime() - lastBrowseAt < BROWSE_STALL then watchBrowse(seq) return end
         lastBrowseAt = GetTime()
         watchBrowse(seq)
-        finishPass(string.format("no page for %ds", BROWSE_STALL))
+        local pass = scan.pass
+        if pass and pass.pages > 0 and (pass.retries or 0) < STALL_RETRIES then
+            pass.retries = (pass.retries or 0) + 1
+            ns.Log("browse %s: no page for %ds after page %d, asking again (%d of %d)", pass.name, BROWSE_STALL,
+                pass.pages, pass.retries, STALL_RETRIES)
+            AH.RequestMoreBrowseResults()
+        else
+            finishPass(string.format("no page for %ds, given up", BROWSE_STALL))
+        end
     end)
 end
 
@@ -331,7 +356,7 @@ function Scanner.Play()
         lastBrowseAt = GetTime()
         advance()
     elseif Scanner.state == "idle" and not ns.Prices.scanning then
-        Scanner.Scan()
+        startCycle()
     end
     ns.Fire("SALVAGER_SCAN")
 end

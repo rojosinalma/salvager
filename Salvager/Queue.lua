@@ -133,7 +133,11 @@ local function pump()
         end
         return
     end
-    if #Queue.items == 0 or not ready() then return end
+    if #Queue.items == 0 then return end
+    -- A search sent while the gear browse loads its pages makes the auction house drop a page:
+    -- searches wait for the browse, except one the player just asked for.
+    if ns.Scanner and ns.Scanner.state == "browsing" and not Queue.items[1].urgent then return end
+    if not ready() then return end
     Queue.current = table.remove(Queue.items, 1)
     local ok, err = pcall(send, Queue.current)
     if not ok then

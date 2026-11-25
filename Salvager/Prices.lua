@@ -86,6 +86,17 @@ function Prices.Refresh(itemID, done)
     }, true)
 end
 
+--- Age in seconds of the oldest material price; math.huge when a material was never scanned.
+function Prices.OldestAge()
+    local oldest = 0
+    for _, m in ipairs(Data.MATERIALS) do
+        local e = ns.db.prices[m.id]
+        if not (e and e.t) then return math.huge end
+        oldest = math.max(oldest, time() - e.t)
+    end
+    return oldest
+end
+
 --- Age in seconds of a material's price, or nil.
 function Prices.Age(itemID)
     local e = ns.db.prices[itemID]

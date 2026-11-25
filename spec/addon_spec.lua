@@ -277,6 +277,35 @@ describe("Salvager scan safety", function()
         for _, id in ipairs({ 11083, 11082, 11084 }) do ns.db.prices[id] = { p = 433, t = 0 } end
         ns.db.settings.minProfit = 0
         ns.db.settings.gearClasses = "armor"
+        ns.db.settings.priceRescan = 0
+    end)
+
+    it("scans the material prices first when Play finds them old", function()
+        ns.db.settings.priceRescan = 10
+        ns.Scanner.Play()
+        assert.is_true(ns.Prices.scanning)                -- never scanned: materials first
+        assert.are.equal("idle", ns.Scanner.state)
+        ns.Scanner.Stop()
+        for _, m in ipairs(ns.Data.MATERIALS) do
+            ns.db.prices[m.id] = ns.db.prices[m.id] or { p = 433 }
+            ns.db.prices[m.id].t = env.clock - 60         -- one minute old
+        end
+        ns.Scanner.Play()
+        assert.is_false(ns.Prices.scanning)               -- fresh enough: straight to the gear
+        assert.are.equal("browsing", ns.Scanner.state)
+        ns.Scanner.Stop()
+        ns.db.settings.priceRescan = 0
+    end)
+
+    it("holds searches while the browse loads its pages", function()
+        env.ah.fullBrowse = false
+        env.ah.browse = { row(999999) }
+        ns.Scanner.Scan()
+        ns.Queue.Add({ commodity = 11083, onResult = function() end, onFail = function() end })
+        wow.tick(ns, 1)
+        assert.is_nil(ns.Queue.current)
+        ns.Scanner.Stop()
+        env.ah.fullBrowse = true
     end)
 
     it("moves on when a browse page never comes", function()
@@ -285,8 +314,12 @@ describe("Salvager scan safety", function()
         ns.Scanner.Scan()
         wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
         assert.are.equal("browsing", ns.Scanner.state)
-        wow.tick(ns, 8)
-        assert.are.equal("checking", ns.Scanner.state)   -- the one candidate is being checked
+        local before = #env.ah.sent
+        wow.tick(ns, 9)
+        assert.are.equal("browsing", ns.Scanner.state)   -- asked for the page again, twice
+        assert.are.equal(before + 2, #env.ah.sent)
+        wow.tick(ns, 5)
+        assert.are.equal("checking", ns.Scanner.state)   -- given up: the one candidate is being checked
         assert.are.equal(1, ns.Scanner.summary.browsed)
         assert.are.equal(1, ns.Scanner.summary.candidates)
         ns.Scanner.Stop()
@@ -438,6 +471,7 @@ describe("Salvager deals list", function()
     it("plays, pauses and stops", function()
         for _, id in ipairs({ 11083, 11082, 11084 }) do ns.db.prices[id] = { p = 433, t = 0 } end
         ns.db.settings.minProfit = 0
+        ns.db.settings.priceRescan = 0
         ns.Scanner.Play()
         assert.is_true(ns.Scanner.auto)
         assert.are.equal("browsing", ns.Scanner.state)

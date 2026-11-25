@@ -52,6 +52,13 @@ flipping is out of scope for now.
     `SalvagerDB.windows`). Results is built from `Ledger.History`: one entry per item (waiting purchases from
     the FIFO, finished ones from the disenchant records, which keep the purchase time, the cost given to each
     material and each material's value then).
+17. **Material price cadence:** while Play runs, the material prices are scanned again before a gear scan when
+    the oldest is older than `priceRescan` (default 10 min, 0 = never). Basis, measured 2026-11-25 over about
+    75 minutes (4 scans): all 24 materials moved under 3% in 7 minutes; over an hour several moved 5-12%; one
+    thin market (Large Glimmering Shard) dropped 32% in 14 minutes. A material scan costs about 20 seconds.
+18. **Searches wait for the browse:** a search sent while browse pages load made the auction house drop a
+    page (seen 2026-11-25: a pass ended at 2500 of ~9000 items). The queue holds searches during a browse
+    (except one the player asked for), and a page that does not come is asked for again twice (4 s each).
 15. **UI redraws** from events are limited to four per second; the log panel is not rebuilt during a scan.
 
 ## Data

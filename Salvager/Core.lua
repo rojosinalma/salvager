@@ -13,7 +13,8 @@ local DEFAULTS = {
         salvagerChance = 0.5,      -- chance of one extra dust or essence with the Salvager
         cut = 0.05,                -- auction house cut on sales
         priceUnits = 20,           -- material price = average of the cheapest N units
-        priceMaxAge = 6 * 3600,    -- seconds before a material price counts as old
+        priceMaxAge = 6 * 3600,    -- seconds before a material price counts as old (when priceRescan is 0)
+        priceRescan = 10,          -- minutes: Play scans the material prices again when they are older (0 = never)
         qualities = { [2] = true, [3] = false, [4] = false },
         gearClasses = "both",      -- "weapons" | "armor" | "both"
         minLevel = 0,              -- required-level filter for the gear scan (0 = none)
@@ -204,6 +205,13 @@ function ns.MissingMajor(value, outcomes)
     return false
 end
 
+--- Seconds after which a material price shows as old.
+function ns.PriceOldAfter()
+    local every = ns.db.settings.priceRescan
+    if every > 0 then return every * 60 * 2 end
+    return ns.db.settings.priceMaxAge
+end
+
 --- Is any scan running?
 function ns.Busy()
     return (ns.Prices and ns.Prices.scanning) or (ns.Scanner and ns.Scanner.state ~= "idle") or ns.scanBothPending or false
@@ -331,7 +339,8 @@ local HELP = {
     "/salv gear weapons|armor|both - which item types the scan looks at",
     "/salv config - the options panel",
     "/salv levels 20 60 - required level range for the gear scan (0 0 = all)",
-    "/salv interval 20 - seconds between gear scans in auto mode",
+    "/salv interval 20 - seconds between gear scans while Play runs",
+    "/salv rescan 10 - minutes after which Play scans the material prices again (0 = never)",
     "/salv stock <item> <quantity> <cost each> - opening stock, e.g. /salv stock 11137 40 6s",
     "/salv report - disenchant results by band",
     "/salv auras - list your buffs (to find the Salvager's)",
@@ -388,6 +397,13 @@ SlashCmdList.SALVAGER = function(msg)
         if not n or n < 5 then ns.Print("usage: /salv interval 20 (5 or more)") return end
         s.autoInterval = n
         ns.Print("auto scan every %d s", n)
+    elseif cmd == "rescan" then
+        local n = tonumber(args[2])
+        if not n or n < 0 then ns.Print("usage: /salv rescan 10 (minutes, 0 = never)") return end
+        s.priceRescan = math.floor(n)
+        ns.Print(n > 0 and "Play scans the material prices again when they are older than %d min"
+            or "Play never scans the material prices again", n)
+        ns.Fire("SALVAGER_SETTINGS")
     elseif cmd == "stock" then
         local id, qty, each = parseItem(args[2]), tonumber(args[3]), Util.ParseMoney(args[4])
         if not (id and qty and each) or not Data.MATERIAL_BY_ID[id] then
