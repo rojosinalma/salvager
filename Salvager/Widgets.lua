@@ -72,16 +72,18 @@ end
 --- Three boxes (gold, silver, copper) in one frame. onChange(copper) runs when a box loses focus.
 function Widgets.Money(parent, onChange)
     local frame = CreateFrame("Frame", nil, parent)
-    frame:SetSize(150, 20)
+    frame:SetSize(170, 20)
     local m = { boxes = {}, frame = frame }
     local prev
     for i, coin in ipairs({ ns.Util.COIN.g, ns.Util.COIN.s, ns.Util.COIN.c }) do
-        local e = Widgets.Edit(frame, i == 1 and 44 or 28, true)
+        local e = Widgets.Edit(frame, i == 1 and 48 or 30, true)
         e:SetMaxLetters(i == 1 and 6 or 2)
         e:SetJustifyH("RIGHT")
-        if prev then e:SetPoint("LEFT", prev, "RIGHT", 18, 0) else e:SetPoint("LEFT", frame, "LEFT", 6, 0) end
+        -- The template's border reaches about 5 px past the box on each side: keep the digits inside it.
+        e:SetTextInsets(2, 4, 0, 0)
+        if prev then e:SetPoint("LEFT", prev, "RIGHT", 26, 0) else e:SetPoint("LEFT", frame, "LEFT", 8, 0) end
         local l = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        l:SetPoint("LEFT", e, "RIGHT", 3, 0)
+        l:SetPoint("LEFT", e, "RIGHT", 7, 0)
         l:SetText(coin)
         e:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
         e:SetScript("OnTabPressed", function()

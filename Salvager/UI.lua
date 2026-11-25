@@ -29,7 +29,7 @@ local VIEWS = {
     limits = {
         icon = false,
         header = { "Item level", "Armor recommended", "Armor buy below", "Weapon recommended", "Weapon buy below" },
-        cols = { { 64, "LEFT" }, { 100, "RIGHT" }, { 182, "RIGHT" }, { 100, "RIGHT" }, { 182, "RIGHT" } },
+        cols = { { 64, "LEFT" }, { 100, "RIGHT" }, { 210, "RIGHT" }, { 100, "RIGHT" }, { 210, "RIGHT" } },
         edit = { [3] = "armor", [5] = "weapon" },
     },
 }
