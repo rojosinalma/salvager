@@ -580,6 +580,23 @@ describe("Salvager deals list", function()
         assert.is_true(ns.db.settings.qualities[2])
     end)
 
+    it("closes a drop-down when you click somewhere else", function()
+        local drop
+        for _, fr in ipairs(env.frames) do
+            if rawget(fr, "checks") and not drop then drop = fr end
+        end
+        local list = drop.list
+        list:Hide()
+        drop.scripts.OnClick(drop)
+        assert.is_true(list:IsShown())
+        list.mouseOver = true                              -- a click on one of its check boxes
+        list.scripts.OnEvent(list, "GLOBAL_MOUSE_DOWN")
+        assert.is_true(list:IsShown())
+        list.mouseOver = false                             -- a click somewhere else
+        list.scripts.OnEvent(list, "GLOBAL_MOUSE_DOWN")
+        assert.is_false(list:IsShown())
+    end)
+
     it("picks gear types in the drop-down and keeps at least one", function()
         ns.db.settings.gearClasses = "both"
         ns.SetGearType("armor", false)

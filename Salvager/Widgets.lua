@@ -261,6 +261,22 @@ function Widgets.CheckDropdown(parent, width, options, get, set, tooltip, title)
     end
     b:SetScript("OnClick", function() list:SetShown(not list:IsShown()) end)
     b:SetScript("OnHide", function() list:Hide() end)
+    -- A click anywhere else closes the list. The click still does what it was aimed at.
+    local watching = pcall(list.RegisterEvent, list, "GLOBAL_MOUSE_DOWN")
+    if watching then
+        list:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+        list:SetScript("OnShow", function(self) self:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
+        list:SetScript("OnHide", function(self) self:UnregisterEvent("GLOBAL_MOUSE_DOWN") end)
+        list:SetScript("OnEvent", function(self)
+            if not self:IsMouseOver() and not b:IsMouseOver() then self:Hide() end
+        end)
+    else
+        -- A client without that event: an invisible sheet behind the list takes the click.
+        local sheet = CreateFrame("Button", nil, list)
+        sheet:SetAllPoints(UIParent)
+        sheet:SetFrameLevel(math.max(0, list:GetFrameLevel() - 1))
+        sheet:SetScript("OnClick", function() list:Hide() end)
+    end
     if tooltip then Widgets.Tooltip(b, title or "Choose", tooltip) end
     b.list = list
     b.checks = checks

@@ -20,6 +20,8 @@ local function widget(kind)
         SetChecked = function(self, v) self.checked = v end,
         GetChecked = function(self) return self.checked end,
         HasFocus = function() return false end,
+        IsMouseOver = function(self) return rawget(self, "mouseOver") or false end,
+        UnregisterEvent = function(self, e) self.events[e] = nil end,
         SetEnabled = function(self, v) self.enabled = v and true or false end,
         IsEnabled = function(self) return self.enabled ~= false end,
         GetPoint = function() return "CENTER", nil, "CENTER", 0, 0 end,
