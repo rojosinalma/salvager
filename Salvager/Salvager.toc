@@ -8,6 +8,7 @@
 
 Util.lua
 Data.lua
+NoDisenchant.lua
 Model.lua
 Ledger.lua
 Core.lua

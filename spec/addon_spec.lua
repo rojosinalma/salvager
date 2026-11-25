@@ -75,6 +75,7 @@ describe("Salvager in a simulated client", function()
     it("records the purchase from the Auction won mail", function()
         env.inbox[1] = { sender = "Auction House", subject = "Auction won: Test Boots", link = BOOTS_LINK,
             invoice = { "buyer", "Test Boots", "Seller", 500, 500, 0, 0, 0, 0, 0, 1 } }
+        assert.are.equal(1, #ns.db.ledger.purchases[BOOTS])   -- recorded when bought
         TakeInboxItem(1, 1)
         AutoLootMailItem(1)   -- the same mail again must not count twice
         assert.are.equal(1, #ns.db.ledger.purchases[BOOTS])
@@ -247,17 +248,29 @@ describe("Salvager scan safety", function()
         wow.fire(ns, "ADDON_LOADED", "Salvager")
         wow.fire(ns, "AUCTION_HOUSE_SHOW")
         ns.db.prices[11083] = { p = 433, t = 0 }
+        ns.db.settings.minProfit = 0
     end)
 
     it("carries on when a browse page never comes", function()
         env.ah.fullBrowse = false
-        env.ah.browse = { { itemKey = { itemID = 5001, itemLevel = 28, itemSuffix = 0 }, minPrice = 999999 } }
+        env.ah.browse = { { itemKey = { itemID = 5001, itemLevel = 28, itemSuffix = 0 }, minPrice = 1 } }
         ns.Scanner.Scan()
         wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
         assert.are.equal("browsing", ns.Scanner.state)
-        wow.tick(ns, 13)
+        wow.tick(ns, 20)
         assert.are.equal("idle", ns.Scanner.state)
         assert.are.equal(1, ns.Scanner.summary.browsed)
+    end)
+
+    it("stops loading pages once items cost more than every buy limit", function()
+        env.ah.fullBrowse = false
+        env.ah.browse = { { itemKey = { itemID = 5001, itemLevel = 28, itemSuffix = 0 }, minPrice = 999999 } }
+        local before = #env.ah.sent
+        ns.Scanner.Scan()
+        wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
+        for i = before + 1, #env.ah.sent do assert.are_not.equal("more", env.ah.sent[i].kind) end
+        wow.tick(ns, 1)
+        assert.are.equal("idle", ns.Scanner.state)
         assert.are.equal(1, ns.Scanner.summary.overCeiling)
     end)
 
@@ -292,5 +305,54 @@ describe("Salvager scan safety", function()
         local again = false
         for _, t in ipairs(ns.Queue.items) do if t.commodity == first then again = true end end
         assert.is_true(again)
+    end)
+end)
+
+describe("Salvager deals list", function()
+    local env, ns
+    local LINK = "|cff1eff00|Hitem:5001::::::::30:::::|h[Test Boots]|h|r"
+    setup(function()
+        env = wow.install()
+        env.items[5001] = { name = "Test Boots", quality = 2, ilvl = 28, classID = 4 }
+        ns = wow.loadAddon()
+        wow.fire(ns, "ADDON_LOADED", "Salvager")
+        wow.fire(ns, "AUCTION_HOUSE_SHOW")
+    end)
+
+    it("groups auctions of one item and buys the cheapest first, then searches again", function()
+        local task = { itemKey = { itemID = 5001, itemLevel = 28, itemSuffix = 0 }, keyString = "5001:28:0",
+            value = { net = 3000 }, limit = 2500, ilvl = 28, quality = 2, classID = 4 }
+        ns.Scanner.deals = {
+            { auctionID = 2, itemID = 5001, link = LINK, buyout = 900, value = 3000, profit = 2100, classID = 4, task = task,
+                keyString = task.keyString },
+            { auctionID = 1, itemID = 5001, link = LINK, buyout = 500, value = 3000, profit = 2500, classID = 4, task = task,
+                keyString = task.keyString },
+        }
+        ns.UI.view = "deals"
+        ns.UI.Refresh()
+        local row = _G.SalvagerFrame and nil
+        -- The first visible row is the group.
+        local rows = {}
+        for _, fr in ipairs(env.frames) do if rawget(fr, "buy") then rows[#rows + 1] = fr end end
+        local head = rows[1]
+        assert.is_table(head.item.group)
+        assert.are.equal(2, #head.item.group.deals)
+        head.scripts.OnClick(head)                       -- open the group
+        assert.is_true(rows[2].item.child)
+        head.buy.scripts.OnClick(head.buy)                -- Buy 1st
+        assert.are.equal(1, env.ah.bids[#env.ah.bids].id)
+        assert.are.equal(500, env.ah.bids[#env.ah.bids].amount)
+        local queued = #ns.Queue.items
+        wow.fire(ns, "AUCTION_HOUSE_PURCHASE_COMPLETED", 1)
+        assert.are.equal(queued + 1, #ns.Queue.items)    -- searched again for price changes
+        assert.are.equal(1, #ns.db.ledger.purchases[5001])
+        assert.is_nil(row)
+    end)
+
+    it("resizes from the corner and keeps the size", function()
+        local f = _G.SalvagerFrame
+        assert.is_function(f.scripts.OnSizeChanged)
+        f.scripts.OnSizeChanged(f)
+        for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
     end)
 end)

@@ -40,23 +40,27 @@ local function readMail(index)
     if type(index) ~= "number" or not GetInboxInvoiceInfo then return end
     local invoiceType, itemName, _, bid, _, _, consignment, _, _, _, count = GetInboxInvoiceInfo(index)
     if invoiceType ~= "buyer" and invoiceType ~= "seller" then return end
+    ns.Log("mail: %s invoice for %s, %s", invoiceType, tostring(itemName), ns.Money(bid or 0))
     local fp = fingerprint(index)
     if seen[fp] then return end
     count = (count and count > 0) and count or 1
     if invoiceType == "buyer" then
         local itemID, link = attachmentID(index)
-        if not itemID then return end
+        if not itemID then ns.Log("mail: no item in the buyer mail") return end
         local classID = ns.ClassOf(itemID)
         if classID ~= Data.CLASS_WEAPON and classID ~= Data.CLASS_ARMOR then return end
         seen[fp] = true
         local v = ns.ItemValue(link or itemID)
-        Ledger.AddPurchase(ns.db.ledger, itemID, count, bid or 0, v and v.net, time())
+        local added = Ledger.MailPurchase(ns.db.ledger, itemID, count, bid or 0, v and v.net, time())
+        ns.Log("mail: bought %s for %s%s", link or itemID, ns.Money(bid or 0),
+            added and "" or " (already recorded at the auction house)")
         ns.Fire("SALVAGER_LEDGER")
     else
         local matID = materialByName(itemName)
-        if not matID then return end
+        if not matID then ns.Log("mail: %s is not a disenchanting material, ignored", tostring(itemName)) return end
         seen[fp] = true
         local rec = Ledger.Sell(ns.db.ledger, matID, count, bid or 0, consignment or 0, time())
+        ns.Log("mail: sold %dx %s for %s, profit %s", count, ns.MaterialName(matID), ns.Money(rec.net), ns.Money(rec.profit))
         ns.Print("sold %dx %s: %s after cut, profit %s%s", count, ns.MaterialName(matID), ns.Money(rec.net),
             ns.Money(rec.profit), rec.untracked > 0 and string.format(" (%d had no recorded cost)", rec.untracked) or "")
         ns.Fire("SALVAGER_LEDGER")
@@ -66,7 +70,10 @@ end
 -- Hooks run right after the call, while the mail is still in the inbox.
 local function safe(index)
     local ok, err = pcall(readMail, index)
-    if not ok then ns.Print("mail error: %s", tostring(err)) end
+    if not ok then
+        ns.Print("mail error: %s", tostring(err))
+        ns.Log("ERROR mail: %s", tostring(err))
+    end
 end
 
 if hooksecurefunc then

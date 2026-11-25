@@ -73,7 +73,12 @@ local function build()
     local blue = W.Check(panel, "|cff0070ddRare|r", "Blue gear: always one shard.",
         function(on) s.qualities[3] = on changed("rare", on) end)
     blue:SetPoint("LEFT", green.label, "RIGHT", 16, 0)
-    controls[#controls + 1] = { refresh = function() green:SetChecked(s.qualities[2]) blue:SetChecked(s.qualities[3]) end }
+    local purple = W.Check(panel, "|cffa335eeEpic|r", "Purple gear: 2-4 shards, or Nexus Crystals at the top levels.",
+        function(on) s.qualities[4] = on changed("epic", on) end)
+    purple:SetPoint("LEFT", blue.label, "RIGHT", 16, 0)
+    controls[#controls + 1] = { refresh = function()
+        green:SetChecked(s.qualities[2]) blue:SetChecked(s.qualities[3]) purple:SetChecked(s.qualities[4])
+    end }
 
     local minL, minE = numberBox(panel, "Required level from", 36,
         function() return s.minLevel end, function(n) s.minLevel = math.max(0, math.floor(n)) changed("minLevel", n) end,

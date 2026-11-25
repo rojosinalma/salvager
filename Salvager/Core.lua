@@ -163,6 +163,7 @@ end
 --- Expected value of disenchanting one item.
 --- @return table|nil value (Model.Value), outcomes
 function ns.ItemValue(linkOrID, ilvl, quality, classID, salvager)
+    if ns.NoDisenchant(ns.ItemID(linkOrID)) then return nil end
     classID = classID or ns.ClassOf(linkOrID)
     quality = quality or ns.QualityOf(linkOrID)
     ilvl = ilvl or ns.ItemLevelOf(linkOrID)
@@ -289,7 +290,7 @@ local HELP = {
     "/salv - open or close the window",
     "/salv minprofit 20s - lowest profit a deal must make",
     "/salv salvager auto|on|off - Arcane Salvager bonus in buy prices",
-    "/salv quality uncommon|rare|both - which gear the scan looks at",
+    "/salv quality uncommon|rare|epic|both|all - which gear the scan looks at",
     "/salv gear weapons|armor|both - which item types the scan looks at",
     "/salv config - the options panel",
     "/salv levels 20 60 - required level range for the gear scan (0 0 = all)",
@@ -325,8 +326,10 @@ SlashCmdList.SALVAGER = function(msg)
         local q = (args[2] or ""):lower()
         if q == "uncommon" then s.qualities = { [2] = true, [3] = false, [4] = false }
         elseif q == "rare" then s.qualities = { [2] = false, [3] = true, [4] = false }
+        elseif q == "epic" then s.qualities = { [2] = false, [3] = false, [4] = true }
         elseif q == "both" then s.qualities = { [2] = true, [3] = true, [4] = false }
-        else ns.Print("usage: /salv quality uncommon|rare|both") return end
+        elseif q == "all" then s.qualities = { [2] = true, [3] = true, [4] = true }
+        else ns.Print("usage: /salv quality uncommon|rare|epic|both|all") return end
         ns.Print("gear scan quality: %s", q)
     elseif cmd == "gear" then
         local g = (args[2] or ""):lower()

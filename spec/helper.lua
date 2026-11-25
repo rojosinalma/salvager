@@ -3,7 +3,7 @@ local M = {}
 
 function M.load()
     local ns = {}
-    for _, file in ipairs({ "Util", "Data", "Model", "Ledger" }) do
+    for _, file in ipairs({ "Util", "Data", "NoDisenchant", "Model", "Ledger" }) do
         local chunk = assert(loadfile("Salvager/" .. file .. ".lua"))
         chunk("Salvager", ns)
     end

@@ -3,7 +3,8 @@
 --
 -- state = {
 --   purchases = { [itemID] = { { each, ev, t }, ... } }   -- oldest first (FIFO)
---   stock     = { [matID] = { qty, cost } }               -- cost = total copper
+--   stock     = { [matID] = { qty, cost, unknown } }      -- cost = total copper of the known-cost units
+--   bought    = { { itemID, each, t, mail } }             -- purchases seen at the auction house
 --   disenchants = { record, ... }, sales = { record, ... }
 -- }
 local _, ns = ...
@@ -21,6 +22,11 @@ function Ledger.Init(state)
     state.stock = state.stock or {}
     state.disenchants = state.disenchants or {}
     state.sales = state.sales or {}
+    state.bought = state.bought or {}
+    -- Stock from before 0.2.7 kept unknown costs as 0: mark those units unknown.
+    for _, s in pairs(state.stock) do
+        if s.unknown == nil then s.unknown = (s.cost == 0) and s.qty or 0 end
+    end
     return state
 end
 
@@ -32,6 +38,26 @@ function Ledger.AddPurchase(state, itemID, count, total, ev, t)
     local each = math.floor(total / count + 0.5)
     for _ = 1, count do list[#list + 1] = { each = each, ev = ev, t = t } end
     Util.Cap(list, Ledger.MAX_PURCHASES_PER_ITEM)
+end
+
+--- A purchase seen at the auction house. The "Auction won" mail for it comes later
+--- and is matched by Ledger.MailPurchase, so nothing counts twice.
+function Ledger.AuctionPurchase(state, itemID, total, ev, t)
+    Ledger.AddPurchase(state, itemID, 1, total, ev, t)
+    state.bought[#state.bought + 1] = { itemID = itemID, each = total, t = t }
+    Util.Cap(state.bought, Ledger.MAX_RECORDS)
+end
+
+--- An "Auction won" mail. Returns false when the purchase was already recorded at the auction house.
+function Ledger.MailPurchase(state, itemID, count, total, ev, t)
+    for _, b in ipairs(state.bought) do
+        if not b.mail and b.itemID == itemID and b.each * count == total then
+            b.mail = true
+            return false
+        end
+    end
+    Ledger.AddPurchase(state, itemID, count, total, ev, t)
+    return true
 end
 
 --- The oldest recorded purchase of this item, removed. nil when none.
@@ -70,24 +96,34 @@ function Ledger.Allocate(cost, got, priceOf)
     return out
 end
 
+--- Adds units to stock. `cost` nil = units whose cost is not known.
 function Ledger.AddStock(state, matID, qty, cost)
-    local s = state.stock[matID] or { qty = 0, cost = 0 }
+    local s = state.stock[matID] or { qty = 0, cost = 0, unknown = 0 }
     state.stock[matID] = s
+    s.unknown = s.unknown or 0
     s.qty = s.qty + qty
-    s.cost = s.cost + cost
+    if cost then s.cost = s.cost + cost else s.unknown = s.unknown + qty end
+end
+
+--- Units in stock with a known cost.
+function Ledger.KnownQty(state, matID)
+    local s = state.stock[matID]
+    if not s then return 0 end
+    return s.qty - (s.unknown or 0)
 end
 
 --- Sets the stock of a material by hand (opening stock).
 function Ledger.SetStock(state, matID, qty, each)
     if qty <= 0 then state.stock[matID] = nil return end
-    state.stock[matID] = { qty = qty, cost = qty * each }
+    state.stock[matID] = { qty = qty, cost = qty * each, unknown = 0 }
 end
 
---- Average cost each, or nil when none in stock.
+--- Average cost each of the units with a known cost, or nil when there are none.
 function Ledger.AvgCost(state, matID)
     local s = state.stock[matID]
-    if not s or s.qty <= 0 then return nil end
-    return s.cost / s.qty
+    local known = Ledger.KnownQty(state, matID)
+    if not s or known <= 0 then return nil end
+    return s.cost / known
 end
 
 --- Lowest sale price each that does not lose money after the cut.
@@ -98,16 +134,22 @@ function Ledger.BreakEven(state, matID, cut)
 end
 
 --- A sale of `count` units for `gross` copper with `cutPaid` taken by the house.
---- Removes the units at average cost. Units sold beyond the tracked stock count at zero cost.
+--- Removes known-cost units first, at average cost. Units with no known cost, and units
+--- beyond the stock, count at zero cost and as "untracked".
 --- @return table  sale record
 function Ledger.Sell(state, matID, count, gross, cutPaid, t)
     local s = state.stock[matID]
-    local tracked = s and math.min(s.qty, count) or 0
+    local known = Ledger.KnownQty(state, matID)
+    local tracked = math.min(known, count)
     local costBasis = 0
-    if tracked > 0 then
-        costBasis = math.floor(s.cost * tracked / s.qty + 0.5)
-        s.qty = s.qty - tracked
+    if s and tracked > 0 then
+        costBasis = math.floor(s.cost * tracked / known + 0.5)
         s.cost = s.cost - costBasis
+    end
+    if s then
+        local fromUnknown = math.min(s.unknown or 0, count - tracked)
+        s.unknown = (s.unknown or 0) - fromUnknown
+        s.qty = s.qty - tracked - fromUnknown
         if s.qty <= 0 then state.stock[matID] = nil end
     end
     local net = gross - (cutPaid or 0)
@@ -128,8 +170,8 @@ function Ledger.Disenchant(state, rec, purchase, priceOf, cut)
     rec.cost = purchase and purchase.each or 0
     rec.costKnown = purchase ~= nil
     rec.evAtBuy = purchase and purchase.ev or nil
-    local shares = Ledger.Allocate(rec.cost, rec.got, priceOf)
-    for id, qty in pairs(rec.got) do Ledger.AddStock(state, id, qty, shares[id] or 0) end
+    local shares = purchase and Ledger.Allocate(rec.cost, rec.got, priceOf) or {}
+    for id, qty in pairs(rec.got) do Ledger.AddStock(state, id, qty, purchase and (shares[id] or 0) or nil) end
     local value = 0
     for id, qty in pairs(rec.got) do value = value + (priceOf(id) or 0) * qty end
     rec.value = math.floor(value * (1 - (cut or 0.05)))

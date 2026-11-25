@@ -56,6 +56,11 @@ describe("Model", function()
         assert.are.equal(v1, v2)
     end)
 
+    it("knows gear the game will not disenchant", function()
+        assert.is_true(ns.NoDisenchant(11287))   -- Lesser Magic Wand
+        assert.is_false(ns.NoDisenchant(6423))
+    end)
+
     it("refuses non-gear and common items", function()
         assert.is_nil(Model.Outcomes(2, 15, 30))
         assert.is_nil(Model.Outcomes(1, Data.CLASS_ARMOR, 30))

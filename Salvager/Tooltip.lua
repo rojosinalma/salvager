@@ -25,6 +25,10 @@ local function addLines(tooltip, link)
     end
     local classID = ns.ClassOf(link)
     if classID ~= Data.CLASS_WEAPON and classID ~= Data.CLASS_ARMOR then return end
+    if ns.NoDisenchant(id) then
+        tooltip:AddLine(COLOR .. "Salvager:|r cannot be disenchanted", 1, 1, 1)
+        return
+    end
     local v, outcomes = ns.ItemValue(link)
     if not v then return end
     local text = ns.Money(v.net)

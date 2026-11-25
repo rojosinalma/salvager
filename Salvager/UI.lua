@@ -3,17 +3,20 @@ local _, ns = ...
 
 local Ledger, Data, W = ns.Ledger, ns.Data, ns.Widgets
 
-local UI = { view = "deals", offset = 0 }
+local UI = { view = "deals", offset = 0, expanded = {} }
 ns.UI = UI
 
-local ROWS, ROW_H = 15, 24
+local MAX_ROWS, ROW_H = 40, 24
 local WIDTH, HEIGHT = 720, 560
+local MIN_W, MIN_H = 680, 380
+local ROWS = 15          -- rows that fit now (set from the list height)
 local QUALITY_COLOR = { [2] = "|cff1eff00", [3] = "|cff0070dd", [4] = "|cffa335ee" }
 local CLASS_NAME = { [2] = "Weapon", [4] = "Armor" }
 
 local VIEWS = {
     deals = {
         icon = true,
+        indent = 46,
         header = { "Item", "Type", "iLvl", "Buyout", "Value", "Profit" },
         cols = { { 205, "LEFT" }, { 50, "CENTER" }, { 34, "CENTER" }, { 88, "RIGHT" }, { 88, "RIGHT" }, { 88, "RIGHT" } },
     },
@@ -43,14 +46,54 @@ end
 
 ------------------------------------------------------------------ rows per view
 
+local function dealName(d)
+    return (d.link and d.link:match("%[(.-)%]")) or (ns.GetItemInfo(d.itemID)) or ("item " .. d.itemID)
+end
+
+local function dealCells(d, label)
+    return { label, CLASS_NAME[d.classID or ns.ClassOf(d.itemID)] or "", tostring(d.ilvl or ""), ns.Money(d.buyout),
+        ns.Money(d.value), "|cff40ff40" .. ns.Money(d.profit) .. "|r" }
+end
+
+--- Deals grouped by item name, best profit first. A group with more than one
+--- auction is one row (cheapest first) that opens to show each auction.
 local function dealRows()
-    local out = {}
+    local groups, order = {}, {}
     for _, d in ipairs(ns.Scanner.deals) do
-        out[#out + 1] = {
-            cells = { d.link or ("item " .. d.itemID), CLASS_NAME[d.classID or ns.ClassOf(d.itemID)] or "",
-                tostring(d.ilvl or ""), ns.Money(d.buyout), ns.Money(d.value), "|cff40ff40" .. ns.Money(d.profit) .. "|r" },
-            link = d.link, itemID = d.itemID, deal = d,
-        }
+        local name = dealName(d)
+        local g = groups[name]
+        if not g then
+            g = { name = name, deals = {} }
+            groups[name] = g
+            order[#order + 1] = g
+        end
+        g.deals[#g.deals + 1] = d
+    end
+    for _, g in ipairs(order) do
+        table.sort(g.deals, function(a, b) return a.buyout < b.buyout end)
+        g.best = 0
+        for _, d in ipairs(g.deals) do if d.profit > g.best then g.best = d.profit end end
+    end
+    table.sort(order, function(a, b) return a.best > b.best end)
+    local out = {}
+    for _, g in ipairs(order) do
+        local first = g.deals[1]
+        if #g.deals == 1 then
+            out[#out + 1] = { cells = dealCells(first, first.link or g.name), link = first.link, itemID = first.itemID,
+                deal = first }
+        else
+            local open = UI.expanded[g.name]
+            local head = dealCells(first, (first.link or g.name) .. " |cffffd100x" .. #g.deals .. "|r")
+            head[4] = "from " .. head[4]
+            head[6] = "|cff40ff40up to " .. ns.Money(g.best) .. "|r"
+            out[#out + 1] = { cells = head, link = first.link, itemID = first.itemID, group = g, open = open }
+            if open then
+                for _, d in ipairs(g.deals) do
+                    out[#out + 1] = { cells = dealCells(d, "   " .. (d.link or g.name)), link = d.link, itemID = d.itemID,
+                        deal = d, child = true }
+                end
+            end
+        end
     end
     return out
 end
@@ -64,6 +107,7 @@ local function materialRows()
         local age = e and e.t and (time() - e.t)
         local s = ns.db.ledger.stock[m.id]
         local avg = Ledger.AvgCost(ns.db.ledger, m.id)
+        local unknown = s and (s.unknown or 0) or 0
         local be = Ledger.BreakEven(ns.db.ledger, m.id, ns.Cut())
         local priceText = price and ns.Money(price) or "-"
         if e and not e.p and e.last then
@@ -77,7 +121,10 @@ local function materialRows()
         out[#out + 1] = {
             cells = { ns.MaterialName(m.id), priceText,
                 e and e.units and e.units > 0 and (e.units .. "/" .. e.listings) or "-",
-                ageText, s and tostring(s.qty) or "-", avg and ns.Money(avg) or "-", be and ns.Money(be) or "-" },
+                ageText, s and tostring(s.qty) or "-",
+                avg and (ns.Money(avg) .. (unknown > 0 and " |cff808080+" .. unknown .. "?|r" or ""))
+                    or (unknown > 0 and "|cff808080unknown|r" or "-"),
+                be and ns.Money(be) or "-" },
             itemID = m.id,
         }
     end
@@ -145,14 +192,24 @@ local function footerText()
         return text
     elseif UI.view == "materials" then
         return string.format("Price = average of cheapest %d units. Red = below break-even. * = none listed, last price. "
-            .. "~ = other essence form.", ns.db.settings.priceUnits)
+            .. "~ = other essence form. Unknown / +n? = units with no recorded purchase (/salv stock sets them).",
+            ns.db.settings.priceUnits)
     end
     return "Recommended = disenchant value after the 5% cut, minus your minimum profit. Type gold, silver and copper in "
         .. "Buy below to set your own (yellow). x = back to the recommended price. Grey = type not scanned."
 end
 
+--- Column widths: the first column takes the room the window has over its default width.
+local function widths(view)
+    local extra = math.max(0, math.floor((f:GetWidth() or WIDTH) - WIDTH))
+    local w = {}
+    for i, col in ipairs(view.cols) do w[i] = col[1] + (i == 1 and extra or 0) end
+    return w
+end
+
 local function layout(view)
-    local x = view.icon and 30 or 4
+    local x = view.indent or (view.icon and 30 or 4)
+    local w = widths(view)
     for i = 1, 7 do
         local col = view.cols[i]
         headers[i]:ClearAllPoints()
@@ -167,8 +224,9 @@ local function layout(view)
                 e:SetPoint("LEFT", row, "LEFT", x + 4, 0)
             end
         end
-        if col then x = x + col[1] + 6 end
+        if col then x = x + w[i] + 6 end
     end
+    return w
 end
 
 --- Shows one buy-limit box: yellow when set by hand, white for the recommended limit.
@@ -183,27 +241,46 @@ local function showEdit(e, x, dim)
     else e:SetTextColor(1, 1, 1) end
 end
 
+--- Rows that fit in the list now.
+local function fitRows()
+    local h = UI.list and UI.list:GetHeight() or 0
+    return math.max(1, math.min(MAX_ROWS, math.floor(h / ROW_H) - 1))
+end
+
+function UI.UpdateScrollBar(total)
+    if not UI.bar then return end
+    local max = math.max(0, total - ROWS)
+    UI.settingBar = true
+    UI.bar:SetMinMaxValues(0, max)
+    UI.bar:SetValue(UI.offset)
+    UI.settingBar = false
+    UI.bar:SetShown(max > 0)
+end
+
 function UI.Refresh()
     if not f or not f:IsShown() then return end
     local view = VIEWS[UI.view]
-    layout(view)
+    ROWS = fitRows()
+    local w = layout(view)
     local data = SOURCES[UI.view]()
     UI.offset = math.max(0, math.min(UI.offset, #data - ROWS))
+    UI.UpdateScrollBar(#data)
     for i, h in ipairs(headers) do
         local col = view.cols[i]
         if col then
-            h:SetWidth(col[1]) h:SetJustifyH(col[2]) h:SetText(view.header[i] or "") h:Show()
+            h:SetWidth(w[i]) h:SetJustifyH(col[2]) h:SetText(view.header[i] or "") h:Show()
         else
             h:Hide()
         end
     end
+    for r = ROWS + 1, MAX_ROWS do rows[r]:Hide() end
     for r = 1, ROWS do
         local row, item = rows[r], data[r + UI.offset]
         row.item = item
         for i, fs in ipairs(row.cells) do
             local col = view.cols[i]
             if col and item then
-                fs:SetWidth(col[1]) fs:SetJustifyH(col[2]) fs:SetText(item.cells[i] or "") fs:Show()
+                fs:SetWidth(w[i]) fs:SetJustifyH(col[2]) fs:SetText(item.cells[i] or "") fs:Show()
             else
                 fs:Hide()
             end
@@ -212,11 +289,22 @@ function UI.Refresh()
             if item and item.limits then showEdit(e, item.limits[which], item.dim[which]) else e:Hide() end
         end
         local icon = item and view.icon and W.IconOf(item.itemID)
+        row.icon:ClearAllPoints()
+        row.icon:SetPoint("LEFT", row, "LEFT", (view.indent and 22 or 4) + (item and item.child and 10 or 0), 0)
         if icon then row.icon:SetTexture(icon) row.icon:Show() else row.icon:Hide() end
-        if item and item.deal then
+        if item and item.group then
+            row.toggle:SetTexture(item.open and "Interface\\Buttons\\UI-MinusButton-Up" or "Interface\\Buttons\\UI-PlusButton-Up")
+            row.toggle:Show()
+        else
+            row.toggle:Hide()
+        end
+        local buying = item and (item.deal or item.group) and true
+        if buying then
+            local pending = item.deal and item.deal.pending
+            if item.group then pending = ns.Scanner.Cheapest(item.group.deals) == nil end
             row.buy:Show()
-            row.buy:SetEnabled(not item.deal.pending)
-            row.buy:SetText(item.deal.pending and "..." or "Buy")
+            row.buy:SetEnabled(not pending)
+            row.buy:SetText(pending and "..." or (item.group and "Buy 1st" or "Buy"))
         else
             row.buy:Hide()
         end
@@ -247,8 +335,10 @@ end
 
 local function savePosition()
     local point, _, rel, x, y = f:GetPoint()
-    ns.db.window = { point = point, rel = rel, x = x, y = y }
+    local win = ns.db.window
+    win.point, win.rel, win.x, win.y = point, rel, x, y
 end
+
 
 local function rowTooltip(self)
     local item = self.item
@@ -261,7 +351,8 @@ end
 
 local function build()
     f = CreateFrame("Frame", "SalvagerFrame", UIParent, "BasicFrameTemplateWithInset")
-    f:SetSize(WIDTH, HEIGHT)
+    local saved = ns.db.window
+    f:SetSize(math.max(MIN_W, saved.w or WIDTH), math.max(MIN_H, saved.h or HEIGHT))
     f:SetFrameStrata("HIGH")
     f:SetClampedToScreen(true)
     f:SetMovable(true)
@@ -340,21 +431,49 @@ local function build()
     -- The list.
     local list = CreateFrame("Frame", nil, f)
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -116)
-    list:SetSize(WIDTH - 24, (ROWS + 1) * ROW_H)
+    list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -30, 40)
     list:EnableMouseWheel(true)
     list:SetScript("OnMouseWheel", function(_, delta)
         UI.offset = math.max(0, UI.offset - delta * 3)
         UI.Refresh()
     end)
+    UI.list = list
+
+    -- Scroll bar on the right of the list.
+    local bar = CreateFrame("Slider", nil, f)
+    bar:SetOrientation("VERTICAL")
+    bar:SetWidth(14)
+    bar:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -116 - ROW_H)
+    bar:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 40)
+    local track = bar:CreateTexture(nil, "BACKGROUND")
+    track:SetAllPoints()
+    track:SetColorTexture(0, 0, 0, 0.35)
+    bar:SetThumbTexture("Interface\\Buttons\\UI-ScrollBar-Knob")
+    bar:SetValueStep(1)
+    bar:SetObeyStepOnDrag(true)
+    bar:SetMinMaxValues(0, 0)
+    bar:SetValue(0)
+    bar:SetScript("OnValueChanged", function(_, value)
+        if UI.settingBar then return end
+        value = math.floor((value or 0) + 0.5)
+        if value ~= UI.offset then
+            UI.offset = value
+            UI.Refresh()
+        end
+    end)
+    bar:EnableMouseWheel(true)
+    bar:SetScript("OnMouseWheel", list:GetScript("OnMouseWheel"))
+    UI.bar = bar
     for i = 1, 7 do
         local h = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         h:SetHeight(ROW_H)
         headers[i] = h
     end
-    for r = 1, ROWS do
+    for r = 1, MAX_ROWS do
         local row = CreateFrame("Button", nil, list)
-        row:SetSize(WIDTH - 24, ROW_H)
+        row:SetHeight(ROW_H)
         row:SetPoint("TOPLEFT", list, "TOPLEFT", 0, -r * ROW_H)
+        row:SetPoint("RIGHT", list, "RIGHT", 0, 0)
         local hl = row:CreateTexture(nil, "HIGHLIGHT")
         hl:SetAllPoints()
         hl:SetColorTexture(1, 1, 1, 0.08)
@@ -389,9 +508,22 @@ local function build()
             e:Hide()
             row.edits[which] = e
         end
-        row.buy = W.Button(row, "Buy", 56, function()
+        row.buy = W.Button(row, "Buy", 64, function()
             local item = row.item
-            if item and item.deal then ns.Scanner.Buy(item.deal) end
+            if not item then return end
+            local deal = item.deal or (item.group and ns.Scanner.Cheapest(item.group.deals))
+            if deal then ns.Scanner.Buy(deal) end
+        end)
+        row.toggle = row:CreateTexture(nil, "ARTWORK")
+        row.toggle:SetSize(14, 14)
+        row.toggle:SetPoint("LEFT", row, "LEFT", 4, 0)
+        row.toggle:Hide()
+        row:SetScript("OnClick", function(self)
+            local item = self.item
+            if item and item.group then
+                UI.expanded[item.group.name] = not UI.expanded[item.group.name] or nil
+                UI.Refresh()
+            end
         end)
         row.buy:SetPoint("RIGHT", row, "RIGHT", -4, 0)
         row:SetScript("OnEnter", rowTooltip)
@@ -408,6 +540,24 @@ local function build()
     footer:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 10)
     footer:SetJustifyH("LEFT")
     footer:SetWordWrap(true)
+
+    -- Resize from the bottom right corner.
+    f:SetResizable(true)
+    if f.SetResizeBounds then f:SetResizeBounds(MIN_W, MIN_H) elseif f.SetMinResize then f:SetMinResize(MIN_W, MIN_H) end
+    local grip = CreateFrame("Button", nil, f)
+    grip:SetSize(16, 16)
+    grip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -4, 4)
+    grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+    grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+    grip:SetScript("OnMouseDown", function() f:StartSizing("BOTTOMRIGHT") end)
+    grip:SetScript("OnMouseUp", function()
+        f:StopMovingOrSizing()
+        ns.db.window.w, ns.db.window.h = math.floor(f:GetWidth()), math.floor(f:GetHeight())
+        savePosition()
+        UI.Refresh()
+    end)
+    f:SetScript("OnSizeChanged", function() UI.Refresh() end)
 
     f:SetScript("OnShow", function() UI.Refresh() end)
     f:SetScript("OnHide", function() if ns.LogPanel then ns.LogPanel.Hide() end end)

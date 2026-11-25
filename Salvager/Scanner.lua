@@ -49,6 +49,7 @@ end
 --- Value of an item key, using the scan's quality when the client has none yet.
 --- ctx = { salvager, classes, quality } is worked out once per scan.
 local function keyValue(key, ctx)
+    if ns.NoDisenchant(key.itemID) then return nil end
     local classID = ns.ClassOf(key.itemID)
     if not classID or not ctx.classes[classID] then return nil end
     local info = AH.GetItemKeyInfo(key)
@@ -88,7 +89,7 @@ local function readAuctions(task)
             Scanner.deals[#Scanner.deals + 1] = {
                 auctionID = r.auctionID, itemKey = key, keyString = task.keyString,
                 link = r.itemLink, itemID = key.itemID, ilvl = task.ilvl, quality = task.quality, classID = task.classID,
-                buyout = r.buyoutAmount, value = v.net, profit = v.net - r.buyoutAmount,
+                buyout = r.buyoutAmount, value = v.net, profit = v.net - r.buyoutAmount, task = task,
             }
         end
     end
@@ -219,6 +220,7 @@ function Scanner.Scan()
     if s.minLevel > 0 then query.minLevel = s.minLevel end
     if s.maxLevel > 0 then query.maxLevel = s.maxLevel end
     results, pages = {}, 0
+    Scanner.ceiling = ceiling(ns.GearClasses())
     lastBrowseAt = GetTime()
     Scanner.browseSeq = (Scanner.browseSeq or 0) + 1
     watchBrowse(Scanner.browseSeq)
@@ -257,7 +259,14 @@ local function onBrowse()
     Scanner.browsed = #results
     ns.Log("browse page %d: %d items so far, %s", pages + 1, #results,
         AH.HasFullBrowseResults() and "last page" or "more pages to come")
-    if not AH.HasFullBrowseResults() and pages < MAX_PAGES then
+    -- Results come cheapest first: once a whole page is above every buy limit,
+    -- the pages after it can't hold a deal.
+    local tail = results[#results]
+    local stop = tail and tail.minPrice and Scanner.ceiling and tail.minPrice > Scanner.ceiling
+    if stop and not AH.HasFullBrowseResults() then
+        ns.Log("browse: stopping, items now cost more than %s (the highest buy limit)", ns.Money(Scanner.ceiling))
+    end
+    if not stop and not AH.HasFullBrowseResults() and pages < MAX_PAGES then
         pages = pages + 1
         AH.RequestMoreBrowseResults()
         ns.Fire("SALVAGER_SCAN")
@@ -305,6 +314,28 @@ function Scanner.Buy(deal)
     ns.Fire("SALVAGER_DEALS")
 end
 
+--- Searches a deal's item again, so its rows show what is listed now.
+function Scanner.Recheck(deal)
+    local t = deal and deal.task
+    if not t or not ns.Queue.open then return end
+    ns.Log("rechecking %s after a purchase", t.keyString)
+    ns.Queue.Add({
+        itemKey = t.itemKey, keyString = t.keyString, value = t.value, ilvl = t.ilvl, quality = t.quality,
+        classID = t.classID, limit = t.limit,
+        onResult = function(task) readAuctions(task) ns.Fire("SALVAGER_DEALS") end,
+        onFail = function() ns.Fire("SALVAGER_DEALS") end,
+    })
+end
+
+--- The cheapest deal of a list that is not being bought already.
+function Scanner.Cheapest(deals)
+    local best
+    for _, d in ipairs(deals) do
+        if not d.pending and (not best or d.buyout < best.buyout) then best = d end
+    end
+    return best
+end
+
 local function removeDeal(auctionID)
     for i = #Scanner.deals, 1, -1 do
         if Scanner.deals[i].auctionID == auctionID then table.remove(Scanner.deals, i) end
@@ -315,9 +346,13 @@ ns.On("AUCTION_HOUSE_PURCHASE_COMPLETED", function(auctionID)
     local d = Scanner.buying
     if d and d.auctionID == auctionID then
         ns.Print("bought %s for %s (expected profit %s)", d.link or "item", ns.Money(d.buyout), ns.Money(d.profit))
+        ns.Ledger.AuctionPurchase(ns.db.ledger, d.itemID, d.buyout, d.value, time())
+        ns.Log("bought %s for %s, value %s", d.link or d.itemID, ns.Money(d.buyout), ns.Money(d.value))
+        ns.Fire("SALVAGER_LEDGER")
         Scanner.buying = nil
     end
     removeDeal(auctionID)
+    if d and d.auctionID == auctionID then Scanner.Recheck(d) end
     ns.Fire("SALVAGER_DEALS")
 end)
 
@@ -328,6 +363,7 @@ ns.On("AUCTION_HOUSE_SHOW_ERROR", function()
         removeDeal(d.auctionID)
         Scanner.buying = nil
         ns.Print("could not buy %s (sold or changed)", d.link or "item")
+        Scanner.Recheck(d)
         ns.Fire("SALVAGER_DEALS")
     end
 end)
