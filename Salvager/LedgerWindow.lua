@@ -31,6 +31,28 @@ local COLUMNS = {
         { "Bought", 82 }, { "Paid", 84, "RIGHT" },
         { "Expected value", 84, "RIGHT", help = { "Expected value", "The value the Gear tab showed when you "
             .. "bought: the average disenchant value at the prices of that moment, after the auction house cut." } } },
+    -- The Purchases view's third subtab: the current batch (SDD 107).
+    batch = { { "Gear", 220 },
+        { "Item level", 60, "CENTER", help = { "Item level", "The gear's item level, as the Gear tab judged it when you "
+            .. "bought (or as it was disenchanted)." } },
+        { "Paid", 84, "RIGHT" },
+        { "Expected value (EV)", 84, "RIGHT", help = { "Expected value (EV)", "The value the Gear tab showed when you "
+            .. "bought: the average disenchant value at the prices of that moment, after the auction house cut." } },
+        { "Expected profit", 84, "RIGHT", help = { "Expected profit", "Expected value minus Paid." } },
+        { "Materials got", 120, help = { "Materials got", "What the disenchant gave. Grey \"not disenchanted yet\": "
+            .. "not known until you disenchant it." } },
+        { "Disenchant value (DV)", 96, "RIGHT", help = { "Disenchant value (DV)", "The market value of the materials "
+            .. "you got, at the prices of the moment you disenchanted, after the auction house cut." } },
+        { "DV/EV %", 46, "RIGHT", help = { "DV/EV %", "The difference between Disenchant value (DV) and Expected value "
+            .. "(EV), in percent of the Expected value: the luck of the disenchant (or result rates that are not what "
+            .. "the addon assumes). On the totals: of the disenchanted pieces only." } },
+        { "Profit so far", 84, "RIGHT", help = { "Profit so far", "Disenchant value minus Paid: what the disenchant "
+            .. "made, before the materials sell. On the totals: of the disenchanted pieces only." } },
+        { "Not posted yet", 120, help = { "Not posted yet", "The materials of this disenchant you have not posted "
+            .. "yet. Your posts, sales and what you hold take them, first in, first out. When none is left, the gear "
+            .. "leaves the batch." } },
+        { "Value now", 84, "RIGHT", help = { "Value now", "The materials not posted yet at what one unit is worth to "
+            .. "the forecast now: price × sell price ratio, after the cut, less the deposits lost." } } },
     -- The Accuracy view is two tables: by band, and by material.
     accBands = { { "Band", 170 }, { "Disenchanted", 70, "CENTER", help = { "Disenchanted", "How many disenchants with a recorded "
             .. "purchase are in the row. Grey = fewer than 20: too few to judge, one lucky shard moves it a lot." } },
@@ -120,6 +142,10 @@ local function purchaseFilter()
     saved.purchaseFilter = saved.purchaseFilter or {}
     local x = filterSet(saved.purchaseFilter)
     x.open = x.open or {}
+    -- Show: "all" gear, only the "done" (disenchanted) or only the "waiting" (not disenchanted). The check box
+    -- "Not disenchanted" before 0.3.136 kept its untick as hideWaiting.
+    if x.hideWaiting then x.show, x.hideWaiting = "done", nil end
+    if x.show ~= "done" and x.show ~= "waiting" then x.show = "all" end
     return x
 end
 Window.PurchaseFilter = purchaseFilter
@@ -218,6 +244,25 @@ local function itemName(itemID, link)
 end
 local function note(text) return { cells = { GREY .. text .. "|r" } } end
 
+--- A signed number's color (UI.md Tables 7): green when it is good (more than planned, a gain), red when it is
+--- bad, none at 0; the sign says it too.
+local function tone(n) return n > 0 and GREEN or n < 0 and RED or "" end
+local function toned(n, text) return n ~= 0 and (tone(n) .. text .. "|r") or text end
+
+--- "+5%", "-3%": how far `part` is from `whole`, green above, red below.
+local function share(part, whole)
+    if not whole or whole == 0 then return GREY .. "-|r" end
+    local pct = math.floor((part - whole) / whole * 100 + 0.5)
+    return toned(pct, (pct > 0 and "+" or "") .. pct .. "%")
+end
+
+--- An amount with its sign, green when it gains, red when it loses (Expected profit).
+local function gap(c)
+    c = math.floor(c + 0.5)
+    return toned(c, (c > 0 and "+" or "") .. ns.Money(c))
+end
+
+
 ------------------------------------------------------------------ rows
 
 --- Purchases: one row per item, its materials indented under it.
@@ -239,7 +284,8 @@ local function describeEntry(e)
 end
 
 local function passes(e, x, search)
-    if x.hideWaiting and not e.done then return false end
+    if x.show == "done" and not e.done then return false end
+    if x.show == "waiting" and e.done then return false end
     local classID, quality, ilvl = describeEntry(e)
     if not filterPasses(x, classID, quality, ilvl) then return false end
     if search ~= "" then
@@ -249,29 +295,47 @@ local function passes(e, x, search)
     return true
 end
 
---- Every item bought, one row per item name (newest first), with its totals. A click opens it: each
---- purchase under it, with what it gave. The search and the filters pick which items show.
-function Window.PurchaseRows()
-    local x = purchaseFilter()
-    local search = (x.search or ""):lower()
+--- Totals of a list of History entries: count, paid (known), expected, and for the disenchanted ones what they
+--- gave and the result.
+local function totalsOf(entries)
+    local t = { n = #entries, paid = 0, known = 0, expected = 0, got = 0, done = 0, result = 0, resultKnown = 0 }
+    for _, e in ipairs(entries) do
+        if e.paid then t.paid, t.known = t.paid + e.paid, t.known + 1 end
+        t.expected = t.expected + (e.expected or 0)
+        if e.done then t.got, t.done = t.got + (e.got or 0), t.done + 1 end
+        if e.result then t.result, t.resultKnown = t.result + e.result, t.resultKnown + 1 end
+    end
+    return t
+end
+
+local function pieces(n) return n .. (n == 1 and " piece" or " pieces") end
+
+--- Is a filter of the Purchases view narrowing the list (the search, Gear, Quality, Bands)?
+local function narrowed(x, search)
+    if search ~= "" or next(x.bandsOff) then return true end
+    if not (x.classes[Data.CLASS_ARMOR] and x.classes[Data.CLASS_WEAPON]) then return true end
+    return not (x.qualities[2] and x.qualities[3] and x.qualities[4])
+end
+
+--- One row per item name of `list` (in the order of the column picked), each opening to its purchases with what
+--- they gave; `scope` keeps its open state apart from the same item under another heading.
+local function itemRows(rows, entries, x, scope, indent)
     local groups, order = {}, {}
-    for _, e in ipairs(Ledger.History(ns.db.ledger)) do
-        if passes(e, x, search) then
-            local key = tostring(e.itemID)
-            local g = groups[key]
-            if not g then
-                g = { itemID = e.itemID, link = e.link, list = {}, paid = 0, known = 0, expected = 0, got = 0, done = 0,
-                    result = 0, salvager = 0, last = e.boughtAt or e.t }
-                groups[key] = g
-                order[#order + 1] = g
-            end
-            g.list[#g.list + 1] = e
-            if e.paid then g.paid, g.known = g.paid + e.paid, g.known + 1 end
-            g.expected = g.expected + (e.expected or 0)
-            if e.done then g.got, g.done = g.got + (e.got or 0), g.done + 1 end
-            if e.result then g.result = g.result + e.result end
-            if e.salvager then g.salvager = g.salvager + 1 end
+    for _, e in ipairs(entries) do
+        local key = tostring(e.itemID)
+        local g = groups[key]
+        if not g then
+            g = { itemID = e.itemID, link = e.link, entries = {}, paid = 0, known = 0, expected = 0, got = 0, done = 0,
+                result = 0, salvager = 0, last = e.boughtAt or e.t }
+            groups[key] = g
+            order[#order + 1] = g
         end
+        g.entries[#g.entries + 1] = e
+        if e.paid then g.paid, g.known = g.paid + e.paid, g.known + 1 end
+        g.expected = g.expected + (e.expected or 0)
+        if e.done then g.got, g.done = g.got + (e.got or 0), g.done + 1 end
+        if e.result then g.result = g.result + e.result end
+        if e.salvager then g.salvager = g.salvager + 1 end
     end
     -- Items in the order of the column picked (a click on its title), the best profit first by default.
     -- The purchases under an item keep their own order (newest first).
@@ -292,11 +356,10 @@ function Window.PurchaseRows()
         if sort.desc then return ka > kb end
         return ka < kb
     end)
-    local rows = {}
     for _, g in ipairs(order) do
-        local n = #g.list
+        local n = #g.entries
         local head = {
-            itemID = g.itemID, link = g.link, group = true,
+            itemID = g.itemID, link = g.link, indent = indent,
             cells = {
                 itemName(g.itemID, g.link) .. GREY .. "  x" .. n .. "|r"
                     .. (g.salvager > 0 and ("  |cff9370db[Salvager " .. g.salvager .. "]|r") or ""),
@@ -306,14 +369,14 @@ function Window.PurchaseRows()
         }
         rows[#rows + 1] = head
         -- A heading that opens and closes (ns.HeadingToggle); it starts closed.
-        if ns.HeadingToggle(head, x.open, g.itemID, function() Window.Refresh() end, true) then
-            for _, e in ipairs(g.list) do
+        if ns.HeadingToggle(head, x.open, scope .. ":" .. tostring(g.itemID), function() Window.Refresh() end, true) then
+            for _, e in ipairs(g.entries) do
                 local gave = {}
                 for _, m in ipairs(e.mats or {}) do gave[#gave + 1] = m.qty .. "x " .. ns.MaterialName(m.id) end
                 local what = e.done and table.concat(gave, ", ")
                     or (GREY .. (ns.NoDisenchant(e.itemID) and "cannot be disenchanted" or "not disenchanted") .. "|r")
                 rows[#rows + 1] = {
-                    indent = INDENT, link = e.link,
+                    indent = indent + INDENT, link = e.link,
                     cells = { what .. (e.salvager and "  |cff9370db[Salvager]|r" or ""),
                         when(e.boughtAt or (not e.done and e.t) or nil),
                         e.paid and ns.Money(e.paid) or (GREY .. "not recorded|r"), money(e.expected),
@@ -322,17 +385,178 @@ function Window.PurchaseRows()
             end
         end
     end
+end
+
+--- Every piece of gear bought (SDD 107): a heading per day it was bought (newest first) with its totals, under it
+--- a heading per status (Not disenchanted first: what you act on, then Disenchanted) with theirs, and under those
+--- one row per item name that opens to each purchase with what it gave. The search, the filters and Show pick
+--- what is in it; every heading opens and closes, remembered.
+function Window.PurchaseRows()
+    local x = purchaseFilter()
+    local search = (x.search or ""):lower()
+    local all = Ledger.History(ns.db.ledger)
+    local days, order = {}, {}
+    for _, e in ipairs(all) do
+        if passes(e, x, search) then
+            local t = e.boughtAt or e.t or 0
+            local key = date("%Y-%m-%d", t)
+            local d = days[key]
+            if not d then
+                d = { key = key, t = t, all = {}, waiting = {}, done = {} }
+                days[key] = d
+                order[#order + 1] = d
+            end
+            d.all[#d.all + 1] = e
+            table.insert(e.done and d.done or d.waiting, e)
+        end
+    end
+    table.sort(order, function(a, b) return a.key > b.key end)
+    local rows = {}
+    local function refresh() Window.Refresh() end
+    for _, d in ipairs(order) do
+        local t = totalsOf(d.all)
+        local head = { group = true, cells = { GOLD .. date("%a %m-%d", d.t) .. "|r" .. GREY .. "  " .. pieces(t.n) .. "|r",
+            "", t.known > 0 and ns.Money(t.paid) or (GREY .. "not recorded|r"), money(t.expected),
+            t.done > 0 and money(t.got) or "", t.resultKnown > 0 and signed(t.result) or "" },
+            tip = { date("%A %m-%d", d.t), "The gear you bought this day: how many pieces, what you paid and expected; "
+                .. "Disenchant value and Profit for the pieces disenchanted so far. Click to open or close." } }
+        rows[#rows + 1] = head
+        if ns.HeadingToggle(head, x.collapsed, "d" .. d.key, refresh) then
+            for _, st in ipairs({ { "waiting", "Not disenchanted" }, { "done", "Disenchanted" } }) do
+                local group = d[st[1]]
+                if #group > 0 then
+                    local s = totalsOf(group)
+                    local sh = { group = true, indent = INDENT, cells = { st[2] .. GREY .. "  " .. pieces(s.n) .. "|r",
+                        "", s.known > 0 and ns.Money(s.paid) or (GREY .. "not recorded|r"), money(s.expected),
+                        st[1] == "done" and money(s.got) or "", (st[1] == "done" and s.resultKnown > 0) and signed(s.result)
+                        or "" } }
+                    rows[#rows + 1] = sh
+                    if ns.HeadingToggle(sh, x.collapsed, "s" .. d.key .. ":" .. st[1], refresh) then
+                        itemRows(rows, group, x, d.key .. ":" .. st[1], 2 * INDENT)
+                    end
+                end
+            end
+        end
+    end
     if #rows == 0 then
-        rows[1] = note((search ~= "" or next(x.bandsOff)) and "No purchase matches the search and the filters."
-            or "Nothing yet. Buy from the main window's Gear tab, or take your \"Auction won\" mail, then disenchant.")
+        -- Why it is empty, for the Show choice (UI.md Tables 6).
+        local filtered = narrowed(x, search)
+        local text
+        if #all == 0 then
+            text = "Nothing yet. Buy from the main window's Gear tab, or take your \"Auction won\" mail, then disenchant."
+        elseif x.show == "done" then
+            text = filtered and "No disenchanted gear matches the search and the filters."
+                or "Nothing disenchanted yet: disenchant the gear you bought, or pick All gear in Show."
+        elseif x.show == "waiting" then
+            text = filtered and "No gear that is not disenchanted matches the search and the filters."
+                or "Every piece of gear you bought is disenchanted. Pick All gear in Show to see it."
+        else
+            text = "No purchase matches the search and the filters."
+        end
+        rows[1] = note(text)
     end
     return rows
 end
 
---- The Purchases view's subtab: "all" (every purchase) or "mail" (not picked up), kept with the window.
+--- The Purchases view's subtab: "all" (every purchase), "mail" (not picked up) or "batch" (the current batch),
+--- kept with the window.
+local PURCHASE_TABS = { mail = true, batch = true }
 function Window.PurchaseTab()
     local saved = ns.db.windows.ledger
-    return (saved and saved.purchaseTab == "mail") and "mail" or "all"
+    return (saved and PURCHASE_TABS[saved.purchaseTab]) and saved.purchaseTab or "all"
+end
+
+--- What you hold of an item, the bags and the bank; nil where the client does not say.
+local function held(id)
+    local ok, n = pcall(ns.GetItemCount, id, true)
+    return ok and tonumber(n) or nil
+end
+
+--- The current batch (Ledger.Batch, SDD 107).
+function Window.Batch() return Ledger.Batch(ns.db.ledger, ns.db.posted, held) end
+
+--- "2x Soul Dust, 1x Greater Astral Essence": units of each material, the most valuable first.
+local function matsText(units)
+    local names = {}
+    for id, n in pairs(units) do if n > 0 then names[#names + 1] = { id = id, n = n } end end
+    table.sort(names, function(a, b)
+        local va, vb = (ns.PriceOf(a.id) or 0), (ns.PriceOf(b.id) or 0)
+        if va ~= vb then return va > vb end
+        return a.id < b.id
+    end)
+    for i, m in ipairs(names) do names[i] = m.n .. "x " .. ns.MaterialName(m.id) end
+    return table.concat(names, ", ")
+end
+
+--- The current batch (SDD 107): the gear you picked up and have not disenchanted (first: what you act on), then
+--- the disenchants whose materials are not all posted, newest first, each under its status heading with totals,
+--- and the batch's totals last: what it cost, what it was expected to make, what the disenchants gave so far
+--- against what they were expected to give, and the materials still to post.
+function Window.BatchRows()
+    local b = Window.Batch()
+    local rows = {}
+    if #b.waiting == 0 and #b.done == 0 then
+        rows[1] = note("No batch: every purchase you picked up is disenchanted and its materials are posted.")
+        return rows
+    end
+    local NOT_YET, NONE = GREY .. "not disenchanted yet|r", GREY .. "-|r"
+    local function ilvlText(ilvl) return ilvl and tostring(ilvl) or NONE end
+    local w = { n = #b.waiting, paid = 0, ev = 0 }
+    local wRows = {}
+    for _, p in ipairs(b.waiting) do
+        local ilvl = (p.j and p.j.ilvl) or (p.link and ns.ItemLevelOf(p.link)) or ns.db.ilvl[p.itemID]
+        w.paid, w.ev = w.paid + (p.each or 0), w.ev + (p.ev or 0)
+        wRows[#wRows + 1] = { itemID = p.itemID, link = p.link, indent = INDENT,
+            cells = { itemName(p.itemID, p.link), ilvlText(ilvl), money(p.each), money(p.ev),
+                p.ev and gap(p.ev - (p.each or 0)) or NONE, NOT_YET, NONE, NONE, NONE, NONE, NONE } }
+    end
+    local d = { n = #b.done, paid = 0, ev = 0, got = 0, units = 0, now = 0 }
+    local dRows = {}
+    for _, x in ipairs(b.done) do
+        local r = x.rec
+        local ev, paid = r.evAtBuy or r.planned or 0, r.cost or 0
+        local now = 0
+        for id, n in pairs(x.left) do now = now + n * (ns.UnitValue(id) or 0) end
+        now = math.floor(now + 0.5)
+        d.paid, d.ev, d.got, d.units, d.now = d.paid + paid, d.ev + ev, d.got + (r.value or 0), d.units + x.units,
+            d.now + now
+        dRows[#dRows + 1] = { itemID = r.itemID, link = r.link, indent = INDENT,
+            cells = { itemName(r.itemID, r.link) .. (r.salvager and "  |cff9370db[Salvager]|r" or ""),
+                ilvlText(r.ilvl or r.band), money(paid), money(ev), gap(ev - paid), matsText(r.got or {}),
+                money(r.value or 0), share(r.value or 0, ev), signed((r.value or 0) - paid), matsText(x.left),
+                ns.Money(now) } }
+    end
+    local state = ns.GroupState("ledger.batch")
+    local function refresh() Window.Refresh() end
+    local function units(n) return n .. (n == 1 and " unit" or " units") end
+    if w.n > 0 then
+        local h = { group = true, cells = { "Not disenchanted" .. GREY .. "  " .. pieces(w.n) .. "|r", "",
+            ns.Money(w.paid), ns.Money(w.ev), gap(w.ev - w.paid), "", "", "", "", "", "" } }
+        rows[#rows + 1] = h
+        if ns.HeadingToggle(h, state, "waiting", refresh) then
+            for _, r in ipairs(wRows) do rows[#rows + 1] = r end
+        end
+    end
+    if d.n > 0 then
+        local h = { group = true, cells = { "Disenchanted, not posted" .. GREY .. "  " .. pieces(d.n) .. "|r", "",
+            ns.Money(d.paid), ns.Money(d.ev), gap(d.ev - d.paid), "", ns.Money(d.got), share(d.got, d.ev),
+            signed(d.got - d.paid), units(d.units), ns.Money(d.now) } }
+        rows[#rows + 1] = h
+        if ns.HeadingToggle(h, state, "done", refresh) then
+            for _, r in ipairs(dRows) do rows[#rows + 1] = r end
+        end
+    end
+    -- The batch's totals, the last row (UI.md Tables 13).
+    local paid, ev = w.paid + d.paid, w.ev + d.ev
+    rows[#rows + 1] = { bold = true, rule = "total",
+        cells = { "Batch: " .. pieces(w.n + d.n) .. ", " .. d.n .. " disenchanted", "", ns.Money(paid), ns.Money(ev),
+            gap(ev - paid), "", d.n > 0 and ns.Money(d.got) or NONE, d.n > 0 and share(d.got, d.ev) or NONE,
+            d.n > 0 and signed(d.got - d.paid) or NONE, units(d.units), ns.Money(d.now) },
+        tip = { "The batch", "Paid, Expected value and Expected profit: every piece of the batch. Disenchant value, "
+            .. "DV/EV % and Profit so far: the pieces disenchanted so far, against what they were expected to give. "
+            .. "Not posted yet and Value now: their materials still to post, at what they are worth now. Post them "
+            .. "from the Materials window (the main window's Materials tab)." } }
+    return rows
 end
 
 --- What waits in the mail: the count and the price paid of the purchases whose "Auction won" mail is not
@@ -507,24 +731,6 @@ function Window.SoldRows(history)
             or "No sale is waiting for its money.")
     end
     return rows
-end
-
---- A signed number's color (UI.md Tables 7): green when it is good (more than planned, a gain), red when it is
---- bad, none at 0; the sign says it too.
-local function tone(n) return n > 0 and GREEN or n < 0 and RED or "" end
-local function toned(n, text) return n ~= 0 and (tone(n) .. text .. "|r") or text end
-
---- "+5%", "-3%": how far `part` is from `whole`, green above, red below.
-local function share(part, whole)
-    if not whole or whole == 0 then return GREY .. "-|r" end
-    local pct = math.floor((part - whole) / whole * 100 + 0.5)
-    return toned(pct, (pct > 0 and "+" or "") .. pct .. "%")
-end
-
---- An amount with its sign, green when it gains, red when it loses (Expected profit).
-local function gap(c)
-    c = math.floor(c + 0.5)
-    return toned(c, (c > 0 and "+" or "") .. ns.Money(c))
 end
 
 --- AP/EP %: how far the actual profit is from the expected one, in percent of the expected one
@@ -893,14 +1099,16 @@ function Window.Refresh()
     list:SetShown(not split and not odds)
     -- The Sales view has a row of subtabs, the Purchases view its search and filters; the tables start under.
     local purchases = Window.view == "purchases"
-    local mailTab = purchases and Window.PurchaseTab() == "mail"
+    local purchaseTab = Window.PurchaseTab()
+    local mailTab = purchases and purchaseTab == "mail"
+    local batchTab = purchases and purchaseTab == "batch"
     -- Under the tabs: the view's subtabs (Sales, Purchases), then its filter row (Purchases' first subtab,
     -- Accuracy, Odds), then its tables.
     local top = TABS_TOP + W.BAR_H.tabs + 4
     bars.sales:SetShown(sales)
     bars.purchases:SetShown(purchases)
     if sales or purchases then top = top + W.BAR_H.subtabs + 4 end
-    local filterBar = (purchases and not mailTab and bars.purchaseFilters) or (accuracy and bars.accuracyFilters)
+    local filterBar = (purchases and purchaseTab == "all" and bars.purchaseFilters) or (accuracy and bars.accuracyFilters)
         or (odds and oddsView.bar) or nil
     for _, b in ipairs({ bars.purchaseFilters, bars.accuracyFilters }) do b:SetShown(b == filterBar) end
     for _, c in ipairs((filterBar == bars.purchaseFilters and purchaseControls)
@@ -913,11 +1121,13 @@ function Window.Refresh()
     end
     contentTop = top
     for key, b in pairs(salesTabs) do b:SetSelected((key == "history") == history) end
-    for key, b in pairs(purchaseTabs) do b:SetSelected((key == "mail") == mailTab) end
+    for key, b in pairs(purchaseTabs) do b:SetSelected(key == purchaseTab) end
     bagLabel:SetShown(purchases)
     bagArea:SetShown(purchases)
     if purchases then
         purchaseTabs.mail:SetText(string.format("Not picked up (%d)", (Window.NotPickedUpTotal())))
+        local batch = Window.Batch()
+        purchaseTabs.batch:SetText(string.format("Current batch (%d)", #batch.waiting + #batch.done))
         bagLabel:SetText(Window.BagText())
     end
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -top)
@@ -963,6 +1173,12 @@ function Window.Refresh()
         list:SetColumns(COLUMNS.history, "history")
         list:SetSource(#rows, function(i) return rows[i] end)
         list:Refresh()
+    elseif batchTab then
+        local rows = Window.BatchRows()
+        list.onSort = nil
+        list:SetColumns(COLUMNS.batch, "batch")
+        list:SetSource(#rows, function(i) return rows[i] end)
+        list:Refresh()
     elseif mailTab then
         local rows = Window.NotPickedUpRows()
         list.onSort = nil
@@ -998,7 +1214,7 @@ function Window.Refresh()
         if type(n) == "number" and n > needed then needed = n end
     end
     if needed > 0 then
-        local w = math.max(WIDTH, math.ceil(needed) + 24)
+        local w = math.min(math.floor(W.ScreenWidth()), math.max(WIDTH, math.ceil(needed) + 24))
         if math.abs((f:GetWidth() or 0) - w) >= 1 then
             f.FitWidth(w)
             for _, l in ipairs(shown) do l:Refresh() end
@@ -1059,9 +1275,10 @@ local function build()
     end
     W.Tooltip(tabs.accuracy, "Accuracy", "Expected value when you bought, against the disenchant value of what you got, "
         .. "against the sold value. By band and by material.")
-    W.Tooltip(tabs.purchases, "Purchases", "All gear you bought, newest first. Under each one: what it was disenchanted "
-        .. "into, the part of its price given to each material, and what each was worth then. The Not picked up "
-        .. "subtab has what still waits in the mail, with your bag space.")
+    W.Tooltip(tabs.purchases, "Purchases", "All gear you bought, by day (newest first), then not disenchanted and "
+        .. "disenchanted. Under each one: what it was disenchanted into and what it was worth then. The Not picked up "
+        .. "subtab has what still waits in the mail, with your bag space; Current batch what you picked up and have "
+        .. "not disenchanted or not posted yet.")
     W.Tooltip(tabs.sales, "Sales", "Your open auctions, and what is sold with its money still to collect. The History "
         .. "subtab has the sales you have collected. Profit = what you get after the cut, minus what those "
         .. "materials cost you.")
@@ -1179,9 +1396,12 @@ local function build()
     bars.purchases = W.Bar(f, "subtabs"):Place(TABS_TOP + W.BAR_H.tabs + 4, 12, 12)
     for _, t in ipairs({ { "all", "All purchases", "All gear you bought, with what each piece was disenchanted into." },
         { "mail", "Not picked up", "The gear you bought with Buy whose \"Auction won\" mail you have not taken "
-            .. "yet, the first bought first. The number is how many." } }) do
+            .. "yet, the first bought first. The number is how many." },
+        { "batch", "Current batch", "The gear you picked up and have not disenchanted yet, and what you disenchanted "
+            .. "whose materials are not all posted yet: what the batch cost, was expected to make, and has made so far. "
+            .. "A piece leaves when all its materials are posted." } }) do
         local b = W.Subtab(bars.purchases, t[2], function()
-            f.saved.purchaseTab = t[1] == "mail" and "mail" or nil
+            f.saved.purchaseTab = t[1] ~= "all" and t[1] or nil
             list.offset = 0
             Window.Refresh()
         end, t[3])
@@ -1215,13 +1435,19 @@ local function build()
         search:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
         search:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
         purchaseControls = filterRow(fbar, pf, changed, false)
-        local waiting = W.Check(fbar, "Not disenchanted", "Shows the gear you bought and have not disenchanted yet. "
-            .. "Untick it to see only what was disenchanted.", function(on)
-            pf.hideWaiting = (not on) or nil
-            changed()
-        end)
-        fbar:AddCheck(waiting)
-        waiting:SetChecked(not pf.hideWaiting)
+        -- Show: one choice, All gear first (UI.md Controls 5).
+        local SHOW_HELP = "All gear you bought, only what is disenchanted, or only what is not disenchanted yet."
+        local show
+        show = W.Dropdown(fbar, 130, { { "all", "All gear" }, { "done", "Disenchanted" },
+            { "waiting", "Not disenchanted" } },
+            function(key) return purchaseFilter().show == key end,
+            function(key)
+                purchaseFilter().show = key
+                show:Close()
+                changed()
+            end, SHOW_HELP, "Show")
+        fbar:AddFilter("Show", show, 130, SHOW_HELP)
+        purchaseControls[#purchaseControls + 1] = show
         fbar:Hide()
     end
     -- The Accuracy view: the filter row, Salvager too.

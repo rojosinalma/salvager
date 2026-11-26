@@ -247,6 +247,10 @@ function Gear.Refresh()
         end
         show(part, rows[key])
     end
+    -- As wide as its tables' columns need, up to the screen (SDD 107).
+    local lists = {}
+    for _, key in ipairs(ORDER) do lists[#lists + 1] = parts[key].list end
+    if W.FitTables(f, WIDTH, lists) then for _, l in ipairs(lists) do l:Refresh() end end
     local why = Gear.BuyReason(now)
     buyButton:SetEnabled(why == nil)
     buyButton.reason = why

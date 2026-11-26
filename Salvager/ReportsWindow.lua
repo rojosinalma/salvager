@@ -484,7 +484,8 @@ local bars = {}   -- tabs, gold and gear (the views' subtabs), filters
 function Reports.Save()
     if f then f.saved.range, f.saved.goldTab, f.saved.gearTab = Reports.range, Reports.goldTab, Reports.gearTab end
 end
-local FILTERED = { gear = true }   -- the views the filters apply to
+local FILTERED = { gear = true }
+local MIN_W = 890   -- the smallest width: the filter row; wider where the table needs it   -- the views the filters apply to
 
 local function show(l, cols, rows, setId)
     l:SetColumns(cols, setId)
@@ -528,13 +529,15 @@ function Reports.Refresh()
     else
         show(list, COLUMNS.materials, Reports.MaterialRows(), "reports.materials")
     end
+    -- As wide as the table's columns need, up to the screen (SDD 107).
+    if W.FitTables(f, MIN_W, { list }) then list:Refresh() end
     for key, b in pairs(tabs) do b:SetSelected(key == Reports.view) end
     rangeDrop:SetOptions(Reports.PeriodOptions(), 190)
     rangeDrop:Update()
 end
 
 local function build()
-    f = W.Window("SalvagerReportsFrame", "Salvager Reports", "reports", 900, 480, 890, 300)
+    f = W.Window("SalvagerReportsFrame", "Salvager Reports", "reports", 900, 480, MIN_W, 300)
     local old = OLD_VIEW[f.saved.view]
     if old then f.saved.view, f.saved.gearTab = old[1], old[2] end
     if TITLES[f.saved.view] then Reports.view = f.saved.view end

@@ -202,6 +202,7 @@ end
 --- opts = { rowHeight = 22, header = true, plain = false }
 --- Unless `plain`, the list is drawn as a sunken table: dark panel, title band, every second row shaded.
 local BOLD_FONT, BOLD_SCALE = "GameFontHighlight", 12 / 10   -- a total's texts: 12 pt against the rows' 10 pt
+local NOTE_SAMPLE = "99 columns left out"   -- the widest note of left-out columns
 function Widgets.List(parent, opts)
     opts = opts or {}
     local ROW_H = opts.rowHeight or 22
@@ -280,6 +281,31 @@ function Widgets.List(parent, opts)
         chooser:SetPoint("TOPRIGHT", list, "TOPRIGHT", -2, -math.floor((HEAD_H - 16) / 2))
         chooser:Hide()
         list.chooser = chooser
+    end
+    -- The note of the columns left out for want of room, left of the chooser, with the reason on hover.
+    local note
+    if HEAD_H > 0 then
+        note = list:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        note:SetHeight(HEAD_H)
+        note:SetJustifyH("RIGHT")
+        note:SetPoint("TOPRIGHT", list, "TOPRIGHT", -BAR_W - 4, 0)
+        note:Hide()
+        local area = CreateFrame("Frame", nil, list)
+        area:SetAllPoints(note)
+        area:EnableMouse(true)
+        area:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText("Columns left out", 1, 1, 1)
+            GameTooltip:AddLine("No room for: " .. table.concat(rawget(list, "leftOut") or {}, ", ") .. ". Widen the "
+                .. "window, or hide other columns with the column chooser at the right. A window that fits its "
+                .. "tables gets as wide as the screen allows.", 1, 0.82, 0, true)
+            GameTooltip:Show()
+        end)
+        area:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        area.uiKind = "help"   -- (no look of its own: the note it lies over)
+        list.leftOutNote = note
+        note.area = area
+        area:Hide()
     end
     for r = 1, MAX_ROWS do
         local row = CreateFrame("Button", nil, list)
@@ -460,11 +486,27 @@ function Widgets.List(parent, opts)
         -- leave it less is left out, from the right, and the first column takes its room too.
         local fits = {}
         for i = 1, #cols do fits[i] = shown[i] end
+        -- A column left out says so (UI.md Tables 2): a note at the right end of the titles, which takes room too.
+        local noteW, leftOut = 0, {}
         if need then
             local least = math.min(need[1], MIN_FIRST)
             for i = #cols, 2, -1 do
-                if avail - fixed >= least then break end
-                if fits[i] then fits[i], fixed = false, fixed - need[i] - GAP end
+                if avail - noteW - fixed >= least then break end
+                if fits[i] then
+                    fits[i], fixed = false, fixed - need[i] - GAP
+                    table.insert(leftOut, 1, tostring(Widgets.ColumnKey(cols[i])))
+                    if HEAD_H > 0 then noteW = math.ceil(Widgets.TextWidth(NOTE_SAMPLE) or 100) + GAP end
+                end
+            end
+            avail = avail - noteW
+        end
+        self.leftOut = leftOut
+        if note then
+            note:SetShown(#leftOut > 0)
+            note.area:SetShown(#leftOut > 0)
+            if #leftOut > 0 then
+                note:SetWidth(noteW - GAP)
+                note:SetText(#leftOut .. (#leftOut == 1 and " column" or " columns") .. " left out")
             end
         end
         local first = math.max(MIN_FIRST, avail - fixed)
@@ -498,6 +540,9 @@ function Widgets.List(parent, opts)
         -- text cannot be measured.
         local full = need and (4 + need[1] + GAP + allFixed) or nil
         self.neededWidth = need and (actionX and (full + 22 + 64 + 6) or full) + BAR_W + 8 or nil
+        -- The narrowest width that leaves no column out: the first one with room for its text up to MIN_FIRST
+        -- (a window that fits its tables reads it, Widgets.FitTables).
+        self.fitWidth = need and math.ceil(math.min(need[1], MIN_FIRST) + allFixed + BAR_W + 8 + ACTION_W) or nil
         if actionX and rawget(list, "actionTitle") then
             list.actionTitle:ClearAllPoints()
             list.actionTitle:SetPoint("TOPLEFT", self, "TOPLEFT", actionX + 22, 0)

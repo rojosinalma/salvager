@@ -107,7 +107,9 @@ end
 --- Each one has its link, expected value and judged data from the matching purchase record when it is
 --- still there (same item, time and price).
 --- @return table  { { itemID, each, t, link, ev, j }, ... }
-function Ledger.NotPickedUp(state)
+--- The purchases seen at the auction house whose "Auction won" mail is not taken yet, and the purchase records they
+--- match ({ [record] = true }).
+local function inMail(state)
     local used, out = {}, {}
     for _, b in ipairs(state.bought) do
         if not b.mail then
@@ -122,6 +124,11 @@ function Ledger.NotPickedUp(state)
             out[#out + 1] = row
         end
     end
+    return out, used
+end
+
+function Ledger.NotPickedUp(state)
+    local out = inMail(state)
     -- (state.bought is in purchase order; a stable sort keeps two of the same second in that order.)
     for i, r in ipairs(out) do r.index = i end
     table.sort(out, function(a, b)
@@ -950,6 +957,92 @@ local function bandShares(state)
         if b.value > 0 then return ((r.vals and r.vals[id]) or 0) * b.paid / b.value end
         return b.units > 0 and qty * b.paid / b.units or 0
     end
+end
+
+--- The current batch (SDD 107): the gear you bought and picked up that is not disenchanted yet, and the
+--- disenchants of bought gear whose materials are not all posted yet.
+--- Gone units: each post through Salvager (`posted`: itemID, qty, t), and each sale that came from no such post
+--- (posted another way: at the sale), in time order, takes that material's units of the disenchants made at or
+--- before it, first in, first out. Then `held` caps it: a material's units left, newest disenchant first, are at
+--- most what you hold of it (converted, mailed, posted another way and not sold yet: gone too); a gear's purchases
+--- left, newest first, at most the pieces you hold. A post that expires or is cancelled stays posted.
+--- @param posted table|nil  SalvagerDB.posted
+--- @param held function|nil  (itemID) -> units in the bags and the bank, or nil where not known (no cap)
+--- @return table { waiting = { { itemID, link, each, ev, t, j }, ... }, done = { { rec, left = { [id] = units },
+---   units }, ... } }, each newest first
+function Ledger.Batch(state, posted, held)
+    posted = posted or {}
+    local _, mailed = inMail(state)
+    local waiting = {}
+    for itemID, list in pairs(state.purchases) do
+        local mine = {}
+        for _, p in ipairs(list) do if not mailed[p] then mine[#mine + 1] = p end end
+        local cap = held and held(itemID)
+        for i = (cap and math.max(1, #mine - cap + 1) or 1), #mine do
+            local p = mine[i]
+            waiting[#waiting + 1] = { itemID = itemID, link = p.link, each = p.each, ev = p.ev, t = p.t or 0, j = p.j }
+        end
+    end
+    table.sort(waiting, function(a, b)
+        if a.t ~= b.t then return a.t > b.t end
+        return a.itemID < b.itemID
+    end)
+    -- Each material's disenchants, oldest first, with the units of it not gone yet.
+    local left, byMat = {}, {}
+    for i, r in ipairs(state.disenchants) do
+        for id, qty in pairs(r.got or {}) do
+            left[r] = left[r] or {}
+            left[r][id] = qty
+            byMat[id] = byMat[id] or {}
+            byMat[id][#byMat[id] + 1] = { r = r, i = i }
+        end
+    end
+    for _, list in pairs(byMat) do
+        table.sort(list, function(a, b)
+            if (a.r.t or 0) ~= (b.r.t or 0) then return (a.r.t or 0) < (b.r.t or 0) end
+            return a.i < b.i
+        end)
+    end
+    local gone = {}
+    for _, p in ipairs(posted) do
+        if p.itemID and p.qty then gone[#gone + 1] = { id = p.itemID, n = p.qty, t = p.t or 0 } end
+    end
+    for _, sale in ipairs(state.sales) do
+        if not sale.lost and sale.id and (sale.count or 0) > 0 and not postTime(sale, posted, sale.t or 0) then
+            gone[#gone + 1] = { id = sale.id, n = sale.count, t = sale.t or 0 }
+        end
+    end
+    table.sort(gone, function(a, b) return a.t < b.t end)
+    for _, g in ipairs(gone) do
+        local n = g.n
+        for _, x in ipairs(byMat[g.id] or {}) do
+            if n <= 0 or (x.r.t or 0) > g.t then break end
+            local take = math.min(n, left[x.r][g.id])
+            left[x.r][g.id], n = left[x.r][g.id] - take, n - take
+        end
+    end
+    if held then
+        for id, list in pairs(byMat) do
+            local cap = held(id)
+            if cap then
+                for i = #list, 1, -1 do
+                    local r = list[i].r
+                    local keep = math.min(cap, left[r][id])
+                    left[r][id], cap = keep, cap - keep
+                end
+            end
+        end
+    end
+    local done = {}
+    for _, r in ipairs(state.disenchants) do
+        if r.costKnown and left[r] then
+            local units = 0
+            for _, n in pairs(left[r]) do units = units + n end
+            if units > 0 then done[#done + 1] = { rec = r, left = left[r], units = units } end
+        end
+    end
+    table.sort(done, function(a, b) return (a.rec.t or 0) > (b.rec.t or 0) end)
+    return { waiting = waiting, done = done }
 end
 
 --- Every item bought or disenchanted, newest first: one entry per item, with what it gave.

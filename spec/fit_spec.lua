@@ -149,15 +149,23 @@ local function problems(win, where, out, atDefault)
                 end
             end
         end
-        -- FIT_DEBUG=1: the columns a table leaves out for want of room (not a failure: UI.md Tables 2).
-        if isList(obj) and os.getenv("FIT_DEBUG") then
+        -- A table leaves no column out at the default size (on a 1920 wide screen): the window fits its columns
+        -- (SDD 107). At the smallest size a column may be left out, and then the table's note says so. FIT_DEBUG=1
+        -- lists them.
+        if isList(obj) then
             local W, dropped = ns_.Widgets, {}
             for i, col in ipairs(obj.columns) do
                 local wanted = W.ColumnShown(rawget(obj, "columnSet"), W.ColumnKey(col))
                 if i > 1 and wanted and not obj.headers[i]:IsShown() then dropped[#dropped + 1] = tostring(col[1]) end
             end
             if #dropped > 0 then
-                print(where .. ": table " .. tostring(obj.columns[1][1]) .. " leaves out " .. table.concat(dropped, ", "))
+                local text = "table " .. tostring(obj.columns[1][1]) .. " leaves out " .. table.concat(dropped, ", ")
+                if atDefault then add(text) end
+                local note = rawget(obj, "leftOutNote")
+                if rawget(obj, "headers")[1]:IsShown() and not (note and note:IsShown()) then
+                    add(text .. " without its note")
+                end
+                if os.getenv("FIT_DEBUG") then print(where .. ": " .. text) end
             end
         end
         local within = list
@@ -206,6 +214,7 @@ local function seed(env, ns)
         local id = 7000 + i
         local quality = 2 + (i % 3)
         env.items[id] = { name = n, quality = quality, ilvl = 20 + i * 4, req = 15 + i * 3, classID = i % 2 == 0 and 2 or 4 }
+        env.bags[id] = 99   -- (picked up: the Current batch has them)
         gear[#gear + 1] = id
     end
     local function link(id) return "|cff1eff00|Hitem:" .. id .. "::::::::60:::::|h[" .. env.items[id].name .. "]|h|r" end
@@ -271,6 +280,16 @@ local function seed(env, ns)
         end
     end
     wow.fire(ns, "OWNED_AUCTIONS_UPDATED")
+    -- Disenchants after the posts: their materials are not posted (the Current batch has them).
+    env.clock = env.clock + 60
+    for i = 1, 4 do
+        local m = ns.Data.MATERIALS[#ns.Data.MATERIALS - i + 1]
+        env.bagLinks = { ["0:1"] = link(gear[i]) }
+        wow.fire(ns, "UNIT_SPELLCAST_SENT", "player", nil, "cast-guid", 13262)
+        wow.fire(ns, "ITEM_LOCK_CHANGED", 0, 1)
+        env.loot = { { id = m.id, qty = 99 }, { id = ns.Data.MATERIALS[i].id, qty = 99 } }
+        wow.fire(ns, "LOOT_READY")
+    end
     wow.fire(ns, "PLAYER_MONEY")
     for i = 1, 5000 do
         ns.Log("checked item %s: %d auctions, %d under %s", NAMES[i % #NAMES + 1], 999, 999, ns.Money(BIG))
@@ -376,5 +395,33 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
             end
         end
         assert.are.equal("", table.concat(found, "\n"))
+    end)
+    it("says so where a table leaves columns out for want of room, and fits them where it can", function()
+        local W = ns.Widgets
+        local parent = CreateFrame("Frame", nil, UIParent)
+        parent:SetSize(300, 200)
+        parent:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+        local l = W.List(parent)
+        l:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
+        l:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, 0)
+        l:SetColumns({ { "Gear", 100 }, { "Paid", 80, "RIGHT" }, { "Expected value", 80, "RIGHT" },
+            { "Disenchant value", 80, "RIGHT" }, { "Profit", 80, "RIGHT" } })
+        l:SetSource(1, function() return { cells = { NAMES[2], ns.Money(BIG), ns.Money(BIG), ns.Money(BIG), ns.Money(BIG) } } end)
+        l:Refresh()
+        local note = l.leftOutNote
+        assert.is_true(#l.leftOut > 0)
+        assert.is_true(note:IsShown())
+        assert.are.equal(#l.leftOut .. (#l.leftOut == 1 and " column" or " columns") .. " left out", note:GetText())
+        assert.is_false(wow.isCut(note))
+        -- The note sits after the last column shown, before the scroll bar.
+        local last
+        for i, h in ipairs(l.headers) do if h:IsShown() and l.columns[i] then last = rect(h) end end
+        assert.is_true(last.r <= rect(note).l + EPS and rect(note).r <= rect(l).r - 18 + EPS)
+        -- As wide as it needs (what a window that fits its tables does): nothing left out, no note.
+        parent:SetWidth(l.fitWidth)
+        l:Refresh()
+        assert.are.same({}, l.leftOut)
+        assert.is_false(note:IsShown())
+        parent:Hide()
     end)
 end)

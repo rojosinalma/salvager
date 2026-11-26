@@ -55,7 +55,9 @@ reply must say so.
    column included. The first column (the row's label) takes the spare width, so the last column ends at the
    table's right edge, in every table (as in a statement, Statements 2); in a stack of cards, the columns line up
    at the cards' right edge. Text that does not fit ends with "..." and shows in full on hover. A column of live
-   values is as wide as its widest possible value (`sample`).
+   values is as wide as its widest possible value (`sample`). A window is as wide as its tables' shown columns need,
+   up to the screen; a column is never left out silently: where the screen is too narrow, a note at the right end of
+   the titles says how many are left out, and its tooltip which ones.
 3. A table with sections is one inset per section, or a heading row per section with its own
    totals. A value that is the same for every row of a section goes in the heading, not in the rows.
 4. Rows the player acts on first come first (open before sold, newest before oldest).

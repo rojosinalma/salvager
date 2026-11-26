@@ -467,6 +467,8 @@ function M.install(opts)
     end
     _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) table.insert(env.chat, m) end }
     _G.UIParent = widget("Frame")
+    -- The screen is 1920 wide (a window that fits its tables stops there); without layout every other frame is 140.
+    if not M.layout then rawset(_G.UIParent, "GetWidth", function() return 1920 end) end
     _G.UISpecialFrames = {}
     _G.GameTooltip = widget("GameTooltip")
     _G.ItemRefTooltip = widget("GameTooltip")

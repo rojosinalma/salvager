@@ -447,4 +447,63 @@ describe("Ledger", function()
         assert.are.equal(1, r.mats[11083].hits)
         assert.are.equal(2, r.mats[11083].qty)
     end)
+    describe("the current batch (SDD 107)", function()
+        local DUST, ESSENCE = 11083, 11082
+        local function priceOf() return 100 end
+        local function disenchant(t, itemID, got)
+            return Ledger.Disenchant(state, { t = t, itemID = itemID, quality = 2, classID = 4, band = 30, got = got },
+                Ledger.TakePurchase(state, itemID), priceOf, 0.05)
+        end
+
+        it("lists what is picked up, not what waits in the mail", function()
+            Ledger.AuctionPurchase(state, 7001, 500, 900, 10, "[A]")       -- bought with Buy: its mail not taken
+            Ledger.MailPurchase(state, 7002, 1, 400, 700, 20, "[B]")       -- known from its mail: picked up
+            local b = Ledger.Batch(state, {})
+            assert.are.same({ 7002 }, { b.waiting[1].itemID, b.waiting[2] and b.waiting[2].itemID })
+            assert.are.same({ 400, 700 }, { b.waiting[1].each, b.waiting[1].ev })
+            assert.is_false(Ledger.MailPurchase(state, 7001, 1, 500, 900, 30))   -- its mail taken: in the batch
+            b = Ledger.Batch(state, {})
+            assert.are.same({ 7002, 7001 }, { b.waiting[1].itemID, b.waiting[2].itemID })   -- newest bought first
+            -- What you hold caps it: a piece sold or thrown away is not in the batch any more.
+            b = Ledger.Batch(state, {}, function(id) return id == 7002 and 0 or 1 end)
+            assert.are.same({ 1, 7001 }, { #b.waiting, b.waiting[1].itemID })
+        end)
+
+        it("keeps a disenchant until all its materials are posted, first in, first out", function()
+            Ledger.MailPurchase(state, 7001, 2, 1000, 900, 10, "[A]")
+            local first = disenchant(100, 7001, { [DUST] = 3, [ESSENCE] = 1 })
+            local b = Ledger.Batch(state, {})
+            assert.are.equal(1, #b.waiting)                                 -- the second piece still waits
+            assert.are.same({ first, 4, 3 }, { b.done[1].rec, b.done[1].units, b.done[1].left[DUST] })
+            local second = disenchant(200, 7001, { [DUST] = 2 })
+            assert.are.equal(0, #Ledger.Batch(state, {}).waiting)
+            local posted = { { itemID = DUST, qty = 5, t = 50 } }           -- before both disenchants: not theirs
+            b = Ledger.Batch(state, posted)
+            assert.are.same({ second, first }, { b.done[1].rec, b.done[2].rec })
+            assert.are.same({ 3, 2 }, { b.done[2].left[DUST], b.done[1].left[DUST] })
+            posted[2] = { itemID = DUST, qty = 4, t = 300 }                 -- the first disenchant's 3, then 1 of the second
+            b = Ledger.Batch(state, posted)
+            assert.are.same({ 0, 1, 1 }, { b.done[2].left[DUST], b.done[2].left[ESSENCE], b.done[1].left[DUST] })
+            assert.are.equal(2, #b.done)                                    -- the first still has its essence
+            posted[3] = { itemID = ESSENCE, qty = 1, t = 310 }
+            b = Ledger.Batch(state, posted)
+            assert.are.same({ 1, second, 1 }, { #b.done, b.done[1].rec, b.done[1].units })   -- partly posted: stays
+            -- A sale of units posted another way (no post of Salvager) takes them at the sale.
+            Ledger.Sell(state, DUST, 1, 300, 15, 400)
+            assert.are.equal(0, #Ledger.Batch(state, posted).done)          -- all posted or sold: it leaves
+        end)
+
+        it("counts a sale of a Salvager post once, and caps the units by what you hold", function()
+            Ledger.MailPurchase(state, 7001, 1, 500, 900, 10, "[A]")
+            disenchant(100, 7001, { [DUST] = 4 })
+            local posted = { { itemID = DUST, qty = 2, each = 150, t = 200 } }
+            local sale = Ledger.Sell(state, DUST, 2, 300, 15, 300)
+            sale.postedAt = 200                                             -- from that post: not counted again
+            local b = Ledger.Batch(state, posted)
+            assert.are.equal(2, b.done[1].left[DUST])
+            -- Converted or mailed away: 1 dust left in the bags.
+            b = Ledger.Batch(state, posted, function(id) return id == DUST and 1 or nil end)
+            assert.are.equal(1, b.done[1].left[DUST])
+        end)
+    end)
 end)

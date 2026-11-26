@@ -851,7 +851,12 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
     if fixed then
         f:SetSize(w, h)
         Widgets.ClampToTitle(f)
-        f:SetScript("OnSizeChanged", function() Widgets.ClampToTitle(f) end)
+        f:SetScript("OnSizeChanged", function()
+            Widgets.ClampToTitle(f)
+            if f.onResize then f.onResize() end
+        end)
+        -- A fixed window that fits its tables: exactly that wide.
+        function f.FitWidth(width) f:SetWidth(width) end
         f:Hide()
         return f
     end
@@ -867,6 +872,8 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
     end
     -- A window whose width fits its content: the content sets it (and the player still sizes the height).
     -- The bounds first: the client keeps a frame inside its resize bounds, SetWidth included (SDD 91).
+    -- A window sized both ways: `width` is its smallest width from now on (the player can make it wider), and
+    -- it widens to it when narrower.
     function f.FitWidth(width)
         if vertical then
             if f.SetResizeBounds then
@@ -875,8 +882,16 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
                 f:SetMinResize(width, minH)
                 f:SetMaxResize(width, maxH)
             end
+            f:SetWidth(width)
+            return
         end
-        f:SetWidth(width)
+        if f.SetResizeBounds then
+            f:SetResizeBounds(width, minH, math.max(width, maxW), maxH)
+        elseif f.SetMinResize then
+            f:SetMinResize(width, minH)
+        end
+        f.minWidth = width
+        if (f:GetWidth() or 0) < width then f:SetWidth(width) end
     end
     local grip = CreateFrame("Button", nil, f)
     grip:SetSize(16, 16)
@@ -900,6 +915,28 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
     end)
     f:Hide()
     return f
+end
+
+--- The screen's width in the UI's units: no window fits its tables wider than this (SDD 91, 107).
+function Widgets.ScreenWidth()
+    return tonumber((UIParent:GetWidth())) or tonumber((GetScreenWidth and GetScreenWidth())) or 1024
+end
+
+--- A window that fits its tables (SDD 107, UI.md Tables 2): at least `base` wide, and as wide as each of `lists`
+--- needs to leave no column out (`list.fitWidth`, plus the room around the list in the window), at most the
+--- screen. Only where the screen is too narrow does a table leave columns out, and its note says so.
+--- @return boolean changed  the width changed: refresh the lists again
+function Widgets.FitTables(f, base, lists)
+    local w = base
+    local fw = tonumber((f:GetWidth())) or 0
+    for _, l in ipairs(lists) do
+        local n, lw = rawget(l, "fitWidth"), tonumber((l:GetWidth()))
+        if type(n) == "number" and lw and lw > 0 then w = math.max(w, math.ceil(n + fw - lw)) end
+    end
+    w = math.min(w, math.floor(Widgets.ScreenWidth()))
+    local before = fw
+    f.FitWidth(w)
+    return math.abs((tonumber((f:GetWidth())) or 0) - before) >= 1
 end
 
 function Widgets.Label(parent, text, template)

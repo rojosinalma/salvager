@@ -313,6 +313,8 @@ end
 
 ------------------------------------------------------------------ the window
 
+local MIN_W, LIST_W = 900, 370   -- the window's smallest width; the list's, where its columns need no more
+
 local VIEWS = { material = Material, value = Value, profit = Profit, essence = Essence, hour = Hour }
 local ORDER = { "material", "value", "profit", "essence", "hour" }
 Market.VIEWS = VIEWS
@@ -396,6 +398,16 @@ function Market.Refresh()
     list:SetColumns(cols, "market." .. Market.view)
     list:SetSource(#rows, function(i) return rows[i] end)
     list:Refresh()
+    -- The list is as wide as its columns need (at least LIST_W), the window wider by as much, up to the screen
+    -- (SDD 107); the chart keeps the rest.
+    local need = rawget(list, "fitWidth")
+    local lw = math.max(LIST_W, type(need) == "number" and need or 0)
+    lw = math.min(lw, math.floor(W.ScreenWidth()) - (MIN_W - LIST_W))
+    if math.abs((list:GetWidth() or 0) - lw) >= 1 then
+        list:SetWidth(lw)
+        f.FitWidth(MIN_W + lw - LIST_W)
+        list:Refresh()
+    end
     rangeDrop:Update()
     for key, b in pairs(tabs) do b:SetSelected(key == Market.view) end
     if picked ~= nil or Market.view == "profit" then
@@ -415,7 +427,7 @@ function Market.Refresh()
 end
 
 local function build()
-    f = W.Window("SalvagerMarketFrame", "Salvager Market", "market", 900, 480, 900, 320)
+    f = W.Window("SalvagerMarketFrame", "Salvager Market", "market", MIN_W, 480, MIN_W, 320)
     if VIEWS[f.saved.view] then Market.view = f.saved.view end
     for key, value in pairs(f.saved.pick or {}) do Market.pick[key] = value end
     for _, r in ipairs(RANGES) do if r[1] == f.saved.range then Market.range = r[1] end end
@@ -454,7 +466,7 @@ local function build()
     list = W.List(f, { rowHeight = 22 })
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -88)
     list:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 12, 14)
-    list:SetWidth(370)
+    list:SetWidth(LIST_W)
     -- A click on a column title sorts by it; a second click turns the order around.
     list.onSort = function(col)
         local sort = sortOf(Market.view)

@@ -175,30 +175,46 @@ describe("Salvager in a simulated client", function()
 
     it("shows the purchase with its materials under it, and the sale with its profit", function()
         local rows = ns.LedgerWindow.PurchaseRows()
-        assert.are.equal(1, #rows)                            -- one row per item, closed
-        assert.are.equal(BOOTS, rows[1].itemID)
-        assert.is_truthy(rows[1].cells[1]:find("x1", 1, true))
-        assert.is_truthy(rows[1].cells[3]:find("5", 1, true)) -- paid 5s
-        rows[1].onClick()                                     -- a click opens it
+        assert.are.equal(3, #rows)                            -- the day, its status, one row per item (closed)
+        assert.is_true(rows[1].group and rows[1].open)        -- the day it was bought, open, with its totals
+        assert.is_truthy(rows[1].cells[1]:find("1 piece", 1, true))
+        assert.is_truthy(rows[1].cells[3]:find("5", 1, true))
+        assert.is_truthy(rows[2].cells[1]:find("^Disenchanted"))   -- the only status of that day
+        assert.is_true(rows[2].indent > 0 and rows[2].open)
+        assert.are.equal(BOOTS, rows[3].itemID)
+        assert.is_truthy(rows[3].cells[1]:find("x1", 1, true))
+        assert.is_truthy(rows[3].cells[3]:find("5", 1, true)) -- paid 5s
+        rows[3].onClick()                                     -- a click opens it
         rows = ns.LedgerWindow.PurchaseRows()
-        assert.are.equal(2, #rows)
-        assert.is_true(rows[2].indent > 0)                    -- each purchase under it, with what it gave
-        assert.is_truthy(rows[2].cells[1]:find("2x Soul Dust", 1, true))
+        assert.are.equal(4, #rows)
+        assert.is_true(rows[4].indent > rows[3].indent)       -- each purchase under it, with what it gave
+        assert.is_truthy(rows[4].cells[1]:find("2x Soul Dust", 1, true))
+        rows[1].onClick()                                     -- the day closes: its heading stays, with its totals
+        rows = ns.LedgerWindow.PurchaseRows()
+        assert.are.equal(1, #rows)
+        assert.is_false(rows[1].open)
+        assert.is_truthy(rows[1].cells[3]:find("5", 1, true))
+        rows[1].onClick()
         local x = ns.LedgerWindow.PurchaseFilter()
         x.search = "nothing like it"
         assert.is_truthy(ns.LedgerWindow.PurchaseRows()[1].cells[1]:find("matches", 1, true))
         x.search = "test"                                     -- the name, any case
-        assert.are.equal(BOOTS, ns.LedgerWindow.PurchaseRows()[1].itemID)
+        assert.are.equal(BOOTS, ns.LedgerWindow.PurchaseRows()[3].itemID)
         x.search = nil
         x.classes[4] = nil                                    -- weapons only: the boots go
         assert.is_nil(ns.LedgerWindow.PurchaseRows()[1].itemID)
+        assert.are.equal(1, #ns.LedgerWindow.PurchaseRows())
         x.classes[4] = true
-        assert.is_false(ns.LedgerWindow.PurchaseRows()[1].open == nil)   -- it has the open / close sign
-        x.hideWaiting = true                                  -- the boots were disenchanted: still there
-        assert.are.equal(BOOTS, ns.LedgerWindow.PurchaseRows()[1].itemID)
-        x.hideWaiting = nil
+        assert.is_false(ns.LedgerWindow.PurchaseRows()[3].open == nil)   -- it has the open / close sign
+        x.show = "done"                                       -- the boots were disenchanted: still there
+        assert.are.equal(BOOTS, ns.LedgerWindow.PurchaseRows()[3].itemID)
+        x.show = "waiting"                                    -- nothing waits: the table says why
+        rows = ns.LedgerWindow.PurchaseRows()
+        assert.are.equal(1, #rows)
+        assert.is_truthy(rows[1].cells[1]:find("Every piece of gear you bought is disenchanted", 1, true))
+        x.show = "all"
         assert.are.same({ 6, true }, { ns.LedgerWindow.PurchaseSort().col, ns.LedgerWindow.PurchaseSort().desc })
-        x.open[BOOTS] = nil
+        x.open, x.collapsed = {}, {}
         local accRows = ns.LedgerWindow.AccuracyBandRows()
         assert.is_true(#accRows >= 4)                              -- all bands, gear type, quality, a band
         assert.is_truthy(accRows[2].cells[1]:find("Armor", 1, true))
@@ -410,15 +426,88 @@ describe("Salvager in a simulated client", function()
         }
         local x = ns.LedgerWindow.PurchaseFilter()
         x.sort = nil
+        -- One day: its heading; Not disenchanted first (what you act on), then Disenchanted, by profit, best first.
         local rows = ns.LedgerWindow.PurchaseRows()
-        assert.are.same({ 7002, 7003, 7001 }, { rows[1].itemID, rows[2].itemID, rows[3].itemID })   -- profit, best first
+        assert.are.equal(6, #rows)
+        assert.is_truthy(rows[1].cells[1]:find("3 pieces", 1, true))
+        assert.is_truthy(rows[2].cells[1]:find("^Not disenchanted"))
+        assert.is_truthy(rows[4].cells[1]:find("^Disenchanted"))
+        assert.are.same({ 7001, 7002, 7003 }, { rows[3].itemID, rows[5].itemID, rows[6].itemID })
+        assert.are.equal(ns.Money(1200), rows[4].cells[5])                 -- the status heading's totals
         x.sort = { col = 2, desc = true }                                    -- by date, newest first
         rows = ns.LedgerWindow.PurchaseRows()
-        assert.are.same({ 7001, 7003, 7002 }, { rows[1].itemID, rows[2].itemID, rows[3].itemID })
-        x.hideWaiting = true
-        assert.are.equal(2, #ns.LedgerWindow.PurchaseRows())
-        x.hideWaiting, x.sort = nil, nil
+        assert.are.same({ 7001, 7003, 7002 }, { rows[3].itemID, rows[5].itemID, rows[6].itemID })
+        x.show = nil
+        x.hideWaiting = true                                  -- the old check box, unticked: Show Disenchanted
+        assert.are.equal("done", ns.LedgerWindow.PurchaseFilter().show)
+        assert.is_nil(x.hideWaiting)
+        rows = ns.LedgerWindow.PurchaseRows()
+        assert.are.equal(4, #rows)                            -- the day, Disenchanted and its two
+        assert.is_truthy(rows[2].cells[1]:find("^Disenchanted"))
+        x.show = "waiting"
+        assert.are.same({ 3, 7001 }, { #ns.LedgerWindow.PurchaseRows(), ns.LedgerWindow.PurchaseRows()[3].itemID })
+        x.show, x.sort = "all", nil
         L.purchases, L.disenchants = saved.purchases, saved.disenchants
+    end)
+
+    it("tracks the current batch: picked up, disenchanted, then posted (SDD 107)", function()
+        local L, W = ns.db.ledger, ns.LedgerWindow
+        local saved = { purchases = L.purchases, disenchants = L.disenchants, bought = L.bought, sales = L.sales,
+            posted = ns.db.posted, bags = env.bags }
+        L.purchases = { [7001] = { { each = 1000, ev = 1500, t = 50, link = "|Hitem:7001|h[Alpha]|h" } },
+            [7004] = { { each = 300, ev = 400, t = 60, link = "|Hitem:7004|h[Delta]|h" } } }
+        L.bought = { { itemID = 7004, each = 300, t = 60 } }                -- still in the mail: not in the batch
+        L.disenchants = { { t = 40, itemID = 7002, link = "|Hitem:7002|h[Beta]|h", costKnown = true, cost = 1000,
+            evAtBuy = 1200, value = 1600, got = { [11083] = 2 }, quality = 2, classID = 4, band = 30, ilvl = 28 } }
+        L.sales, ns.db.posted = {}, {}
+        env.bags = { [7001] = 1, [11083] = 2 }
+        W.Show()
+        ns.db.windows.ledger = _G.SalvagerLedgerFrame.saved   -- (an earlier test dropped the window's saved table)
+        W.view = "purchases"
+        W.Refresh()
+        W.purchaseTabs.batch:Click()
+        assert.are.equal("batch", W.PurchaseTab())
+        assert.are.equal("Current batch (2)", W.purchaseTabs.batch:GetText())
+        local rows = W.BatchRows()
+        assert.are.equal(5, #rows)                -- Not disenchanted first, its piece, the disenchanted, its piece, totals
+        assert.is_truthy(rows[1].cells[1]:find("^Not disenchanted"))
+        assert.are.same({ 7001, ns.Money(1000), ns.Money(1500) }, { rows[2].itemID, rows[2].cells[3], rows[2].cells[4] })
+        assert.is_truthy(rows[2].cells[5]:find(ns.Money(500), 1, true))          -- Expected profit, before the disenchant
+        assert.is_truthy(rows[2].cells[6]:find("not disenchanted yet", 1, true))
+        assert.is_truthy(rows[3].cells[1]:find("^Disenchanted, not posted"))
+        local de = rows[4].cells
+        assert.are.same({ 7002, "28", "2x Soul Dust", ns.Money(1600), "2x Soul Dust" },
+            { rows[4].itemID, de[2], de[6], de[7], de[10] })
+        assert.is_truthy(de[8]:find("+33%", 1, true))                           -- luck: 1600 against 1200
+        assert.is_truthy(de[9]:find(ns.Money(600), 1, true))                    -- Profit so far
+        local now = ns.Money(math.floor(2 * (ns.UnitValue(11083) or 0) + 0.5))
+        assert.are.equal(now, de[11])
+        local total = rows[5]
+        assert.is_true(total.bold and total.rule == "total")
+        assert.is_truthy(total.cells[1]:find("2 pieces, 1 disenchanted", 1, true))
+        assert.are.same({ ns.Money(2000), ns.Money(2700), ns.Money(1600), "2 units", now },
+            { total.cells[3], total.cells[4], total.cells[7], total.cells[10], total.cells[11] })
+        assert.is_truthy(total.cells[5]:find(ns.Money(700), 1, true))           -- Expected profit of the batch
+        assert.is_truthy(total.cells[9]:find(ns.Money(600), 1, true))           -- Profit so far: the disenchanted part
+        ns.db.posted[1] = { itemID = 11083, qty = 1, each = 500, t = 100 }      -- partly posted: it stays
+        env.bags[11083] = 1
+        assert.are.equal("1x Soul Dust", W.BatchRows()[4].cells[10])
+        ns.db.posted[2] = { itemID = 11083, qty = 1, each = 500, t = 110 }      -- all posted: it leaves
+        env.bags[11083] = 0
+        rows = W.BatchRows()
+        assert.are.same({ 3, 7001 }, { #rows, rows[2].itemID })
+        rows[1].onClick()                                                       -- the heading closes, remembered
+        assert.are.equal(2, #W.BatchRows())
+        assert.is_true(ns.db.groups["ledger.batch"].waiting)
+        rows[1].onClick()
+        env.bags[7001] = 0                                                      -- the piece is gone: no batch
+        assert.is_truthy(W.BatchRows()[1].cells[1]:find("No batch", 1, true))
+        W.Refresh()
+        L.purchases, L.disenchants, L.bought, L.sales = saved.purchases, saved.disenchants, saved.bought, saved.sales
+        ns.db.posted, env.bags = saved.posted, saved.bags
+        ns.db.windows.ledger.purchaseTab = nil
+        W.view = "sales"
+        W.Refresh()
     end)
 
     it("clears the history after a confirmation, and keeps the stock", function()

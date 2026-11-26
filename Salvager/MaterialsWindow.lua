@@ -191,7 +191,7 @@ function Materials.Refresh()
     -- row of buttons above the list.
     local needed = rawget(list, "neededWidth")
     if type(needed) == "number" then
-        local w = math.max(MIN_W, math.ceil(needed) + 24)
+        local w = math.min(math.floor(W.ScreenWidth()), math.max(MIN_W, math.ceil(needed) + 24))
         if math.abs((f:GetWidth() or 0) - w) >= 1 then
             f:SetWidth(w)
             list:Refresh()
@@ -238,6 +238,8 @@ local function build()
     list = W.List(f, { rowHeight = ROW_H, actionWidth = 96, actionTitle = "Post" })
     list:SetColumns(Materials.COLUMNS, "materials")
     list.onColumnsChanged = function() Materials.Refresh() end
+    -- (Its size is the content's: a change from elsewhere fits it again.)
+    f.onResize = function() if f:IsShown() then Materials.Refresh() end end
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -TOP)
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, BOTTOM)
     f:SetScript("OnShow", function()

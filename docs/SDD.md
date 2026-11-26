@@ -459,8 +459,8 @@ flipping is out of scope for now.
     to show each purchase with what it gave (`purchaseFilter().open`). A search box (any part of the name,
     any case) and filters by gear type, quality and item level band sit on the row under the tabs; all kept
     in `SalvagerDB.windows.ledger.purchaseFilter`. (0.3.98) The open / close sign comes first on the row,
-    18 px, before the item's icon (`data.open` of a `Widgets.List` row); a "Not disenchanted" check box shows
-    or hides what is bought and not disenchanted yet; a click on a column title orders the items by it (again
+    18 px, before the item's icon (`data.open` of a `Widgets.List` row); a "Not disenchanted" check box showed
+    or hid what is bought and not disenchanted yet (the Show dropdown since 0.3.136, 107); a click on a column title orders the items by it (again
     turns the order round), by Profit, the best first, until then.
 81. **Charts:** the mouse over a chart shows the values at the nearest moment that has one (a mark, a dot per
     line, a tooltip with the time, each line, the units listed and each level; `chart.Nearest`). Market's
@@ -510,8 +510,8 @@ flipping is out of scope for now.
     folder, CurseForge token and project) live in `.env`, never in the repo. Forever only: the file gets one
     game version, of the Forever type (`CURSEFORGE_GAME_VERSION_TYPE=88568`), and the TOC has only interface
     16001, so other clients do not load it. Blizzard's own Forever TOCs have no flavor suffix, so neither does ours.
-90. **Purchases view: two subtabs and the bag space** (0.3.108, the user). "All purchases" (first) is the list
-    as before, with its search and filters on the filter row under the subtabs. "Not picked up (n)" lists the
+90. **Purchases view: two subtabs and the bag space** (0.3.108, the user; a third, Current batch, since 0.3.136,
+    107). "All purchases" (first) is the list as before (by day and status since 0.3.136, 107), with its search and filters on the filter row under the subtabs. "Not picked up (n)" lists the
     purchases made with Buy whose "Auction won" mail is not taken yet (`Ledger.NotPickedUp`: `ledger.bought`
     without `mail`, with link, expected value and item level from the matching purchase record), oldest
     first: its mail came first and runs out first. A heading row has the count, the total paid and the total
@@ -534,6 +534,7 @@ flipping is out of scope for now.
     and the last columns of By band (then Profit difference, Actual profit) do not fit and are left out. The
     stand-in did not model the bounds. Not yet measured in the client: the layout dump (94) shows it. 0.3.124: each width
     change also makes the window's clamp rect again (98), so a wider Ledger still keeps 40 px on the screen.
+    0.3.136: at most the screen's width (`Widgets.ScreenWidth`, UIParent's width); the other windows fit too (107).
 92. **The version in the title bar** (0.3.110, the user): every window made by `Widgets.Window`, and the main
     window, shows `v<version>` (`ns.VERSION`, from the TOC through `C_AddOns.GetAddOnMetadata`) at the left
     end of its title bar (`f.TitleBg`), small and dim (`GameFontDisableSmall`). Where it would come within
@@ -747,8 +748,9 @@ flipping is out of scope for now.
     b. Limits window (`LimitsWindow.lua`, new): the table of the old Limits tab (columns "Armor: recommended",
        "Armor: limit used", "Weapons: recommended", "Weapons: limit used"; the limit boxes over the "limit used"
        cells); footer: cautious pricing note at the left, "?" at the right. Kept open with the others (24).
-    c. Ledger: tabs; subtabs (Sales: Open and sold, History; Purchases: All purchases, Not picked up); the filter
-       row (Purchases' first subtab: Search, Gear, Quality, Bands, Not disenchanted; Accuracy and Odds: Gear,
+    c. Ledger: tabs; subtabs (Sales: Open and sold, History; Purchases: All purchases, Not picked up, Current batch); the filter
+       row (Purchases' first subtab: Search, Gear, Quality, Bands, Show (the "Not disenchanted" check box until
+       0.3.136); the third subtab, Current batch, since 0.3.136, 107; Accuracy and Odds: Gear,
        Quality, Bands, Salvager; Odds also "Only bands with my data"); the tables; footer, two lines (0.3.130: one line
        cut the totals in Sales): the totals line with its chart button, the whole width; under it, at the right, the
        view's part: Check undercuts and Cancel undercut (Sales), the bag
@@ -781,6 +783,8 @@ flipping is out of scope for now.
     mouse on it holds the scan; off with the reason: being bought, gone from the list, auction house closed, not
     enough gold) at the right, Close last. When a scan replaces the auction's row, the window follows it by auction
     ID; when the auction leaves the list, the window keeps showing it (UI.md Actions 4) and Buy says why it is off.
+    0.3.136: at least 620 wide, wider where its tables' columns need it (107; the Return of "Your history" was left
+    out at 620 with long amounts).
 103. **Headings that open and close, one way** (0.3.129, the user; UI.md Tables 15): every table with groupings:
     the main window's gear groups (they start closed), Reports' Gear Bands, Market's Disenchant value, Breakdown's
     bands, the Limits window's qualities, Ledger Purchases (start closed), Accuracy and the Odds cards. An arrow at
@@ -789,7 +793,9 @@ flipping is out of scope for now.
     title band), a closed heading keeps its totals. `ns.HeadingToggle(row, state, key, changed, closedFirst)` sets
     the row's `open` and `onClick`; `ns.GroupedRows` uses it; the state is saved per table in
     `SalvagerDB.groups[<table>]` (`ns.GroupState`: "main.gear", "reports.bands", "market.value", "breakdown.bands",
-    "limits"; Accuracy, Odds and Purchases keep theirs in their filters, as before).
+    "limits"; Accuracy, Odds and Purchases keep theirs in their filters, as before). 0.3.136: Purchases' day and
+    status headings (open first, `purchaseFilter().collapsed`) and Current batch's status headings ("ledger.batch",
+    open first), 107.
 104. **Gear and materials** (0.3.129, the user; UI.md Words 1): what the player buys and disenchants is "gear"
     everywhere he reads it (window titles, tabs, columns, help, tooltips, chat, slash help, README); "item" stays
     for a game item in general and in "item level"; what a disenchant gives is "materials". Window titles are
@@ -810,7 +816,8 @@ flipping is out of scope for now.
     (the first column of a table, "..." and the full text on hover; the main window's two status lines, cut at the
     next control). A table keeps its first column at least as wide as its text, up to 90 px: a column that would
     leave it less is left out, from the right (was: the first column down to 40 px, its text unreadable).
-    `FIT_DEBUG=1` lists the columns left out.
+    `FIT_DEBUG=1` lists the columns left out. 0.3.136 (107): at the default size no table leaves a column out (on a
+    1920 wide screen); at the smallest size one may, and then its note must show.
 
 105. **Purchases during a scan** (0.3.134, the user, after nine lost clicks on 2026-11-26 23:29–23:30). Measured in
     the log of that day: 1 purchase of 147 went through when clicked after a gear scan had sent its browse and
@@ -843,6 +850,52 @@ flipping is out of scope for now.
     - h. Every click is logged: ready or busy, aiming or not, search current or stale, and what is in flight (the
        search sent and its age, the browse pass and its pages, the last browse's age, purchases on their way), so
        the next failure can be measured. Not yet measured in the game.
+
+107. **Purchases by day, the Current batch, windows that fit their columns** (0.3.136, the user, 2026-11-26).
+    - a. All purchases: a "Show" dropdown on the filter row (after Bands) replaces the "Not disenchanted" check box:
+       All gear (first), Disenchanted, Not disenchanted (`purchaseFilter().show`: "all", "done", "waiting"; a saved
+       `hideWaiting = true` becomes "done" once). The empty table says why for the choice (nothing bought yet;
+       nothing disenchanted yet; every piece disenchanted; nothing matches the search and the filters).
+    - b. All purchases is grouped by the day the gear was bought (the disenchant's day where no purchase is
+       recorded), newest first: a heading "Thu 11-26  12 pieces" with Paid and Expected value of all, Disenchant
+       value and Profit of the pieces disenchanted. Under it a heading per status with its count and totals: "Not
+       disenchanted" first (what the player acts on, UI.md Tables 4), then "Disenchanted"; one only shows when it has
+       rows under Show and the filters. Under those the rows as before: one per item name (ordered by the column
+       picked) that opens to each purchase with what it gave. Day and status headings start open, item rows closed
+       (per day and status); all in `purchaseFilter()` (`collapsed`, `open`).
+    - c. Current batch, the Purchases view's third subtab ("Current batch (n)"): the gear you bought and picked
+       up and have not disenchanted, then the disenchants of bought gear whose materials are not all posted
+       (`Ledger.Batch`). Purchases still in the mail are in Not picked up only. The rule: every post made through
+       Salvager (`SalvagerDB.posted`: material, units, time) and every sale that came from no such post (posted
+       another way: at the sale's time), in time order, takes that material's units of the disenchants made at or
+       before it, first in, first out (a post before a disenchant is not its). Then what you hold caps it
+       (`GetItemCount`, bags and bank): a material's units left, newest disenchant first, are at most what you hold
+       (units converted, mailed or posted another way and not sold yet are gone with it); a gear's purchases left,
+       newest first, at most the pieces you hold. A disenchant leaves when none of its units is left; a post that
+       expires or is cancelled stays posted (its units come back as stock from elsewhere). Disenchants without a
+       recorded purchase take part in the first in, first out but are not listed.
+       Columns: Gear, Item level, Paid, Expected value (EV, at purchase), Expected profit, Materials got,
+       Disenchant value (DV), DV/EV %, Profit so far (DV - Paid), Not posted yet (units per material), Value now
+       (those units at `ns.UnitValue`). Before the disenchant, Materials got says "not disenchanted yet" in grey
+       and the other cells after it "-" (not known). Status headings "Not disenchanted" (first) and
+       "Disenchanted, not posted" (newest first) with their count and totals, open and close
+       (`ns.GroupState("ledger.batch")`); the last row is the batch's totals (bold, a line above): pieces and how
+       many disenchanted, Paid, EV, Expected profit of all; DV, DV/EV % and Profit so far of the disenchanted part
+       against its own EV; the units not posted and their value now. Empty: "No batch: every purchase you picked up
+       is disenchanted and its materials are posted." No new action: the totals' help says to post from the
+       Materials window.
+    - d. Every window with tables is as wide as its shown columns need, up to the screen width
+       (`Widgets.FitTables`, `Widgets.ScreenWidth`): `list.fitWidth` is the narrowest width that leaves no column
+       out (the first column with room for its text up to 90 px; a longer first text ends with "..."). Reports
+       (at least 890), Gear Details (at least 620), Market (its list at least 370, the window 900 plus what the list
+       grew), Materials (as wide as its columns, 84) and the Ledger (91) widen to it. `f.FitWidth` of
+       `Widgets.Window`: a window sized only up and down gets exactly the width; a window sized both ways gets it
+       as its smallest width (bounds first) and widens when narrower; a fixed one gets the width, and fits again
+       after a size change from elsewhere (`onResize`). Measured with the fit spec's long data, 0.3.135 left out:
+       Reports Bands Profit, Return, Profit each; Reports Materials Value; the Materials window Sell price ratio and
+       Time to sell; Gear Details Return; Market Essences Greater. Only where the screen is too narrow does a table
+       leave columns out (from the right), and then a grey note at the right end of its titles says "2 columns
+       left out", with the columns and what to do in its tooltip (UI.md Tables 2).
 
 ## Data
 
