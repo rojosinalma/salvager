@@ -184,6 +184,7 @@ flipping is out of scope for now.
 55. **Conversions are followed** (`Convert.lua`, `Ledger.Convert`): one form down and the other up by the
     matching amount in one bag update = a conversion; the cost moves to the new form. Units with no recorded
     cost count as zero in it.
+56. **Cancel is the last button** of any group of buttons, everywhere (the user's rule).
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),
