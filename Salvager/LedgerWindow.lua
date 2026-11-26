@@ -11,7 +11,8 @@ ns.LedgerWindow = Window
 
 local GREY, GOLD, GREEN, RED = "|cff808080", "|cffffd100", "|cff40ff40", "|cffff4040"
 local INDENT = 22
-local QUALITY_NAME = { [2] = "Green", [3] = "Blue", [4] = "Epic" }
+local QUALITY_NAME = { [2] = "Uncommon", [3] = "Rare", [4] = "Epic" }
+local QUALITY_COLOR = { [2] = "|cff1eff00", [3] = "|cff0070dd", [4] = "|cffa335ee" }   -- the game's quality colors
 
 local COLUMNS = {
     purchases = { { "Item", 220 }, { "Bought", 82 }, { "Paid", 84, "RIGHT" }, { "Expected", 84, "RIGHT" },
@@ -198,7 +199,8 @@ function Window.OddsBands()
                     local limit = ns.BuyLimit(quality, classID, up, ns.LimitBasis(v))
                     local entry = { rows = {}, head = {
                         group = true,
-                        cells = { GOLD .. QUALITY_NAME[quality] .. c[3] .. ", item level " .. bandRange(quality, up) .. "|r",
+                        cells = { QUALITY_COLOR[quality] .. QUALITY_NAME[quality] .. c[3] .. "|r" .. GOLD .. ", item level "
+                            .. bandRange(quality, up) .. "|r",
                             n > 0 and tostring(n) or (GREY .. "0|r"), "", "",
                             ns.Money(v.net) .. (#v.missing > 0 and (GREY .. "?|r") or ""),
                             ns.Money(limit),
@@ -257,7 +259,8 @@ end
 
 -- The Odds view shows each band as a table of its own.
 local ODDS_COLUMNS = {
-    { "Material", 150 }, { "Came", 50, "CENTER" },
+    { "Material", 150 },
+    { "Drops", 50, "CENTER", help = { "Drops", "How many of your own disenchants in this band gave this material." } },
     { "Expected", 90, "CENTER", help = { "Expected", "How often this material comes from one disenchant in this band, "
         .. "and how many, by the odds table the addon uses (Classic's table; not confirmed for Forever)." } },
     { "You got", 96, "CENTER", help = { "You got", "How often it came in your own disenchants in this band, and how "

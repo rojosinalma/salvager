@@ -6,7 +6,7 @@ local Ledger, Model = ns.Ledger, ns.Model
 local Report = {}
 ns.Report = Report
 
-local QUALITY = { [2] = "green", [3] = "blue", [4] = "epic" }
+local QUALITY = { [2] = "uncommon", [3] = "rare", [4] = "epic" }
 
 --- Lines for the band summary: planned vs actual, cost, and observed odds vs the table.
 function Report.Lines()

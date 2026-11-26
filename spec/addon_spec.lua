@@ -135,7 +135,9 @@ describe("Salvager in a simulated client", function()
         assert.is_true(#odds > 2 * 24 * 2)
         local band, dust
         for i, r in ipairs(odds) do
-            if r.cells[1]:find("Green armor, item level 26-30", 1, true) then band, dust = r, odds[i + 1] end
+            if r.cells[1]:find("Uncommon armor", 1, true) and r.cells[1]:find("item level 26-30", 1, true) then
+                band, dust = r, odds[i + 1]
+            end
         end
         assert.are.equal("1", band.cells[2])                       -- the one disenchant
         assert.are.equal(11083, dust.itemID)
@@ -164,7 +166,9 @@ describe("Salvager in a simulated client", function()
         local cards = ns.LedgerWindow.OddsCards()
         assert.is_true(#cards >= 48)
         local card
-        for _, c in ipairs(cards) do if c.title:find("Green armor, item level 26-30", 1, true) then card = c end end
+        for _, c in ipairs(cards) do
+            if c.title:find("Uncommon armor", 1, true) and c.title:find("item level 26-30", 1, true) then card = c end
+        end
         assert.are.equal(3, #card.rows)                            -- dust, essence, shard
         assert.is_truthy(card.facts:find("Value now", 1, true))
         assert.is_truthy(card.facts:find("Buy below", 1, true))
@@ -178,7 +182,7 @@ describe("Salvager in a simulated client", function()
         ns.db.windows.ledger = { oddsQuality = { [3] = true }, oddsType = { w = true } }
         local few = ns.LedgerWindow.OddsRows()
         assert.are.equal(#ns.Data.BLUE * 2, #few)                  -- each band: its row and its one shard
-        assert.is_truthy(few[1].cells[1]:find("Blue weapons", 1, true))
+        assert.is_truthy(few[1].cells[1]:find("Rare weapons", 1, true))
         ns.db.windows.ledger = nil
         local a, b = ns.LedgerWindow.Summary()
         assert.is_truthy(a:find("Bought", 1, true))
@@ -275,8 +279,8 @@ describe("Salvager window and options", function()
             if c and c.commodity then wow.fire(ns, "COMMODITY_SEARCH_RESULTS_UPDATED", c.commodity) end
         end
         assert.are.equal("browsing", ns.Scanner.state)
-        wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")   -- green armor: nothing listed
-        wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")   -- green weapons: nothing listed
+        wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")   -- uncommon armor: nothing listed
+        wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")   -- uncommon weapons: nothing listed
         wow.tick(ns, 0.2)
         assert.is_false(ns.Busy())
         assert.is_table(ns.Scanner.summary)

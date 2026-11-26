@@ -87,14 +87,14 @@ local function populate(panel, standalone)
 
     local qLabel = W.Label(panel, "Quality", "GameFontHighlightSmall")
     at(qLabel, 24)
-    local green = W.Check(panel, "|cff1eff00Uncommon|r", "Green gear: dust, essences and a small shard chance.",
+    local green = W.Check(panel, "|cff1eff00Uncommon|r", "Uncommon gear: dust, essences and a small shard chance.",
         function(on) s.qualities[2] = on changed("uncommon", on) end)
     -- (The main window has the same choice as a drop-down.)
     green:SetPoint("LEFT", qLabel, "RIGHT", 12, 0)
-    local blue = W.Check(panel, "|cff0070ddRare|r", "Blue gear: always one shard.",
+    local blue = W.Check(panel, "|cff0070ddRare|r", "Rare gear: always one shard.",
         function(on) s.qualities[3] = on changed("rare", on) end)
     blue:SetPoint("LEFT", green.label, "RIGHT", 16, 0)
-    local purple = W.Check(panel, "|cffa335eeEpic|r", "Purple gear: 2-4 shards, or Nexus Crystals at the top levels.",
+    local purple = W.Check(panel, "|cffa335eeEpic|r", "Epic gear: 2-4 shards, or Nexus Crystals at the top levels.",
         function(on) s.qualities[4] = on changed("epic", on) end)
     purple:SetPoint("LEFT", blue.label, "RIGHT", 16, 0)
     controls[#controls + 1] = { refresh = function()

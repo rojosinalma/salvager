@@ -505,7 +505,7 @@ local function build()
         end
         ns.Log("quality %d = %s", q, tostring(qs[q]))
         ns.Fire("SALVAGER_SETTINGS")
-    end, "Which gear qualities the scan looks at. Green gives dust and essence, blue one shard, epic 2-4 shards "
+    end, "Which gear qualities the scan looks at. Uncommon gives dust and essence, rare one shard, epic 2-4 shards "
         .. "or Nexus Crystals.", "Quality")
     qualityDrop:SetPoint("LEFT", qLabel, "RIGHT", 6, 0)
 

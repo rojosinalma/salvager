@@ -19,7 +19,7 @@ local QUALITY_FILTER = {
     [2] = Enum.AuctionHouseFilter.UncommonQuality, [3] = Enum.AuctionHouseFilter.RareQuality,
     [4] = Enum.AuctionHouseFilter.EpicQuality,
 }
-local QUALITY_NAME = { [2] = "green", [3] = "blue", [4] = "epic" }
+local QUALITY_NAME = { [2] = "uncommon", [3] = "rare", [4] = "epic" }
 local CLASS_NAME = { [Data.CLASS_WEAPON] = "weapons", [Data.CLASS_ARMOR] = "armor" }
 
 local scan                 -- the scan in progress: { seq, passes, index, pass, candidates, seen, sum }
