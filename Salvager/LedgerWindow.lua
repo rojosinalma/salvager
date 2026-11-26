@@ -6,7 +6,7 @@ local _, ns = ...
 
 local Ledger, Data, Model, W = ns.Ledger, ns.Data, ns.Model, ns.Widgets
 
-local Window = { view = "purchases" }
+local Window = { view = "sales" }
 ns.LedgerWindow = Window
 
 local GREY, GOLD, GREEN, RED = "|cff808080", "|cffffd100", "|cff40ff40", "|cffff4040"
@@ -25,9 +25,11 @@ local COLUMNS = {
 }
 
 local f, list, summary, tabs = nil, nil, nil, {}
-local checkButton, cancelButton, qualityFilter, typeFilter, dataOnly
+local newOddsView
+local checkButton, cancelButton
+local oddsView          -- the Odds view in the ledger window: its filters and one table per band
+local oddsFrame, oddsOut -- the odds in a window of their own
 local salesParts = {}   -- title, table, title, table of the Sales view
-local oddsStack         -- the Odds view: one table per band
 
 --- Which bands the Odds view shows: { quality = { [2], [3], [4] }, type = { a, w } }, kept with the window.
 local function oddsFilter()
@@ -339,13 +341,60 @@ local SOURCES = { purchases = Window.PurchaseRows, sales = Window.SaleRows, odds
 
 ------------------------------------------------------------------ the window
 
+--- The Odds view: the three filters and the stack of tables, one per band. The caller anchors its parts.
+--- The ledger window has one, and the popped-out odds window has one.
+function newOddsView(parent)
+    local view = {}
+    local function changed()
+        view.stack.offset = 0
+        Window.Refresh()
+    end
+    view.typeFilter = W.CheckDropdown(parent, 150, { { "a", "Armor" }, { "w", "Weapons" } },
+        function(k) return select(2, oddsFilter())[k] end,
+        function(k, on)
+            select(2, oddsFilter())[k] = on
+            changed()
+        end, "Which gear types the odds list.", "Gear type")
+    view.qualityFilter = W.CheckDropdown(parent, 170, {
+        { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" }, { 4, "|cffa335eeEpic|r" },
+    }, function(q) return (oddsFilter())[q] end, function(q, on)
+        (oddsFilter())[q] = on
+        changed()
+    end, "Which qualities the odds list.", "Quality")
+    view.dataOnly = W.Check(parent, "Only bands with my data",
+        "Lists only the item level bands you have disenchanted in. Untick it to see the table of every band.",
+        function(on)
+            select(3, oddsFilter()).oddsDataOnly = on
+            changed()
+        end)
+    view.stack = W.CardList(parent)
+    view.stack:SetColumns(ODDS_COLUMNS)
+    function view:SetShown(on)
+        self.typeFilter:SetShown(on)
+        self.qualityFilter:SetShown(on)
+        self.dataOnly:SetShown(on)
+        self.stack:SetShown(on)
+    end
+    function view:Refresh()
+        self.dataOnly:SetChecked(select(3, oddsFilter()).oddsDataOnly and true or false)
+        self.qualityFilter:Update()
+        self.typeFilter:Update()
+        self.stack:SetCards(Window.OddsCards())
+        self.stack:Refresh()
+    end
+    return view
+end
+
 function Window.Refresh()
+    if oddsFrame and oddsFrame:IsShown() then oddsOut:Refresh() end
     if not f or not f:IsShown() then return end
+    -- While the odds are in their own window, the ledger shows another view.
+    if Window.view == "odds" and Window.OddsPoppedOut() then Window.view = "sales" end
     -- Sales is two tables, each in its own panel; the other views are one.
     local split = Window.view == "sales"
     local odds = Window.view == "odds"
     list:SetShown(not split and not odds)
-    oddsStack:SetShown(odds)
+    oddsView:SetShown(odds)
     for _, part in ipairs(salesParts) do part:SetShown(split) end
     if split then
         local l = ns.db.listings
@@ -360,8 +409,7 @@ function Window.Refresh()
         salesParts[4]:SetSource(#paid, function(i) return paid[i] end)
         salesParts[4]:Refresh()
     elseif odds then
-        oddsStack:SetCards(Window.OddsCards())
-        oddsStack:Refresh()
+        oddsView:Refresh()
     else
         local rows = SOURCES[Window.view]()
         list:SetColumns(COLUMNS[Window.view])
@@ -373,15 +421,6 @@ function Window.Refresh()
     summary[2]:SetText(b)
     for name, button in pairs(tabs) do
         if name == Window.view then button:LockHighlight() else button:UnlockHighlight() end
-    end
-    -- The two filters belong to the Odds view.
-    qualityFilter:SetShown(odds)
-    typeFilter:SetShown(odds)
-    dataOnly:SetShown(odds)
-    if odds then
-        dataOnly:SetChecked(select(3, oddsFilter()).oddsDataOnly and true or false)
-        qualityFilter:Update()
-        typeFilter:Update()
     end
     -- The two listing buttons belong to the Sales view.
     local sales = Window.view == "sales"
@@ -411,12 +450,14 @@ local function build()
         summary[i] = l
     end
     local x = 12
-    for _, t in ipairs({ { "purchases", "Purchases" }, { "sales", "Sales" }, { "odds", "Odds" } }) do
+    for _, t in ipairs({ { "sales", "Sales" }, { "purchases", "Purchases" }, { "odds", "Odds" } }) do
         local b = W.Button(f, t[2], 96, function()
+            -- The Odds tab, while the odds are in their own window: put them back here.
+            if t[1] == "odds" then Window.OddsPutBack() end
             Window.view = t[1]
             f.saved.view = t[1]
             list.offset = 0
-            oddsStack.offset = 0
+            oddsView.stack.offset = 0
             Window.Refresh()
         end)
         b:SetPoint("TOPLEFT", f, "TOPLEFT", x, -68)
@@ -444,38 +485,31 @@ local function build()
         .. "yours. Auctions that are sold are not checked. The number is how many listings are still for sale. "
         .. "About one second per material. Needs the auction house open.")
     checkButton:SetPoint("RIGHT", cancelButton, "LEFT", -6, 0)
-    typeFilter = W.CheckDropdown(f, 150, { { "a", "Armor" }, { "w", "Weapons" } },
-        function(k) return select(2, oddsFilter())[k] end,
-        function(k, on)
-            select(2, oddsFilter())[k] = on
-            oddsStack.offset = 0
-            Window.Refresh()
-        end, "Which gear types the Odds view lists.", "Gear type")
-    typeFilter:SetPoint("RIGHT", clear, "LEFT", -6, 0)
-    qualityFilter = W.CheckDropdown(f, 170, {
-        { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" }, { 4, "|cffa335eeEpic|r" },
-    }, function(q) return (oddsFilter())[q] end, function(q, on)
-        (oddsFilter())[q] = on
-        oddsStack.offset = 0
-        Window.Refresh()
-    end, "Which qualities the Odds view lists.", "Quality")
-    qualityFilter:SetPoint("RIGHT", typeFilter, "LEFT", -6, 0)
-    dataOnly = W.Check(f, "Only bands with my data",
-        "Lists only the item level bands you have disenchanted in. Untick it to see the table of every band.",
-        function(on)
-            select(3, oddsFilter()).oddsDataOnly = on
-            oddsStack.offset = 0
-            Window.Refresh()
-        end)
-    dataOnly:SetPoint("TOPRIGHT", f, "TOPRIGHT", -190, -38)
+    oddsView = newOddsView(f)
+    oddsView.typeFilter:SetPoint("RIGHT", clear, "LEFT", -6, 0)
+    oddsView.qualityFilter:SetPoint("RIGHT", oddsView.typeFilter, "LEFT", -6, 0)
+    oddsView.dataOnly:SetPoint("TOPRIGHT", f, "TOPRIGHT", -190, -38)
+    oddsView.stack:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98)
+    oddsView.stack:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
+    -- Right next to the Odds tab: the odds in a window of their own, and back.
+    local popOut = W.IconButton(f, 22, function()
+        if Window.OddsPoppedOut() then Window.OddsPutBack() else Window.OddsPopOut() end
+    end)
+    popOut:SetPoint("LEFT", tabs.odds, "RIGHT", 0, 0)
+    popOut:SetPopOutGlyph()
+    popOut:SetScript("OnEnter", function(self)
+        local out = Window.OddsPoppedOut()
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(out and "Put the odds back" or "Pop out the odds", 1, 1, 1)
+        GameTooltip:AddLine(out and "Closes their window and shows them in the Odds tab again."
+            or "Moves the odds to a window of their own. Click again, or close that window, to put them back.",
+            1, 0.82, 0, true)
+        GameTooltip:Show()
+    end)
+    popOut:SetScript("OnLeave", function() GameTooltip:Hide() end)
     list = W.List(f, { rowHeight = 22 })
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98)
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
-    -- The Odds view: every band is a table of its own, stacked in a scrolling column.
-    oddsStack = W.CardList(f)
-    oddsStack:SetColumns(ODDS_COLUMNS)
-    oddsStack:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98)
-    oddsStack:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
     -- The Sales view: a title and a table for your auctions, a title and a table for the paid sales.
     local titleA = W.Label(f, "", "GameFontNormal")
     titleA:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -100)
@@ -513,6 +547,38 @@ StaticPopupDialogs["SALVAGER_CLEAR_LEDGER"] = {
     preferredIndex = 3,
 }
 
+local function buildOdds()
+    oddsFrame = W.Window("SalvagerOddsFrame", "Salvager odds", "odds", 760, 520, 640, 240)
+    oddsOut = newOddsView(oddsFrame)
+    oddsOut.dataOnly:SetPoint("TOPLEFT", oddsFrame, "TOPLEFT", 12, -29)
+    oddsOut.typeFilter:SetPoint("TOPRIGHT", oddsFrame, "TOPRIGHT", -12, -30)
+    oddsOut.qualityFilter:SetPoint("RIGHT", oddsOut.typeFilter, "LEFT", -6, 0)
+    oddsOut.stack:SetPoint("TOPLEFT", oddsFrame, "TOPLEFT", 12, -60)
+    oddsOut.stack:SetPoint("BOTTOMRIGHT", oddsFrame, "BOTTOMRIGHT", -12, 14)
+    oddsFrame.onResize = Window.Refresh
+    oddsFrame:SetScript("OnShow", Window.Refresh)
+    oddsFrame:SetScript("OnHide", Window.Refresh)
+end
+
+function Window.OddsPoppedOut()
+    return oddsFrame ~= nil and oddsFrame:IsShown()
+end
+
+--- Moves the odds to their own window.
+function Window.OddsPopOut()
+    if not oddsFrame then buildOdds() end
+    oddsFrame.UserShow()
+    ns.Log("odds popped out")
+end
+
+--- Puts the odds back in the ledger window's tab.
+function Window.OddsPutBack()
+    if Window.OddsPoppedOut() then
+        oddsFrame.UserHide()
+        ns.Log("odds put back")
+    end
+end
+
 function Window.Toggle()
     if not f then build() end
     f.UserToggle()
@@ -526,9 +592,15 @@ end
 --- Opens the window again if it was open the last time (the auction house opened).
 function Window.Restore()
     local saved = ns.db.windows.ledger
-    if not (saved and saved.open) then return end
-    if not f then build() end
-    f:Show()
+    if saved and saved.open then
+        if not f then build() end
+        f:Show()
+    end
+    local odds = ns.db.windows.odds
+    if odds and odds.open then
+        if not oddsFrame then buildOdds() end
+        oddsFrame:Show()
+    end
 end
 
 for _, e in ipairs({ "SALVAGER_LEDGER", "SALVAGER_PRICES_DONE", "SALVAGER_SETTINGS", "SALVAGER_LISTINGS",

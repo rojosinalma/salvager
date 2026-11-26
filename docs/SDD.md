@@ -149,6 +149,8 @@ flipping is out of scope for now.
 42. **Help text** sits behind a "?" button (one line per explanation); the footer keeps only scan results.
 43. **Materials window fits its content**: fixed width, height = its rows (capped by the screen, then the list
     scrolls); no resize corner.
+44. **Ledger tabs**: Sales, Purchases, Odds (Sales is the default). The Odds view can pop out to a window of its
+    own (`SalvagerOddsFrame`), as the Materials list does; both share the filters saved under `windows.ledger`.
 15. **UI redraws** from events are limited to four per second; the log panel is not rebuilt during a scan.
 
 ## Data

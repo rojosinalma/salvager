@@ -1065,6 +1065,21 @@ describe("Salvager listings", function()
         assert.is_string((ns.LedgerWindow.Summary()))
     end)
 
+    it("pops the odds out to a window of their own, and puts them back", function()
+        ns.LedgerWindow.Show()
+        ns.LedgerWindow.view = "odds"
+        ns.LedgerWindow.Refresh()
+        assert.is_false(ns.LedgerWindow.OddsPoppedOut())
+        ns.LedgerWindow.OddsPopOut()
+        assert.is_true(ns.LedgerWindow.OddsPoppedOut())
+        assert.is_true(ns.db.windows.odds.open)
+        ns.LedgerWindow.Refresh()
+        assert.are.equal("sales", ns.LedgerWindow.view)            -- the ledger shows another view meanwhile
+        ns.LedgerWindow.OddsPutBack()
+        assert.is_false(ns.LedgerWindow.OddsPoppedOut())
+        assert.is_false(ns.db.windows.odds.open)
+    end)
+
     it("finds the undercut listings", function()
         ns.Listings.Check()
         assert.is_table(ns.Listings.checking)
