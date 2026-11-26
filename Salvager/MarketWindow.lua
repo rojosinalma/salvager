@@ -488,7 +488,7 @@ local function build()
     chart = W.Chart(f)
     chart:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
     f.onResize = Market.Refresh
-    f:SetScript("OnShow", Market.Refresh)
+    f:HookScript("OnShow", Market.Refresh)
 end
 
 function Market.Toggle()

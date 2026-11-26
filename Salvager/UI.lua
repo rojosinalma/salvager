@@ -60,8 +60,8 @@ local VIEWS = {
     },
 }
 
-local f, rows, headers, status, footer, minProfit, playButton, stopButton, gearChoice, tabs =
-    nil, {}, {}, nil, nil, nil, nil, nil, nil, {}
+local f, rows, headers, status, footer, minProfit, playButton, gearChoice, tabs =
+    nil, {}, {}, nil, nil, nil, nil, nil, {}
 local maxPrice, cautious, bandDrop, ilvlMin, ilvlMax, levelHint, materialsOnly, scanOwned, gold, maxChecks
 local qualityDrop, popOut, minReturn, ahButton, helpButton
 local headerHelp = {}
@@ -278,6 +278,11 @@ local function shownTitle(view, i, title)
     return title
 end
 
+--- Does column i of a view show? The first always does; the others unless hidden with the chooser.
+local function colShown(view, i)
+    return i == 1 or not view.id or W.ColumnShown(view.id, view.header[i])
+end
+
 local function widths(view, data)
     local titles = {}
     for i, title in ipairs(view.measure or view.header) do titles[i] = shownTitle(view, i, title) end
@@ -291,6 +296,20 @@ local function widths(view, data)
     local w = {}
     if need then
         for i = 1, #view.cols do w[i] = need[i] end
+        -- The first column (the row's label) takes the spare width, so the last column (the buttons') ends at the
+        -- list's right edge, as in every table (UI.md Tables 2).
+        local used = view.indent or (view.icon and 30 or 4)
+        for i = 1, #view.cols do if colShown(view, i) then used = used + w[i] + 6 end end
+        if view.actionTitle then used = used + 22 + 64 end   -- (the warning sign and the button, as `layout` puts them)
+        local room = tonumber((UI.list and UI.list:GetWidth())) or 0
+        UI.tableNeed = used   -- (the list's width that shows every column in full: the window widens to it)
+        if room > used + 4 then
+            w[1] = w[1] + math.floor(room - used - 4)
+        elseif room > 0 and used + 4 > room then
+            -- Narrower than its columns (the screen is too small): the first column gives way, down to 90 px, and its
+            -- text ends with "..." (the full name on hover).
+            w[1] = math.max(90, w[1] - math.ceil(used + 4 - room))
+        end
         return w
     end
     local extra = math.max(0, math.floor((f:GetWidth() or WIDTH) - WIDTH))
@@ -303,10 +322,6 @@ local groupTitles, dividers, titleBand = {}, {}, nil
 --- The room a view takes over its column titles: one more row for titles over groups of columns.
 local function topOf(view) return view.groupHeader and ROW_H or 0 end
 
---- Does column i of a view show? The first always does; the others unless hidden with the chooser.
-local function colShown(view, i)
-    return i == 1 or not view.id or W.ColumnShown(view.id, view.header[i])
-end
 
 local function layout(view, data)
     local x = view.indent or (view.icon and 30 or 4)
@@ -390,21 +405,28 @@ function UI.UpdateScrollBar(total)
     if UI.bar then UI.bar:Update(UI.offset, total - ROWS) end
 end
 
---- Play shows while not auto scanning (or paused); Pause shows while auto scanning.
+--- Does a scan run (Play's auto scan, paused or not, or a scan once)? The toggle then shows Stop.
+function UI.Running()
+    return (ns.Scanner.auto or ns.Busy()) and true or false
+end
+
+--- The run toggle: play arrow while no scan runs, stop square while one does; off with the reason while the auction
+--- house is closed. The Scan once buttons are off then too (UI.md Actions 3).
 function UI.UpdatePlay()
     if not playButton then return end
-    local s = ns.Scanner
-    if s.auto and not s.paused then
-        playButton:SetIcon("Interface\\TimeManager\\PauseButton", 16, 16)
-    else
-        playButton:SetIcon("Interface\\ChatFrame\\ChatFrameExpandArrow", 14, 14)
+    local open = ns.Queue.open
+    playButton:SetEnabled(open)
+    playButton:SetRunning(open and UI.Running())
+    playButton:UpdateGlyph()
+    playButton.reason = not open and W.AH_CLOSED or nil
+    for _, b in ipairs(UI.scanButtons or {}) do
+        b:SetEnabled(open)
+        b.reason = not open and W.AH_CLOSED or nil
     end
-    stopButton:SetEnabled(s.auto or ns.Busy())
-    stopButton:UpdateGlyph()
     -- (The auction house button needs the auction house open; its tooltip says why it is off.)
     if ahButton then
-        ahButton:SetEnabled(ns.Queue.open)
-        ahButton.reason = not ns.Queue.open and "Open the auction house first." or nil
+        ahButton:SetEnabled(open)
+        ahButton.reason = not open and W.AH_CLOSED or nil
     end
 end
 
@@ -511,7 +533,24 @@ function UI.Refresh()
     local view = VIEWS[UI.view]
     ROWS = fitRows()
     local data = SOURCES[UI.view]()
+    UI.tableNeed = nil
     local w = layout(view, data)
+    -- As wide as the table's columns need, up to the screen (UI.md Tables 2): the smallest width grows to it.
+    if UI.tableNeed and not UI.fitting then
+        local frame = (tonumber((f:GetWidth())) or 0) - (tonumber((UI.list:GetWidth())) or 0)
+        local want = math.min(math.floor(W.ScreenWidth()), math.max(MIN_W, math.ceil(UI.tableNeed + 4 + frame)))
+        if want ~= f.minWidth then
+            f.minWidth = want
+            if f.SetResizeBounds then f:SetResizeBounds(want, MIN_H, UIParent:GetWidth(), UIParent:GetHeight())
+            elseif f.SetMinResize then f:SetMinResize(want, MIN_H) end
+        end
+        if (tonumber((f:GetWidth())) or 0) < want then
+            UI.fitting = true
+            f:SetWidth(want)
+            UI.fitting = false
+            w = layout(view, data)
+        end
+    end
     UI.offset = math.max(0, math.min(UI.offset, #data - ROWS))
     UI.UpdateScrollBar(#data)
     if columnsView ~= UI.view then columnsButton.Close() columnsView = UI.view end
@@ -559,6 +598,9 @@ function UI.Refresh()
             row.buy:Show()
             row.buy:SetEnabled(ns.Queue.open and item.canPost and not loading)
             row.buy:SetText(loading and "..." or "Post")
+            row.buy.reason = (not ns.Queue.open and W.AH_CLOSED)
+                or (not item.canPost and "None of it in your bags.") or nil
+            row.buy:UnlockHighlight()
         elseif item and (item.deal or item.group) then
             local d = item.deal or ns.Scanner.Cheapest(item.group.deals)
             row.buy:Show()
@@ -702,31 +744,33 @@ local function build()
     -- its right end, left of the resize grip.)
     P.footerBar = W.Bar(f, "footer"):PlaceBottom(6, 10, 24)
     UI.footerBar = P.footerBar
-    playButton = W.IconButton(P.footerBar, 24, function()
-        local s = ns.Scanner
-        if s.auto and not s.paused then s.Pause() else s.Play() end
+    -- Play and Stop are one toggle (the user, 2026-11-27): the play arrow while no scan runs, the stop square while
+    -- one does (Play's auto scan, or a scan once); its tooltip says what the click does.
+    playButton = W.PlayToggle(P.footerBar, 24, function()
+        if not ns.Queue.open then return end
+        if UI.Running() then ns.Scanner.Stop() else ns.Scanner.Play() end
     end)
+    playButton:SetMotionScriptsWhileDisabled(true)
     playButton:SetScript("OnEnter", function(self)
-        local s = ns.Scanner
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        if s.auto and not s.paused then
-            GameTooltip:SetText("Pause", 1, 1, 1)
-            GameTooltip:AddLine("Holds every search where it is. Play continues from there.", 1, 0.82, 0, true)
+        if UI.Running() then
+            GameTooltip:SetText("Stop", 1, 1, 1)
+            GameTooltip:AddLine("Ends auto scanning and cancels the scan that is running. The gear found so far stays "
+                .. "in the list.", 1, 0.82, 0, true)
         else
-            GameTooltip:SetText(s.paused and "Resume" or "Play", 1, 1, 1)
+            GameTooltip:SetText("Play", 1, 1, 1)
             local every = ns.db.settings.priceRescan
             GameTooltip:AddLine("Scans the gear now and again every " .. ns.db.settings.autoInterval
                 .. " seconds while the auction house is open, so new cheap listings show up by themselves. "
                 .. (every > 0 and ("Material prices are scanned again when they are older than " .. every .. " minutes. ")
                     or "Material prices are not scanned again (see the options). ")
-                .. "You still click Buy yourself.", 1, 0.82, 0, true)
+                .. "You still click Buy yourself. Click again to stop.", 1, 0.82, 0, true)
         end
+        if self.reason then GameTooltip:AddLine(self.reason, 1, 0.3, 0.3, true) end
         GameTooltip:Show()
     end)
     playButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    stopButton = W.IconButton(P.footerBar, 24, function() ns.Scanner.Stop() end)
-    stopButton:SetStopGlyph()
-    W.Tooltip(stopButton, "Stop", "Ends auto scanning and cancels the scan that is running. The gear found so far stays in the list.")
+    UI.playButton = playButton   -- (the specs click it)
     spinner = W.Spinner(f, 18)   -- (with the status, under the list)
 
     -- Left to right: Auction house, Ledger, Reports, Market, Limits, Log, Options (the user's order, 0.3.113).
@@ -763,8 +807,7 @@ local function build()
         if d and not d.wait then ns.Scanner.Buy(d) end
     end)
     P.footerBar:AddRight(buyTop, 80)
-    P.footerBar:AddRight(stopButton, 24, 12)
-    P.footerBar:AddRight(playButton, 24, 4)
+    P.footerBar:AddRight(playButton, 24, 12)
     -- Left of Play: your gold and your bag space, readouts (not buttons, UI.md Controls 7 and 11), as wide as their
     -- widest value so Play does not move while they change; the bag space as the Ledger's Purchases view shows it.
     local function readout(sample, fallback)
@@ -894,6 +937,7 @@ local function build()
         "Once: lists the gear on the auction house and checks each one that is below its buy limit.")
     scanGear:SetPoint("RIGHT", scanMats, "LEFT", -4, 0)
     UI.scanButtons = { scanGear, scanMats, scanBoth }   -- (the specs read them)
+    for _, b in ipairs(UI.scanButtons) do W.ReasonTip(b) end
     local onceLabel = W.Label(box, "Scan once", "GameFontHighlightSmall")
     onceLabel:SetPoint("RIGHT", scanGear, "LEFT", -8, 0)
     W.HelpArea(box, onceLabel, "Scan once", "A single scan by hand. Play does all of this by itself, again and again.")
@@ -1135,6 +1179,7 @@ local function build()
     actionHeader:SetWidth(64)
     actionHeader:SetJustifyH("CENTER")
     actionHeader:SetPoint("TOPRIGHT", list, "TOPRIGHT", -4, 0)
+    UI.actionHeader, UI.rows = actionHeader, rows   -- (the fit spec measures them)
     for i = 1, MAX_COLS do
         local h = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         h:SetHeight(ROW_H)
@@ -1185,6 +1230,7 @@ local function build()
             local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             fs:SetHeight(ROW_H)
             fs:SetWordWrap(false)
+            if i == 1 then fs.canCut = true end   -- (the label gives way on a narrow screen: "...", the name on hover)
             row.cells[i] = fs
         end
         row.buy = W.Button(row, "Buy", 64, function()
@@ -1296,24 +1342,70 @@ local function build()
     f:SetScript("OnShow", function()
         UI.Refresh()
         UI.RestoreWindows()
+        -- The main window leads again: the mini panel is not needed while it shows (Minimize brings it back).
+        if ns.MiniPanel then ns.MiniPanel.Hide() end
     end)
-    -- The main window closes: every Salvager window goes with it (what was open is still remembered, and
-    -- comes back with the main window).
-    f:SetScript("OnHide", function() UI.HideOthers() end)
+    -- The main window closes (X, Escape, the Auction house button): every window it opened goes with it (what was
+    -- open is still remembered, and comes back with the main window). Minimize keeps them.
+    f:SetScript("OnHide", function()
+        if not UI.minimizing then UI.HideOthers() end
+    end)
+    -- Minimize: left of the close button, the game's minimize look (the condense arrow) where the client has it.
+    local mini = CreateFrame("Button", nil, f)
+    mini:SetSize(24, 24)
+    local close = f.CloseButton
+    if type(close) == "table" then mini:SetPoint("RIGHT", close, "LEFT", 4, 0)
+    else mini:SetPoint("TOPRIGHT", f, "TOPRIGHT", -24, 0) end
+    local atlas = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo("RedButton-Condense")
+    if atlas and mini.SetNormalAtlas then
+        mini:SetNormalAtlas("RedButton-Condense")
+        mini:SetPushedAtlas("RedButton-Condense-Pressed")
+        mini:SetHighlightAtlas("RedButton-Highlight", "ADD")
+    else
+        local glyph = mini:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        glyph:SetPoint("CENTER", mini, "CENTER", 0, 3)
+        glyph:SetText("_")
+        local hl = mini:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints()
+        hl:SetColorTexture(1, 1, 1, 0.12)
+    end
+    mini.uiKind = "minimize"
+    mini:SetScript("OnClick", function() UI.Minimize() end)
+    W.Tooltip(mini, "Minimize", "Hides this window and shows the Salvager mini panel: a small window with a button for "
+        .. "each Salvager window. The other windows stay open. Scans go on.")
+    UI.minimizeButton = mini   -- (the specs click it)
     f:Hide()
 end
 
--- Every window of the addon besides the main one.
-local OTHERS = { "SalvagerLedgerFrame", "SalvagerLogFrame", "SalvagerMaterialsFrame", "SalvagerMarketFrame",
-    "SalvagerReportsFrame", "SalvagerStandFrame", "SalvagerLimitsFrame",
-    "SalvagerBreakdownFrame", "SalvagerOddsFrame", "SalvagerPostFrame", "SalvagerOptionsFrame", "SalvagerGearFrame" }
+--- Minimize: the main window hides, the other windows stay, the mini panel shows (scans go on).
+function UI.Minimize()
+    if not f then return end
+    UI.minimizing = true
+    f:Hide()
+    UI.minimizing = false
+    ns.MiniPanel.Show()
+    ns.Log("main window minimized")
+end
 
---- Hides the other windows, without changing what is remembered as open.
+--- Who opens a window now (Widgets.Window keeps it as the window's owner): the mini panel while one of its buttons
+--- runs, else the main window while it shows, else nobody (the window stays on its own).
+function W.Opener()
+    if W.opening then return W.opening end
+    return (f and f:IsShown()) and "main" or "panel"
+end
+
+--- Hides the windows the main window opened (owner "main"), without changing what is remembered as open. The ones
+--- opened from the mini panel stay. Each on its own: one that fails does not keep the others open.
 function UI.HideOthers()
-    for _, name in ipairs(OTHERS) do
-        local w = _G[name]
-        if w and w:IsShown() then w:Hide() end
+    local n = 0
+    for _, w in ipairs(W.windows) do
+        local x = w.frame
+        if x ~= f and not rawget(x, "launcher") and x:IsShown() and rawget(x, "owner") ~= "panel" then
+            local ok, err = pcall(x.Hide, x)
+            if ok then n = n + 1 else ns.Log("ERROR closing %s: %s", tostring(x:GetName()), tostring(err)) end
+        end
     end
+    if n > 0 then ns.Log("main window closed: %d windows closed with it", n) end
 end
 
 --- The windows that were open last time, again (with the main window, when the setting is on).

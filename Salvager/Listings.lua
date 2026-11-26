@@ -242,7 +242,8 @@ function Listings.Check()
             "the material scan is done")
         return
     end
-    local check = { done = 0, total = 0 }
+    local check = { done = 0, total = 0, quiet = Listings.quiet }
+    Listings.quiet = nil
     Listings.checking = check
     ns.Fire("SALVAGER_LISTINGS")
     Listings.Refresh(true, function() Listings.CheckRows(check) end)
@@ -260,7 +261,7 @@ function Listings.CheckRows(check)
     end
     if #ids == 0 then
         Listings.checking = nil
-        ns.Print("nothing listed to check")
+        if not check.quiet then ns.Print("nothing listed to check") end
         ns.Fire("SALVAGER_LISTINGS")
         return
     end
@@ -274,7 +275,11 @@ function Listings.CheckRows(check)
             Listings.checking = nil
             local n = Listings.CountUndercut()
             ns.Log("listings: check done, %d undercut", n)
-            ns.Print(n > 0 and "%d of your listings are undercut" or "none of your listings is undercut", n)
+            -- A repeated check speaks only when the count changed since the last one.
+            if not c.quiet or n ~= Listings.lastCount then
+                ns.Print(n > 0 and "%d of your listings are undercut" or "none of your listings is undercut", n)
+            end
+            Listings.lastCount = n
         end
         ns.Fire("SALVAGER_LISTINGS")
     end
@@ -415,6 +420,41 @@ end)
 ns.On("AUCTION_HOUSE_SHOW", function() Listings.Refresh() end)
 ns.On("AUCTION_HOUSE_CLOSED", function()
     Listings.checking, Listings.pending, Listings.afterRead = nil, nil, nil
+    -- The repeated check is off when the auction house closes; the next visit starts with it off (SDD 108).
+    if Listings.auto then ns.Log("listings: repeated undercut check off (auction house closed)") end
+    Listings.auto, Listings.autoNext = false, nil
+end)
+
+------------------------------------------------------------------ the repeated check (Play in the Sales footer)
+
+Listings.AUTO_INTERVAL = 60   -- seconds from the end of one check to the start of the next, while it is on
+
+--- Turns the repeated undercut check on (a check now, then one every AUTO_INTERVAL seconds while the auction house is
+--- open) or off. Cancel undercut stays a click: the game wants one per cancel.
+function Listings.SetAuto(on)
+    if on and not ns.Queue.open then return end
+    Listings.auto = on and true or false
+    Listings.autoNext = on and 0 or nil   -- (0: the first check as soon as it can run)
+    ns.Log("listings: repeated undercut check %s", on and "on" or "off")
+    ns.Fire("SALVAGER_LISTINGS")
+end
+
+--- Can a repeated check start now? Never while a purchase is on its way or aimed at (`Scanner.Buying`), nor during a
+--- material scan (it would wait for it, SDD 71), nor while a check or a cancel runs.
+local function autoReady()
+    return ns.Queue.open and not Listings.checking and not Listings.Cancelling() and not ns.Prices.scanning
+        and not ns.Scanner.Buying()
+end
+
+ns.OnTick(function()
+    if not Listings.auto then return end
+    if Listings.checking then Listings.autoNext = nil return end   -- running: the wait starts when it is done
+    if not Listings.autoNext then Listings.autoNext = GetTime() + Listings.AUTO_INTERVAL end
+    if GetTime() >= Listings.autoNext and autoReady() then
+        Listings.autoNext = nil
+        Listings.quiet = true   -- (a repeated check speaks only when the undercut count changes)
+        Listings.Check()
+    end
 end)
 
 -- 0.3.79 to 0.3.83 booked every sale as a cancel first (see AUCTION_CANCELED above): those "deposit lost"

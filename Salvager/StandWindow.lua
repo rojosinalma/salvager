@@ -99,7 +99,7 @@ local function build()
     list:SetColumns(COLUMNS, "stand")
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -150)
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
-    f:SetScript("OnShow", Stand.Refresh)
+    f:HookScript("OnShow", Stand.Refresh)
 end
 
 --- Shows where `row` (an auction of yours for sale, a commodity) stands, after a search of its material.

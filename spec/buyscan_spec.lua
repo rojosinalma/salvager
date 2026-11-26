@@ -189,12 +189,13 @@ describe("Buying during a scan", function()
         ns.db.settings.gearClasses = "armor"
     end)
 
-    it("shows the gold and the bag space left of Play, live, and the footer fits the smallest width", function()
+    it("shows the gold and the bag space left of the Play/Stop toggle, live, and the footer fits the smallest width", function()
         local bar = ns.UI.footerBar
         local at = {}
         for i, r in ipairs(bar.items) do at[r] = i end
         local play = bar.items[at[ns.UI.bags] - 1]
-        assert.are.equal(at[ns.UI.buyTop] + 2, at[play])              -- Buy Top, Stop, Play, from the right
+        assert.are.equal(at[ns.UI.buyTop] + 1, at[play])              -- Buy Top, then the Play/Stop toggle, from the right
+        assert.are.equal(ns.UI.playButton, play)
         assert.are.equal(at[ns.UI.bags] + 1, at[ns.UI.gold])          -- then the bag space, then the gold
         assert.are.same({ "RIGHT", play, "LEFT", -12, 0 }, rawget(ns.UI.bags, "points")[1])
         assert.are.same({ "RIGHT", ns.UI.bags, "LEFT", -10, 0 }, rawget(ns.UI.gold, "points")[1])

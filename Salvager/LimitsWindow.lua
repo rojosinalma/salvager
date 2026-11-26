@@ -160,7 +160,7 @@ local function build()
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 40)
     Limits.list, Limits.footer = list, footer   -- (the specs read them)
     f.onResize = Limits.Refresh
-    f:SetScript("OnShow", Limits.Refresh)
+    f:HookScript("OnShow", Limits.Refresh)
 end
 
 function Limits.Toggle()

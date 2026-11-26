@@ -1,4 +1,5 @@
--- Salvager: minimap button. Left-click: window. Right-click: options. Drag: move around the minimap.
+-- Salvager: minimap button. Left-click: the main window at the auction house, the mini panel elsewhere (SDD 108).
+-- Right-click: options. Drag: move around the minimap.
 local _, ns = ...
 
 local Minimap_ = _G.Minimap
@@ -40,14 +41,17 @@ local function build()
     border:SetPoint("TOPLEFT", b, "TOPLEFT")
     border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
     b:SetScript("OnClick", function(_, button)
-        if button == "RightButton" then ns.Options.Open() else ns.UI.Toggle() end
+        if button == "RightButton" then ns.Options.Open()
+        elseif ns.Queue.open then ns.UI.Toggle()
+        else ns.MiniPanel.Toggle() end
     end)
     b:SetScript("OnDragStart", function(self) self:SetScript("OnUpdate", onDragUpdate) end)
     b:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
     b:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:SetText("Salvager", 1, 1, 1)
-        GameTooltip:AddLine("Left-click: open or close the window", 1, 0.82, 0)
+        GameTooltip:AddLine(ns.Queue.open and "Left-click: open or close the window"
+            or "Left-click: open or close the mini panel", 1, 0.82, 0)
         GameTooltip:AddLine("Right-click: options", 1, 0.82, 0)
         GameTooltip:AddLine("Drag: move this button", 1, 0.82, 0)
         GameTooltip:Show()

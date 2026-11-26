@@ -41,19 +41,23 @@ reply must say so.
 11. Text that cannot be clicked never looks like a control.
 12. Text contrast 4.5:1 or more; control edges 3:1; one color means one thing everywhere.
 13. Buttons that open other windows are one group in the footer, at its left (the main window: Auction house, Ledger,
-    Reports, Market, Limits, Log, Options), never where they read as tabs.
+    Reports, Market, Limits, Log, Options; the mini panel: Salvager, Ledger, Reports, Market, Log), never where they
+    read as tabs.
 14. Checked by the specs (rows of tabs hold tabs only; filters under the subtabs; every row fits the smallest width;
     `spec/fit_spec.lua`: no cut text, no overlap in a row, nothing outside its window, at the smallest and the
     default size, SDD 105)
     and by `make layout` (a row of tabs with another control; a statement's amounts not at the panel's right edge; a
     tab, subtab or dropdown with the red button's art).
+15. Start and stop of one thing is one toggle button: the play arrow while it is off, the stop square while it runs;
+    its tooltip says what the click does (the main window's scans, the Ledger's repeated undercut check).
 
 ## Tables
 
 1. One value per cell. A number and its percentage, or a rate and a quantity, are two columns.
 2. A column is as wide as its widest content, title included (with its sort arrow). No fixed spare width, the button
    column included. The first column (the row's label) takes the spare width, so the last column ends at the
-   table's right edge, in every table (as in a statement, Statements 2); in a stack of cards, the columns line up
+   table's right edge, in every table (as in a statement, Statements 2; the main window's own Gear and Materials tables
+   too); in a stack of cards, the columns line up
    at the cards' right edge. Text that does not fit ends with "..." and shows in full on hover. A column of live
    values is as wide as its widest possible value (`sample`). A window is as wide as its tables' shown columns need,
    up to the screen; a column is never left out silently: where the screen is too narrow, a note at the right end of
@@ -126,7 +130,9 @@ reply must say so.
    different from tabs: each is a segment of a segmented control (a small box with an edge, so it reads as
    clickable; the selected one filled gold), smaller and flatter than a tab, never a red button.
 4. Live values (countdowns, gold) update while they show.
-5. The main window leads: the other windows close with it and come back with it. The game's auction
+5. The main window leads: the windows it opened close with it (X, Escape, the Auction house button) and come
+   back with it. Its Minimize button hides it alone and shows the mini panel (one button per window); the windows
+   opened from the mini panel, or while the main window is closed, are independent of it. The game's auction
    house is one click away (Auction house button), and Salvager one click back (its button under the
    auction house). Hiding windows never stops a scan.
 6. Nothing overlaps, at the smallest size a window allows. A filter row that is full wraps to a second filter row,

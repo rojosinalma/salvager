@@ -16,6 +16,7 @@ local WINDOWS = {
     materials = "SalvagerMaterialsFrame", reports = "SalvagerReportsFrame", market = "SalvagerMarketFrame",
     stand = "SalvagerStandFrame", breakdown = "SalvagerBreakdownFrame", post = "SalvagerPostFrame",
     options = "SalvagerOptionsFrame", limits = "SalvagerLimitsFrame", gear = "SalvagerGearFrame",
+    mini = "SalvagerMiniFrame",
 }
 local LAYERS = { BACKGROUND = "BG", BORDER = "BD", ARTWORK = "A", OVERLAY = "O", HIGHLIGHT = "H" }
 local CONTROLS = { Button = true, CheckButton = true, EditBox = true, Slider = true }

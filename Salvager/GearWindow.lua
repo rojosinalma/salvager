@@ -315,7 +315,7 @@ local function build()
     footer:AddRight(buyButton, 80)
     Gear.footer, Gear.parts, Gear.buyButton, Gear.nameArea = footer, parts, buyButton, nameArea   -- (the specs read them)
     f.onResize = Gear.Refresh
-    f:SetScript("OnShow", Gear.Refresh)
+    f:HookScript("OnShow", Gear.Refresh)
 end
 
 --- Opens the window for an auction of the Gear list; a click on another row replaces it.

@@ -110,7 +110,7 @@ local COLUMNS = {
 
 local f, list, summary, tabs = nil, nil, nil, {}
 local newOddsView
-local checkButton, cancelButton
+local checkButton, cancelButton, autoButton
 local oddsView          -- the Odds view in the ledger window: its filters and one table per band
 local oddsFrame, oddsOut -- the odds in a window of their own
 local popOut            -- the button next to the Odds tab that moves them there and back
@@ -1226,6 +1226,7 @@ function Window.Refresh()
     -- line of their own above them, so no view's controls cut them.
     checkButton:SetShown(sales)
     cancelButton:SetShown(sales)
+    autoButton:SetShown(sales)
     popOut:SetShown(odds)
     if sales then
         local c, n = ns.Listings.checking, ns.Listings.CountUndercut()
@@ -1233,12 +1234,23 @@ function Window.Refresh()
         local unsold = ns.Listings.CountUnsold()
         checkButton:SetText(c and string.format("Checking %d/%d", c.done, c.total)
             or string.format("Check undercuts (%d)", unsold))
-        checkButton:SetEnabled(ns.Queue.open and not c and unsold > 0)
+        local open = ns.Queue.open
+        checkButton:SetEnabled(open and not c and unsold > 0)
+        checkButton.reason = (not open and W.AH_CLOSED) or (c and "A check is running.")
+            or (unsold == 0 and "Nothing of yours is for sale.") or nil
         cancelButton:SetText(ns.Listings.Cancelling() and "Cancelling..." or string.format("Cancel undercut (%d)", n))
         -- CancelAuction needs the click itself: it cannot wait for a purchase, so the button is off meanwhile.
         local buying = ns.Scanner.Buying()
-        cancelButton.reason = buying and "A purchase is on its way: Cancel comes back as soon as it is done." or nil
-        cancelButton:SetEnabled(ns.Queue.open and n > 0 and not ns.Listings.Cancelling() and not buying)
+        cancelButton.reason = (not open and W.AH_CLOSED)
+            or (buying and "A purchase is on its way: Cancel comes back as soon as it is done.")
+            or (ns.Listings.Cancelling() and "A cancel is on its way.")
+            or (n == 0 and "None of your listings is undercut by more than a cancel and a new post cost (check first).")
+            or nil
+        cancelButton:SetEnabled(open and n > 0 and not ns.Listings.Cancelling() and not buying)
+        autoButton:SetEnabled(open)
+        autoButton:SetRunning(open and ns.Listings.auto)
+        autoButton:UpdateGlyph()
+        autoButton.reason = not open and W.AH_CLOSED or nil
     end
 end
 
@@ -1302,6 +1314,33 @@ local function build()
         .. "yours. Auctions that are sold are not checked. The number is how many listings are still for sale. "
         .. "About one second per material. Needs the auction house open.")
     bars.footer:AddRight(checkButton, 150)
+    W.ReasonTip(checkButton)
+    -- Left of it: the check again and again (the user, 2026-11-27), one toggle: play while off, stop while on.
+    autoButton = W.PlayToggle(bars.footer, 24, function()
+        if not ns.Queue.open then return end
+        ns.Listings.SetAuto(not ns.Listings.auto)
+    end)
+    autoButton:SetMotionScriptsWhileDisabled(true)
+    autoButton:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        local every = ns.Listings.AUTO_INTERVAL
+        if ns.Listings.auto then
+            GameTooltip:SetText("Stop checking undercuts", 1, 1, 1)
+            GameTooltip:AddLine(string.format("On: your listings are checked every %d seconds while the auction house "
+                .. "is open. Click to stop.", every), 1, 0.82, 0, true)
+        else
+            GameTooltip:SetText("Check undercuts again and again", 1, 1, 1)
+            GameTooltip:AddLine(string.format("Checks your listings now and again every %d seconds while the auction "
+                .. "house is open, so you see an undercut after everything is posted. It waits while you buy and "
+                .. "during a material scan. Off when the auction house closes. Cancel undercut stays a click.", every),
+                1, 0.82, 0, true)
+        end
+        if self.reason then GameTooltip:AddLine(self.reason, 1, 0.3, 0.3, true) end
+        GameTooltip:Show()
+    end)
+    autoButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    bars.footer:AddRight(autoButton, 24, 6)
+    Window.autoButton, Window.checkButton, Window.cancelButton = autoButton, checkButton, cancelButton
     -- The bag space (the Purchases view), where the Sales actions are in that view.
     bagLabel = W.Label(bars.footer, "", "GameFontHighlightSmall")
     bagLabel:SetPoint("RIGHT", bars.footer, "RIGHT", -2, 0)
@@ -1461,7 +1500,7 @@ local function build()
     end
     if VIEWS[f.saved.view] then Window.view = f.saved.view end
     f.onResize = Window.Refresh
-    f:SetScript("OnShow", Window.Refresh)
+    f:HookScript("OnShow", Window.Refresh)
 end
 
 
@@ -1476,8 +1515,8 @@ local function buildOdds()
         W.Bar(oddsFrame, "filters"):Place(28 + W.BAR_H.filters + 2, 12, 12))
     oddsOut.stack:SetPoint("TOPLEFT", oddsFrame, "TOPLEFT", 12, -ODDS_TOP)
     oddsOut.stack:SetPoint("BOTTOMRIGHT", oddsFrame, "BOTTOMRIGHT", -12, 14)
-    oddsFrame:SetScript("OnShow", Window.Refresh)
-    oddsFrame:SetScript("OnHide", Window.Refresh)
+    oddsFrame:HookScript("OnShow", Window.Refresh)
+    oddsFrame:HookScript("OnHide", Window.Refresh)
 end
 
 function Window.OddsPoppedOut()

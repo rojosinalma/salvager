@@ -17,9 +17,11 @@ By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_foreve
 
 ## Use
 
-1. Open the auction house. The Salvager window opens with it (also: minimap button or `/salv`).
+1. Open the auction house. The Salvager window opens with it (also: minimap button or `/salv`). Away from the
+   auction house the minimap button opens the mini panel: one button for each Salvager window. The **_** button in
+   the main window's title bar minimizes it to that panel; the other windows stay open.
 2. Under **Scan once**, click **Both**: material prices first (about 20 seconds), then the gear.
-3. Click ▶ (play) to scan the gear again every 20 seconds; it turns into pause. ■ (stop) ends it.
+3. Click ▶ (play) to scan the gear again every 20 seconds; it turns into ■ (stop), which ends it.
 4. **Gear** lists every auction of gear below its buy limit, best profit first. Click **Buy**, or **Buy Top**
    (bottom right) to buy the best single auction in the list by the current sort (profit or return), whatever
    row it is in. The gear it will buy is shown above the button (point at it for its numbers); each click buys
@@ -35,7 +37,8 @@ By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_foreve
    **Ledger** opens a window of its own: all gear you bought by day, with what each piece was disenchanted into,
    what you bought and have not picked up from the mail yet (with your free bag space), your current batch (what
    you picked up and have not disenchanted or posted yet, with what it cost, was expected to make and has made),
-   your auctions (listed, sold and waiting for the money, undercut) and the sales already paid with their
+   your auctions (listed, sold and waiting for the money, undercut; ▶ next to Check undercuts checks them every
+   minute while the auction house is open) and the sales already paid with their
    profit, and the disenchant odds of every band with its buy limit and the chance to lose at that limit.
    Point at a column title for what it means. **Log** opens the activity log.
    **Reports** shows what your trading made, for this session (login to logout, a /reload keeps it), a past

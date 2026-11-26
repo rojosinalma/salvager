@@ -137,15 +137,17 @@ function Widgets.IconButton(parent, size, onClick)
     local icon = b:CreateTexture(nil, "OVERLAY")
     icon:SetPoint("CENTER", b, "CENTER", 0, 0)
     b.icon = icon
+    local outline
     function b.SetIcon(_, path, w, h)
+        if outline then outline:Hide() end
+        b.glyph = nil
         icon:SetSize(w or size - 8, h or size - 8)
         icon:SetTexCoord(0, 1, 0, 1)
         icon:SetTexture(path)
         icon:SetVertexColor(1, 1, 1)
     end
     -- A media "stop" glyph in the same gold as the play arrow: a small square with a dark outline,
-    -- greyed while the button is disabled.
-    local outline
+    -- greyed while the button is disabled. (SetIcon turns the button back to an icon: a toggle uses both.)
     function b.SetStopGlyph()
         if not outline then
             outline = b:CreateTexture(nil, "ARTWORK")
@@ -153,12 +155,15 @@ function Widgets.IconButton(parent, size, onClick)
             outline:SetSize(12, 12)
             outline:SetColorTexture(0, 0, 0, 0.85)
         end
+        outline:Show()
+        b.glyph = "stop"
         icon:SetSize(10, 10)
+        icon:SetTexCoord(0, 1, 0, 1)
         icon:SetColorTexture(1, 1, 1, 1)
         b:UpdateGlyph()
     end
     function b.UpdateGlyph()
-        if not outline then return end
+        if b.glyph ~= "stop" then return end
         if b:IsEnabled() then icon:SetVertexColor(1, 0.82, 0) else icon:SetVertexColor(0.45, 0.45, 0.45) end
     end
     -- A "window of its own" glyph: a square with a second one behind it, up and to the right.
@@ -189,6 +194,40 @@ function Widgets.Tooltip(frame, title, text)
         GameTooltip:Show()
     end)
     frame:HookScript("OnLeave", function() GameTooltip:Hide() end)
+end
+
+--- A control that is off says why (UI.md Actions 3): `b.reason` (set it with the state) goes under its tooltip in
+--- red, also while it is disabled. Call after Widgets.Tooltip (or the button's own OnEnter).
+function Widgets.ReasonTip(b)
+    b:SetMotionScriptsWhileDisabled(true)
+    b:HookScript("OnEnter", function(self)
+        if not self.reason then return end
+        if not GameTooltip:IsOwned(self) then
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(self:GetText() or "", 1, 1, 1)
+        end
+        GameTooltip:AddLine(self.reason, 1, 0.3, 0.3, true)
+        GameTooltip:Show()
+    end)
+    b:HookScript("OnLeave", function() GameTooltip:Hide() end)
+    return b
+end
+
+--- The reason a control that needs the auction house is off, or nil when it is open.
+Widgets.AH_CLOSED = "Open the auction house first."
+
+--- One button for play and stop (a media toggle): the play arrow while it is off, the stop square while it runs.
+--- `onClick()` decides what the click does; b:SetRunning(on) sets the look. The tooltip is the caller's (it says
+--- what the click does now).
+function Widgets.PlayToggle(parent, size, onClick)
+    local b = Widgets.IconButton(parent, size, onClick)
+    b.uiKind = "button"
+    function b.SetRunning(_, on)
+        if on then b:SetStopGlyph() else b:SetIcon("Interface\\ChatFrame\\ChatFrameExpandArrow", 14, 14) end
+        b.running = on and true or false
+    end
+    b:SetRunning(false)
+    return b
 end
 
 function Widgets.Check(parent, label, tooltip, onClick)
@@ -831,6 +870,13 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
     text:SetText(title)
     Widgets.TitleVersion(f, text, (fixed or vertical) and w or minW)
     tinsert(UISpecialFrames, globalName)
+    -- Who opened it (UI.md Layout 5): "main" = shown while the main window is (it closes with it and comes back
+    -- with it), "panel" = opened from the mini panel or with the main window closed (it stays on its own).
+    -- `Widgets.Opener()` (set by the main window) tells which; the owner is cleared when the window hides.
+    f:HookScript("OnShow", function()
+        if rawget(f, "owner") == nil then f.owner = Widgets.Opener and Widgets.Opener() or "main" end
+    end)
+    f:HookScript("OnHide", function() f.owner = nil end)
     -- "Open" is remembered from what the player does on purpose: the addon's own buttons and
     -- commands, and the window's X. Escape and the auction house closing hide every window at
     -- once; that is not a choice about this one, so it does not change what is remembered.

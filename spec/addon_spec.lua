@@ -3249,7 +3249,8 @@ describe("Salvager gear, Gear details and headings that open and close (0.3.129)
         end
         assert.is_true(#titles >= 12)
         for _, t in ipairs(titles) do
-            assert.is_truthy(t:match("^Salvager %u%l+$") or t:match("^Salvager %u%l+ %u%l+$"), t)
+            -- (The mini panel is the main window's small form: "Salvager", as the main window, UI.md Layout 10.)
+            assert.is_truthy(t == "Salvager" or t:match("^Salvager %u%l+$") or t:match("^Salvager %u%l+ %u%l+$"), t)
         end
     end)
 

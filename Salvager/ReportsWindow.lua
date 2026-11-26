@@ -664,7 +664,7 @@ local function build()
     list = W.List(f, { rowHeight = 22 })
     Reports.list = list
     f.onResize = Reports.Refresh
-    f:SetScript("OnShow", Reports.Refresh)
+    f:HookScript("OnShow", Reports.Refresh)
 end
 
 function Reports.Toggle()

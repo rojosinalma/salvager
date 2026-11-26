@@ -4,7 +4,7 @@
 -- models sizes, anchors and text widths for this (spec/wow.lua, layout mode; SDD 106).
 local wow = require("spec.wow")
 
-local WINDOWS = { "SalvagerFrame", "SalvagerLedgerFrame", "SalvagerOddsFrame", "SalvagerMaterialsFrame",
+local WINDOWS = { "SalvagerFrame", "SalvagerMiniFrame", "SalvagerLedgerFrame", "SalvagerOddsFrame", "SalvagerMaterialsFrame",
     "SalvagerMarketFrame", "SalvagerReportsFrame", "SalvagerLogFrame", "SalvagerLimitsFrame", "SalvagerOptionsFrame",
     "SalvagerPostFrame", "SalvagerGearFrame", "SalvagerBreakdownFrame", "SalvagerStandFrame" }
 local ROWS = { tabrow = true, subtabrow = true, filterrow = true, footer = true }
@@ -132,6 +132,21 @@ local function problems(win, where, out, atDefault)
             if n >= 2 and right and r.r - right > 34 then
                 add(string.format("table %s: its last column ends %.0f px before its right edge", tostring(obj.columns[1][1]),
                     r.r - right))
+            end
+        end
+        -- The main window's own table (the Gear and Materials tabs): its last column, the buttons', ends at the list's
+        -- right edge too (the first column takes the spare width).
+        if atDefault and ns_ and obj == ns_.UI.list and r then
+            local right
+            for _, h in ipairs(ns_.UI.headers) do
+                if h:IsShown() and (h.text or "") ~= "" then local hr = rect(h) if hr then right = math.max(right or 0, hr.r) end end
+            end
+            for _, row in ipairs(ns_.UI.rows) do
+                if row:IsShown() and row.buy:IsShown() then local br = rect(row.buy) if br then right = math.max(right or 0, br.r) end end
+            end
+            if os.getenv("FIT_DEBUG") then print("main table", where, r.r, right) end
+            if right and r.r - right > 12 then
+                add(string.format("the main window's table: its last column ends %.0f px before its right edge", r.r - right))
             end
         end
         if atDefault and rawget(obj, "cards") and rawget(obj, "widths") and r then
@@ -339,6 +354,7 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
         -- How each window opens (one at a time: some close others).
         open = {
             SalvagerFrame = function() ns.UI.Show() end,
+            SalvagerMiniFrame = function() ns.MiniPanel.Show() end,
             SalvagerLedgerFrame = function() ns.LedgerWindow.Show() end,
             SalvagerOddsFrame = function() ns.LedgerWindow.OddsPopOut() end,
             SalvagerMaterialsFrame = function() ns.Materials.PopOut() end,

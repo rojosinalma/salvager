@@ -242,12 +242,12 @@ local function build()
     f.onResize = function() if f:IsShown() then Materials.Refresh() end end
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -TOP)
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, BOTTOM)
-    f:SetScript("OnShow", function()
+    f:HookScript("OnShow", function()
         Materials.Refresh()
         ns.Fire("SALVAGER_SETTINGS")   -- the main window gives up its Materials tab
     end)
     -- Closed: the list is back in the main window's Materials tab.
-    f:SetScript("OnHide", function() ns.Fire("SALVAGER_SETTINGS") end)
+    f:HookScript("OnHide", function() ns.Fire("SALVAGER_SETTINGS") end)
 end
 
 --- Moves the list to its own window.

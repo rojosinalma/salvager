@@ -413,7 +413,7 @@ flipping is out of scope for now.
        first expectations, in order, that add up to it (8g 40s 75c from 5 sales mails at 13:28).
     - d. `make install` checks the version on the gaming PC after the copy (0.3.86 did not arrive the first time).
 78. **The main window leads** (2026-11-26, the user): when it closes, every Salvager window closes with it
-    (hidden, not marked closed: `UI.HideOthers`), and they come back with it (`UI.RestoreWindows` on its
+    (hidden, not marked closed: `UI.HideOthers`; since 0.3.137 only the windows it opened, 108c), and they come back with it (`UI.RestoreWindows` on its
     OnShow and on `AUCTION_HOUSE_SHOW`). The "Auction house" button (top row, off while the auction house is
     closed) closes the Salvager windows and leaves the game's auction house showing; scans and checks go on.
     A "Salvager" button opens and closes them again. It sits above the top right corner of the auction house
@@ -740,7 +740,7 @@ flipping is out of scope for now.
        Pop out at its right end), then the list. Footer: two lines of text (the last scan and the closest item at
        the left; the status (the gold until 0.3.133) at the right of line 1, the next item to buy at the right of line 2), and
        a row of buttons: Auction house, Ledger, Reports, Market, Limits, Log, Options at the left; Play, Stop and
-       Buy Top at the right. 0.3.134 (the user): left of Play, two readouts (text, not buttons): the gold (coins,
+       Buy Top at the right (Play and Stop one toggle since 0.3.137, 108b). 0.3.134 (the user): left of Play, two readouts (text, not buttons): the gold (coins,
        moved from the footer's upper line) and the bag space (`LedgerWindow.BagText`, the Purchases view's, with its
        help), each as wide as its widest value, live on `PLAYER_MONEY` and `BAG_UPDATE_DELAYED`. The smallest width
        is 940 (880 in 0.3.134, 800 before; 0.3.135: the gold readout sized for the gold cap, 214748g 36s 47c, and the bag space for three digits) so the row fits (`bar.used`). Nothing on the tab row but the tabs (the gold, the pop-out and the window buttons left
@@ -896,6 +896,45 @@ flipping is out of scope for now.
        Time to sell; Gear Details Return; Market Essences Greater. Only where the screen is too narrow does a table
        leave columns out (from the right), and then a grey note at the right end of its titles says "2 columns
        left out", with the columns and what to do in its tooltip (UI.md Tables 2).
+
+108. **Windows of 0.3.137** (the user, 2026-11-27).
+    - a. One toggle for start and stop (UI.md Controls 15, `Widgets.PlayToggle`): the play arrow while off, the stop
+       square while on, the tooltip says what the click does.
+    - b. The main window's Play and Stop are one toggle, left of Buy Top: stop while a scan runs (`UI.Running`:
+       Play's auto scan, paused or not, or a scan once), else play. Pause left the window
+       (`Scanner.Pause` stays in the code). With the auction house closed it is off, and so are the Scan once buttons and
+       the Post buttons, each with the reason in its tooltip (`Widgets.ReasonTip`, `Widgets.AH_CLOSED`).
+    - c. Who opened a window (`Widgets.Window`: `owner`, set when it shows, cleared when it hides; `Widgets.Opener`):
+       "main" while the main window shows, "panel" from the mini panel or while the main window is closed. The main
+       window's X, Escape and the Auction house button hide the windows it opened (`UI.HideOthers`: every
+       `Widgets.windows` frame but the mini panel, each in `pcall`, logged with the count); they come back with it
+       (24, 78). The bug the user saw (closing it left the others open) was not reproduced in the stand-in: the
+       old code hid a fixed list of names in one loop, so an error in one window's OnHide kept the rest open; the
+       log line says the count now. The windows' OnShow and OnHide are hooks (`HookScript`), so the owner hooks stay.
+    - d. Minimize (the title bar, left of the close button: the game's "RedButton-Condense" art where the client has
+       the atlas, else a "_" button; tooltip "Minimize"): the main window hides alone (`UI.Minimize`), the other
+       windows stay, and the **mini panel** shows (`MiniPanel.lua`, "Salvager", fixed size, place remembered): one
+       footer row with Salvager, Ledger, Reports, Market, Log. Each opens or closes its window with owner "panel",
+       at the auction house or away from it; Salvager opens the main window (at the auction house its full view,
+       elsewhere what it can show: the last lists, the settings, scans off with the reason). The mini panel closes
+       with its own X and when the main window shows (the main window leads again); Escape leaves it (it is a
+       launcher, like the minimap button, not in `UISpecialFrames`).
+    - e. The minimap button: away from the auction house a left-click opens or closes the mini panel; at the auction
+       house it opens or closes the main window, as before.
+    - f. Away from the auction house every window opens and every tab and subtab draws without an error (spec); what
+       needs the auction house is off with the reason (UI.md Actions 3).
+    - g. The Ledger's Sales footer: a toggle left of Check undercuts repeats the undercut check every
+       `Listings.AUTO_INTERVAL` = 60 s (from the end of one check to the start of the next) while the auction house
+       is open, so the listings keep being checked after everything is posted. A check starts only when none runs,
+       no cancel is on its way, no material scan runs (SDD 71) and no purchase is on its way or aimed at
+       (`Scanner.Buying`); else it waits for the next tick. A repeated check says nothing in the chat unless the
+       number of undercut listings changed. Off when the auction house closes and not remembered: each visit starts
+       with it off (no searches the player did not ask for at this visit). Cancel undercut stays a click.
+    - h. The main window's own table (Gear and Materials tabs, not `Widgets.List`): its first column takes the spare
+       width, so the buttons' column ends at the list's right edge (UI.md Tables 2; measured in the layout dump of
+       0.3.136: about 450 px empty at the right at 985 px). Where the columns need more than the list has, the
+       window's smallest width grows to them, up to the screen; past that the first column gives way down to 90 px,
+       its text cut with "..." (the full name on hover). The fit spec checks the main window's table too.
 
 ## Data
 

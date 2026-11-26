@@ -128,7 +128,7 @@ local function build()
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -58)
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 40)
     f.onResize = Window.Refresh
-    f:SetScript("OnShow", Window.Refresh)
+    f:HookScript("OnShow", Window.Refresh)
 end
 
 function Window.Toggle()

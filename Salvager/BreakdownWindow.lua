@@ -175,7 +175,7 @@ local function build()
     listB:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
     parts = { titleA, listA, titleB, listB }
     f.onResize = Breakdown.Refresh
-    f:SetScript("OnShow", Breakdown.Refresh)
+    f:HookScript("OnShow", Breakdown.Refresh)
 end
 
 --- Opens the window for a material.
