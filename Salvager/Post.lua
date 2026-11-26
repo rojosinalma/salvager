@@ -485,7 +485,7 @@ local function build()
         { "Units", 84, "CENTER" },
         { "Units up to here", 96, "CENTER", help = { "Units up to here", "How many units are listed at this price or "
             .. "cheaper. The number on the last line above \"Your price\" is what must sell before yours does." } },
-    })
+    }, "post.market")
     d.list:SetPoint("TOPLEFT", d, "TOPLEFT", 382, -70)
     d.list:SetPoint("BOTTOMRIGHT", d, "BOTTOMRIGHT", -14, 44)
     d.toLowest = W.Button(d, "Undercut lowest", 120, function()

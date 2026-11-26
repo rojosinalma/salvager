@@ -1,5 +1,6 @@
 -- Salvager: what the client really draws, for the developer. At logout (and /reload) every Salvager window that
 -- exists is walked and written to SalvagerDB.layout, replaced each time; read it from the saved variables (SDD 94).
+-- Hidden columns (SDD 95): per list `set` and `hidden`, and `hidden[set]` for every column set.
 local _, ns = ...
 
 local Layout = {}
@@ -48,6 +49,14 @@ end
 local function listInfo(list)
     local info = { w = num(call(list, "GetWidth")), needed = num(rawget(list, "neededWidth")), columns = {}, headers = {} }
     for i, col in ipairs(list.columns) do info.columns[i] = tostring(col[1]) .. "\t" .. num(col[2]) end
+    -- Its column set, and the titles hidden there with the chooser (by choice, not for want of room).
+    local set = rawget(list, "columnSet")
+    info.set = type(set) == "string" and set or nil
+    info.hidden = {}
+    for i, col in ipairs(list.columns) do
+        local key = ns.Widgets.ColumnKey(col)
+        if i > 1 and not ns.Widgets.ColumnShown(info.set, key) then info.hidden[#info.hidden + 1] = cut(tostring(key)) end
+    end
     local first = list.rows[1]
     info.cells = first and type(first.cells) == "table" and #first.cells or 0
     local shownRows = 0
@@ -136,6 +145,18 @@ function Layout.Save()
         dump.windows[w.name] = ok and rec or { error = tostring(rec) }
     end
     dump.entries, dump.full = out.n, out.full or nil
+    -- Every table's hidden columns by column set (the main window's tables and the Odds cards are not lists).
+    dump.hidden = {}
+    if type(SalvagerDB.columns) == "table" then
+        for set, titles in pairs(SalvagerDB.columns) do
+            local names = {}
+            if type(titles) == "table" then
+                for title, on in pairs(titles) do if on == false then names[#names + 1] = cut(tostring(title)) end end
+            end
+            table.sort(names)
+            dump.hidden[tostring(set)] = table.concat(names, "\t")
+        end
+    end
     -- Bounded in the saved file: past MAX_BYTES the regions go, from the last window (hidden ones are last);
     -- the lists stay, they are the smallest and most useful part.
     dump.size = ns.Util.SavedSize(dump)

@@ -17,6 +17,6 @@ read_globals = {
     "GetMoney", "GetNumLootItems", "GetTime", "IsPlayerSpell", "IsShiftKeyDown", "ItemRefTooltip",
     "TooltipDataProcessor", "UIParent", "UISpecialFrames", "ATTACHMENTS_MAX_RECEIVE",
     "BackdropTemplateMixin", "StaticPopup_Show", "ItemLocation", "Settings", "InterfaceOptions_AddCategory", "InterfaceOptionsFrame_OpenToCategory", "GetCursorPosition",
-    "UnitName", "GetRealmName", "GetNormalizedRealmName",
+    "UnitName", "GetRealmName", "GetNormalizedRealmName", "InCombatLockdown",
     "date", "hooksecurefunc", "time", "tinsert", "wipe",
 }

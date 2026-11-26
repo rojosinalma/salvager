@@ -386,13 +386,13 @@ function Market.Refresh()
     -- The sorted column shows an arrow in its title.
     local sort, cols = sortOf(Market.view), {}
     for i, col in ipairs(view.columns) do
-        cols[i] = { col[1], col[2], col[3], help = col.help }
+        cols[i] = { col[1], col[2], col[3], help = col.help, key = col[1] }
         if sort and sort.col == i then
             cols[i][1] = col[1] .. (sort.desc and " |TInterface\\Buttons\\Arrow-Down-Up:10|t"
                 or " |TInterface\\Buttons\\Arrow-Up-Up:10|t")
         end
     end
-    list:SetColumns(cols)
+    list:SetColumns(cols, "market." .. Market.view)
     list:SetSource(#rows, function(i) return rows[i] end)
     list:Refresh()
     rangeDrop:Update()

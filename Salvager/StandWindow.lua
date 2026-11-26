@@ -96,7 +96,7 @@ local function build()
         lines[i] = l
     end
     list = W.List(f, { rowHeight = 20 })
-    list:SetColumns(COLUMNS)
+    list:SetColumns(COLUMNS, "stand")
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -150)
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
     f:SetScript("OnShow", Stand.Refresh)

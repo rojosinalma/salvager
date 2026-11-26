@@ -234,8 +234,8 @@ local f, list, sumList, logList, sumTitle, logTitle, summary, rangeDrop
 local tabs, filters = {}, {}
 local FILTERED = { profit = true, items = true }   -- the views the filters apply to
 
-local function show(l, cols, rows)
-    l:SetColumns(cols)
+local function show(l, cols, rows, setId)
+    l:SetColumns(cols, setId)
     l:SetSource(#rows, function(i) return rows[i] end)
     l:Refresh()
 end
@@ -261,14 +261,14 @@ function Reports.Refresh()
         -- The sums take what they need (at most half the room), the changes the rest.
         local room = (f:GetHeight() or 400) - 84 - 14 - 24
         sumList:SetHeight(math.max(80, math.min(room / 2, (#sums + 1) * 20 + 6)))
-        show(sumList, COLUMNS.goldSum, sums)
-        show(logList, COLUMNS.goldLog, log)
+        show(sumList, COLUMNS.goldSum, sums, "reports.goldSum")
+        show(logList, COLUMNS.goldLog, log, "reports.goldLog")
     elseif Reports.view == "profit" then
-        show(list, COLUMNS.profit, Reports.ProfitRows())
+        show(list, COLUMNS.profit, Reports.ProfitRows(), "reports.profit")
     elseif Reports.view == "materials" then
-        show(list, COLUMNS.materials, Reports.MaterialRows())
+        show(list, COLUMNS.materials, Reports.MaterialRows(), "reports.materials")
     else
-        show(list, COLUMNS.items, Reports.ItemRows())
+        show(list, COLUMNS.items, Reports.ItemRows(), "reports.items")
     end
     for key, b in pairs(tabs) do
         if key == Reports.view then b:LockHighlight() else b:UnlockHighlight() end

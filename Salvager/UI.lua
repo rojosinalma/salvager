@@ -15,6 +15,7 @@ local CLASS_NAME = { [2] = "Weapon", [4] = "Armor" }
 
 local VIEWS = {
     deals = {
+        id = "deals",   -- the column set: the columns hidden with the chooser are saved under it
         icon = true,
         indent = 46,
         actionTitle = "Buy",
@@ -40,6 +41,7 @@ local VIEWS = {
             { 44, "RIGHT" }, { 54, "CENTER" } },
     },
     materials = {
+        id = "materials",   -- (the same set as the Materials window's list: one choice for both)
         icon = true,
         actionTitle = "Post",
         header = { "Material", "Price", "Age", "Bags", "Listed", "Sold", "Avg cost", "Break-even", "Profit" },
@@ -79,6 +81,7 @@ local f, rows, headers, status, footer, minProfit, playButton, stopButton, gearC
 local maxPrice, cautious, bandDrop, ilvlMin, ilvlMax, levelHint, materialsOnly, scanOwned, gold, maxChecks
 local qualityDrop, popOut, minReturn, ahButton, helpButton
 local headerHelp = {}
+local columnsButton, columnsView   -- the column chooser, and the view its menu was filled for
 local actionHeader
 local REFRESH_GAP, lastRefresh, refreshQueued = 0.25, 0, false
 local spinner, bigSpinner, bigSpinnerText
@@ -323,6 +326,12 @@ local groupTitles, dividers, titleBand = {}, {}, nil
 --- The room a view takes over its column titles: one more row for titles over groups of columns.
 local function topOf(view) return view.groupHeader and ROW_H or 0 end
 
+--- Does column i of a view show? The first always does; the others unless hidden with the chooser. (Limits has
+--- no chooser: its columns go in pairs under Armor and Weapons.)
+local function colShown(view, i)
+    return i == 1 or not view.id or W.ColumnShown(view.id, view.header[i])
+end
+
 local function layout(view, data)
     local x = view.indent or (view.icon and 30 or 4)
     local w = widths(view, data)
@@ -349,7 +358,7 @@ local function layout(view, data)
                 e:SetPoint("LEFT", row, "LEFT", x + 4, 0)
             end
         end
-        if col then x = x + w[i] + 6 end
+        if col and colShown(view, i) then x = x + w[i] + 6 end
     end
     xs[#view.cols + 1] = x
     if helpButton then
@@ -501,8 +510,10 @@ function UI.Refresh()
     local w = layout(view, data)
     UI.offset = math.max(0, math.min(UI.offset, #data - ROWS))
     UI.UpdateScrollBar(#data)
+    if columnsView ~= UI.view then columnsButton.Close() columnsView = UI.view end
+    columnsButton:SetShown(view.id ~= nil)
     for i, h in ipairs(headers) do
-        local col = view.cols[i]
+        local col = view.cols[i] and colShown(view, i) and view.cols[i]
         if col then
             -- The title the list is ordered by has a mark.
             local sortKey = view.sortable and view.sortable[i]
@@ -526,7 +537,7 @@ function UI.Refresh()
         row.item = item
         for i, fs in ipairs(row.cells) do
             local col = view.cols[i]
-            if col and item then
+            if col and item and colShown(view, i) then
                 fs:SetWidth(w[i]) fs:SetJustifyH(col[2]) fs:SetText(item.cells[i] or "") fs:Show()
             else
                 fs:Hide()
@@ -1059,6 +1070,16 @@ local function build()
     bar:EnableMouseWheel(true)
     bar:SetScript("OnMouseWheel", list:GetScript("OnMouseWheel"))
     UI.bar = bar
+    -- The column chooser: at the right end of the title band, over the scroll bar (the list ends before it).
+    columnsButton = W.ColumnChooser(inset, function()
+        local view, entries = VIEWS[UI.view], {}
+        for i, name in ipairs(view.header) do entries[i] = { key = name, locked = i == 1 and W.FIRST_COLUMN_REASON or nil } end
+        if view.actionTitle then entries[#entries + 1] = { key = view.actionTitle, locked = W.ACTION_COLUMN_REASON } end
+        return view.id, entries
+    end, function() UI.Refresh() end)
+    columnsButton:SetPoint("TOPRIGHT", inset, "TOPRIGHT", -3, -4)
+    UI.columnsButton = columnsButton
+    UI.headers = headers
     -- The title over the rows' buttons (Buy, Post).
     actionHeader = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     actionHeader:SetHeight(ROW_H)

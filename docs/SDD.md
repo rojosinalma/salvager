@@ -204,13 +204,16 @@ flipping is out of scope for now.
     purchase: Paid, Promised (value shown when bought), Got (value at the disenchant), Sold for (the same
     materials at the average price each really sold for; at the disenchant's price where none sold yet), and
     the planned and real profit. A second table per material: valued each against sold each. Sales are not
-    tied to items (pooled stock), so "Sold for" per band is an estimate. Column names (0.3.116, the user: a percent column is named for the two values it compares):
-    By band `Band | Items | Paid | Expected value | Disenchant value | Disenchant vs expected % | Sold value | Sold vs disenchant % |
-    Expected profit | Actual profit | Actual vs expected profit %`; By material `Material | Units | Disenchant value each |
-    Sold value each | Sold vs disenchant each | Sold vs disenchant % | Units sold`. Disenchant vs expected % = Disenchant value against
-    Expected value, Sold vs disenchant % = Sold value against Disenchant value (the same name in both tables),
-    Actual vs expected profit % = (Actual profit − Expected profit) / |Expected profit|, "-" where Expected profit is 0;
-    all in percent, "+" and green on a gain, red on a loss.
+    tied to items (pooled stock), so "Sold for" per band is an estimate. Column names (0.3.117, the user: the
+    window was too wide; abbreviations, UI.md Words 2): By band `Band | Items | Paid | Expected value (EV) |
+    Disenchant value (DV) | DV/EV % | Sold value (SV) | SV/DV % | Expected profit (EP) | Actual profit (AP) | AP/EP %`;
+    By material `Material | Units | Disenchant value each (DV) | Sold value each (SV) | SV - DV | SV/DV % | Units sold`.
+    DV/EV % = Disenchant value against Expected value, SV/DV % = Sold value against Disenchant value (the same name
+    in both tables), AP/EP % = (Actual profit − Expected profit) / |Expected profit|, "-" where Expected profit is 0;
+    all in percent, "+" and green on a gain, red on a loss. SV - DV is in coins, with a plain hyphen: the game
+    font's minus sign (U+2212) is not confirmed. The help on each comparison names both values in full. Purchases
+    (Expected value, Disenchant value, Profit) has no comparison column, so it keeps its titles without
+    abbreviations; so does the Deals list.
 62. **(Replaced 2026-11-26 by 65.) A Buy click while the auction house is busy is not sent** (`IsThrottledMessageSystemReady` false): it
     would be thrown away without an answer (measured 2026-11-26: four clicks during a browse, none answered).
     Everything else is held for 3 s and the player clicks again. A "request dropped" within 2 s of a Buy
@@ -390,7 +393,7 @@ flipping is out of scope for now.
     `oddsFilter` in `SalvagerDB.windows.ledger`). Odds lost its Armor/Weapons subtabs (the Gear filter does
     it; old settings move over once). Every heading of a grouped list opens and closes (`ns.GroupedRows`
     `opts.collapsed`); Odds cards too, each band on its own (`Widgets.CardList`: `heading`, `open`,
-    `onClick`, `indent`). Accuracy has a Actual vs expected profit % column in percent (SDD 61), on the headings
+    `onClick`, `indent`). Accuracy has an AP/EP % column in percent (SDD 61), on the headings
     too, after Actual profit (0.3.115, the user; it replaces the gold Profit difference of 0.3.99/0.3.110). The odds window is 740 wide (0.3.101): "Only bands with my data" on a row of its own under
     the filter row; the Odds cards sit in 12 px per level (22 in the other tables).
 84. **The Materials window fits its list** (0.3.100): as wide as its columns need, the Post column ending
@@ -482,6 +485,22 @@ flipping is out of scope for now.
     show first. Past 300 KB the regions go, from the last window. Each window in `pcall`: a failure is
     `{ error = msg }`. No chat output, no option. About 15-100 KB for a session with two or three windows open.
     Read it with SSH from the saved variables after a /reload, instead of asking the user for a screenshot.
+95. **Column chooser** (0.3.117, the user): every table with column titles (`Widgets.List`, the Odds cards of
+    `Widgets.CardList`, the main window's Deals and Materials tabs) has a small button at the right end of its title
+    band, over the scroll bar, where the titles end (`Widgets.ColumnChooser`): three gold squares stacked (the game
+    fonts have no vertical ellipsis). Tooltip "Columns". A click opens a menu under it in the drop-down look: one
+    check row per column (its title, without the sort arrow, `col.key`), ticked = shown; a click shows or hides the
+    column at once and the menu stays open; it closes on a click outside, on Escape (the keyboard is not taken in
+    combat), or on the button. Last row: Show all (off when nothing is hidden). The first column and the buttons'
+    column (Buy, Post) are ticked and greyed, the reason in their tooltip. Saved in `SalvagerDB.columns[setId][title]
+    = false`, per column set (`SetColumns(cols, setId)`: the COLUMNS key in the Ledger, `market.<view>`,
+    `reports.<table>`, `breakdown.item/band`, `stand`, `post.market`, `odds`; `deals` and `materials` in the main window,
+    `materials` shared with the Materials window), by title, so a reorder keeps it; unknown titles are ignored. A
+    hidden column takes no width: `neededWidth`, the Ledger's `FitWidth` and the Materials window follow the visible
+    columns; rows, headings and grouped rows hide the same cells. A hidden sort column keeps the sort; its arrow is
+    not shown. Not covered: Limits (its columns go in pairs under Armor and Weapons, two hold input boxes) and the
+    Log (no titles). The layout dump (94) has per list `set` and `hidden`, and `hidden[set]` as saved for every set.
+    No option and no slash command: Show all is the reset.
 
 ## Data
 

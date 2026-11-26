@@ -286,11 +286,11 @@ describe("Salvager in a simulated client", function()
         ns.db.windows.ledger = { oddsQuality = { [3] = true }, oddsTab = "w", oddsDataOnly = true }
         assert.are.same({ true, true }, { ns.LedgerWindow.OddsFilter().qualities[3], ns.LedgerWindow.OddsFilter().dataOnly })
         assert.is_nil(ns.db.windows.ledger.oddsTab)
-        -- Accuracy: Actual vs expected profit %, its filters and its headings that close.
+        -- Accuracy: AP/EP %, its filters and its headings that close.
         ns.db.windows.ledger = nil
         local acc = ns.LedgerWindow.AccuracyBandRows()
-        assert.are.equal(11, #acc[1].cells)                         -- with Actual vs expected profit %
-        -- Actual vs expected profit % in percent of the expected profit (its size: it can be a loss); "-" where none.
+        assert.are.equal(11, #acc[1].cells)                         -- with AP/EP %
+        -- AP/EP % in percent of the expected profit (its size: it can be a loss); "-" where none.
         local realAccuracy = ns.Ledger.Accuracy
         local function vsExpected(cost, promised, sold)
             ns.Ledger.Accuracy = function()
@@ -315,7 +315,7 @@ describe("Salvager in a simulated client", function()
         ns.LedgerWindow.AccuracyFilter().qualities[2] = nil         -- no uncommon: nothing left to compare
         assert.are.equal(1, #ns.LedgerWindow.AccuracyBandRows())
         ns.db.windows.ledger = nil
-        -- In the window: the By band table shows Actual vs expected profit %, after Actual profit, with the titles in order,
+        -- In the window: the By band table shows AP/EP %, after Actual profit, with the titles in order,
         -- and its first column is wide enough for the indented quality heading ("Uncommon", not "Uncom...").
         local realWidth = ns.Widgets.TextWidth
         ns.Widgets.TextWidth = shownWidth
@@ -348,9 +348,11 @@ describe("Salvager in a simulated client", function()
         local at
         local titles = {}
         for i, h in ipairs(byBand.headers) do if h:IsShown() then titles[#titles + 1] = h:GetText() end
-            if h:IsShown() and h:GetText() == "Actual vs expected profit %" then at = i end end
-        assert.are.same({ "Band", "Items", "Paid", "Expected value", "Disenchant value", "Disenchant vs expected %", "Sold value",
-            "Sold vs disenchant %", "Expected profit", "Actual profit", "Actual vs expected profit %" }, titles)
+            if h:IsShown() and h:GetText() == "AP/EP %" then at = i end end
+        assert.are.same({ "Band", "Items", "Paid", "Expected value (EV)", "Disenchant value (DV)", "DV/EV %", "Sold value (SV)",
+            "SV/DV %", "Expected profit (EP)", "Actual profit (AP)", "AP/EP %" }, titles)
+        -- The help of a comparison names both values in full.
+        assert.is_truthy(byBand.columns[8].help[2]:find("Sold value (SV) and Disenchant value (DV)", 1, true))
         assert.is_number(at)                                  -- the title is drawn, inside the resize bounds
         local total = ns.Ledger.Accuracy(ns.db.ledger, function() return true end).total
         local cell = byBand.rows[1].cells[at]
@@ -361,8 +363,8 @@ describe("Salvager in a simulated client", function()
             cell:GetText())
         local matTitles = {}
         for _, h in ipairs(byMat.headers) do if h:IsShown() then matTitles[#matTitles + 1] = h:GetText() end end
-        assert.are.same({ "Material", "Units", "Disenchant value each", "Sold value each", "Sold vs disenchant each",
-            "Sold vs disenchant %", "Units sold" }, matTitles)
+        assert.are.same({ "Material", "Units", "Disenchant value each (DV)", "Sold value each (SV)", "SV - DV",
+            "SV/DV %", "Units sold" }, matTitles)
         -- At logout the layout of every window on show is written for the developer: the main window and the
         -- Ledger with their regions, and the By band table as the client drew it.
         _G.SalvagerFrame:Show()
@@ -376,11 +378,11 @@ describe("Salvager in a simulated client", function()
         assert.is_truthy(ledger.regions[1]:find("^ledger\tFrame\tSV"))
         local bandList
         for _, info in pairs(ledger.lists) do
-            if info.columns[10] == "Actual profit\t70" then bandList = info end
+            if info.columns[10] == "Actual profit (AP)\t70" then bandList = info end
         end
         assert.is_table(bandList)
         assert.are.equal(12, bandList.cells)
-        assert.are.equal("Actual vs expected profit %\tS", bandList.headers[11]:match("^[^\t]*\t[^\t]*"))
+        assert.are.equal("AP/EP %\tS", bandList.headers[11]:match("^[^\t]*\t[^\t]*"))
         assert.is_true(layout.entries <= 2000 and layout.size < 300 * 1024)
         ns.Widgets.TextWidth = realWidth
         assert.is_true(frameW > 860)                          -- wider than its bounds at build
@@ -2150,4 +2152,193 @@ describe("Salvager Buy top, the best single auction", function()
         assert.are.equal(501, bid())
     end)
 
+end)
+
+describe("Salvager column chooser", function()
+    local env, ns, realWidth, frameW
+
+    -- One band of uncommon armor, so By band has the total, the Armor and Uncommon headings and the band.
+    local function accuracy()
+        local band = { classID = 4, quality = 2, band = 30, n = 25, paid = 1000, promised = 2000, got = 1900,
+            sold = 2100, units = 10, soldUnits = 8 }
+        local total = {}
+        for k, v in pairs(band) do total[k] = v end
+        return { total = total, bands = { band }, mats = { { id = 11083, units = 10, valued = 1000, soldUnits = 8,
+            soldNet = 900 } } }
+    end
+
+    local function load(db)
+        env = wow.install()
+        _G.SalvagerDB = db
+        env.items[11083] = { name = "Soul Dust", quality = 1, ilvl = 1, classID = 7 }
+        ns = wow.loadAddon()
+        wow.fire(ns, "ADDON_LOADED", "Salvager")
+        wow.fire(ns, "AUCTION_HOUSE_SHOW")
+        ns.Ledger.Accuracy = accuracy
+        realWidth = ns.Widgets.TextWidth
+        ns.Widgets.TextWidth = shownWidth
+    end
+
+    -- The Ledger on its Accuracy view, as wide as the client lets it be (its resize bounds).
+    local function openAccuracy()
+        ns.LedgerWindow.Show()
+        local frame = _G.SalvagerLedgerFrame
+        frameW = 860
+        local minW, maxW = 860, 860
+        frame.GetWidth = function() return frameW end
+        frame.SetResizeBounds = function(_, lo, _, hi) minW, maxW = lo, hi or math.huge end
+        frame.SetWidth = function(_, w) frameW = math.max(minW, math.min(maxW, w)) end
+        local byBand, byMat = ns.LedgerWindow.salesParts[2], ns.LedgerWindow.salesParts[4]
+        for _, l in ipairs({ byBand, byMat }) do
+            l.GetWidth = function() return frameW - 24 end
+            l.GetHeight = function() return 300 end
+        end
+        ns.LedgerWindow.view = "accuracy"
+        ns.LedgerWindow.Refresh()
+        return byBand, byMat
+    end
+
+    local function shownTitles(list)
+        local out = {}
+        for _, h in ipairs(list.headers) do if h:IsShown() then out[#out + 1] = h:GetText() end end
+        return out
+    end
+
+    local function check(chooser, key)
+        for _, c in ipairs(chooser.checks) do if c:IsShown() and c.key == key then return c end end
+    end
+
+    -- A click on a check box: the client flips it, then runs its script.
+    local function toggle(c)
+        c:SetChecked(not c:GetChecked())
+        c:Click()
+    end
+
+    local function hasTitle(list, title)
+        for i, h in ipairs(list.headers) do if h:IsShown() and h:GetText() == title then return i end end
+    end
+
+    after_each(function() ns.Widgets.TextWidth = realWidth end)
+
+    it("has a chooser at the right end of the titles of the Deals table, the Materials list and the Ledger's tables",
+        function()
+        load(nil)
+        -- The main window: Deals, with its Buy column that cannot be hidden.
+        ns.UI.view = "deals"
+        ns.UI.Refresh()
+        local b = ns.UI.columnsButton
+        assert.is_true(b:IsShown())
+        b:Click()
+        assert.is_true(b.menu:IsShown())
+        local n = 0
+        for _, c in ipairs(b.checks) do if c:IsShown() then n = n + 1 end end
+        assert.are.equal(8 + 1, n)                                 -- every title, and Buy
+        assert.are.same({ "Item", true, false }, { b.checks[1].key, b.checks[1]:GetChecked(), b.checks[1]:IsEnabled() })
+        assert.are.same({ "Buy", false }, { b.checks[9].key, b.checks[9]:IsEnabled() })
+        assert.is_truthy(b.checks[9].reason:find("buttons", 1, true))
+        toggle(check(b, "Type"))                                    -- hidden at once, the menu stays open
+        assert.is_false(ns.UI.headers[2]:IsShown())
+        assert.is_true(ns.UI.headers[3]:IsShown())
+        assert.is_true(b.menu:IsShown())
+        assert.are.equal(false, ns.db.columns.deals.Type)
+        -- Escape closes the menu; so does a click outside it, and the button again.
+        b.menu:GetScript("OnKeyDown")(b.menu, "ESCAPE")
+        assert.is_false(b.menu:IsShown())
+        b:Click()
+        b.menu:GetScript("OnEvent")(b.menu, "GLOBAL_MOUSE_DOWN")
+        assert.is_false(b.menu:IsShown())
+        b:Click()
+        b:Click()
+        assert.is_false(b.menu:IsShown())
+        -- Limits has none: its columns go in pairs under Armor and Weapons.
+        ns.UI.view = "limits"
+        ns.UI.Refresh()
+        assert.is_false(b:IsShown())
+        ns.UI.view = "deals"
+        -- The Materials window's list.
+        ns.Materials.PopOut()
+        local mats
+        for _, c in ipairs(_G.SalvagerMaterialsFrame._children) do
+            if rawget(c, "columnSet") == "materials" then mats = c end
+        end
+        assert.is_table(mats)
+        assert.is_true(mats.chooser:IsShown())
+        mats.chooser:Click()
+        assert.is_truthy(check(mats.chooser, "Post"))               -- the buttons' column, greyed
+        assert.is_false(check(mats.chooser, "Post"):IsEnabled())
+        mats.chooser:Click()
+        ns.Materials.PutBack()
+        -- The Ledger's tables, each view.
+        local byBand, byMat = openAccuracy()
+        for _, l in ipairs({ byBand, byMat }) do assert.is_true(l.chooser:IsShown()) end
+        for _, v in ipairs({ "purchases", "sales", "odds" }) do
+            ns.LedgerWindow.view = v
+            ns.LedgerWindow.Refresh()
+        end
+        assert.is_true(ns.LedgerWindow.salesParts[2].chooser:IsShown())
+        for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
+    end)
+
+    it("hides SV/DV % in rows and headings, narrows the table, keeps the choice over a reload, and shows all again",
+        function()
+        load(nil)
+        local byBand, byMat = openAccuracy()
+        assert.are.same({ "Band", "Items", "Paid", "Expected value (EV)", "Disenchant value (DV)", "DV/EV %",
+            "Sold value (SV)", "SV/DV %", "Expected profit (EP)", "Actual profit (AP)", "AP/EP %" }, shownTitles(byBand))
+        local wide = byBand.neededWidth
+        assert.is_number(wide)
+        local chooser = byBand.chooser
+        chooser:Click()
+        local n = 0
+        for _, c in ipairs(chooser.checks) do if c:IsShown() then n = n + 1 end end
+        assert.are.equal(11, n)                                     -- one row per column
+        -- The first column cannot be hidden.
+        local first = check(chooser, "Band")
+        assert.are.same({ true, false }, { first:GetChecked(), first:IsEnabled() })
+        assert.is_truthy(first.reason:find("first column", 1, true))
+        assert.is_false(chooser.showAll:IsEnabled())                -- nothing hidden yet
+        toggle(check(chooser, "SV/DV %"))
+        assert.is_nil(hasTitle(byBand, "SV/DV %"))
+        assert.is_number(hasTitle(byMat, "SV/DV %"))                -- By material keeps its own
+        -- Its cells are gone from every row, the headings included; the next column moves into its place.
+        local headings = 0
+        for _, row in ipairs(byBand.rows) do
+            local data = rawget(row, "data")
+            if data then
+                assert.is_false(row.cells[8]:IsShown())
+                if data.group or data.head then headings = headings + 1 end
+            end
+        end
+        assert.is_true(headings >= 3)                               -- All bands, Armor, Uncommon
+        assert.is_true(byBand.neededWidth < wide)
+        assert.is_true(chooser.showAll:IsEnabled())
+        assert.are.same({ ["SV/DV %"] = false }, _G.SalvagerDB.columns.accBands)
+        -- The first column stays even when the saved data says otherwise; unknown titles are ignored.
+        _G.SalvagerDB.columns.accBands.Band = false
+        _G.SalvagerDB.columns.accBands["Not a column"] = false
+        -- A reload: a new load with the same saved data.
+        wow.fire(ns, "PLAYER_LOGOUT")
+        local layout = _G.SalvagerDB.layout
+        assert.is_truthy(layout.hidden.accBands:find("SV/DV %", 1, true))
+        local db = _G.SalvagerDB
+        load(db)
+        byBand = openAccuracy()
+        assert.is_nil(hasTitle(byBand, "SV/DV %"))
+        assert.are.equal(1, hasTitle(byBand, "Band"))
+        assert.are.equal(10, #shownTitles(byBand))
+        local listed
+        wow.fire(ns, "PLAYER_LOGOUT")
+        for _, info in pairs(_G.SalvagerDB.layout.windows.ledger.lists) do
+            if info.set == "accBands" then listed = info end
+        end
+        assert.is_table(listed)
+        assert.is_truthy(table.concat(listed.hidden, ","):find("SV/DV %", 1, true))
+        -- Show all brings every column back.
+        byBand.chooser:Click()
+        byBand.chooser.showAll:Click()
+        assert.are.equal(11, #shownTitles(byBand))
+        assert.is_nil(_G.SalvagerDB.columns.accBands)
+        assert.is_true(byBand.chooser.menu:IsShown())
+        for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
+    end)
 end)

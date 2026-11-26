@@ -37,7 +37,11 @@ reply must say so.
    Never the color names for qualities.
 2. Trading terms, the same everywhere: Expected value, Disenchant value, Sold value, Expected
    profit, Profit, Loss chance, Break-even, Drop rate. One thing has one name in every window.
-   A column that compares two values is named for them: "Sold vs disenchant %", never "Diff" or a nickname.
+   Their abbreviations: EV (Expected value), DV (Disenchant value), SV (Sold value), EP (Expected profit),
+   AP (Actual profit). A column that compares two values is named for them, with the abbreviations:
+   "SV/DV %" (percent), "SV - DV" (coins), never "Diff" or a nickname. A value title shows its abbreviation in
+   parentheses ("Sold value (SV)") where a comparison column of the same table uses it, and only there. The
+   help on a comparison title says it in full and names both terms.
 3. A title says what the column holds ("Price now", not "Price"). No verbs as titles ("Got",
    "Came").
 4. Every title that is not obvious has help on hover. Static explanations are behind the "?"

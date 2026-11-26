@@ -35,35 +35,36 @@ local COLUMNS = {
     accBands = { { "Band", 170 }, { "Items", 44, "CENTER", help = { "Items", "How many disenchants with a recorded "
             .. "purchase are in the row. Grey = fewer than 20: too few to judge, one lucky shard moves it a lot." } },
         { "Paid", 70, "RIGHT" },
-        { "Expected value", 70, "RIGHT", help = { "Expected value", "The Value the Deals list showed when you bought: "
-            .. "the average disenchant value at the material prices of that moment, after the auction house cut." } },
-        { "Disenchant value", 70, "RIGHT", help = { "Disenchant value", "The market value of the materials you got, "
-            .. "at the prices of the moment you disenchanted, after the auction house cut." } },
-        { "Disenchant vs expected %", 46, "RIGHT", help = { "Disenchant vs expected %",
-            "The difference between Disenchant value and Expected value, in percent of the Expected value. The "
+        { "Expected value (EV)", 70, "RIGHT", help = { "Expected value (EV)", "The Value the Deals list showed when you "
+            .. "bought: the average disenchant value at the material prices of that moment, after the auction house cut." } },
+        { "Disenchant value (DV)", 70, "RIGHT", help = { "Disenchant value (DV)", "The market value of the materials you "
+            .. "got, at the prices of the moment you disenchanted, after the auction house cut." } },
+        { "DV/EV %", 46, "RIGHT", help = { "DV/EV %",
+            "The difference between Disenchant value (DV) and Expected value (EV), in percent of the Expected value. The "
             .. "gap comes from luck in the results, or from drop rates that are not what the addon assumes." } },
-        { "Sold value", 70, "RIGHT", help = { "Sold value", "The same materials at the average price each one really "
-            .. "sold for, after the auction house cut. Materials you have not sold yet count at their disenchant value." } },
-        { "Sold vs disenchant %", 46, "RIGHT", help = { "Sold vs disenchant %",
-            "The difference between Sold value and Disenchant value, in percent of the Disenchant value. The gap "
-            .. "comes from prices that moved, and from undercutting. * = more than half of the row's materials are not "
-            .. "sold yet, so most of it is still the disenchant value." } },
-        { "Expected profit", 70, "RIGHT", help = { "Expected profit", "Expected value minus Paid." } },
-        { "Actual profit", 70, "RIGHT", help = { "Actual profit", "Sold value minus Paid." } },
-        { "Actual vs expected profit %", 46, "RIGHT", help = { "Actual vs expected profit %",
-            "The difference between Actual profit and Expected profit, in percent of the Expected profit: how much "
-            .. "more (+) or less (-) the items made than the Deals list said when you bought them. "
+        { "Sold value (SV)", 70, "RIGHT", help = { "Sold value (SV)", "The same materials at the average price each one "
+            .. "really sold for, after the auction house cut. Materials you have not sold yet count at their disenchant "
+            .. "value." } },
+        { "SV/DV %", 46, "RIGHT", help = { "SV/DV %",
+            "The difference between Sold value (SV) and Disenchant value (DV), in percent of the Disenchant value. The "
+            .. "gap comes from prices that moved, and from undercutting. * = more than half of the row's materials are "
+            .. "not sold yet, so most of it is still the disenchant value." } },
+        { "Expected profit (EP)", 70, "RIGHT", help = { "Expected profit (EP)", "Expected value minus Paid." } },
+        { "Actual profit (AP)", 70, "RIGHT", help = { "Actual profit (AP)", "Sold value minus Paid." } },
+        { "AP/EP %", 46, "RIGHT", help = { "AP/EP %",
+            "The difference between Actual profit (AP) and Expected profit (EP), in percent of the Expected profit: how "
+            .. "much more (+) or less (-) the items made than the Deals list said when you bought them. "
             .. "- = no expected profit to compare with." } } },
     accMats = { { "Material", 170 }, { "Units", 44, "CENTER" },
-        { "Disenchant value each", 80, "RIGHT", help = { "Disenchant value each", "The average market price of one "
-            .. "unit at the moment you disenchanted, after the auction house cut." } },
-        { "Sold value each", 80, "RIGHT", help = { "Sold value each", "The average of what one unit really brought "
-            .. "in your sales, after the auction house cut." } },
-        { "Sold vs disenchant each", 80, "RIGHT", help = { "Sold vs disenchant each",
-            "Sold value each minus Disenchant value each, in coins." } },
-        { "Sold vs disenchant %", 46, "RIGHT", help = { "Sold vs disenchant %",
-            "The difference between Sold value each and Disenchant value each, in percent of the Disenchant value "
-            .. "each. The gap comes from prices that moved, and from undercutting." } },
+        { "Disenchant value each (DV)", 80, "RIGHT", help = { "Disenchant value each (DV)", "The average market price of "
+            .. "one unit at the moment you disenchanted, after the auction house cut." } },
+        { "Sold value each (SV)", 80, "RIGHT", help = { "Sold value each (SV)", "The average of what one unit really "
+            .. "brought in your sales, after the auction house cut." } },
+        { "SV - DV", 80, "RIGHT", help = { "SV - DV",
+            "The difference between Sold value each (SV) and Disenchant value each (DV), in coins: SV minus DV." } },
+        { "SV/DV %", 46, "RIGHT", help = { "SV/DV %",
+            "The difference between Sold value each (SV) and Disenchant value each (DV), in percent of the Disenchant "
+            .. "value each. The gap comes from prices that moved, and from undercutting." } },
         { "Units sold", 70, "CENTER" } },
     -- The Sales view is two tables: your auctions, and the sales already paid.
     listed = { { "Material", 150 }, { "Status", 110 },
@@ -519,7 +520,7 @@ local function share(part, whole)
     return (pct > 0 and (GREEN .. "+") or pct < 0 and RED or GREY) .. pct .. "%|r"
 end
 
---- Actual vs expected profit %: how far the actual profit is from the expected one, in percent of the expected one
+--- AP/EP %: how far the actual profit is from the expected one, in percent of the expected one
 --- (which can be a loss, so its size). "-" where nothing was expected.
 local function profitShare(actual, expected)
     if not expected or expected == 0 then return GREY .. "-|r" end
@@ -828,7 +829,8 @@ function newOddsView(parent, point, checkPoint)
     end
     controls[#controls + 1] = view.dataOnly
     view.stack = W.CardList(parent)
-    view.stack:SetColumns(ODDS_COLUMNS)
+    view.stack:SetColumns(ODDS_COLUMNS, "odds")
+    view.stack.onColumnsChanged = function() Window.Refresh() end
     function view:SetShown(on)
         for _, c in ipairs(self.controls) do c:SetShown(on) end
         self.stack:SetShown(on)
@@ -915,10 +917,10 @@ function Window.Refresh()
         salesParts[1]:SetText(GOLD .. "By band|r" .. GREY .. "  expected value, disenchant value, sold value|r")
         salesParts[3]:SetText(GOLD .. "By material|r" .. GREY .. "  disenchant value against sold value, per unit|r")
         local bands, mats = Window.AccuracyBandRows(), Window.AccuracyMaterialRows()
-        salesParts[2]:SetColumns(COLUMNS.accBands)
+        salesParts[2]:SetColumns(COLUMNS.accBands, "accBands")
         salesParts[2]:SetSource(#bands, function(i) return bands[i] end)
         salesParts[2]:Refresh()
-        salesParts[4]:SetColumns(COLUMNS.accMats)
+        salesParts[4]:SetColumns(COLUMNS.accMats, "accMats")
         salesParts[4]:SetSource(#mats, function(i) return mats[i] end)
         salesParts[4]:Refresh()
     elseif split then
@@ -927,8 +929,8 @@ function Window.Refresh()
             .. GREY .. "  click one to see where it stands|r")
         salesParts[3]:SetText(GOLD .. "Sold|r" .. GREY .. "  the money is on its way, or waits in your mail|r")
         local listed, paid = Window.ListingRows(), Window.SoldRows(false)
-        salesParts[2]:SetColumns(COLUMNS.listed)
-        salesParts[4]:SetColumns(COLUMNS.paid)
+        salesParts[2]:SetColumns(COLUMNS.listed, "listed")
+        salesParts[4]:SetColumns(COLUMNS.paid, "paid")
         salesParts[2]:SetSource(#listed, function(i) return listed[i] end)
         salesParts[2]:Refresh()
         salesParts[4]:SetSource(#paid, function(i) return paid[i] end)
@@ -938,13 +940,13 @@ function Window.Refresh()
     elseif history then
         local rows = Window.SoldRows(true)
         list.onSort = nil
-        list:SetColumns(COLUMNS.history)
+        list:SetColumns(COLUMNS.history, "history")
         list:SetSource(#rows, function(i) return rows[i] end)
         list:Refresh()
     elseif mailTab then
         local rows = Window.NotPickedUpRows()
         list.onSort = nil
-        list:SetColumns(COLUMNS.waiting)
+        list:SetColumns(COLUMNS.waiting, "waiting")
         list:SetSource(#rows, function(i) return rows[i] end)
         list:Refresh()
     else
@@ -952,7 +954,7 @@ function Window.Refresh()
         -- The title it is ordered by shows an arrow; a click on a title orders by it, again turns it round.
         local sort, cols = Window.PurchaseSort(), {}
         for i, col in ipairs(COLUMNS.purchases) do
-            cols[i] = { col[1], col[2], col[3], help = col.help }
+            cols[i] = { col[1], col[2], col[3], help = col.help, key = col[1] }
             if sort.col == i then
                 cols[i][1] = col[1] .. (sort.desc and " |TInterface\\Buttons\\Arrow-Down-Up:10|t"
                     or " |TInterface\\Buttons\\Arrow-Up-Up:10|t")
@@ -964,7 +966,7 @@ function Window.Refresh()
             list.offset = 0
             Window.Refresh()
         end
-        list:SetColumns(cols)
+        list:SetColumns(cols, "purchases")
         list:SetSource(#rows, function(i) return rows[i] end)
         list:Refresh()
     end
@@ -1089,16 +1091,18 @@ local function build()
     local titleA = W.Label(f, "", "GameFontNormal")
     titleA:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -100)
     local listA = W.List(f, { rowHeight = 22 })
-    listA:SetColumns(COLUMNS.listed)
+    listA:SetColumns(COLUMNS.listed, "listed")
     listA:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -118)
     listA:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -118)
     listA:SetHeight(120)
     local titleB = W.Label(f, "", "GameFontNormal")
     titleB:SetPoint("TOPLEFT", listA, "BOTTOMLEFT", 2, -6)
     local listB = W.List(f, { rowHeight = 22 })
-    listB:SetColumns(COLUMNS.paid)
+    listB:SetColumns(COLUMNS.paid, "paid")
     listB:SetPoint("TOPLEFT", listA, "BOTTOMLEFT", 0, -24)
     listB:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
+    -- A column shown or hidden with a table's chooser: the window fits its tables again.
+    for _, l in ipairs({ list, listA, listB }) do l.onColumnsChanged = function() Window.Refresh() end end
     -- The bar between the two tables: drag it up or down to make one table taller and the other shorter.
     local bar = CreateFrame("Button", nil, f)
     bar:SetPoint("TOPLEFT", listA, "BOTTOMLEFT", 0, -1)

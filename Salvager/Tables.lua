@@ -4,11 +4,191 @@ local _, ns = ...
 
 local Widgets = ns.Widgets
 
+-- Why a column of the chooser cannot be hidden (its row is ticked and greyed).
+local FIRST_REASON = "The first column names the row: it always shows."
+local ACTION_REASON = "This column holds the rows' buttons: it always shows."
+Widgets.FIRST_COLUMN_REASON, Widgets.ACTION_COLUMN_REASON = FIRST_REASON, ACTION_REASON
+
+--- The column's name in the chooser and in the saved choice: its title without a sort arrow (`col.key`).
+function Widgets.ColumnKey(col) return col.key or col[1] end
+
+--- Which columns a table shows, saved per column set: SalvagerDB.columns[setId][title] = false (hidden).
+--- Titles that are not in the table are ignored.
+function Widgets.ColumnShown(setId, title)
+    local all = setId and ns.db and rawget(ns.db, "columns")
+    local set = type(all) == "table" and all[setId]
+    return not (type(set) == "table" and set[title] == false)
+end
+
+function Widgets.SetColumnShown(setId, title, on)
+    if not (setId and ns.db) then return end
+    if type(ns.db.columns) ~= "table" then ns.db.columns = {} end
+    local set = ns.db.columns[setId] or {}
+    if on then set[title] = nil else set[title] = false end
+    ns.db.columns[setId] = next(set) ~= nil and set or nil
+end
+
+function Widgets.ShowAllColumns(setId)
+    if setId and ns.db and type(ns.db.columns) == "table" then ns.db.columns[setId] = nil end
+end
+
+--- The column chooser of a table: a small button with three stacked dots (the game fonts have no vertical
+--- ellipsis). A click opens a menu under it: one check row per column (ticked = shown), and "Show all".
+--- A click on a row shows or hides that column at once; the menu stays open. It closes on a click outside,
+--- on Escape, or on the button again.
+---   getColumns() -> setId, { { key = title, locked = reason or nil }, ... }; changed() runs after each change.
+function Widgets.ColumnChooser(parent, getColumns, changed)
+    local b = Widgets.IconButton(parent, 16)
+    b.icon:Hide()
+    for i = 1, 3 do
+        local dot = b:CreateTexture(nil, "OVERLAY")
+        dot:SetColorTexture(1, 0.82, 0, 1)
+        dot:SetSize(2, 2)
+        dot:SetPoint("CENTER", b, "CENTER", 0, 8 - i * 4)
+    end
+    Widgets.Tooltip(b, "Columns", "Choose the columns this table shows.")
+    -- (On UIParent: the tables clip what is inside them.)
+    local menu = CreateFrame("Frame", nil, UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
+    menu:SetFrameStrata("DIALOG")
+    menu:SetPoint("TOPRIGHT", b, "BOTTOMRIGHT", 0, -2)
+    if menu.SetBackdrop then
+        -- The look of the drop-downs (Widgets.CheckDropdown): the game's tooltip, near-black fill, grey border.
+        menu:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 16, edgeSize = 16,
+            insets = { left = 4, right = 4, top = 4, bottom = 4 },
+        })
+        menu:SetBackdropColor(0, 0, 0, 0.92)
+        menu:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+    else
+        local bg = menu:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(0, 0, 0, 0.92)
+    end
+    menu:EnableMouse(true)
+    menu:Hide()
+    local checks = {}
+    local showAll
+    local function newCheck(i)
+        local c = Widgets.Check(menu, "", nil, function(on)
+            local id = getColumns()
+            local key = rawget(checks[i], "key")
+            Widgets.SetColumnShown(id, key, on)
+            b.Update()
+            changed()
+        end)
+        c:SetPoint("TOPLEFT", menu, "TOPLEFT", 8, -6 - (i - 1) * 22)
+        c:SetMotionScriptsWhileDisabled(true)
+        c:SetScript("OnEnter", function(self)
+            local why = rawget(self, "reason")
+            if not why then return end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(rawget(self, "key"), 1, 1, 1)
+            GameTooltip:AddLine(why, 1, 0.82, 0, true)
+            GameTooltip:Show()
+        end)
+        c:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        checks[i] = c
+        return c
+    end
+    showAll = Widgets.Button(menu, "Show all", 100, function()
+        Widgets.ShowAllColumns((getColumns()))
+        b.Update()
+        changed()
+    end)
+    showAll:SetMotionScriptsWhileDisabled(true)
+    showAll:HookScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Show all", 1, 1, 1)
+        GameTooltip:AddLine(self:IsEnabled() and "Shows every column of this table again."
+            or "Every column shows already.", 1, 0.82, 0, true)
+        GameTooltip:Show()
+    end)
+    showAll:HookScript("OnLeave", function() GameTooltip:Hide() end)
+
+    --- Fills the menu from the table's columns now.
+    function b.Update()
+        local id, cols = getColumns()
+        local widest, any = Widgets.TextWidth("Show all") or 60, false
+        for i, col in ipairs(cols) do
+            local c = checks[i] or newCheck(i)
+            c.key, c.reason = col.key, col.locked
+            c.label:SetText(col.key)
+            local on = col.locked ~= nil or Widgets.ColumnShown(id, col.key)
+            if not on then any = true end
+            c:SetChecked(on)
+            c:SetEnabled(col.locked == nil)
+            if col.locked then c.label:SetTextColor(0.5, 0.5, 0.5) else c.label:SetTextColor(1, 1, 1) end
+            c:Show()
+            widest = math.max(widest, Widgets.TextWidth(col.key) or 120)
+        end
+        for i = #cols + 1, #checks do checks[i]:Hide() end
+        local w = math.max(140, math.ceil(widest) + 46)
+        showAll:ClearAllPoints()
+        showAll:SetPoint("TOPLEFT", menu, "TOPLEFT", 10, -8 - #cols * 22)
+        showAll:SetWidth(w - 20)
+        showAll:SetEnabled(any)
+        menu:SetSize(w, #cols * 22 + 40)
+    end
+    function b.Close() menu:Hide() end
+    b:SetScript("OnClick", function()
+        if menu:IsShown() then menu:Hide() return end
+        b.Update()
+        menu:Show()
+    end)
+    b:SetScript("OnHide", function() menu:Hide() end)
+    -- Escape closes the menu (and only the menu); every other key goes on to the game. The keyboard is not
+    -- taken in combat, where the client does not let an addon pass keys on.
+    local function combat() return InCombatLockdown and InCombatLockdown() end
+    menu:SetScript("OnKeyDown", function(self, key)
+        if combat() then return end
+        if key == "ESCAPE" then
+            self:SetPropagateKeyboardInput(false)
+            self:Hide()
+        else
+            self:SetPropagateKeyboardInput(true)
+        end
+    end)
+    -- A click anywhere else closes the menu. The click still does what it was aimed at.
+    local watching = pcall(menu.RegisterEvent, menu, "GLOBAL_MOUSE_DOWN")
+    if watching then menu:UnregisterEvent("GLOBAL_MOUSE_DOWN") end
+    menu:SetScript("OnShow", function(self)
+        if watching then self:RegisterEvent("GLOBAL_MOUSE_DOWN") end
+        if not combat() then
+            self:EnableKeyboard(true)
+            self:SetPropagateKeyboardInput(true)
+        end
+    end)
+    menu:SetScript("OnHide", function(self)
+        if watching then self:UnregisterEvent("GLOBAL_MOUSE_DOWN") end
+        if not combat() then self:EnableKeyboard(false) end
+    end)
+    if watching then
+        menu:SetScript("OnEvent", function(self)
+            if not self:IsMouseOver() and not b:IsMouseOver() then self:Hide() end
+        end)
+    else
+        -- A client without that event: an invisible sheet behind the menu takes the click.
+        local sheet = CreateFrame("Button", nil, menu)
+        sheet:SetAllPoints(UIParent)
+        sheet:SetFrameLevel(math.max(0, menu:GetFrameLevel() - 1))
+        sheet:SetScript("OnClick", function() menu:Hide() end)
+    end
+    b.menu, b.checks, b.showAll = menu, checks, showAll
+    return b
+end
+
 --- A scrolling table. The caller anchors the returned frame.
----   list:SetColumns({ { title, width, justify, help = { title, text }, sample = text }, ... })
+---   list:SetColumns({ { title, width, justify, help = { title, text }, sample = text, key = title }, ... }, setId)
 ---                                                         the first column takes the spare width; help shows
 ---                                                         on the column title; sample = the widest text the
----                                                         column can hold ("00:00:00"), so it keeps its width
+---                                                         column can hold ("00:00:00"), so it keeps its width;
+---                                                         key = the title without a sort arrow. setId names the
+---                                                         column set: the columns hidden with the chooser (the
+---                                                         button at the right end of the titles) are saved under
+---                                                         it; a list without one has no chooser.
+---   list.onColumnsChanged = fn                            runs after a change in the chooser (else list:Refresh)
 ---   list:SetSource(count, getRow)                         getRow(i) -> row, only called for rows on screen
 ---   list:Refresh()
 --- row = { cells = { text, ... }, itemID = icon and tooltip, link = tooltip, indent = pixels }
@@ -75,6 +255,23 @@ function Widgets.List(parent, opts)
         end)
         area:Hide()
         helps[i] = area
+    end
+    -- The column chooser, at the right end of the title band, over the scroll bar: the titles end before it.
+    if HEAD_H > 0 then
+        local chooser = Widgets.ColumnChooser(list, function()
+            local entries = {}
+            for i, col in ipairs(list.columns) do
+                entries[i] = { key = Widgets.ColumnKey(col), locked = i == 1 and FIRST_REASON or nil }
+            end
+            if rawget(list, "actionTitle") then entries[#entries + 1] = { key = opts.actionTitle, locked = ACTION_REASON } end
+            return rawget(list, "columnSet"), entries
+        end, function()
+            local fn = rawget(list, "onColumnsChanged")
+            if fn then fn() else list:Refresh() end
+        end)
+        chooser:SetPoint("TOPRIGHT", list, "TOPRIGHT", -2, -math.floor((HEAD_H - 16) / 2))
+        chooser:Hide()
+        list.chooser = chooser
     end
     for r = 1, MAX_ROWS do
         local row = CreateFrame("Button", nil, list)
@@ -169,9 +366,11 @@ function Widgets.List(parent, opts)
     bar:EnableMouseWheel(true)
     bar:SetScript("OnMouseWheel", wheel)
 
-    function list:SetColumns(cols)
+    function list:SetColumns(cols, setId)
         assert(#cols <= MAX_COLS, "Widgets.List: " .. #cols .. " columns, at most " .. MAX_COLS)
-        self.columns = cols
+        local chooser = rawget(self, "chooser")
+        if chooser and setId ~= rawget(self, "columnSet") then chooser.Close() end
+        self.columns, self.columnSet = cols, setId
     end
 
     function list:SetSource(count, getRow)
@@ -182,6 +381,11 @@ function Widgets.List(parent, opts)
         local cols = self.columns
         -- A table shown before it has columns (a window drawing its views) has nothing to draw yet.
         if not cols or #cols == 0 then return end
+        -- The columns hidden with the chooser take no room; the first one always shows.
+        local setId, shown = rawget(self, "columnSet"), {}
+        for i, col in ipairs(cols) do shown[i] = i == 1 or Widgets.ColumnShown(setId, Widgets.ColumnKey(col)) end
+        local chooser = rawget(self, "chooser")
+        if chooser then chooser:SetShown(setId ~= nil) end
         local fit = math.max(1, math.min(MAX_ROWS, math.floor(((self:GetHeight() or 0) - HEAD_H) / ROW_H)))
         self.offset = math.max(0, math.min(self.offset, self.count - fit))
         self.atBottom = self.offset >= self.count - fit   -- (a log follows its last line while this is true)
@@ -200,16 +404,19 @@ function Widgets.List(parent, opts)
             return data.cells, (data.indent or 0) + (data.itemID and ROW_H or 0) + (data.open ~= nil and TOGGLE + 4 or 0)
         end, nil, samples) or nil
         local fixed = 0
-        for i = 2, #cols do fixed = fixed + (need and need[i] or cols[i][2]) + GAP end
+        for i = 2, #cols do if shown[i] then fixed = fixed + (need and need[i] or cols[i][2]) + GAP end end
         local first = math.max(MIN_FIRST, avail - fixed)
         if need then first = math.max(40, math.min(need[1], first)) end
         local xs, ws, fits, x = {}, {}, {}, 4
         for i, col in ipairs(cols) do
             xs[i], ws[i] = x, (i == 1 and first or (need and need[i] or col[2]))
-            fits[i] = i == 1 or (x + ws[i] <= avail + 4)
-            x = x + ws[i] + GAP
+            fits[i] = shown[i] and (i == 1 or (x + ws[i] <= avail + 4))
+            if shown[i] then x = x + ws[i] + GAP end
         end
-        if not fits[2] and cols[1] then ws[1] = math.max(10, avail - 4) end
+        -- Where no other column fits (or none shows), the first one takes the width.
+        local second
+        for i = 2, #cols do if shown[i] then second = i break end end
+        if not (second and fits[second]) then ws[1] = math.max(10, avail - 4) end
         -- The buttons' column is a column like the others: right after the last one, as wide as its warning
         -- sign and its button. (Where text cannot be measured, it stays at the right edge.)
         local actionX = need and ACTION_W > 0 and math.min(x, avail + 4) or nil
@@ -304,7 +511,9 @@ end
 
 --- A scrolling stack of small tables ("cards"), each in its own sunken panel with a title band.
 --- The caller anchors the returned frame.
----   stack:SetColumns({ { title, width, justify, help = { title, text } }, ... })   the first column takes the spare width
+---   stack:SetColumns({ { title, width, justify, help = { title, text } }, ... }, setId)   the first column takes the
+---                                                         spare width; setId as in Widgets.List (the chooser sits
+---                                                         at the top right, over the scroll bar)
 ---   stack:SetCards({ { title = text, facts = text, factsHelp = { title, text }, rows = { { cells, itemID } } }, ... })
 ---   stack:Refresh()
 function Widgets.CardList(parent)
@@ -327,7 +536,21 @@ function Widgets.CardList(parent)
             stack:Refresh()
         end
     end)
-    bar:SetPoint("TOPRIGHT", stack, "TOPRIGHT", 0, 0)
+    -- The column chooser, in the corner over the scroll bar (one for every card: they share their columns).
+    local chooser = Widgets.ColumnChooser(stack, function()
+        local entries = {}
+        for i, col in ipairs(stack.columns) do
+            entries[i] = { key = Widgets.ColumnKey(col), locked = i == 1 and FIRST_REASON or nil }
+        end
+        return rawget(stack, "columnSet"), entries
+    end, function()
+        local fn = rawget(stack, "onColumnsChanged")
+        if fn then fn() else stack:Refresh() end
+    end)
+    chooser:SetPoint("TOPRIGHT", stack, "TOPRIGHT", -1, -2)
+    chooser:Hide()
+    stack.chooser = chooser
+    bar:SetPoint("TOPRIGHT", stack, "TOPRIGHT", 0, -20)
     bar:SetPoint("BOTTOMRIGHT", stack, "BOTTOMRIGHT", 0, 0)
     local function wheel(_, delta)
         stack.offset = math.max(0, stack.offset - delta * 3)
@@ -339,11 +562,12 @@ function Widgets.CardList(parent)
     bar:SetScript("OnMouseWheel", wheel)
 
     --- Where each column sits: the first from the left (after the icon), the others from the right edge.
-    -- Where each column sits: packed from the left, each as wide as stack.widths says (see Refresh).
+    -- Where each column sits: packed from the left, each as wide as stack.widths says (see Refresh); a column
+    -- hidden with the chooser takes no room.
     local function place(region, card, i, forTitle)
-        local cols, ws = stack.columns, stack.widths
+        local cols, ws, shown = stack.columns, stack.widths, stack.shown
         local x = 30
-        for c = 1, i - 1 do x = x + ws[c] + 8 end
+        for c = 1, i - 1 do if shown[c] then x = x + ws[c] + 8 end end
         region:ClearAllPoints()
         if i == 1 and forTitle then
             region:SetPoint("LEFT", card, "LEFT", 8, 0)
@@ -457,9 +681,10 @@ function Widgets.CardList(parent)
         return row
     end
 
-    function stack:SetColumns(cols)
+    function stack:SetColumns(cols, setId)
         assert(#cols <= MAX_COLS, "Widgets.CardList: " .. #cols .. " columns, at most " .. MAX_COLS)
-        self.columns = cols
+        if setId ~= rawget(self, "columnSet") then chooser.Close() end
+        self.columns, self.columnSet = cols, setId
     end
     function stack:SetCards(cards) self.data = cards end
 
@@ -474,8 +699,13 @@ function Widgets.CardList(parent)
             for _, row in ipairs(data.rows or {}) do all[#all + 1] = row.cells end
         end
         local need = Widgets.FitColumns(titles, #all, function(r) return all[r] end, nil, samples)
-        self.widths = {}
-        for i, col in ipairs(cols) do self.widths[i] = need and need[i] or col[2] end
+        self.widths, self.shown = {}, {}
+        local setId = rawget(self, "columnSet")
+        for i, col in ipairs(cols) do
+            self.widths[i] = need and need[i] or col[2]
+            self.shown[i] = i == 1 or Widgets.ColumnShown(setId, Widgets.ColumnKey(col))
+        end
+        chooser:SetShown(setId ~= nil)
         content:SetWidth(math.max(10, (scroll:GetWidth() or 0)))
         local y = 0
         for n, data in ipairs(self.data) do
@@ -519,14 +749,14 @@ function Widgets.CardList(parent)
             card.heads:SetPoint("TOPRIGHT", card, "TOPRIGHT", 0, -titleH - 1)
             for i = 1, MAX_COLS do
                 local h, col = card.headTexts[i], cols[i]
-                if col then
+                if col and self.shown[i] then
                     place(h, card.heads, i, i == 1)
                     h:SetText(col[1])
                     h:Show()
                 else
                     h:Hide()
                 end
-                card.headHelps[i]:SetShown(col ~= nil and col.help ~= nil)
+                card.headHelps[i]:SetShown(col ~= nil and self.shown[i] and col.help ~= nil)
             end
             for r = 1, math.max(#rows, #card.rows) do
                 local row, rowData = card.rows[r], rows[r]
@@ -542,7 +772,7 @@ function Widgets.CardList(parent)
                         if icon then row.icon:SetTexture(icon) row.icon:Show() else row.icon:Hide() end
                         for i = 1, MAX_COLS do
                             local fs = row.cells[i]
-                            if cols[i] then
+                            if cols[i] and self.shown[i] then
                                 place(fs, row, i)
                                 fs:SetText(rowData.cells[i] or "")
                                 fs:Show()

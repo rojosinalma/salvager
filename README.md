@@ -28,6 +28,7 @@ By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_foreve
    1 copper under the lowest listing; a warning sign shows when that is below your break-even.
    **Pop out** moves the materials list to a window of its own; close it to put the list back.
    **Limits** shows the buy limit per item level band for armor and weapons.
+   The ⋮ button at the right end of a table's titles chooses the columns it shows.
    **Ledger** opens a window of its own: what you bought with what each item was disenchanted into,
    what you bought and have not picked up from the mail yet (with your free bag space),
    your auctions (listed, sold and waiting for the money, undercut) and the sales already paid with their
