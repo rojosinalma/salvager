@@ -438,6 +438,28 @@ function Widgets.ScrollBar(parent, onScroll)
     return bar
 end
 
+--- The addon's version at the left end of a window's title bar, small and dim, centered on the bar's height.
+--- It is left out where it would come near the centered title at the window's smallest width (`minW`).
+function Widgets.TitleVersion(f, title, minW)
+    local v = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    v:SetText("v" .. ns.VERSION)
+    local bar = f.TitleBg
+    if type(bar) == "table" then
+        v:SetPoint("LEFT", bar, "LEFT", 6, 0)
+    else
+        v:SetPoint("LEFT", f, "TOPLEFT", 8, -12)   -- (the bar of the frame template: 3 px down, 18 high)
+    end
+    -- Each measured in its own font (the title's is larger); where the client cannot measure, it stays.
+    local function width(fs)
+        local measure = fs.GetUnboundedStringWidth or fs.GetStringWidth
+        return tonumber((measure(fs)))
+    end
+    local own, other = width(v), width(title)
+    if own and other and 8 + own + 12 > (minW - other) / 2 then v:Hide() end
+    f.versionText = v
+    return v
+end
+
 --- A window of its own: movable, resizable from the bottom right corner (unless `fixed`), closed with Escape.
 --- Its place and size are kept in SalvagerDB.windows[key]. f.onResize runs when the size changes.
 function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
@@ -479,6 +501,7 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
         text:SetPoint("TOP", f, "TOP", 0, -5)
     end
     text:SetText(title)
+    Widgets.TitleVersion(f, text, (fixed or vertical) and w or minW)
     tinsert(UISpecialFrames, globalName)
     -- "Open" is remembered from what the player does on purpose: the addon's own buttons and
     -- commands, and the window's X. Escape and the auction house closing hide every window at
@@ -511,6 +534,17 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
     elseif f.SetMinResize then
         f:SetMinResize(minW, minH)
         if vertical and f.SetMaxResize then f:SetMaxResize(maxW, maxH) end
+    end
+    -- A window whose width fits its content: the content sets it (and the player still sizes the height).
+    function f.FitWidth(width)
+        f:SetWidth(width)
+        if not vertical then return end
+        if f.SetResizeBounds then
+            f:SetResizeBounds(width, minH, width, maxH)
+        elseif f.SetMaxResize then
+            f:SetMinResize(width, minH)
+            f:SetMaxResize(width, maxH)
+        end
     end
     local grip = CreateFrame("Button", nil, f)
     grip:SetSize(16, 16)

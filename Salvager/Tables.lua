@@ -20,7 +20,8 @@ function Widgets.List(parent, opts)
     local ROW_H = opts.rowHeight or 22
     local TOGGLE = math.min(ROW_H, 18)   -- the open / close sign
     local HEAD_H = opts.header == false and 0 or ROW_H
-    local MAX_ROWS, MAX_COLS, GAP, BAR_W = 60, 10, 6, 18
+    -- MAX_COLS: the cells made per row; a table with more columns is refused (SetColumns), not cut.
+    local MAX_ROWS, MAX_COLS, GAP, BAR_W = 60, 12, 6, 18
     local MIN_FIRST = 90       -- the first column never gets narrower than this
     local ACTION_W = opts.actionWidth or 0   -- room on the right for a row's button and warning sign
     local list = CreateFrame("Frame", nil, parent)
@@ -168,7 +169,10 @@ function Widgets.List(parent, opts)
     bar:EnableMouseWheel(true)
     bar:SetScript("OnMouseWheel", wheel)
 
-    function list:SetColumns(cols) self.columns = cols end
+    function list:SetColumns(cols)
+        assert(#cols <= MAX_COLS, "Widgets.List: " .. #cols .. " columns, at most " .. MAX_COLS)
+        self.columns = cols
+    end
 
     function list:SetSource(count, getRow)
         self.count, self.getRow = count, getRow
@@ -210,8 +214,10 @@ function Widgets.List(parent, opts)
         -- sign and its button. (Where text cannot be measured, it stays at the right edge.)
         local actionX = need and ACTION_W > 0 and math.min(x, avail + 4) or nil
         -- The width the columns need, the buttons' column and the scroll bar included (a window that fits
-        -- its list reads it). nil where text cannot be measured.
-        self.neededWidth = need and ((actionX or x) + (actionX and (22 + 64 + 6) or 0) + BAR_W + 8) or nil
+        -- its list reads it), with the first column at its full width even where this one cut it. nil where
+        -- text cannot be measured.
+        local full = need and (x + need[1] - first) or nil
+        self.neededWidth = need and (actionX and (full + 22 + 64 + 6) or full) + BAR_W + 8 or nil
         if actionX and rawget(list, "actionTitle") then
             list.actionTitle:ClearAllPoints()
             list.actionTitle:SetPoint("TOPLEFT", self, "TOPLEFT", actionX + 22, 0)
@@ -451,7 +457,10 @@ function Widgets.CardList(parent)
         return row
     end
 
-    function stack:SetColumns(cols) self.columns = cols end
+    function stack:SetColumns(cols)
+        assert(#cols <= MAX_COLS, "Widgets.CardList: " .. #cols .. " columns, at most " .. MAX_COLS)
+        self.columns = cols
+    end
     function stack:SetCards(cards) self.data = cards end
 
     function stack:Refresh()

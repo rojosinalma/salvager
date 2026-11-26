@@ -384,8 +384,8 @@ flipping is out of scope for now.
     `oddsFilter` in `SalvagerDB.windows.ledger`). Odds lost its Armor/Weapons subtabs (the Gear filter does
     it; old settings move over once). Every heading of a grouped list opens and closes (`ns.GroupedRows`
     `opts.collapsed`); Odds cards too, each band on its own (`Widgets.CardList`: `heading`, `open`,
-    `onClick`, `indent`). Accuracy has a Profit difference column (Actual profit − Expected profit), on the
-    headings too. The odds window is 740 wide (0.3.101): "Only bands with my data" on a row of its own under
+    `onClick`, `indent`). Accuracy has a Profit difference column (Actual profit − Expected profit, "+" on a
+    gain), on the headings too, between Expected profit and Actual profit (0.3.110, the user). The odds window is 740 wide (0.3.101): "Only bands with my data" on a row of its own under
     the filter row; the Odds cards sit in 12 px per level (22 in the other tables).
 84. **The Materials window fits its list** (0.3.100): as wide as its columns need, the Post column ending
     with its button (`list.neededWidth` from `Widgets.List`), at least 620 for the row above the list (help
@@ -428,8 +428,20 @@ flipping is out of scope for now.
     when they are taken. No arrival countdown: the delay of a buyer's mail on Forever is not measured. On
     the subtab row, at the right, for both subtabs: bag space, free of total slots of the backpack and the
     bags of family 0 (`Items.BagSpace`, `C_Container.GetContainerNumFreeSlots`; profession bags left out),
-    live on `BAG_UPDATE_DELAYED`. Shown as a bag icon and free/total, no words (0.3.109, the user); red with
-    the alert sign after it when fewer are free than items in the mail.
+    live on `BAG_UPDATE_DELAYED`. Shown as a bag icon and free/total, no words (0.3.109, the user). While
+    items wait in the mail, an arrow (the game's `ChatFrameExpandArrow` texture: its fonts have no "→") and
+    the free/total after taking them all, one slot each (gear does not stack): `12/26 → 4/26` (0.3.110, the
+    user). Below 0 it is the slots missing as a negative (`-3/26`), red with the alert sign after it.
+91. **Tables show every column; the Ledger fits its tables** (0.3.110). `Widgets.List` made 10 cells a row,
+    so the 11th column of Accuracy, By band (Profit difference) was never drawn, while its width still counted
+    and squeezed the first column ("Uncom..."). It now has 12, and `SetColumns` refuses more than it has (so
+    does `Widgets.CardList`) instead of cutting them. `list.neededWidth` counts the first column at its full
+    width even where the list cut it. The Ledger window is as wide as the tables on show need, at least 860
+    (`f.FitWidth` of `Widgets.Window`: width and resize bounds); its height stays the player's.
+92. **The version in the title bar** (0.3.110, the user): every window made by `Widgets.Window`, and the main
+    window, shows `v<version>` (`ns.VERSION`, from the TOC through `C_AddOns.GetAddOnMetadata`) at the left
+    end of its title bar (`f.TitleBg`), small and dim (`GameFontDisableSmall`). Where it would come within
+    12 px of the centered title at the window's smallest width, it is left out (`Widgets.TitleVersion`).
 
 ## Data
 

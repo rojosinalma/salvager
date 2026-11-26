@@ -32,7 +32,7 @@ describe("The gold journal in a simulated client", function()
         assert.are.same({ "buy", -9125, BOOTS_LINK }, { last().k, last().d, last().r })
         wow.fire(ns, "AUCTION_HOUSE_PURCHASE_COMPLETED", 501)
         local p = ns.db.ledger.purchases[5001][1]
-        assert.are.same({ 2, 4, 30, "test" }, { p.j.q, p.j.cls, p.j.band, p.j.v })
+        assert.are.same({ 2, 4, 30, ns.VERSION }, { p.j.q, p.j.cls, p.j.band, p.j.v })
     end)
 
     it("books mail money: an auction sale as a sale, other money as mail", function()

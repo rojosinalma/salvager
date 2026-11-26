@@ -1,5 +1,12 @@
 local wow = require("spec.wow")
 
+-- The width of a text as the stand-in measures it: 6 px a character, the color codes left out, an icon 12 px.
+local function shownWidth(text)
+    if not text then return 0 end
+    local plain = text:gsub("|T.-|t", "\1\1"):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    return #plain * 6
+end
+
 describe("Salvager in a simulated client", function()
     local env, ns
     local BOOTS, BOOTS_LINK = 5001, "|cff1eff00|Hitem:5001::::::::30:::::|h[Test Boots]|h|r"
@@ -82,7 +89,9 @@ describe("Salvager in a simulated client", function()
         W.Refresh()
         assert.is_true(W.purchaseTabs.all:IsShown())          -- the main subtab first, and shown
         assert.are.equal("Not picked up (1)", W.purchaseTabs.mail:GetText())
-        assert.is_truthy(W.bagLabel:GetText():find(" 4/4", 1, true))   -- the stand-in's backpack
+        local ARROW = "|TInterface\\ChatFrame\\ChatFrameExpandArrow:12:12:0:0|t"
+        -- The stand-in's backpack, then the arrow and the space after taking the one item in the mail.
+        assert.is_truthy(W.bagLabel:GetText():find(" 4/4 " .. ARROW .. " 3/4", 1, true))
         W.purchaseTabs.mail:Click()
         assert.are.equal("mail", W.PurchaseTab())
         local rows = W.NotPickedUpRows()
@@ -94,16 +103,22 @@ describe("Salvager in a simulated client", function()
         assert.are.equal("28", rows[2].cells[2])              -- the item level it was judged by
         assert.are.equal(ns.Money(500), rows[2].cells[4])
         assert.are.same({ 1, 500 }, { W.NotPickedUpTotal() })
-        -- Bags full (the profession bag's free slots do not count): the warning says it in words.
+        -- Bags full (the profession bag's free slots do not count): the minus and the alert sign say it.
         env.bagSize, env.bagFree, env.bagFamily = { [0] = 16, [1] = 10, [2] = 12 }, { [0] = 0, [1] = 0, [2] = 5 },
             { [2] = 8 }
         wow.fire(ns, "BAG_UPDATE_DELAYED")
-        assert.is_truthy(W.bagLabel:GetText():find("0/26", 1, true))
+        -- Full: the slot missing as a negative, red, with the alert sign.
+        assert.is_truthy(W.bagLabel:GetText():find(" 0/26 " .. ARROW .. " |cffff4040-1/26|r ", 1, true))
         assert.is_truthy(W.bagLabel:GetText():find("AlertNew", 1, true))
         env.bagFree[1] = 3                                    -- room made: the label follows the bag event
         wow.fire(ns, "BAG_UPDATE_DELAYED")
-        assert.is_truthy(W.bagLabel:GetText():find(" 3/26", 1, true))
+        assert.is_truthy(W.bagLabel:GetText():find(" 3/26 " .. ARROW .. " 2/26", 1, true))
         assert.is_nil(W.bagLabel:GetText():find("AlertNew", 1, true))
+        local waiting = W.NotPickedUpTotal                    -- nothing in the mail: the space now only
+        W.NotPickedUpTotal = function() return 0, 0 end
+        assert.is_nil(W.BagText():find(ARROW, 1, true))
+        assert.is_truthy(W.BagText():find(" 3/26$"))
+        W.NotPickedUpTotal = waiting
         env.bagSize, env.bagFree, env.bagFamily = { [0] = 4 }, {}, {}
     end)
 
@@ -282,6 +297,45 @@ describe("Salvager in a simulated client", function()
         ns.LedgerWindow.AccuracyFilter().qualities[2] = nil         -- no uncommon: nothing left to compare
         assert.are.equal(1, #ns.LedgerWindow.AccuracyBandRows())
         ns.db.windows.ledger = nil
+        -- In the window: the By band table shows the Profit difference, between Expected and Actual profit,
+        -- and its first column is wide enough for the indented quality heading ("Uncommon", not "Uncom...").
+        local realWidth = ns.Widgets.TextWidth
+        ns.Widgets.TextWidth = shownWidth
+        ns.LedgerWindow.Show()
+        local frame = _G.SalvagerLedgerFrame
+        local frameW = 860
+        frame.GetWidth = function() return frameW end
+        frame.SetWidth = function(_, w) frameW = w end
+        local byBand = ns.LedgerWindow.salesParts[2]
+        byBand.GetWidth = function() return frameW - 24 end   -- anchored 12 px in from each side
+        byBand.GetHeight = function() return 300 end
+        local headW
+        byBand.headers[1].SetWidth = function(_, w) headW = w end
+        ns.LedgerWindow.view = "accuracy"
+        ns.LedgerWindow.Refresh()                             -- one refresh: the window fits at once
+        -- The quality heading: its indent, its open/close sign and its text fit the first column.
+        local uncommon
+        for r = 1, #byBand.rows do
+            local data = rawget(byBand.rows[r], "data")
+            if data and data.cells[1]:find("Uncommon", 1, true) then uncommon = byBand.rows[r] end
+        end
+        assert.is_table(uncommon)
+        local text = ns.Widgets.TextWidth(uncommon.data.cells[1])
+        assert.is_true(headW >= uncommon.data.indent + 22 + text)   -- indent, open/close sign (18 + 4), text
+        local at
+        for i, h in ipairs(byBand.headers) do if h:IsShown() and h:GetText() == "Profit difference" then at = i end end
+        assert.is_number(at)                                  -- the title is drawn
+        assert.are.equal("Expected profit", byBand.headers[at - 1]:GetText())
+        assert.are.equal("Actual profit", byBand.headers[at + 1]:GetText())
+        local total = ns.Ledger.Accuracy(ns.db.ledger, function() return true end).total
+        local cell = byBand.rows[1].cells[at]
+        assert.is_true(cell:IsShown())
+        local d = math.floor(total.sold + 0.5) - total.promised   -- Actual profit - Expected profit
+        assert.are.equal((d > 0 and "|cff40ff40+" or d < 0 and "|cffff4040" or "|cff40ff40") .. ns.Money(d) .. "|r",
+            cell:GetText())
+        ns.Widgets.TextWidth = realWidth
+        frame.GetWidth, frame.SetWidth = nil, nil
+        ns.db.windows.ledger = nil
         local short, lines = ns.LedgerWindow.Summary()
         for _, word in ipairs({ "Bought", "Disenchanted", "Sold", "Profit" }) do
             assert.is_truthy(short:find(word, 1, true), word)
@@ -389,6 +443,22 @@ describe("Salvager window and options", function()
         wow.fire(ns, "ADDON_LOADED", "Salvager")
         wow.fire(ns, "AUCTION_HOUSE_SHOW")
         for _, id in ipairs({ 11082, 11084 }) do ns.db.prices[id] = { p = 1700, t = env.clock } end
+    end)
+
+    it("shows the addon version at the left end of each window's title bar", function()
+        local toc = io.open("Salvager/Salvager.toc")
+        local version = toc:read("*a"):match("## Version: ([^\r\n]+)")
+        toc:close()
+        ns.LedgerWindow.Show()
+        for _, name in ipairs({ "SalvagerFrame", "SalvagerLedgerFrame" }) do
+            local f = _G[name]
+            local v = rawget(f, "versionText")
+            assert.are.equal("v" .. version, v:GetText(), name)
+            assert.are.equal(f, v:GetParent(), name)                  -- on the window itself, not in a panel
+            assert.are.same({ "LEFT", f.TitleBg, "LEFT", 6, 0 }, v.points[1], name)   -- in the title bar
+            assert.is_true(v:IsShown(), name)
+        end
+        _G.SalvagerLedgerFrame.UserHide()
     end)
 
     it("registers the options panel and a minimap button", function()
@@ -528,7 +598,7 @@ describe("Salvager window and options", function()
 
     it("fits the popped out materials list to its columns: no room to spare after Post", function()
         local real = ns.Widgets.TextWidth
-        ns.Widgets.TextWidth = function(text) return text and #text * 6 or 0 end
+        ns.Widgets.TextWidth = shownWidth
         ns.Materials.PopOut()
         local frame = _G.SalvagerMaterialsFrame
         local width

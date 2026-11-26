@@ -29,6 +29,9 @@ local function widget(kind)
         SetEnabled = function(self, v) self.enabled = v and true or false end,
         IsEnabled = function(self) return self.enabled ~= false end,
         GetPoint = function() return "CENTER", nil, "CENTER", 0, 0 end,
+        -- The anchors set, in order, so a spec can tell what a region hangs on.
+        SetPoint = function(self, ...) rawset(self, "points", rawget(self, "points") or {}) table.insert(self.points, { ... }) end,
+        ClearAllPoints = function(self) rawset(self, "points", nil) end,
         GetParent = function(self) return self.parent end,
         CreateFontString = function(self) local fs = widget("FontString") fs.parent = self return fs end,
         CreateTexture = function(self) local t = widget("Texture") t.parent = self return t end,
@@ -83,13 +86,24 @@ function M.install()
         if template and template:find("Button") then
             f.Left, f.Middle, f.Right = widget("Texture"), widget("Texture"), widget("Texture")
         end
+        -- The window template brings its title bar and title text, as the client does.
+        if template and template:find("BasicFrameTemplate") then
+            f.TitleBg, f.TitleText = widget("Texture"), widget("FontString")
+            f.TitleBg.parent, f.TitleText.parent = f, f
+        end
         f.parent = parent
         table.insert(env.frames, f)
         if name then _G[name] = f end
         return f
     end
     _G.C_Timer = { After = function(s, fn) table.insert(env.timers, { at = env.now + s, fn = fn }) end }
-    _G.C_AddOns = { GetAddOnMetadata = function() return "test" end }
+    -- The TOC's fields, read from the addon's own TOC file.
+    _G.C_AddOns = { GetAddOnMetadata = function(_, field)
+        local toc = io.open("Salvager/Salvager.toc")
+        local text = toc and toc:read("*a") or ""
+        if toc then toc:close() end
+        return text:match("## " .. field .. ": ([^\r\n]+)") or "test"
+    end }
     _G.IsPlayerSpell = function() return false end
     _G.IsShiftKeyDown = function() return false end
     _G.GetMoney = function() return env.money end

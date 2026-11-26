@@ -583,6 +583,7 @@ local function build()
         title:SetPoint("TOP", f, "TOP", 0, -5)
     end
     title:SetText("Salvager")
+    W.TitleVersion(f, title, MIN_W)
     tinsert(UISpecialFrames, "SalvagerFrame")
 
     ---------------------------------------------------------------- top bar: run, status, windows

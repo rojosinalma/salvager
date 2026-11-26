@@ -47,9 +47,9 @@ local COLUMNS = {
             .. "disenchant value. The gap is prices that moved, and undercutting. * = more than half of the row's "
             .. "materials are not sold yet, so most of it is still the disenchant value." } },
         { "Expected profit", 70, "RIGHT", help = { "Expected profit", "Expected value minus Paid." } },
-        { "Actual profit", 70, "RIGHT", help = { "Actual profit", "Sold value minus Paid." } },
         { "Profit difference", 70, "RIGHT", help = { "Profit difference", "Actual profit minus Expected profit: how "
-            .. "much more (+) or less (-) the items made than the Deals list said when you bought them." } } },
+            .. "much more (+) or less (-) the items made than the Deals list said when you bought them." } },
+        { "Actual profit", 70, "RIGHT", help = { "Actual profit", "Sold value minus Paid." } } },
     accMats = { { "Material", 170 }, { "Units", 44, "CENTER" },
         { "Disenchant value each", 80, "RIGHT", help = { "Disenchant value each", "The average market price of one "
             .. "unit at the moment you disenchanted, after the auction house cut." } },
@@ -214,6 +214,10 @@ local function signed(c)
     if not c then return "" end
     return (c >= 0 and GREEN or RED) .. ns.Money(c) .. "|r"
 end
+--- A difference: as signed, with "+" before a gain.
+local function plus(c)
+    return (c > 0 and (GREEN .. "+" .. ns.Money(c) .. "|r")) or signed(c)
+end
 local function itemName(itemID, link)
     return link or (ns.GetItemInfo(itemID)) or ("item " .. tostring(itemID))
 end
@@ -377,16 +381,22 @@ end
 
 local BAG_ICON = "|TInterface\\Buttons\\Button-Backpack-Up:16:16:0:0|t"
 local ALERT_ICON = "|TInterface\\DialogFrame\\UI-Dialog-Icon-AlertNew:14:14:0:0|t"
+-- The game fonts have no "→": a small arrow the game ships.
+local ARROW_ICON = "|TInterface\\ChatFrame\\ChatFrameExpandArrow:12:12:0:0|t"
 
---- The bag space for gear: bag icon, free/total. When what waits in the mail does not fit, the numbers are
---- red with the alert sign after them (the sign, not the color alone, says it).
+--- The bag space for gear: bag icon, free/total now, and while items wait in the mail an arrow and the free
+--- space after taking them all (one slot each: gear does not stack). Below 0 it is the slots missing, as a
+--- negative, red with the alert sign after it (the sign, not the color alone, says it).
 function Window.BagText()
     local free, total = ns.Items.BagSpace()
     local waiting = Window.NotPickedUpTotal()
-    if waiting > free then
-        return string.format("%s %s%d/%d|r %s", BAG_ICON, RED, free, total, ALERT_ICON)
+    local now = string.format("%s %d/%d", BAG_ICON, free, total)
+    if waiting == 0 then return now end
+    local after = free - waiting
+    if after < 0 then
+        return string.format("%s %s %s%d/%d|r %s", now, ARROW_ICON, RED, after, total, ALERT_ICON)
     end
-    return string.format("%s %d/%d", BAG_ICON, free, total)
+    return string.format("%s %s %d/%d", now, ARROW_ICON, after, total)
 end
 
 --- A countdown: "44:05", or "23:10:42" from one hour up.
@@ -528,8 +538,8 @@ function Window.AccuracyBandRows()
         rows[#rows + 1] = { group = group, cells = { name, (few and GREY or "") .. b.n .. (few and "|r" or ""),
             ns.Money(b.paid), ns.Money(b.promised), ns.Money(b.got), share(b.got, b.promised), ns.Money(b.sold),
             share(b.sold, b.got) .. ((b.units > 0 and b.soldUnits < b.units / 2) and (GREY .. "*|r") or ""),
-            signed(b.promised - b.paid), signed(math.floor(b.sold + 0.5) - b.paid),
-            signed(math.floor(b.sold + 0.5) - b.promised) } }
+            signed(b.promised - b.paid), plus(math.floor(b.sold + 0.5) - b.promised),
+            signed(math.floor(b.sold + 0.5) - b.paid) } }
     end
     if acc.total.n == 0 then
         rows[1] = note("Nothing to compare yet, or nothing under these filters: it needs items you bought and then "
@@ -836,6 +846,7 @@ function Window.SetSalesSplit(part)
 end
 
 local ODDS_TOP, ODDS_W = 84, 740
+local WIDTH = 860   -- the ledger window's width; wider where the tables on show need it
 
 function Window.Refresh()
     if oddsFrame and oddsFrame:IsShown() then oddsOut:Refresh() end
@@ -946,6 +957,20 @@ function Window.Refresh()
         list:SetSource(#rows, function(i) return rows[i] end)
         list:Refresh()
     end
+    -- As wide as the tables on show need (all their columns, the first one not cut), at least its own width.
+    local shown = split and { salesParts[2], salesParts[4] } or (not odds and { list }) or {}
+    local needed = 0
+    for _, l in ipairs(shown) do
+        local n = rawget(l, "neededWidth")
+        if type(n) == "number" and n > needed then needed = n end
+    end
+    if needed > 0 then
+        local w = math.max(WIDTH, math.ceil(needed) + 24)
+        if math.abs((f:GetWidth() or 0) - w) >= 1 then
+            f.FitWidth(w)
+            for _, l in ipairs(shown) do l:Refresh() end
+        end
+    end
     summary:SetText((Window.Summary()))
     for name, button in pairs(tabs) do
         if name == Window.view then button:LockHighlight() else button:UnlockHighlight() end
@@ -972,7 +997,7 @@ end
 
 local function build()
     -- As wide as its tables need; the height is the player's.
-    f = W.Window("SalvagerLedgerFrame", "Salvager ledger", "ledger", 860, 480, 860, 260, "vertical")
+    f = W.Window("SalvagerLedgerFrame", "Salvager ledger", "ledger", WIDTH, 480, WIDTH, 260, "vertical")
     -- The totals: one short line, and all of them behind the chart button at its right end.
     local details = W.HelpButton(f, "Totals", function() return select(2, Window.Summary()) end, {
         glyph = "chart", tooltip = { "Totals", "Click to see every total of the ledger, one per line." } })
@@ -1131,12 +1156,13 @@ local function build()
     bagLabel = W.Label(f, "", "GameFontHighlightSmall")
     bagLabel:SetPoint("RIGHT", f, "TOPRIGHT", -14, -109)
     bagLabel:SetJustifyH("RIGHT")
-    bagArea = W.HelpArea(f, bagLabel, "Bag space", "Free slots / all slots of your backpack and bags, now. "
-        .. "Profession bags are left out: they do not hold gear. Red with the alert sign: the items in the mail do "
-        .. "not fit.")
+    bagArea = W.HelpArea(f, bagLabel, "Bag space", "Free slots / all slots of your backpack and bags, now; after "
+        .. "the arrow: the free slots once you take every item still in the mail (one slot each). Below 0, red with "
+        .. "the alert sign: that many slots are missing. Profession bags are left out: they do not hold gear.")
     bagLabel:Hide()
     bagArea:Hide()
     Window.purchaseTabs, Window.bagLabel = purchaseTabs, bagLabel   -- (the specs click and read them)
+    Window.salesParts = salesParts
     -- The Purchases view: a search box, and filters by gear type, quality and item level band.
     do
         local pf = purchaseFilter()
