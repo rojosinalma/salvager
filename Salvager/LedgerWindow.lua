@@ -450,8 +450,13 @@ function Window.Summary()
         end
     end
     local t = ns.Report.Totals()
-    local line1 = string.format("%sBought|r %d items for %s    %sDisenchanted|r %d, materials worth %s after the cut",
-        GOLD, bought, ns.Money(spent), GOLD, done, ns.Money(got))
+    -- The top line: four numbers. The rest is behind the chart button, one line each.
+    local short = string.format("%sBought|r %d for %s    %sDisenchanted|r %d    %sSold|r %d for %s    %sProfit|r %s",
+        GOLD, bought, ns.Money(spent), GOLD, done, GOLD, t.sold, ns.Money(t.soldNet), GOLD, signed(t.soldProfit))
+    local lines = {
+        string.format("%sBought|r %d items for %s", GOLD, bought, ns.Money(spent)),
+        string.format("%sDisenchanted|r %d, materials worth %s after the cut", GOLD, done, ns.Money(got)),
+    }
     if waiting > 0 then
         -- Where those items are: counted in the bags and the bank; the rest is taken to be in the mail.
         local bags, bank = 0, 0
@@ -466,19 +471,19 @@ function Window.Summary()
         if bags > 0 then where[#where + 1] = bags .. " in bags" end
         if bank > 0 then where[#where + 1] = bank .. " in bank" end
         if waiting - bags - bank > 0 then where[#where + 1] = (waiting - bags - bank) .. " in mail or gone" end
-        line1 = line1 .. string.format("    %sBought, not disenchanted yet|r %d (%s): %s", GOLD, waiting,
+        lines[#lines + 1] = string.format("%sBought, not disenchanted yet|r %d (%s): %s", GOLD, waiting,
             ns.Money(waitingCost), table.concat(where, ", "))
     end
-    local line2 = string.format("%sSold|r %d materials for %s after the cut    %sProfit on sales|r %s",
-        GOLD, t.sold, ns.Money(t.soldNet), GOLD, signed(t.soldProfit))
+    lines[#lines + 1] = string.format("%sSold|r %d materials for %s after the cut", GOLD, t.sold, ns.Money(t.soldNet))
+    lines[#lines + 1] = string.format("%sProfit on sales|r %s", GOLD, signed(t.soldProfit))
     if t.untracked > 0 then
-        line2 = line2 .. string.format("    %sNo recorded cost|r %d units, %s after the cut (not in the profit)", GOLD,
+        lines[#lines + 1] = string.format("%sNo recorded cost|r %d units, %s after the cut (not in the profit)", GOLD,
             t.untracked, ns.Money(t.untrackedNet))
     end
     if t.depositsLost > 0 then
-        line2 = line2 .. string.format("    %sDeposits lost|r %s", GOLD, signed(-t.depositsLost))
+        lines[#lines + 1] = string.format("%sDeposits lost|r %s (in the profit)", GOLD, signed(-t.depositsLost))
     end
-    return line1, line2
+    return short, lines
 end
 
 local VIEWS = { sales = true, purchases = true, odds = true, accuracy = true }
@@ -634,9 +639,7 @@ function Window.Refresh()
         list:SetSource(#rows, function(i) return rows[i] end)
         list:Refresh()
     end
-    local a, b = Window.Summary()
-    summary[1]:SetText(a)
-    summary[2]:SetText(b)
+    summary:SetText((Window.Summary()))
     for name, button in pairs(tabs) do
         if name == Window.view then button:LockHighlight() else button:UnlockHighlight() end
     end
@@ -663,15 +666,15 @@ end
 local function build()
     -- As wide as its tables need; the height is the player's.
     f = W.Window("SalvagerLedgerFrame", "Salvager ledger", "ledger", 860, 480, 860, 260, "vertical")
-    summary = {}
-    for i = 1, 2 do
-        local l = W.Label(f, "", "GameFontHighlightSmall")
-        l:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -14 - i * 16)
-        l:SetPoint("RIGHT", f, "RIGHT", -14, 0)
-        l:SetJustifyH("LEFT")
-        l:SetWordWrap(false)
-        summary[i] = l
-    end
+    -- The totals: one short line, and all of them behind the chart button at its right end.
+    local details = W.HelpButton(f, "Totals", function() return select(2, Window.Summary()) end, {
+        glyph = "chart", tooltip = { "Totals", "Click to see every total of the ledger, one per line." } })
+    details:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -30)
+    summary = W.Label(f, "", "GameFontHighlightSmall")
+    summary:SetPoint("LEFT", f, "TOPLEFT", 14, -41)
+    summary:SetPoint("RIGHT", details, "LEFT", -8, 0)
+    summary:SetJustifyH("LEFT")
+    summary:SetWordWrap(false)
     local x = 12
     for _, t in ipairs({ { "sales", "Sales" }, { "purchases", "Purchases" }, { "accuracy", "Accuracy" },
         { "odds", "Odds" } }) do

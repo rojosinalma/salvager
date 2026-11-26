@@ -196,9 +196,13 @@ describe("Salvager in a simulated client", function()
         assert.are.equal(1, #one)
         assert.is_truthy(one[1].title:find("item level 26-30", 1, true))
         ns.db.windows.ledger = nil
-        local a, b = ns.LedgerWindow.Summary()
-        assert.is_truthy(a:find("Bought", 1, true))
-        assert.is_truthy(b:find("Sold", 1, true))
+        local short, lines = ns.LedgerWindow.Summary()
+        for _, word in ipairs({ "Bought", "Disenchanted", "Sold", "Profit" }) do
+            assert.is_truthy(short:find(word, 1, true), word)
+        end
+        assert.is_falsy(short:find("after the cut", 1, true))       -- the details are behind the chart button
+        assert.is_true(#lines >= 4)
+        assert.is_truthy(table.concat(lines, "\n"):find("materials worth", 1, true))
     end)
 
     it("clears the history after a confirmation, and keeps the stock", function()

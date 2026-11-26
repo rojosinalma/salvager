@@ -17,10 +17,23 @@ end
 
 --- A small "?" button. A click shows `getLines()` (a title, then one line per explanation) in a
 --- panel under it; a second click, or a click anywhere else, closes it.
-function Widgets.HelpButton(parent, title, getLines)
+--- `opts.glyph` = "chart": a bar chart in place of the "?"; `opts.tooltip` = { title, text }.
+function Widgets.HelpButton(parent, title, getLines, opts)
+    opts = opts or {}
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetSize(22, 22)
-    b:SetText("?")
+    b:SetText(opts.glyph and "" or "?")
+    if opts.glyph == "chart" then
+        -- Three gold bars of rising height on a base line.
+        local function bar(x, h, w)
+            local t = b:CreateTexture(nil, "OVERLAY")
+            t:SetColorTexture(1, 0.82, 0, 1)
+            t:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", x, 5)
+            t:SetSize(w or 3, h)
+        end
+        bar(6, 5) bar(10, 8) bar(14, 11)
+        bar(5, 1, 13)
+    end
     local WIDTH = 470
     local panel = CreateFrame("Frame", nil, b, BackdropTemplateMixin and "BackdropTemplate" or nil)
     panel:SetFrameStrata("DIALOG")
@@ -60,7 +73,8 @@ function Widgets.HelpButton(parent, title, getLines)
         panel:Show()
     end)
     b:SetScript("OnHide", function() panel:Hide() end)
-    Widgets.Tooltip(b, "Help", "Click to see what the columns and marks in this list mean.")
+    local tip = opts.tooltip or { "Help", "Click to see what the columns and marks in this list mean." }
+    Widgets.Tooltip(b, tip[1], tip[2])
     if pcall(panel.RegisterEvent, panel, "GLOBAL_MOUSE_DOWN") then
         panel:UnregisterEvent("GLOBAL_MOUSE_DOWN")
         panel:SetScript("OnShow", function(self) self:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
