@@ -130,12 +130,12 @@ describe("Salvager in a simulated client", function()
         for _, r in ipairs(sales) do if r.itemID == 11083 then paid = r end end
         assert.is_truthy(paid.cells[1]:find("2x Soul Dust", 1, true))
         local odds = ns.LedgerWindow.OddsRows()
-        -- Every band of every quality and type is there, with or without data: 24 bands twice,
+        -- Every band of every quality is there for the Armor subtab, with or without data: 24 bands,
         -- and at least two rows each.
-        assert.is_true(#odds > 2 * 24 * 2)
+        assert.is_true(#odds > 2 * 24)
         local band, dust
         for i, r in ipairs(odds) do
-            if r.cells[1]:find("Uncommon armor", 1, true) and r.cells[1]:find("item level 26-30", 1, true) then
+            if r.cells[1]:find("Uncommon Armor", 1, true) and r.cells[1]:find("item level 26-30", 1, true) then
                 band, dust = r, odds[i + 1]
             end
         end
@@ -164,10 +164,10 @@ describe("Salvager in a simulated client", function()
         assert.is_table(odd)
         -- In the window each band is a table of its own: a card with the band's facts and its material rows.
         local cards = ns.LedgerWindow.OddsCards()
-        assert.is_true(#cards >= 48)
+        assert.are.equal(24, #cards)
         local card
         for _, c in ipairs(cards) do
-            if c.title:find("Uncommon armor", 1, true) and c.title:find("item level 26-30", 1, true) then card = c end
+            if c.title:find("Uncommon Armor", 1, true) and c.title:find("item level 26-30", 1, true) then card = c end
         end
         assert.are.equal(3, #card.rows)                            -- dust, essence, shard
         assert.is_truthy(card.facts:find("Value now", 1, true))
@@ -179,10 +179,10 @@ describe("Salvager in a simulated client", function()
         assert.are.equal(4, #mine)                                 -- the band, dust, essence, shard
         assert.is_truthy(mine[1].cells[1]:find("item level 26-30", 1, true))
         -- Filters: only blue weapons.
-        ns.db.windows.ledger = { oddsQuality = { [3] = true }, oddsType = { w = true } }
+        ns.db.windows.ledger = { oddsQuality = { [3] = true }, oddsTab = "w" }
         local few = ns.LedgerWindow.OddsRows()
         assert.are.equal(#ns.Data.BLUE * 2, #few)                  -- each band: its row and its one shard
-        assert.is_truthy(few[1].cells[1]:find("Rare weapons", 1, true))
+        assert.is_truthy(few[1].cells[1]:find("Rare Weapons", 1, true))
         ns.db.windows.ledger = nil
         local a, b = ns.LedgerWindow.Summary()
         assert.is_truthy(a:find("Bought", 1, true))

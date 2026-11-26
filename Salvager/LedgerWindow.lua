@@ -31,6 +31,7 @@ local newOddsView
 local checkButton, cancelButton
 local oddsView          -- the Odds view in the ledger window: its filters and one table per band
 local oddsFrame, oddsOut -- the odds in a window of their own
+local popOut            -- the button next to the Odds tab that moves them there and back
 local salesParts = {}   -- title, table, title, table of the Sales view
 
 --- Which bands the Odds view shows: { quality = { [2], [3], [4] }, type = { a, w } }, kept with the window.
@@ -38,8 +39,9 @@ local function oddsFilter()
     local saved = ns.db.windows.ledger or {}
     ns.db.windows.ledger = saved
     saved.oddsQuality = saved.oddsQuality or { [2] = true, [3] = true, [4] = true }
-    saved.oddsType = saved.oddsType or { a = true, w = true }
-    return saved.oddsQuality, saved.oddsType, saved
+    -- The gear type is a subtab: armor or weapons, one at a time.
+    if saved.oddsTab ~= "w" then saved.oddsTab = "a" end
+    return saved.oddsQuality, { [saved.oddsTab] = true }, saved
 end
 
 local function when(t) return (t and t > 0) and date("%m-%d %H:%M", t) or "-" end
@@ -251,7 +253,7 @@ end
 local function oddsNote()
     local _, _, saved = oddsFilter()
     return saved.oddsDataOnly and "No disenchants yet in the selected bands. Untick \"Only bands with my data\" "
-        .. "to see the tables." or "Nothing selected: pick a quality and a gear type above."
+        .. "to see the tables." or "Nothing selected: pick a quality above."
 end
 
 --- The same as one flat list: each band's row, then its material rows.
@@ -351,12 +353,17 @@ function newOddsView(parent)
         view.stack.offset = 0
         Window.Refresh()
     end
-    view.typeFilter = W.CheckDropdown(parent, 150, { { "a", "Armor" }, { "w", "Weapons" } },
-        function(k) return select(2, oddsFilter())[k] end,
-        function(k, on)
-            select(2, oddsFilter())[k] = on
+    -- The subtabs: the odds of armor, and the odds of weapons.
+    view.tabs = {}
+    for _, t in ipairs({ { "a", "Armor", "The odds of armor: mostly dust." },
+        { "w", "Weapons", "The odds of weapons: mostly essence." } }) do
+        local b = W.Button(parent, t[2], 90, function()
+            select(3, oddsFilter()).oddsTab = t[1]
             changed()
-        end, "Which gear types the odds list.", "Gear type")
+        end, t[3])
+        if view.tabs.a then b:SetPoint("LEFT", view.tabs.a, "RIGHT", 4, 0) end
+        view.tabs[t[1]] = b
+    end
     view.qualityFilter = W.CheckDropdown(parent, 170, {
         { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" }, { 4, "|cffa335eeEpic|r" },
     }, function(q) return (oddsFilter())[q] end, function(q, on)
@@ -372,7 +379,8 @@ function newOddsView(parent)
     view.stack = W.CardList(parent)
     view.stack:SetColumns(ODDS_COLUMNS)
     function view:SetShown(on)
-        self.typeFilter:SetShown(on)
+        self.tabs.a:SetShown(on)
+        self.tabs.w:SetShown(on)
         self.qualityFilter:SetShown(on)
         self.dataOnly:SetShown(on)
         self.stack:SetShown(on)
@@ -380,7 +388,10 @@ function newOddsView(parent)
     function view:Refresh()
         self.dataOnly:SetChecked(select(3, oddsFilter()).oddsDataOnly and true or false)
         self.qualityFilter:Update()
-        self.typeFilter:Update()
+        local tab = select(3, oddsFilter()).oddsTab
+        for key, b in pairs(self.tabs) do
+            if key == tab then b:LockHighlight() else b:UnlockHighlight() end
+        end
         self.stack:SetCards(Window.OddsCards())
         self.stack:Refresh()
     end
@@ -424,6 +435,8 @@ function Window.Refresh()
     for name, button in pairs(tabs) do
         if name == Window.view then button:LockHighlight() else button:UnlockHighlight() end
     end
+    -- The pop-out button looks pressed while the odds are in their own window.
+    if Window.OddsPoppedOut() then popOut:LockHighlight() else popOut:UnlockHighlight() end
     -- The two listing buttons belong to the Sales view.
     local sales = Window.view == "sales"
     checkButton:SetShown(sales)
@@ -488,13 +501,13 @@ local function build()
         .. "About one second per material. Needs the auction house open.")
     checkButton:SetPoint("RIGHT", cancelButton, "LEFT", -6, 0)
     oddsView = newOddsView(f)
-    oddsView.typeFilter:SetPoint("RIGHT", clear, "LEFT", -6, 0)
-    oddsView.qualityFilter:SetPoint("RIGHT", oddsView.typeFilter, "LEFT", -6, 0)
+    oddsView.qualityFilter:SetPoint("RIGHT", clear, "LEFT", -6, 0)
     oddsView.dataOnly:SetPoint("TOPRIGHT", f, "TOPRIGHT", -190, -38)
-    oddsView.stack:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98)
+    oddsView.tabs.a:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98)
+    oddsView.stack:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -126)
     oddsView.stack:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
     -- Right next to the Odds tab: the odds in a window of their own, and back.
-    local popOut = W.IconButton(f, 22, function()
+    popOut = W.IconButton(f, 22, function()
         if Window.OddsPoppedOut() then Window.OddsPutBack() else Window.OddsPopOut() end
     end)
     popOut:SetPoint("LEFT", tabs.odds, "RIGHT", 0, 0)
@@ -553,9 +566,9 @@ local function buildOdds()
     oddsFrame = W.Window("SalvagerOddsFrame", "Salvager odds", "odds", 760, 520, 640, 240)
     oddsOut = newOddsView(oddsFrame)
     oddsOut.dataOnly:SetPoint("TOPLEFT", oddsFrame, "TOPLEFT", 12, -29)
-    oddsOut.typeFilter:SetPoint("TOPRIGHT", oddsFrame, "TOPRIGHT", -12, -30)
-    oddsOut.qualityFilter:SetPoint("RIGHT", oddsOut.typeFilter, "LEFT", -6, 0)
-    oddsOut.stack:SetPoint("TOPLEFT", oddsFrame, "TOPLEFT", 12, -60)
+    oddsOut.qualityFilter:SetPoint("TOPRIGHT", oddsFrame, "TOPRIGHT", -12, -30)
+    oddsOut.tabs.a:SetPoint("TOPLEFT", oddsFrame, "TOPLEFT", 12, -58)
+    oddsOut.stack:SetPoint("TOPLEFT", oddsFrame, "TOPLEFT", 12, -86)
     oddsOut.stack:SetPoint("BOTTOMRIGHT", oddsFrame, "BOTTOMRIGHT", -12, 14)
     oddsFrame.onResize = Window.Refresh
     oddsFrame:SetScript("OnShow", Window.Refresh)

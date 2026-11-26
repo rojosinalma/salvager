@@ -234,7 +234,7 @@ function ns.BandName(quality, classID, band)
         if row.up == band then break end
         lo = row.up + 1
     end
-    return (colors[quality] or "") .. (names[quality] or "?") .. (classID == Data.CLASS_WEAPON and " weapons" or " armor")
+    return (colors[quality] or "") .. (names[quality] or "?") .. (classID == Data.CLASS_WEAPON and " Weapons" or " Armor")
         .. "|r|cffffd100, item level " .. lo .. ((band or 0) >= 999 and "+" or ("-" .. tostring(band))) .. "|r"
 end
 

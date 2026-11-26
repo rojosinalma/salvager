@@ -19,7 +19,7 @@ local QUALITY_FILTER = {
     [2] = Enum.AuctionHouseFilter.UncommonQuality, [3] = Enum.AuctionHouseFilter.RareQuality,
     [4] = Enum.AuctionHouseFilter.EpicQuality,
 }
-local CLASS_NAME = { [Data.CLASS_WEAPON] = "weapons", [Data.CLASS_ARMOR] = "armor" }
+local CLASS_NAME = { [Data.CLASS_WEAPON] = "Weapons", [Data.CLASS_ARMOR] = "Armor" }
 
 local scan                 -- the scan in progress: { seq, passes, index, pass, candidates, seen, sum }
 local lastBrowseAt = 0
@@ -128,7 +128,7 @@ local function buildPlan()
                     if not b.blocked and b.limit > top then top = b.limit end
                 end
                 passes[#passes + 1] = { quality = quality, classID = classID, bands = bands[quality][classID], top = top,
-                    name = ns.QUALITY_NAME[quality]:lower() .. " " .. CLASS_NAME[classID], got = 0, pages = 0, breaks = 0 }
+                    name = ns.QUALITY_NAME[quality] .. " " .. CLASS_NAME[classID], got = 0, pages = 0, breaks = 0 }
             end
         end
     end
