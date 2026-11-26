@@ -1217,6 +1217,30 @@ describe("Salvager listings", function()
         assert.is_false(ns.db.windows.odds.open)
     end)
 
+    it("records each material scan and charts it in the Market window", function()
+        local points = ns.db.history[DUST]
+        assert.is_true(#points >= 1)                               -- the scans of this session
+        assert.is_number(points[#points].n)
+        ns.db.history[DUST] = { { t = time() - 7200, p = 400, lo = 390, n = 100 }, { t = time() - 3600, p = 500, lo = 480, n = 80 },
+            { t = time() - 60, p = 440, lo = 430, n = 120 } }
+        ns.Market.Toggle()
+        ns.Market.Select(DUST)
+        local data, pts = ns.Market.ChartData(DUST)
+        assert.are.equal(3, #pts)
+        assert.are.equal(2, #data.lines)
+        assert.are.equal(3, #data.bars.points)
+        assert.is_truthy(ns.Market.Facts(pts):find("+10%", 1, true))
+        local row
+        for _, r in ipairs(ns.Market.Rows()) do if r.itemID == DUST then row = r end end
+        assert.is_true(row.group)                                  -- the picked one
+        assert.is_truthy(row.cells[3]:find("+10%", 1, true))
+        ns.Market.range = "hours"
+        ns.Market.Refresh()
+        ns.Market.range = "day"
+        ns.db.history[DUST] = points
+        ns.Market.Toggle()
+    end)
+
     it("finds the undercut listings", function()
         ns.Listings.Check()
         assert.is_table(ns.Listings.checking)

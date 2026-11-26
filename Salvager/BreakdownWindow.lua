@@ -180,6 +180,7 @@ end
 
 --- The line added to a row's tooltip when a click does something.
 function ns.RowHint(data)
+    if data and data.onClick then return nil end
     if data and Breakdown.Is(data.itemID) then return "Click: where this material came from, and what pays" end
 end
 

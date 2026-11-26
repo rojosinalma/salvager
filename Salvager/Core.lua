@@ -34,6 +34,7 @@ local DEFAULTS = {
         limitOverride = {},        -- ["<quality>:<a|w>:<band>"] = copper: buy limits set by hand
     },
     prices = {},                   -- [matID] = { p = copper each, units, listings, t }
+    history = {},                  -- [matID] = { { t, p, lo, n }, ... }: the price at each scan (History.lua)
     ledger = {},
     auraSeen = {},                 -- [spellID] = name, auras whose name mentions the Salvager
     auraSnapshots = {},            -- helpful auras at the first disenchants (to find the Salvager's ID)

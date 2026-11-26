@@ -37,6 +37,13 @@ local function store(itemID)
     ns.Log("price %s (%d): %s, %d results", ns.MaterialName(itemID), itemID,
         e and (ns.Money(e.p) .. " over " .. e.units .. " units") or "none listed",
         AH.GetNumCommoditySearchResults(itemID) or 0)
+    -- For the charts: this scan's price, lowest listing and units listed by others.
+    local listed = 0
+    for i = 1, (AH.GetNumCommoditySearchResults(itemID) or 0) do
+        local r = AH.GetCommoditySearchResultInfo(itemID, i)
+        if r then listed = listed + math.max(0, (r.quantity or 0) - (r.numOwnerItems or 0)) end
+    end
+    ns.History.Add(ns.db.history, itemID, time(), e and e.p, e and e.lo, listed)
     if e then
         e.t = time()
         ns.db.prices[itemID] = e

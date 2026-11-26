@@ -106,6 +106,7 @@ function Widgets.List(parent, opts)
             GameTooltip:Show()
         end)
         row:SetScript("OnClick", function(self)
+            if self.data and self.data.onClick then self.data.onClick(self.data) return end
             if self.data and ns.RowClick then ns.RowClick(self.data) end
         end)
         row:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -380,6 +381,7 @@ function Widgets.CardList(parent)
             GameTooltip:Show()
         end)
         row:SetScript("OnClick", function(self)
+            if self.data and self.data.onClick then self.data.onClick(self.data) return end
             if self.data and ns.RowClick then ns.RowClick(self.data) end
         end)
         row:SetScript("OnLeave", function() GameTooltip:Hide() end)

@@ -188,6 +188,28 @@ describe("Ledger", function()
         assert.are.equal(0, Ledger.DropDoubleSales(state))                     -- once
     end)
 
+    it("keeps a price history: one point per time slot, capped, with the change over a range", function()
+        local History = ns.History
+        local h = {}
+        History.Add(h, 5, 1000, 400, 390, 50)
+        History.Add(h, 5, 1100, 410, 400, 60)                       -- the same slot: the later scan stays
+        assert.are.equal(1, #h[5])
+        assert.are.equal(410, h[5][1].p)
+        History.Add(h, 5, 2000, 500, 480, 70)
+        History.Add(h, 5, 3000, nil, nil, 0)                        -- none listed
+        History.Add(h, 5, 4000, 451, 440, 80)
+        assert.are.equal(4, #h[5])
+        assert.are.equal(3, #History.Points(h, 5, 1500))
+        local change, first, last = History.Change(History.Points(h, 5))
+        assert.are.equal(410, first)
+        assert.are.equal(451, last)
+        assert.are.equal(0.1, change)
+        assert.is_nil(History.Change({}))
+        for i = 1, History.MAX_POINTS + 20 do History.Add(h, 6, i * 1000, i, i, 1) end
+        assert.are.equal(History.MAX_POINTS, #h[6])
+        assert.are.equal(21, h[6][1].p)                             -- the oldest went
+    end)
+
     it("keeps what later mails need when the history is cleared", function()
         Ledger.AuctionPurchase(state, 77, 1000, 1200, 1)            -- its "Auction won" mail has not come
         Ledger.AuctionPurchase(state, 78, 500, 600, 2)

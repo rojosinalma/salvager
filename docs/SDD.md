@@ -185,6 +185,12 @@ flipping is out of scope for now.
     matching amount in one bag update = a conversion; the cost moves to the new form. Units with no recorded
     cost count as zero in it.
 56. **Cancel is the last button** of any group of buttons, everywhere (the user's rule).
+57. **Market window** (`MarketWindow.lua`, `Chart.lua`, `History.lua`): every material scan adds a point to
+    `SalvagerDB.history` (price, lowest listing, units listed; one point per 10 minutes, 600 per material).
+    The window charts one material: price and lowest listing as lines, your break-even as a level, units
+    listed as bars; ranges 6 hours, 24 hours, 7 days, all.
+58. **Window sizing:** Ledger and popped-out Odds have a fixed width and a free height (`Widgets.Window`,
+    `fixed = "vertical"`); Materials fits its content; the main, Log, Breakdown and Market windows are free.
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

@@ -428,7 +428,10 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
     local saved = ns.db.windows[key] or {}
     ns.db.windows[key] = saved
     f.saved = saved
-    f:SetSize(math.max(minW, saved.w or w), math.max(minH, saved.h or h))
+    -- fixed = "vertical": the width is always `w` (it fits the content); only the height can change.
+    local vertical = fixed == "vertical"
+    if vertical then fixed = false end
+    f:SetSize(vertical and w or math.max(minW, saved.w or w), math.max(minH, saved.h or h))
     f:SetFrameStrata("HIGH")
     f:SetToplevel(true)
     f:SetClampedToScreen(true)
@@ -485,10 +488,12 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
 
     f:SetResizable(true)
     local maxW, maxH = UIParent:GetWidth(), UIParent:GetHeight()
+    if vertical then minW, maxW = w, w end
     if f.SetResizeBounds then
         f:SetResizeBounds(minW, minH, maxW, maxH)
     elseif f.SetMinResize then
         f:SetMinResize(minW, minH)
+        if vertical and f.SetMaxResize then f:SetMaxResize(maxW, maxH) end
     end
     local grip = CreateFrame("Button", nil, f)
     grip:SetSize(16, 16)
@@ -498,7 +503,7 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
     grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
     grip:SetScript("OnMouseDown", function()
         pin()
-        f:StartSizing("BOTTOMRIGHT", true)
+        f:StartSizing(vertical and "BOTTOM" or "BOTTOMRIGHT", true)
     end)
     grip:SetScript("OnMouseUp", function()
         f:StopMovingOrSizing()

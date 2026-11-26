@@ -442,19 +442,10 @@ function Window.SetSalesSplit(share)
     Window.Refresh()
 end
 
---- The popped-out odds window is as tall as its tables, up to the room on the screen; past that it scrolls.
-local ODDS_TOP, ODDS_BOTTOM = 86, 14
-local function fitOdds()
-    local room = (UIParent:GetHeight() or 768) - 120
-    local need = ODDS_TOP + (oddsOut.stack.contentHeight or 0) + ODDS_BOTTOM
-    oddsFrame:SetHeight(math.max(160, math.min(room, need)))
-end
+local ODDS_TOP = 86
 
 function Window.Refresh()
-    if oddsFrame and oddsFrame:IsShown() then
-        oddsOut:Refresh()
-        fitOdds()
-    end
+    if oddsFrame and oddsFrame:IsShown() then oddsOut:Refresh() end
     if not f or not f:IsShown() then return end
     -- While the odds are in their own window, the ledger shows another view.
     if Window.view == "odds" and Window.OddsPoppedOut() then Window.view = "sales" end
@@ -510,7 +501,8 @@ function Window.Refresh()
 end
 
 local function build()
-    f = W.Window("SalvagerLedgerFrame", "Salvager ledger", "ledger", 860, 480, 800, 260)
+    -- As wide as its tables need; the height is the player's.
+    f = W.Window("SalvagerLedgerFrame", "Salvager ledger", "ledger", 860, 480, 860, 260, "vertical")
     summary = {}
     for i = 1, 2 do
         local l = W.Label(f, "", "GameFontHighlightSmall")
@@ -651,8 +643,9 @@ StaticPopupDialogs["SALVAGER_CLEAR_LEDGER"] = {
 }
 
 local function buildOdds()
-    -- As tall as its tables need (see fitOdds): no resize corner.
-    oddsFrame = W.Window("SalvagerOddsFrame", "Salvager odds", "odds", 760, 520, 760, 160, true)
+    -- As wide as its tables need; the height is the player's (the corner sizes it up and down only).
+    oddsFrame = W.Window("SalvagerOddsFrame", "Salvager odds", "odds", 760, 520, 760, 200, "vertical")
+    oddsFrame.onResize = Window.Refresh
     oddsOut = newOddsView(oddsFrame)
     oddsOut.dataOnly:SetPoint("TOPLEFT", oddsFrame, "TOPLEFT", 12, -29)
     oddsOut.qualityFilter:SetPoint("TOPRIGHT", oddsFrame, "TOPRIGHT", -12, -30)

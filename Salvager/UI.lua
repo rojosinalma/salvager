@@ -504,9 +504,12 @@ local function build()
         "Opens the ledger in its own window: what you bought, what each item was disenchanted into, "
         .. "your sales and their profit.")
     ledger:SetPoint("RIGHT", log, "LEFT", -6, 0)
+    local market = W.Button(f, "Market", 80, function() ns.Market.Toggle() end,
+        "Opens the market charts in their own window: the price of each material over time, from your scans.")
+    market:SetPoint("RIGHT", ledger, "LEFT", -6, 0)
     status = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     status:SetPoint("LEFT", spinner, "RIGHT", 6, 0)
-    status:SetPoint("RIGHT", ledger, "LEFT", -10, 0)
+    status:SetPoint("RIGHT", market, "LEFT", -10, 0)
     status:SetJustifyH("LEFT")
     status:SetWordWrap(false)
 
@@ -941,6 +944,7 @@ ns.On("AUCTION_HOUSE_SHOW", function()
             ns.LedgerWindow.Restore()
             ns.LogWindow.Restore()
             ns.Materials.Restore()
+            ns.Market.Restore()
         end
     end
     UI.Refresh()
