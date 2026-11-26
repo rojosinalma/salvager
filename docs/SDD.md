@@ -271,8 +271,10 @@ flipping is out of scope for now.
        the reason in the tooltip.
     - b. A sale's profit counts only units with a known cost; the net of the others is `netUntracked`
        (old records are split at load). The mail's real cut replaces the estimate when the sale is paid.
-    - c. A sold part matches a known one only when its due time is within 120 s, the closest first
-       (replaces 47's "due time only tells parts apart").
+    - c. (Withdrawn 2026-11-26, 0.3.85: 47 holds again.) A due-time limit of 120 s on the match of a sold
+       part booked 6 sales twice within the hour: the read just after a post gave due times 130–150 s later
+       than the read before it. The due time only tells parts of one size apart, never decides that a part
+       is new. `Ledger.DropDoubleSales` runs once more (`doubleSalesFixed = 2`) and gives the units back.
     - d. A lost deposit (auction cancelled or expired) is a `sales` record with `lost`, `count = 0`, `qty`,
        and the deposit as its loss: in the profit and totals, not in Accuracy or Breakdown. The deposit of
        each post is kept in `SalvagerDB.posted`. An expiry is seen on `AUCTION_HOUSE_AUCTIONS_EXPIRED`, or

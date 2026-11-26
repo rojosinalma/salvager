@@ -40,7 +40,7 @@ end
 
 function Ledger.Init(state)
     -- A new ledger has no double sales from old versions to repair.
-    if next(state) == nil then state.doubleSalesFixed = true end
+    if next(state) == nil then state.doubleSalesFixed = Ledger.DOUBLES_REPAIR end
     state.purchases = state.purchases or {}
     state.stock = state.stock or {}
     state.disenchants = state.disenchants or {}
@@ -260,24 +260,23 @@ function Ledger.SalePaid(state, matID, count, gross, cutPaid, t)
 end
 
 --- Which of the sold auctions on screen are new. A listing sells in parts, and its parts share the
---- listing's auction ID, so a part is known by (auction ID, quantity) and the time its money is due.
---- The game reports that time loosely (it was seen to move by 36 s between two reads), so a part
---- matches a known one whose due time is within SOLD_DUE_SLACK, the closest first.
+--- listing's auction ID, so a part is known by (auction ID, quantity). The time its money is due only
+--- tells two parts of the same size apart: the game reports it loosely (it was seen to move by 36 s
+--- between two reads, and by 150 s in the read just after a post, 2026-11-26 06:24), so it is never used
+--- to decide that a part is new.
 --- A part stays known while it is on screen, and for a while after its money was due.
 --- @param rows table  { { auctionID, qty, due (clock time the money arrives), ... }, ... }
 --- @return table  the rows not seen before
-Ledger.SOLD_DUE_SLACK = 120
 function Ledger.NewSold(state, rows, now)
     local KEEP = 600
     local seen = state.seenSold
     local used, fresh = {}, {}
     for _, row in ipairs(rows) do
-        local match, best
+        local match
         for i, s in ipairs(seen) do
-            local gap = math.abs(s.due - row.due)
-            if not used[i] and s.auctionID == row.auctionID and s.qty == row.qty and gap < Ledger.SOLD_DUE_SLACK
-                and (not best or gap < best) then
-                match, best = i, gap
+            if not used[i] and s.auctionID == row.auctionID and s.qty == row.qty
+                and (not match or math.abs(s.due - row.due) < math.abs(seen[match].due - row.due)) then
+                match = i
             end
         end
         if match then
@@ -297,32 +296,44 @@ function Ledger.NewSold(state, rows, now)
     return fresh
 end
 
---- Repairs what versions before 0.3.40 did: a sold part whose due time moved was booked a second time.
---- Removes the second sale of each such pair and gives its units back to the stock. Runs once.
+Ledger.DOUBLES_REPAIR = 2   -- the repair below has run when state.doubleSalesFixed is this
+
+--- Repairs sold parts that were booked twice because their due time moved: versions before 0.3.40, and
+--- 0.3.79 to 0.3.84 (which took a part whose due time moved by 2 minutes for a new one). For each part
+--- that is known twice, the later of its two sales goes and its units go back to the stock. Runs once.
 --- @return number  sales removed
 function Ledger.DropDoubleSales(state)
-    if state.doubleSalesFixed then return 0 end
-    state.doubleSalesFixed = true
-    local seen, removed = state.seenSold, 0
+    if state.doubleSalesFixed == Ledger.DOUBLES_REPAIR then return 0 end
+    state.doubleSalesFixed = Ledger.DOUBLES_REPAIR
+    local NEAR = 600
+    local seen, sales, removed = state.seenSold, state.sales, 0
+    local function near(a, b) return math.abs((a.due or a.t or 0) - (b.due or b.t or 0)) <= NEAR end
+    -- The later of two sales of this size, of one material at one price, that are due close together.
+    local function double(qty)
+        for k = #sales, 2, -1 do
+            local rec = sales[k]
+            if rec.count == qty and rec.unpaid == qty and rec.each and not rec.lost then
+                for m = k - 1, 1, -1 do
+                    local o = sales[m]
+                    if o.id == rec.id and o.count == qty and o.each == rec.each and not o.lost and near(o, rec) then
+                        return k
+                    end
+                end
+            end
+        end
+    end
     for i = #seen, 2, -1 do
         for j = i - 1, 1, -1 do
             if seen[i] and seen[j].auctionID == seen[i].auctionID and seen[j].qty == seen[i].qty
-                and math.abs(seen[j].due - seen[i].due) <= 600 then
-                local qty = seen[i].qty
+                and math.abs(seen[j].due - seen[i].due) <= NEAR then
+                local k = double(seen[i].qty)
                 table.remove(seen, i)
-                -- The second of two unpaid sales of that size and price.
-                local first
-                for k, rec in ipairs(state.sales) do
-                    if rec.count == qty and rec.unpaid == qty and rec.each then
-                        if first and first.id == rec.id and first.each == rec.each then
-                            local tracked = rec.count - (rec.untracked or 0)
-                            if tracked > 0 then Ledger.AddStock(state, rec.id, tracked, rec.cost) end
-                            table.remove(state.sales, k)
-                            removed = removed + 1
-                            break
-                        end
-                        first = first or rec
-                    end
+                if k then
+                    local rec = sales[k]
+                    local tracked = rec.count - (rec.untracked or 0)
+                    if tracked > 0 then Ledger.AddStock(state, rec.id, tracked, rec.cost) end
+                    table.remove(sales, k)
+                    removed = removed + 1
                 end
                 break
             end

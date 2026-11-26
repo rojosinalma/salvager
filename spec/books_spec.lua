@@ -224,7 +224,7 @@ describe("Your auctions in a simulated client", function()
         assert.are.equal(2, last().unpaid)
         SlashCmdList.SALVAGER("reset ledger confirm")
         assert.are.equal(0, #ns.db.ledger.sales)
-        assert.is_true(ns.db.ledger.doubleSalesFixed)
+        assert.are.equal(ns.Ledger.DOUBLES_REPAIR, ns.db.ledger.doubleSalesFixed)
         wow.fire(ns, "OWNED_AUCTIONS_UPDATED")
         assert.are.equal(0, #ns.db.ledger.sales)
         for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end

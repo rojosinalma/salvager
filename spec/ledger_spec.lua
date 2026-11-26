@@ -85,13 +85,13 @@ describe("Ledger", function()
     end)
 
     it("starts a new ledger with nothing to repair, and keeps what is seen sold on a reset", function()
-        assert.is_true(state.doubleSalesFixed)
+        assert.are.equal(Ledger.DOUBLES_REPAIR, state.doubleSalesFixed)
         state.seenSold[1] = { auctionID = 9, qty = 1, due = 4000 }
         state.sales[1] = { id = 5, count = 1, unpaid = 1, each = 100, net = 95, cost = 0 }
         local fresh = Ledger.Reset(state)
         assert.are.equal(0, #fresh.sales)
         assert.are.equal(1, #fresh.seenSold)
-        assert.is_true(fresh.doubleSalesFixed)
+        assert.are.equal(Ledger.DOUBLES_REPAIR, fresh.doubleSalesFixed)
         assert.are.equal(0, Ledger.DropDoubleSales(fresh))
         assert.are.equal(0, #Ledger.NewSold(fresh, { { auctionID = 9, qty = 1, due = 4010 } }, 3000))
         assert.is_nil(Ledger.Init({ sales = {} }).doubleSalesFixed)   -- an old ledger is still repaired once
@@ -239,6 +239,28 @@ describe("Ledger", function()
         assert.are.equal(6, already)
         assert.are.equal(4, rest.count)
         assert.are.equal(4 * 480, rest.gross)
+    end)
+
+    it("knows a sold part again when its due time moves by minutes, and repairs the doubles of 0.3.79-0.3.84", function()
+        local rows = { { auctionID = 7, qty = 2, due = 5000 }, { auctionID = 8, qty = 2, due = 5010 } }
+        assert.are.equal(2, #Ledger.NewSold(state, rows, 1400))
+        rows[1].due, rows[2].due = 5150, 5160                       -- the read after a post: 150 s later
+        assert.are.equal(0, #Ledger.NewSold(state, rows, 1600))
+        -- What those versions left: each part known twice, and its sale booked twice (two materials, one size).
+        state.seenSold = { { auctionID = 7, qty = 2, due = 5000 }, { auctionID = 8, qty = 2, due = 5010 },
+            { auctionID = 7, qty = 2, due = 5150 }, { auctionID = 8, qty = 2, due = 5160 } }
+        Ledger.AddStock(state, 5, 3, 300)
+        for _, x in ipairs({ { 5, 1400, 5000 }, { 6, 1400, 5010 }, { 5, 1600, 5150 }, { 6, 1600, 5160 } }) do
+            Ledger.SaleSeen(state, x[1], 2, 100, 0.05, x[2]).due = x[3]
+        end
+        assert.is_nil(state.stock[5])                               -- the double took the unit that is still there
+        state.doubleSalesFixed = true                               -- (the repair of 0.3.40 has run)
+        assert.are.equal(2, Ledger.DropDoubleSales(state))
+        assert.are.equal(2, #state.sales)
+        assert.are.same({ 5, 6 }, { state.sales[1].id, state.sales[2].id })
+        assert.are.equal(1, state.stock[5].qty)                     -- given back
+        assert.are.equal(2, #state.seenSold)
+        assert.are.equal(0, Ledger.DropDoubleSales(state))
     end)
 
     it("does not book a sold part again when its due time moves, and repairs the old double sales", function()
