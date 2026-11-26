@@ -10,7 +10,7 @@ local _, ns = ...
 local Ledger, W = ns.Ledger, ns.Widgets
 
 local Reports = { view = "gold", range = "24h", goldTab = "statement",
-    -- The Profit and Items views' filters (kept in the window's saved data).
+    -- The Gear and Items views' filters (kept in the window's saved data).
     filter = { classes = { [4] = true, [2] = true }, qualities = { [2] = true, [3] = true, [4] = true }, bandsOff = {},
         salvager = "all" } }
 ns.Reports = Reports
@@ -28,7 +28,7 @@ local RANGES = {
 }
 Reports.MENU_SESSIONS = 15   -- past sessions in the Period menu (older ones: the Sessions part of All time)
 local ORDER = { "gold", "profit", "materials", "items" }
-local TITLES = { gold = "Gold", profit = "Profit", materials = "Materials", items = "Items" }
+local TITLES = { gold = "Gold", profit = "Gear", materials = "Materials", items = "Items" }
 local HELP = {
     gold = "What the trading made and how much richer you are, checked against your gold; every change of your gold.",
     profit = "What your disenchants made, by quality and gear type, and by item level band under each.",
@@ -492,7 +492,7 @@ function Reports.Refresh()
     list:ClearAllPoints()
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, filterY - ROW_STEP)
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
-    -- The Profit and Items views have their own filters after the period.
+    -- The Gear and Items views have their own filters after the period.
     local filtered = FILTERED[Reports.view] or false
     for _, x in ipairs(filters) do
         x:SetShown(filtered)

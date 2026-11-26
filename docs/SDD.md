@@ -427,22 +427,22 @@ flipping is out of scope for now.
     ("11-26 18:49, 1 h 10 min", newest first, the newest 15 (`Reports.MENU_SESSIONS`); older ones are picked from the
     Sessions part of All time, 72), Last 24 hours, Last 7 days, Last 30 days, All time (`range = "s:<start>"` for a
     session; that time has an end too: `Ledger.Profits(state, from, keep, to)`). The rows from the top: the view tabs,
-    the Gold subtabs (Gold only), the filter row (Period, then Gear, Quality, Bands, Salvager on Profit and Items), the
+    the Gold subtabs (Gold only), the filter row (Period, then Gear, Quality, Bands, Salvager on Gear and Items), the
     table. The line that repeated the period and the view's help left: the period shows in its filter and in the
     statement's first line, the help is on the tab. Width at least 890 (was 760), so the longest filter row fits.
     Views: Gold (72, 97);
-    Profit by quality and gear type with its bands under it (`Ledger.Profits`: disenchants with a known
+    Gear (tab named Profit until 0.3.127, the user): profit by quality and gear type with its bands under it (`Ledger.Profits`: disenchants with a known
     cost; Sold value = the materials at what one unit really sold for, at their disenchant value while that
     material has not sold; Profit = Sold value − Paid; grey under 20 disenchants); Materials (got, sold,
     sold for, cost of sold, deposits lost, profit, held and listed now and their value); Items (best first).
-    Profit groups by gear type, then quality, then band (the range only, "26-30"). Profit and Items have
+    Gear groups by gear type, then quality, then band (the range only, "26-30"). Gear and Items have
     filters on their filter row after the period (gear type, quality, item level band, with or without the Salvager;
     remembered; at least one ticked). Materials: Held = bags and bank (`GetItemCount(id, true)`), Listed = your
     unsold auctions as last read; the ledger's stock counts both and is not shown as "in stock".
 80. **One grouping for every list of bands** (the user, 2026-11-26): gear type (Armor, then Weapons), quality
     under it, then each band by its range only ("26-30", never "item level 26-30"). `ns.GroupedRows` builds
     it, with totals on the headings where the table has totals: Market's Disenchant value, Ledger's
-    Accuracy, Reports' Profit, Breakdown's bands. Odds cards sit under the Armor/Weapons subtab and are titled
+    Accuracy, Reports' Gear, Breakdown's bands. Odds cards sit under the Armor/Weapons subtab and are titled
     "Uncommon 26-30". A sorted grouped list sorts inside each group (`section`, `head`). `/salv report` too
     (Armor, Uncommon 26-30: ...). The main window's Limits tab is a table of two halves instead (the user,
     0.3.97): an Armor title over its Recommended and Override price threshold columns, a Weapons title over
