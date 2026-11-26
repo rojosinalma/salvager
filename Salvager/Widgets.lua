@@ -240,7 +240,8 @@ end
 
 --- A button that opens a small list of check boxes.
 --- options = { {value, label}, ... }; get(value) -> bool; set(value, bool). Returns the button.
-function Widgets.CheckDropdown(parent, width, options, get, set, tooltip, title)
+--- `summary(names, total)` (optional) gives the button's text from the ticked names.
+function Widgets.CheckDropdown(parent, width, options, get, set, tooltip, title, summary)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetSize(width, 22)
     local list = CreateFrame("Frame", nil, b, BackdropTemplateMixin and "BackdropTemplate" or nil)
@@ -272,7 +273,7 @@ function Widgets.CheckDropdown(parent, width, options, get, set, tooltip, title)
             checks[i]:SetChecked(on)
             if on then names[#names + 1] = o[2] end
         end
-        self:SetText(#names > 0 and table.concat(names, ", ") or "none")
+        self:SetText(summary and summary(names, #options) or (#names > 0 and table.concat(names, ", ") or "none"))
         -- As wide as its text needs, never wider than the width asked for.
         local label = self.GetFontString and self:GetFontString()
         if type(label) == "table" then

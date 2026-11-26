@@ -128,6 +128,11 @@ flipping is out of scope for now.
     has a title.
 36. **Cautious pricing** (`cautious`): the buy limit is measured from `Model.Value(...).low` (every material at
     its lowest amount, no Salvager bonus) and not from the average. Value, Profit and Lose % are unchanged.
+37. **Level filter** (main window, "Levels" row): tick boxes for the 11 item level bands of green gear
+    (`levelBandsOff`) and a custom item level range (`ilvlMin`, `ilvlMax`, 0 = none). An item must pass both.
+    It is applied to each listing as its page arrives, by item level. It does not narrow what the auction house
+    sends (that query filters by required level, which does not map exactly to item level), so it does not
+    shorten the loading of the gear list; the required-level range in the options does that.
 15. **UI redraws** from events are limited to four per second; the log panel is not rebuilt during a scan.
 
 ## Data

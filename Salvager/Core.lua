@@ -10,6 +10,9 @@ local DEFAULTS = {
     settings = {
         minProfit = 1000,          -- copper; deals below this profit are hidden
         maxPrice = 0,              -- copper; the most to pay for one item, whatever it is worth (0 = no limit)
+        levelBandsOff = {},        -- item level bands NOT scanned: { [upper item level of the band] = true }
+        ilvlMin = 0,               -- item level range for the scan (0 = no limit)
+        ilvlMax = 0,
         cautious = false,          -- buy limits count every material at its lowest amount (1 dust, not 1.5)
         salvager = "auto",         -- "auto" | "on" | "off": add the Arcane Salvager bonus when valuing buys
         salvagerChance = 0.5,      -- chance of one extra dust or essence with the Salvager
@@ -215,6 +218,28 @@ function ns.PriceOldAfter()
     local every = ns.db.settings.priceRescan
     if every > 0 then return every * 60 * 2 end
     return ns.db.settings.priceMaxAge
+end
+
+--- The item level bands, as the scan's level filter offers them: { { up, label }, ... }.
+--- They are the bands of green gear: 1-15, 16-20, ... 61+.
+function ns.LevelBands()
+    local out, lo = {}, 1
+    for _, row in ipairs(Data.GREEN) do
+        out[#out + 1] = { up = row.up, label = lo .. (row.up >= 999 and "+" or ("-" .. row.up)) }
+        lo = row.up + 1
+    end
+    return out
+end
+
+--- Does the scan look at this item level? (Its band is ticked, and it is inside the custom range.)
+function ns.LevelAllowed(ilvl)
+    local s = ns.db.settings
+    if s.ilvlMin > 0 and ilvl < s.ilvlMin then return false end
+    if s.ilvlMax > 0 and ilvl > s.ilvlMax then return false end
+    for _, row in ipairs(Data.GREEN) do
+        if ilvl <= row.up then return not s.levelBandsOff[row.up] end
+    end
+    return true
 end
 
 --- Is any scan running?

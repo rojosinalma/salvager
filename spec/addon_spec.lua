@@ -486,6 +486,31 @@ describe("Salvager scan safety", function()
         ns.Scanner.Stop()
     end)
 
+    it("only lists item levels inside the ticked bands and the custom range", function()
+        local s = ns.db.settings
+        assert.is_true(ns.LevelAllowed(28))
+        s.levelBandsOff[30] = true                         -- the 26-30 band off
+        assert.is_false(ns.LevelAllowed(28))
+        assert.is_true(ns.LevelAllowed(31))
+        s.levelBandsOff[30] = nil
+        s.ilvlMin, s.ilvlMax = 29, 40                      -- a range of your own
+        assert.is_false(ns.LevelAllowed(28))
+        assert.is_true(ns.LevelAllowed(29))
+        assert.is_false(ns.LevelAllowed(41))
+        -- The scan: the boots are item level 28, outside 29-40.
+        env.ah.fullBrowse = true
+        env.ah.browse = { row(1) }
+        ns.Scanner.Scan()
+        wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
+        assert.are.equal(0, ns.Scanner.summary.candidates)
+        assert.are.equal(1, ns.Scanner.summary.levelOut)
+        ns.Scanner.Stop()
+        s.ilvlMin, s.ilvlMax = 0, 0
+        assert.are.equal(11, #ns.LevelBands())
+        assert.are.equal("26-30", ns.LevelBands()[4].label)
+        assert.are.equal("61+", ns.LevelBands()[11].label)
+    end)
+
     it("never lists an item above the most you pay for one item", function()
         env.ah.fullBrowse = true
         env.ah.browse = { row(50), row(300) }             -- both far under the item's value

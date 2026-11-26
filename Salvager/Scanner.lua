@@ -145,6 +145,7 @@ local function judge(r, pass, sum)
     if ns.NoDisenchant(key.itemID) then sum.noDisenchant = sum.noDisenchant + 1 return end
     local ilvl, source = ns.Items.Level(key)
     if not ilvl then sum.learning = sum.learning + 1 return end
+    if not ns.LevelAllowed(ilvl) then sum.levelOut = sum.levelOut + 1 return end
     if source == "cache" and (key.itemLevel or 0) > 0 and key.itemLevel ~= ilvl then
         sum.levelDiffers = sum.levelDiffers + 1
         sum.levelExample = sum.levelExample or string.format("item %d: listing says %d, the game says %d",
@@ -178,8 +179,9 @@ local function queueChecks()
     Scanner.summary = sum
     scan = nil
     ns.Log("gear scan: %d items in %.0fs, %d under their limit, %d over, %d not disenchantable, %d level not known yet, "
-        .. "%d without a value, %d without a buyout (min profit %s)", sum.browsed, sum.seconds, sum.candidates, sum.overLimit,
-        sum.noDisenchant, sum.learning, sum.noValue, sum.noPrice, ns.Money(ns.db.settings.minProfit))
+        .. "%d outside the level filter, %d without a value, %d without a buyout (min profit %s)", sum.browsed, sum.seconds,
+        sum.candidates, sum.overLimit, sum.noDisenchant, sum.learning, sum.levelOut, sum.noValue, sum.noPrice,
+        ns.Money(ns.db.settings.minProfit))
     if sum.best then
         ns.Log("closest: item %d ilvl %s at %s, value %s, margin %s", sum.best.itemID, tostring(sum.best.ilvl),
             ns.Money(sum.best.price), ns.Money(sum.best.value), ns.Money(sum.best.margin))
@@ -328,7 +330,7 @@ function Scanner.Scan(clear)
     scan = {
         seq = Scanner.browseSeq, passes = passes, index = 0, candidates = {}, seen = {}, startedAt = GetTime(),
         sum = { browsed = 0, overLimit = 0, noDisenchant = 0, learning = 0, noValue = 0, noPrice = 0, candidates = 0,
-            levelDiffers = 0, best = nil },
+            levelDiffers = 0, levelOut = 0, best = nil },
     }
     Scanner.browsed = 0
     if clear then Scanner.ClearDeals() end

@@ -9,7 +9,7 @@ ns.UI = UI
 local MAX_ROWS, ROW_H = 40, 24
 local MAX_COLS = 8
 local WIDTH, HEIGHT = 800, 560
-local MIN_W, MIN_H = 800, 440
+local MIN_W, MIN_H = 800, 470
 local ROWS = 15          -- rows that fit now (set from the list height)
 local QUALITY_COLOR = { [2] = "|cff1eff00", [3] = "|cff0070dd", [4] = "|cffa335ee" }
 local CLASS_NAME = { [2] = "Weapon", [4] = "Armor" }
@@ -55,7 +55,7 @@ local VIEWS = {
 
 local f, rows, headers, status, footer, minProfit, playButton, stopButton, gearChoice, tabs =
     nil, {}, {}, nil, nil, nil, nil, nil, nil, {}
-local maxPrice, capHint, cautious
+local maxPrice, capHint, cautious, bandDrop, ilvlMin, ilvlMax, levelHint
 local qualityDrop, popOut
 local headerHelp = {}
 local actionHeader
@@ -166,6 +166,9 @@ local function footerText()
         if sum then
             text = text .. string.format(" Last scan: %d items in %.0fs, %d under their limit.", sum.browsed,
                 sum.seconds or 0, sum.candidates)
+            if (sum.levelOut or 0) > 0 then
+                text = text .. string.format(" %d outside your level filter.", sum.levelOut)
+            end
             if (sum.learning or 0) > 0 then
                 text = text .. string.format(" %d skipped while their item level loads (next scan has them).", sum.learning)
             end
@@ -341,6 +344,11 @@ function UI.Refresh()
     maxPrice:Set(ns.db.settings.maxPrice)
     capHint:SetText(ns.db.settings.maxPrice > 0 and "" or "no limit")
     cautious:SetChecked(ns.db.settings.cautious)
+    bandDrop:Update()
+    local st = ns.db.settings
+    if not ilvlMin:HasFocus() then ilvlMin:SetText(tostring(st.ilvlMin)) end
+    if not ilvlMax:HasFocus() then ilvlMax:SetText(tostring(st.ilvlMax)) end
+    levelHint:SetText((st.ilvlMin > 0 or st.ilvlMax > 0) and "" or "0 = any")
     gearChoice:Update()
     qualityDrop:Update()
     footer:SetText(footerText())
@@ -465,7 +473,7 @@ local function build()
     local box = W.Panel(f, 1, 1, 1, 0.04)
     box:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -60)
     box:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -60)
-    box:SetHeight(64)
+    box:SetHeight(92)
     local CAPTION_W = 46
     local function caption(text, y)
         local l = W.Label(box, text, "GameFontNormal")
@@ -547,6 +555,64 @@ local function build()
     end)
     cautious:SetPoint("TOPRIGHT", box, "TOPRIGHT", -78, -34)
 
+    -- Row "Levels": which item levels the scan looks at, by band or by a range of your own.
+    local levelCaption = caption("Levels", -66)
+    local bandLabel = W.Label(box, "Bands", "GameFontHighlightSmall")
+    bandLabel:SetPoint("LEFT", levelCaption, "RIGHT", 6, 0)
+    local bandOptions = {}
+    for _, band in ipairs(ns.LevelBands()) do bandOptions[#bandOptions + 1] = { band.up, band.label } end
+    bandDrop = W.CheckDropdown(box, 200, bandOptions,
+        function(up) return not ns.db.settings.levelBandsOff[up] end,
+        function(up, on)
+            local off = ns.db.settings.levelBandsOff
+            off[up] = (not on) or nil
+            local any = false
+            for _, band in ipairs(ns.LevelBands()) do if not off[band.up] then any = true end end
+            if not any then
+                off[up] = nil
+                ns.Print("at least one band must stay on")
+            end
+            ns.Log("level band %s = %s", tostring(up), tostring(not off[up]))
+            ns.Fire("SALVAGER_SETTINGS")
+        end,
+        "Which item level bands the scan looks at. A band is a range of item levels that disenchants into the same "
+            .. "materials. The Limits tab and the Ledger's Odds view list them.", "Bands",
+        function(names, total)
+            if #names == total then return "All" end
+            if #names > 3 then return #names .. " bands" end
+            return table.concat(names, ", ")
+        end)
+    bandDrop:SetPoint("LEFT", bandLabel, "RIGHT", 6, 0)
+
+    local function levelBox(key)
+        local e = W.Edit(box, 34, true)
+        e:SetMaxLetters(3)
+        e:SetJustifyH("RIGHT")
+        e:SetTextInsets(2, 4, 0, 0)
+        e:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+        e:SetScript("OnEditFocusLost", function(self)
+            local n = math.max(0, math.floor(tonumber(self:GetText()) or 0))
+            if ns.db.settings[key] ~= n then
+                ns.db.settings[key] = n
+                ns.Log("%s = %d", key, n)
+                ns.Fire("SALVAGER_SETTINGS")
+            end
+        end)
+        return e
+    end
+    local rangeLabel = W.Label(box, "or item level from", "GameFontHighlightSmall")
+    rangeLabel:SetPoint("LEFT", bandDrop, "RIGHT", 18, 0)
+    W.HelpArea(box, rangeLabel, "Item level range", "A range of your own, on top of the bands: the scan only lists "
+        .. "items whose item level is inside it. 0 = no limit on that side. An item must pass both the bands and the range.")
+    ilvlMin = levelBox("ilvlMin")
+    ilvlMin:SetPoint("LEFT", rangeLabel, "RIGHT", 10, 0)
+    local toLabel = W.Label(box, "to", "GameFontHighlightSmall")
+    toLabel:SetPoint("LEFT", ilvlMin, "RIGHT", 8, 0)
+    ilvlMax = levelBox("ilvlMax")
+    ilvlMax:SetPoint("LEFT", toLabel, "RIGHT", 10, 0)
+    levelHint = W.Label(box, "", "GameFontDisableSmall")
+    levelHint:SetPoint("LEFT", ilvlMax, "RIGHT", 8, 0)
+
     ---------------------------------------------------------------- tabs, above the list they switch
     local x = 12
     for _, t in ipairs({ { "deals", "Deals" }, { "materials", "Materials" }, { "limits", "Limits" } }) do
@@ -558,7 +624,7 @@ local function build()
             UI.offset = 0
             UI.Refresh()
         end)
-        b:SetPoint("TOPLEFT", f, "TOPLEFT", x, -131)
+        b:SetPoint("TOPLEFT", f, "TOPLEFT", x, -159)
         tabs[t[1]] = b
         x = x + 98
         if t[1] == "materials" then
@@ -589,7 +655,7 @@ local function build()
 
     ---------------------------------------------------------------- the list, in its own sunken panel
     local inset = W.Panel(f, 0, 0, 0, 0.5)
-    inset:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -156)
+    inset:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -184)
     inset:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, 40)
     local titleBand = inset:CreateTexture(nil, "BACKGROUND", nil, 1)
     titleBand:SetPoint("TOPLEFT", inset, "TOPLEFT", 1, -1)
