@@ -62,14 +62,18 @@ end
 function Backup.ClearHistory()
     Backup.Save("before clearing the history")
     local n = Ledger.ClearHistory(ns.db.ledger, ns.NoDisenchant)
+    -- Who undercut you goes too (its events and the profit lost to them, SDD 109); it is not in the backup.
+    n = n + #(ns.db.competition.events or {})
+    ns.Competition.Clear(ns.db.competition)
     ns.Print("ledger history cleared (%d entries). A backup is kept: Options, Restore backup.", n)
     ns.Log("ledger history cleared (%d entries)", n)
     ns.Fire("SALVAGER_LEDGER")
 end
 
 StaticPopupDialogs["SALVAGER_CLEAR_LEDGER"] = {
-    text = "Clear the Salvager ledger history?\n\nThis deletes every purchase, disenchant and sale record: the Ledger, "
-        .. "the Reports, the Accuracy and the Odds start empty, and what they learned is lost.\n\nWhat stays: your "
+    text = "Clear the Salvager ledger history?\n\nThis deletes every purchase, disenchant and sale record, and who "
+        .. "undercut you: the Ledger, the Reports, the Accuracy, the Odds and the Competition start empty, and what "
+        .. "they learned is lost (the backup does not keep the competition).\n\nWhat stays: your "
         .. "material stock and its costs, and the purchases you have not disenchanted yet.\n\nA copy is kept in the "
         .. "background: Options, Restore backup brings it back.",
     button1 = "Delete the history",

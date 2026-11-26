@@ -40,6 +40,9 @@ function Listings.NotePost(auctionID, itemID, quantity, each, deposit)
     posted[#posted + 1] = { auctionID = auctionID, itemID = itemID, qty = quantity, each = each, t = time(),
         deposit = deposit, val = ns.PriceOf(itemID) }
     ns.Util.Cap(posted, MAX_POSTED)
+    -- Followed for who made you post it lower (SDD 109).
+    ns.Competition.NotePost(ns.db.competition, { t = time(), id = itemID, auctionID = auctionID, qty = quantity,
+        each = each, deposit = deposit })
     ns.ForecastChanged()
 end
 
@@ -67,6 +70,7 @@ local function depositLost(auctionID, itemID, qty, why, fallback)
     ns.Ledger.DepositLost(ns.db.ledger, itemID, qty, amount, why, time())
     ns.Log("listings: %dx %s %s, deposit lost %s", qty, ns.MaterialName(itemID), why, ns.Money(amount))
     ns.Fire("SALVAGER_LEDGER")
+    return amount
 end
 
 --- Auctions of ours that ended unsold between two reads: the previous read showed them for sale, and
@@ -129,6 +133,7 @@ function Listings.Read()
     local booked = false
     for _, r in ipairs(ns.Ledger.NewSold(ns.db.ledger, sold, l.t)) do
         local rec = ns.Ledger.SaleSeen(ns.db.ledger, r.itemID, r.qty, r.each, ns.Cut(), l.t)
+        ns.Competition.NoteSale(ns.db.competition, r.auctionID, r.qty, r.each, l.t)
         rec.due = r.due   -- when its money arrives, for the countdown in the Ledger
         local post = postedEntry(r.auctionID)
         rec.val = post and post.val or nil   -- the value when it was posted (sell price ratio, SDD 3)
@@ -230,6 +235,30 @@ function Listings.CountUndercut()
     local n = 0
     for _, row in ipairs(db().rows) do if Listings.Undercut(row) then n = n + 1 end end
     return n
+end
+
+--- A material search is in (an undercut check, the Post window's search, a material scan): its price lines against
+--- your live auctions of it, for who undercuts you (SDD 109). The client gives the owners' names of each line
+--- (`owners`, "player" for you, "" until it knows a name; `totalNumberOfOwners` can be more than the names).
+function Listings.Observe(itemID)
+    local mine = {}
+    for _, row in ipairs(db().rows) do
+        if row.itemID == itemID and not row.sold then mine[#mine + 1] = { each = row.each, qty = row.qty } end
+    end
+    local lines = {}
+    for i = 1, (AH.GetNumCommoditySearchResults(itemID) or 0) do
+        local r = AH.GetCommoditySearchResultInfo(itemID, i)
+        if r and r.unitPrice then
+            lines[#lines + 1] = { each = r.unitPrice, qty = r.quantity or 0, ownQty = r.numOwnerItems or 0,
+                owners = type(r.owners) == "table" and r.owners or {}, total = r.totalNumberOfOwners or 0,
+                own = r.containsOwnerItem and true or false }
+        end
+    end
+    local added = ns.Competition.Observe(ns.db.competition, itemID, lines, mine, time(), UnitName("player"))
+    if #added > 0 then
+        ns.Log("competition: %d undercut(s) of your %s seen (%s)", #added, ns.MaterialName(itemID), added[1].o)
+        ns.Fire("SALVAGER_COMPETITION")
+    end
 end
 
 --- Searches every listed commodity for its lowest price that is not yours. Your auctions are read
@@ -362,7 +391,16 @@ local function cancelDone(auctionID, rows)
     local mine = p and p.row.auctionID == auctionID
     for _, r in ipairs(rows) do
         if r.auctionID == auctionID and not r.sold then
-            depositLost(auctionID, r.itemID, r.qty, "cancelled", mine and p.cost or nil)
+            -- The fee is the cancel cost the game named (a cancel of ours); the deposit the one recorded at the post.
+            local known = postedEntry(auctionID)
+            local fee = mine and p.cost or 0
+            local deposit = depositLost(auctionID, r.itemID, r.qty, "cancelled", mine and p.cost or nil)
+            if not (known and known.deposit) then deposit = 0 end
+            -- Undercut when it was cancelled: what it cost goes to the competitors under it (SDD 109).
+            if ns.Competition.NoteCancel(ns.db.competition, { t = time(), id = r.itemID, auctionID = auctionID,
+                qty = r.qty, each = r.each, fee = fee, deposit = deposit or 0 }) then
+                ns.Log("competition: %dx %s cancelled while undercut", r.qty, ns.MaterialName(r.itemID))
+            end
         end
     end
     if mine then

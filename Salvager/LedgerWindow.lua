@@ -102,6 +102,23 @@ local COLUMNS = {
         { "Collected", 110, "LEFT", help = { "Collected", "When you took the money of this sale from the mail." } },
         { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
         { "You got", 76, "RIGHT" }, { "Cost", 84, "RIGHT" }, { "Profit", 76, "RIGHT", help = PROFIT_HELP } },
+    -- The Sales view's third subtab: who undercuts you (SDD 109).
+    competition = { { "Name", 150, help = { "Name", "The seller whose listing was under the price of one of your "
+            .. "auctions of that material, as the auction house names them. Unknown seller: the client did not give a "
+            .. "name (it learns names over time). Click a row for each time it was seen, newest first." } },
+        { "Times seen", 60, "RIGHT", help = { "Times seen", "How many times a search found a price line of theirs "
+            .. "under one of your auctions: once per line, not again while the line stays the same. All time." } },
+        { "Last seen", 82 },
+        { "Materials", 120, help = { "Materials", "Which of your materials they undercut, the most often first." } },
+        { "Typical gap", 76, "RIGHT", help = { "Typical gap", "How far under your price their price each was: the "
+            .. "median, in coins." } },
+        { "Typical gap %", 50, "RIGHT", help = { "Typical gap %", "The same in percent of your price each." } },
+        { "Lowest price seen", 76, "RIGHT", help = { "Lowest price seen", "The lowest price each of theirs seen under "
+            .. "your price (the material is in the row's tooltip)." } },
+        { "Profit lost to them", 84, "RIGHT", help = { "Profit lost to them", "What their undercuts cost you: the "
+            .. "cancel fees and deposits of your undercut auctions you cancelled, the deposits of the reposts, and "
+            .. "the lower price your reposted units sold at against your first price. Split evenly when several "
+            .. "were under you. Units not sold yet are not in it." } } },
     paid = { { "Material", 150 }, { "Sold", 110 },
         { "Time", 62, "RIGHT", sample = COUNTDOWN_MAX, help = { "Time", "The time until the money of this sale arrives by mail." } },
         { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
@@ -733,6 +750,77 @@ function Window.SoldRows(history)
     return rows
 end
 
+------------------------------------------------------------------ competition (SDD 109)
+
+local EVENTS_SHOWN = 30   -- events listed under an opened competitor (the Reports have them all)
+
+local function gapText(g) return g and (RED .. "-" .. ns.Money(math.floor(g + 0.5)) .. "|r") or "-" end
+local function gapPct(p) return p and string.format("%s-%.1f%%|r", RED, p) or "-" end
+local function lostText(c)
+    c = math.floor((c or 0) + 0.5)
+    return c > 0 and (RED .. "-" .. ns.Money(c) .. "|r") or ns.Money(0)
+end
+Window.GapText, Window.GapPct, Window.LostText = gapText, gapPct, lostText
+
+--- Materials by name, the most often first ("Soul Dust, Vision Dust").
+local function matList(order, n)
+    local out = {}
+    for i, m in ipairs(order) do
+        if i > (n or 3) then out[#out] = out[#out] .. ", ..." break end
+        out[#out + 1] = ns.MaterialName(m.id) or tostring(m.id)
+    end
+    return table.concat(out, ", ")
+end
+Window.MatList = matList
+
+--- One row per competitor (all time), the most seen first: a heading that opens to its undercut events, newest first.
+function Window.CompetitionRows()
+    local state = ns.db.competition
+    local comps = ns.Competition.Competitors(state)
+    if #comps == 0 then
+        return { note("No undercut seen yet. Check undercuts, the Post window's search and a material scan record who "
+            .. "lists under your price.") }
+    end
+    local lost = ns.Competition.Lost(state)
+    local rows, groups, total = {}, ns.GroupState("ledger.competition"), 0
+    for _, g in ipairs(comps) do
+        local name = g.key
+        local seen = state.names[name] or { n = g.n, last = g.last }
+        total = total + seen.n
+        local by = lost.by[name] or { total = 0, cancel = 0, repost = 0, price = 0 }
+        local head = { group = true, cells = { name, tostring(seen.n), when(seen.last), matList(g.matOrder),
+            gapText(g.gap), gapPct(g.pct), ns.Money(g.lowest), lostText(by.total) },
+            tip = { name, string.format("Lowest price seen: %s each, on %s.", ns.Money(g.lowest),
+                ns.MaterialName(g.lowestId) or "?"),
+                "Profit lost to them: cancel fees and deposits " .. lostText(by.cancel) .. ", deposits of the reposts "
+                    .. lostText(by.repost) .. ", lower sale prices " .. lostText(by.price) .. ".",
+                "Click: each time they were seen under you, newest first." } }
+        rows[#rows + 1] = head
+        if ns.HeadingToggle(head, groups, name, function() Window.Refresh() end, true) then
+            local shown = 0
+            for i = #state.events, 1, -1 do
+                local e = state.events[i]
+                if e.o == name then
+                    shown = shown + 1
+                    if shown > EVENTS_SHOWN then break end
+                    rows[#rows + 1] = { indent = INDENT, itemID = e.id, cells = {
+                        string.format("%d of theirs under your %d", e.q, e.u), "", when(e.t),
+                        ns.MaterialName(e.id) or tostring(e.id), gapText(e.g), gapPct(e.my > 0 and e.g / e.my * 100 or 0),
+                        ns.Money(e.p), "" },
+                        tip = { ns.MaterialName(e.id) or "", string.format("%s: %d units at %s each, under your %d at %s each "
+                            .. "(%s less).", date("%m-%d %H:%M", e.t), e.q, ns.Money(e.p), e.u, ns.Money(e.my), ns.Money(e.g)) } }
+                end
+            end
+            if shown > EVENTS_SHOWN then
+                rows[#rows + 1] = { indent = INDENT, cells = { GREY .. "older ones: Reports, Competition|r" } }
+            end
+        end
+    end
+    rows[#rows + 1] = { rule = "total", bold = true, cells = { "Total", tostring(total), "", "", "", "", "",
+        lostText(lost.total) }, tip = { "Total", "Every undercut seen and every copper lost to competitors, all time." } }
+    return rows
+end
+
 --- AP/EP %: how far the actual profit is from the expected one, in percent of the expected one
 --- (which can be a loss, so its size). "-" where nothing was expected.
 local function profitShare(actual, expected)
@@ -1094,7 +1182,8 @@ function Window.Refresh()
     local accuracy = Window.view == "accuracy"
     local sales = Window.view == "sales"
     local history = sales and f.saved.salesTab == "history"
-    local split = (sales and not history) or accuracy
+    local competition = sales and f.saved.salesTab == "competition"
+    local split = (sales and not history and not competition) or accuracy
     local odds = Window.view == "odds"
     list:SetShown(not split and not odds)
     -- The Sales view has a row of subtabs, the Purchases view its search and filters; the tables start under.
@@ -1120,7 +1209,8 @@ function Window.Refresh()
         top = top + W.BAR_H.filters + 4
     end
     contentTop = top
-    for key, b in pairs(salesTabs) do b:SetSelected((key == "history") == history) end
+    local salesTab = (history and "history") or (competition and "competition") or "open"
+    for key, b in pairs(salesTabs) do b:SetSelected(key == salesTab) end
     for key, b in pairs(purchaseTabs) do b:SetSelected(key == purchaseTab) end
     bagLabel:SetShown(purchases)
     bagArea:SetShown(purchases)
@@ -1167,6 +1257,12 @@ function Window.Refresh()
         salesParts[4]:Refresh()
     elseif odds then
         oddsView:Refresh()
+    elseif competition then
+        local rows = Window.CompetitionRows()
+        list.onSort = nil
+        list:SetColumns(COLUMNS.competition, "competition")
+        list:SetSource(#rows, function(i) return rows[i] end)
+        list:Refresh()
     elseif history then
         local rows = Window.SoldRows(true)
         list.onSort = nil
@@ -1292,7 +1388,7 @@ local function build()
         .. "subtab has what still waits in the mail, with your bag space; Current batch what you picked up and have "
         .. "not disenchanted or not posted yet.")
     W.Tooltip(tabs.sales, "Sales", "Your open auctions, and what is sold with its money still to collect. The History "
-        .. "subtab has the sales you have collected. Profit = what you get after the cut, minus what those "
+        .. "subtab has the sales you have collected; Competition who undercuts you. Profit = what you get after the cut, minus what those "
         .. "materials cost you.")
     W.Tooltip(tabs.odds, "Odds", "Every item level band of every quality and gear type. Expected = how often each "
         .. "material comes and how many (the table the addon uses). You got = what your own disenchants gave. Value "
@@ -1422,13 +1518,15 @@ local function build()
     -- The subtabs of the Sales view: what is open and what is sold; and the history.
     bars.sales = W.Bar(f, "subtabs"):Place(TABS_TOP + W.BAR_H.tabs + 4, 12, 12)
     for _, t in ipairs({ { "open", "Open and sold", "Your open auctions, and what is sold with its money still to collect." },
-        { "history", "History", "The sales whose money you have taken from the mail, newest first." } }) do
+        { "history", "History", "The sales whose money you have taken from the mail, newest first." },
+        { "competition", "Competition", "Who undercuts you: each seller whose listing was under one of your auctions, "
+            .. "the most seen first, with what it cost you. Click one to see each time." } }) do
         local b = W.Subtab(bars.sales, t[2], function()
             f.saved.salesTab = t[1]
             list.offset = 0
             Window.Refresh()
         end, t[3])
-        bars.sales:Add(b, t[1] == "open" and 100 or 60)
+        bars.sales:Add(b, t[1] == "open" and 100 or t[1] == "competition" and 84 or 60)
         salesTabs[t[1]] = b
     end
     -- The subtabs of the Purchases view: every purchase; and what waits in the mail.
@@ -1572,7 +1670,7 @@ ns.OnTick(function()
 end)
 
 for _, e in ipairs({ "SALVAGER_LEDGER", "SALVAGER_PRICES_DONE", "SALVAGER_SETTINGS", "SALVAGER_LISTINGS",
-    "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED" }) do
+    "SALVAGER_COMPETITION", "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED" }) do
     ns.On(e, function() Window.Refresh() end)
 end
 -- The bag space of the Purchases view is live while it shows.

@@ -50,6 +50,7 @@ local DEFAULTS = {
     money = {},                    -- the gold journal, every change of gold with its cause (Journal.lua)
     sessions = {},                 -- sessions from login to logout, and the stock's value at each (Statement.lua)
     groups = {},                   -- [table] = { [heading] = true }: group headings not in their first state (ns.GroupState)
+    competition = {},              -- who undercuts you, and the profit lost to them (Competition.lua, SDD 109)
 }
 
 ------------------------------------------------------------------ output
@@ -704,6 +705,7 @@ ns.On("ADDON_LOADED", function(name)
     Util.Defaults(SalvagerDB, DEFAULTS)
     ns.db = SalvagerDB
     Ledger.Init(ns.db.ledger)
+    ns.Competition.Init(ns.db.competition)
     local doubles = Ledger.DropDoubleSales(ns.db.ledger)
     if doubles > 0 then ns.Log("ledger: removed %d sale(s) that an older version booked twice", doubles) end
     if Ledger.NeedsRecost(ns.db.ledger) then
@@ -852,6 +854,7 @@ SlashCmdList.SALVAGER = function(msg)
     elseif cmd == "reset" and args[2] == "ledger" and args[3] == "confirm" then
         ns.Backup.Save("before /salv reset ledger")
         ns.db.ledger = Ledger.Reset(ns.db.ledger)
+        ns.Competition.Clear(ns.db.competition)
         ns.Print("ledger cleared")
         ns.Fire("SALVAGER_LEDGER")
     else

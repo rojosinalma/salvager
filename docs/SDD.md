@@ -143,7 +143,9 @@ flipping is out of scope for now.
     listing's reported price equals that times its quantity, this client reports totals and the rest are
     divided. Undercut = the lowest listing that is not yours is below your price each (one commodity search
     per listed material). Cancel needs a click per auction (`CancelAuction` is hardware-event restricted) and
-    loses the deposit; searches wait while a cancel is on its way. Not verified in the game yet.
+    loses the deposit; searches wait while a cancel is on its way (not the read of your auctions, which tells the
+    cancel: 0.3.138; before, it waited the cancel's 8 s and the cancel cost was lost from its record). Not verified in
+    the game yet.
 30. **Odds filters:** quality and gear type, kept with the Ledger window.
 31. **Odds columns:** each band row shows Buy below (`ns.BuyLimit`: the hand-set limit, else value minus the
     minimum profit) and Lose % at that limit (`Model.LossChance` with the limit as the price: the risk when you
@@ -273,7 +275,7 @@ flipping is out of scope for now.
     it keeps its width while the value changes: the Sales tables' Time ("00:00:00"), the Materials list's Age ("00m",
     also in the main window's Materials tab). The widths written in the code
     are the fallback where text cannot be measured, and the width of columns with input boxes. The Log is left out.
-64. **Sales view:** two subtabs. "Open and sold" has two tables: Open auctions (only what is still for sale)
+64. **Sales view:** two subtabs (a third, Competition, since 0.3.138, 109). "Open and sold" has two tables: Open auctions (only what is still for sale)
     and Sold (sales whose money is not collected yet, with a countdown). "History" lists the sales whose mail
     was taken. The game keeps a sold auction in its own list until the money is mailed; the addon shows it
     as a sale, not as an auction.
@@ -433,7 +435,7 @@ flipping is out of scope for now.
     the Gold or Gear subtabs, the filter row (Period, then Gear, Quality, Bands, Salvager on Gear), the
     table. The line that repeated the period and the view's help left: the period shows in its filter and in the
     statement's first line, the help is on the tab. Width at least 890 (was 760), so the longest filter row fits.
-    Views (tabs, 0.3.129: Gold, Gear, Materials): Gold (72, 97);
+    Views (tabs, 0.3.129: Gold, Gear, Materials; Competition since 0.3.138, 109): Gold (72, 97);
     Gear (tab named Profit until 0.3.127, the user), with two subtabs (0.3.129, the user; the Items tab is gone):
     Bands first, the profit by quality and gear type with its bands under it (`Ledger.Profits`: disenchants with a known
     cost; Sold value = the materials at what one unit really sold for, at their disenchant value while that
@@ -748,7 +750,7 @@ flipping is out of scope for now.
     b. Limits window (`LimitsWindow.lua`, new): the table of the old Limits tab (columns "Armor: recommended",
        "Armor: limit used", "Weapons: recommended", "Weapons: limit used"; the limit boxes over the "limit used"
        cells); footer: cautious pricing note at the left, "?" at the right. Kept open with the others (24).
-    c. Ledger: tabs; subtabs (Sales: Open and sold, History; Purchases: All purchases, Not picked up, Current batch); the filter
+    c. Ledger: tabs; subtabs (Sales: Open and sold, History, Competition (0.3.138, 109); Purchases: All purchases, Not picked up, Current batch); the filter
        row (Purchases' first subtab: Search, Gear, Quality, Bands, Show (the "Not disenchanted" check box until
        0.3.136); the third subtab, Current batch, since 0.3.136, 107; Accuracy and Odds: Gear,
        Quality, Bands, Salvager; Odds also "Only bands with my data"); the tables; footer, two lines (0.3.130: one line
@@ -936,10 +938,58 @@ flipping is out of scope for now.
        window's smallest width grows to them, up to the screen; past that the first column gives way down to 90 px,
        its text cut with "..." (the full name on hover). The fit spec checks the main window's table too.
 
+109. **Who undercuts you** (0.3.138, the user, 2026-11-27; `Competition.lua` pure, glue in `Listings.lua`,
+    `SalvagerDB.competition`).
+    - a. What the client gives (`Gethe/wow-ui-source`, branch `forever`, `AuctionHouseDocumentation.lua`,
+       `CommoditySearchResultInfo`): per price line `unitPrice`, `quantity`, `numOwnerItems`, `owners` (a table of
+       strings, not nilable), `totalNumberOfOwners`, `containsOwnerItem`, `containsAccountItem`. The game's own UI
+       (`Blizzard_AuctionHouseUtil.lua`) shows `owners[1] == "player"` as "You", lists the names, and says "and N more"
+       when `totalNumberOfOwners` is above the names given: the list can be shorter than the owners. A name can be
+       "" (or "...") until the client knows it. Not measured on Forever yet: how often names are missing, and whether
+       one line of many units names every owner. Your other characters' auctions (`containsAccountItem`) come with
+       their names and count as competitors (the addon cannot tell them from others).
+    - b. Every material search (Check undercuts, the Post window's and Stand's search, a material scan) ends in
+       `Prices.Store`, which calls `Listings.Observe`: each line of others (`quantity - numOwnerItems` > 0) under the
+       price of one of your live auctions of that material is an undercut. One event per owner of the line (yours left
+       out: "player" and your name; "", "..." and owners beyond the names are "Unknown seller", grouped as one
+       name), with the time, material, their price each, your price each (the lowest of yours above theirs), the gap,
+       their units and your units above them. Not again while the same line (price, units, owner) was in the last
+       search of that material.
+    - c. Ledger, Sales, third subtab "Competition": one row per name, the most seen first (Name, Times seen, Last seen,
+       Materials, Typical gap and Typical gap % (medians), Lowest price seen, Profit lost to them), a heading that
+       opens (closed first, `ns.GroupState("ledger.competition")`) to its newest 30 events; a totals row last. Times
+       seen and Last seen are the name's all-time count (`names`), which outlives the event cap.
+    - d. Bounded: the newest 5000 events and 5000 loss records; names kept with their counts; posts followed 30 days.
+       Clear history (88) and `/salv reset ledger` clear it; the backup does not keep it.
+    - e. Profit lost to competitors: a post (`Listings.NotePost`) is followed by auction ID with its units in chunks
+       { units, first price, competitors }. A cancel (`cancelDone`: known from the read of your auctions, 77a) of an
+       auction whose material's last search (30 minutes at most before) had others under its price is an undercut
+       cancel: its fee (the cancel cost the game named, a cancel through Cancel undercut) and its deposit lost go to
+       the names under it, and its units wait an hour for a post of the same material. That post replaces them, first
+       in, first out: its deposit for those units goes to the names that caused that cancel, and its units keep the
+       first price of the chain (the price before any undercut) and every competitor of the chain. Units of a
+       followed post that sell (`Listings.Read`, seen sold) below their first price lose (first price − sale price) ×
+       units to the chain's competitors. Each record is split evenly over its names (Unknown seller gets its share).
+       Not counted: units not sold (they are "at stake"), cancels and price moves with no undercut seen, sales known
+       only from mail, posts not made through Salvager. Shown red with "-" (UI.md Tables 7).
+    - f. Reports, fourth tab "Competition", over the Period filter, with a Material filter (All, then each material
+       seen undercut) in the place of the Gear filters: a statement (Undercuts: seen, competitors, material most
+       undercut; Profit lost to competitors: cancel fees and deposits, deposits of the reposts, lower sale prices, the
+       total; At stake now: undercut auctions (units × gap to the cheapest line of the last search) and reposted units
+       under their first price; How you answered: undercut auctions cancelled, reposted after an undercut "n of m",
+       the median time from the first undercut of the auction to its repost); a table per competitor (Name,
+       Undercuts, Share, Materials, Typical gap, %, Lowest price, First seen, Last seen, Active hours (the two hours
+       of the day with most undercuts), Trend (against the period before of the same length: green when fewer, "-"
+       for All time), Profit lost to them), each opening to its materials; a table per material (Material,
+       Undercuts, Competitors, Main competitor, Typical gap, %), each opening to its competitors. Three tables, one
+       inset each (UI.md Tables 3): the statement as tall as its rows up to 45% of the room, then 60/40.
+    - g. Not in the books: the statement (97) already counts the deposits and fees; this splits a part of them by
+       competitor, plus the lower sale prices, which no statement line shows.
+
 ## Data
 
 `SalvagerBackup` (account-wide): `list` of ledger copies (88). `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `pools`, `disenchants`, `sales`),
-`money` (gold journal), `sessions` (97), `quality` and `ilvl` (learned item data), `auraSeen` and `auraSnapshots` (to learn the Salvager's aura spell ID; matched by name until then).
+`money` (gold journal), `sessions` (97), `competition` (109), `quality` and `ilvl` (learned item data), `auraSeen` and `auraSnapshots` (to learn the Salvager's aura spell ID; matched by name until then).
 
 ## Open
 

@@ -306,6 +306,26 @@ local function seed(env, ns)
         wow.fire(ns, "LOOT_READY")
     end
     wow.fire(ns, "PLAYER_MONEY")
+    -- Competitors with long names under every material, a chain of cancel, repost and sale for the profit lost, and
+    -- the first heading of each competition table open.
+    local C, CS = ns.Competition, ns.db.competition
+    local SELLERS = { "Bloodforgedauctioneer", "Thunderbrewmerchant", "Grimlokthetrader", "" }
+    for i, m in ipairs(ns.Data.MATERIALS) do
+        for k = 1, 3 do
+            C.Observe(CS, m.id, { { each = BIG - 1000 * k, qty = 9999, ownQty = 0, owners = { SELLERS[(i + k) % 4 + 1],
+                SELLERS[(i + k + 1) % 4 + 1] }, total = 5 } }, { { each = BIG, qty = 9999 } }, env.clock - k * 3600)
+        end
+        C.NotePost(CS, { t = env.clock - 7000, id = m.id, auctionID = 50000 + i, qty = 9999, each = BIG, deposit = BIG })
+        C.Observe(CS, m.id, { { each = BIG - 99999, qty = 99, ownQty = 0, owners = { SELLERS[1] }, total = 1 } },
+            { { each = BIG, qty = 9999 } }, env.clock - 60)
+        C.NoteCancel(CS, { t = env.clock - 30, id = m.id, auctionID = 50000 + i, qty = 9999, each = BIG, fee = BIG,
+            deposit = BIG })
+        C.NotePost(CS, { t = env.clock - 20, id = m.id, auctionID = 60000 + i, qty = 9999, each = BIG - 100000, deposit = BIG })
+        C.NoteSale(CS, 60000 + i, 9999, BIG - 100000, env.clock - 10)
+    end
+    ns.GroupState("ledger.competition")[SELLERS[1]] = true
+    ns.GroupState("reports.competitors")[SELLERS[1]] = true
+    ns.GroupState("reports.compMaterials")[tostring(ns.Data.MATERIALS[1].id)] = true
     for i = 1, 5000 do
         ns.Log("checked item %s: %d auctions, %d under %s", NAMES[i % #NAMES + 1], 999, 999, ns.Money(BIG))
     end
@@ -411,6 +431,14 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
             end
         end
         assert.are.equal("", table.concat(found, "\n"))
+    end)
+    it("drew the competition tables with data (the Ledger's subtab, the Reports' tab)", function()
+        assert.is_true(#ns.LedgerWindow.CompetitionRows() > 5)
+        assert.is_true(#ns.Reports.CompetitorRows() > 5)
+        assert.is_true(#ns.Reports.CompetitionMaterialRows() > 5)
+        local seen = {}
+        for _, f in ipairs(found) do seen[#seen + 1] = f end
+        assert.are.equal("", table.concat(seen, "\n"))
     end)
     it("says so where a table leaves columns out for want of room, and fits them where it can", function()
         local W = ns.Widgets

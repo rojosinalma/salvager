@@ -38,13 +38,15 @@ By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_foreve
    what you bought and have not picked up from the mail yet (with your free bag space), your current batch (what
    you picked up and have not disenchanted or posted yet, with what it cost, was expected to make and has made),
    your auctions (listed, sold and waiting for the money, undercut; ▶ next to Check undercuts checks them every
-   minute while the auction house is open) and the sales already paid with their
+   minute while the auction house is open), who undercuts you (Competition: each seller under your price, how
+   often, on which materials, by how much, and what it cost you) and the sales already paid with their
    profit, and the disenchant odds of every band with its buy limit and the chance to lose at that limit.
    Point at a column title for what it means. **Log** opens the activity log.
    **Reports** shows what your trading made, for this session (login to logout, a /reload keeps it), a past
    session or the last hours or days: sales, the cost of what you sold, the change in your stock and how much
    richer you are, then a check against your gold. It also lists every change of your gold; Gear shows the
-   profit by band (Bands) and piece by piece (History); Materials what each material gave and sold for.
+   profit by band (Bands) and piece by piece (History); Materials what each material gave and sold for;
+   Competition who undercut you in the period, what it cost you and how you answered, per competitor and material.
    A heading of a grouped table (gear type, quality) opens and closes with a click; it stays as you left it.
 7. Options: Esc > Options > AddOns > Salvager, the **Options** button, or right-click the minimap button.
 

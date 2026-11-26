@@ -3373,13 +3373,13 @@ describe("Salvager gear, Gear details and headings that open and close (0.3.129)
         ns.Queue.Clear()
     end)
 
-    it("has the Reports tabs Gold, Gear, Materials; Gear has Bands then History; an old Items view moves over", function()
+    it("has the Reports tabs Gold, Gear, Materials, Competition; Gear has Bands then History; an old Items view moves over", function()
         ns.db.windows.reports = { view = "items" }                           -- saved by 0.3.128: the Items tab
         ns.Reports.Show()
         assert.are.same({ "gear", "history" }, { ns.Reports.view, ns.Reports.gearTab })
         local names = {}
         for _, t in ipairs(ns.Reports.bars.tabs.items) do names[#names + 1] = t:GetText() end
-        assert.are.same({ "Gold", "Gear", "Materials" }, names)
+        assert.are.same({ "Gold", "Gear", "Materials", "Competition" }, names)
         names = {}
         for _, t in ipairs(ns.Reports.bars.gear.items) do names[#names + 1] = t:GetText() end
         assert.are.same({ "Bands", "History" }, names)

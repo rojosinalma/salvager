@@ -17,9 +17,9 @@ local BUTTONS = {
     { "Salvager", 74, function() ns.UI.Show() end, nil, "Opens the main window: at the auction house the Gear and "
         .. "Materials tabs with the scans; elsewhere what it can show (the lists of the last scan, your settings)." },
     { "Ledger", 64, function() ns.LedgerWindow.Toggle() end, "SalvagerLedgerFrame", "Opens or closes the ledger: "
-        .. "your purchases, sales, accuracy and odds." },
+        .. "your purchases, sales, competition, accuracy and odds." },
     { "Reports", 70, function() ns.Reports.Toggle() end, "SalvagerReportsFrame", "Opens or closes the reports: your "
-        .. "gold, the profit of your gear and your materials." },
+        .. "gold, the profit of your gear, your materials and your competitors." },
     { "Market", 64, function() ns.Market.Toggle() end, "SalvagerMarketFrame", "Opens or closes the market charts: "
         .. "the price of each material over time, from your scans." },
     { "Log", 48, function() ns.LogWindow.Toggle() end, "SalvagerLogFrame", "Opens or closes the log: what the addon "

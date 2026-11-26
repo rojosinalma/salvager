@@ -27,12 +27,14 @@ local RANGES = {
     { "all", "All time", nil },
 }
 Reports.MENU_SESSIONS = 15   -- past sessions in the Period menu (older ones: the Sessions part of All time)
-local ORDER = { "gold", "gear", "materials" }
-local TITLES = { gold = "Gold", gear = "Gear", materials = "Materials" }
+local ORDER = { "gold", "gear", "materials", "competition" }
+local TITLES = { gold = "Gold", gear = "Gear", materials = "Materials", competition = "Competition" }
 local HELP = {
     gold = "What the trading made and how much richer you are, checked against your gold; every change of your gold.",
     gear = "What the gear you bought and disenchanted made: by band, and piece by piece.",
     materials = "Each material: how many you got and sold, what they sold for and cost, and what is left.",
+    competition = "Who undercut your auctions in this period, what it cost you, and how you answered: per competitor "
+        .. "and per material. The Ledger's Sales, Competition subtab is the live list.",
 }
 -- The views before 0.3.129: the Gear tab ("profit") and the Items tab are the Gear view's two subtabs now.
 local OLD_VIEW = { profit = { "gear", "bands" }, items = { "gear", "history" } }
@@ -51,6 +53,12 @@ local function pct(part, whole)
 end
 local function note(text) return { cells = { GREY .. text .. "|r" } } end
 local function count(n) return (n < FEW and GREY or "") .. n .. (n < FEW and "|r" or "") end
+local function lostCol(c)   -- money lost: red with its "-" (UI.md Tables 7)
+    c = math.floor((c or 0) + 0.5)
+    return c > 0 and (RED .. "-" .. ns.MoneyColumn(c) .. "|r") or ns.MoneyColumn(0)
+end
+local function gapCol(g) return g and (RED .. "-" .. ns.MoneyColumn(math.floor(g + 0.5)) .. "|r") or "-" end
+local function gapPctCol(p) return p and string.format("%s-%.1f%%|r", RED, p) or "-" end
 
 local function sessions() return ns.db.sessions end
 
@@ -139,6 +147,32 @@ local COLUMNS = {
             .. "time the addon read your auctions)." } },
         { "Value", 80, "RIGHT", help = { "Value", "Held and listed units at what one unit is worth now: the price times "
             .. "its sell price ratio, after the cut, less the deposits lost per unit sold (as in the statement's stock)." } } },
+    -- Competition (SDD 109): the summary is a statement; then one table per competitor, one per material.
+    compNames = { { "Name", 140, help = { "Name", "The seller whose listing was under the price of one of your "
+            .. "auctions, as the auction house names them (Unknown seller: no name given). Click to open it: per "
+            .. "material." } },
+        { "Undercuts", 54, "RIGHT", help = { "Undercuts", "Price lines of theirs seen under one of your auctions in "
+            .. "this period: once per line, not again while the line stays the same." } },
+        { "Share", 44, "RIGHT", help = { "Share", "Their part of all undercuts in this period." } },
+        { "Materials", 120, help = { "Materials", "Which of your materials they undercut, the most often first." } },
+        { "Typical gap", 70, "RIGHT", help = { "Typical gap", "How far under your price each: the median, in coins." } },
+        { "Typical gap %", 50, "RIGHT", help = { "Typical gap %", "The same in percent of your price each." } },
+        { "Lowest price", 70, "RIGHT", help = { "Lowest price", "Their lowest price each seen under yours." } },
+        { "First seen", 76 }, { "Last seen", 76 },
+        { "Active hours", 70, help = { "Active hours", "The hours of the day they undercut you most (from that hour "
+            .. "to the next)." } },
+        { "Trend", 44, "RIGHT", help = { "Trend", "Undercuts against the period before, of the same length: green "
+            .. "when fewer (+ more, - fewer). \"-\" for All time." } },
+        { "Profit lost to them", 84, "RIGHT", help = { "Profit lost to them", "Cancel fees and deposits of your "
+            .. "undercut auctions you cancelled, the deposits of the reposts, and the lower price your reposted units "
+            .. "sold at against your first price. Split evenly when several were under you. The parts are in the "
+            .. "row's tooltip." } } },
+    compMats = { { "Material", 150 },
+        { "Undercuts", 54, "RIGHT" },
+        { "Competitors", 64, "RIGHT", help = { "Competitors", "How many sellers undercut you on it." } },
+        { "Main competitor", 110, help = { "Main competitor", "The one seen under you most often on it." } },
+        { "Typical gap", 70, "RIGHT", help = { "Typical gap", "How far under your price each: the median, in coins." } },
+        { "Typical gap %", 50, "RIGHT", help = { "Typical gap %", "The same in percent of your price each." } } },
     items = { { "Gear", 220 }, { "Disenchanted", 70, "RIGHT", help = { "Disenchanted", "Pieces of this gear you "
             .. "bought and disenchanted, with a known price. Grey: fewer than 20, too few to trust." } },
         { "Paid each", 70, "RIGHT" }, { "Sold value each", 80, "RIGHT" }, { "Profit", 80, "RIGHT" },
@@ -463,10 +497,182 @@ function Reports.ItemRows()
     return rows
 end
 
+------------------------------------------------------------------ competition (SDD 109)
+
+--- The material picked in the Material filter (nil = all).
+local function compMaterial() return tonumber(Reports.compMaterial) end
+
+local function hoursText(order)
+    local out = {}
+    for i = 1, math.min(2, #order) do out[#out + 1] = string.format("%02d h", order[i].h) end
+    return table.concat(out, ", ")
+end
+
+local function matNames(order)
+    local out = {}
+    for i, m in ipairs(order) do
+        if i > 3 then out[#out] = out[#out] .. ", ..." break end
+        out[#out + 1] = ns.MaterialName(m.id) or tostring(m.id)
+    end
+    return table.concat(out, ", ")
+end
+
+local function share(n, total)
+    if not total or total == 0 then return GREY .. "-|r" end
+    return math.floor(n / total * 100 + 0.5) .. "%"
+end
+
+--- The period before this one, of the same length (nil for All time).
+local function previous(from, to)
+    if not from then return nil end
+    local stop = to or time()
+    return from - (stop - from), from - 1
+end
+
+--- The summary, a statement (UI.md Statements): what the undercuts were, what they cost, what is at stake now, and
+--- how you answered.
+function Reports.CompetitionSummaryRows()
+    local from, name, to = Reports.From()
+    local state, id = ns.db.competition, compMaterial()
+    local list, total = ns.Competition.Competitors(state, from, to, id)
+    local mats = ns.Competition.Materials(state, from, to, id)
+    local lost = ns.Competition.Lost(state, from, to, id)
+    local answers = ns.Competition.Answers(state, from, to, id)
+    local live = {}
+    for _, r in ipairs(ns.db.listings.rows or {}) do
+        if not r.sold and (not id or r.itemID == id) then
+            live[#live + 1] = { auctionID = r.auctionID, id = r.itemID, qty = r.qty, each = r.each }
+        end
+    end
+    local stake, undercut, lowered = ns.Competition.AtStake(state, live, time())
+    local span = from and (when(from) .. " to " .. (to and when(to) or "now") .. " (" .. Reports.Length((to or time()) - from)
+        .. ")") or "every record kept"
+    local rows = {}
+    rows[1] = { cells = { "Undercuts of your auctions" .. (id and (", " .. (ns.MaterialName(id) or "")) or ""), "" },
+        bold = true, tip = { "Competition", "Who listed under the price of your auctions, what it cost you and how you "
+            .. "answered. Every material search counts: Check undercuts, the Post window, a material scan." } }
+    rows[2] = { cells = { GREY .. name .. ": " .. span .. "|r", "" } }
+    rows[#rows + 1] = GAP_ROW
+    rows[#rows + 1] = heading("Undercuts", { "Undercuts", "Price lines of others seen under one of your auctions: once "
+        .. "per line and owner, not again while the line stays the same." })
+    rows[#rows + 1] = line("Undercuts seen", tostring(total), { "Undercuts seen", "Every one in this period." })
+    rows[#rows + 1] = line("Competitors", tostring(#list), { "Competitors", "Sellers seen under you (Unknown seller "
+        .. "counts as one)." })
+    local top = mats[1]
+    rows[#rows + 1] = line("Material most undercut", top and string.format("%s (%d)", ns.MaterialName(top.key) or "?",
+        top.n) or "-", { "Material most undercut", "The material with the most undercuts, and how many." })
+    rows[#rows + 1] = GAP_ROW
+    rows[#rows + 1] = heading("Profit lost to competitors", { "Profit lost to competitors", "What their undercuts "
+        .. "cost you in this period, in three parts." })
+    rows[#rows + 1] = line("Cancel fees and deposits of undercut auctions you cancelled", flow(-lost.cancel), {
+        "Cancel fees and deposits", "Each cancel of an auction of yours while it was undercut: the fee and the deposit "
+            .. "the auction house kept." })
+    rows[#rows + 1] = line("Deposits of the reposts", flow(-lost.repost), { "Deposits of the reposts", "The deposit "
+        .. "of each post that replaced an undercut auction you cancelled (within an hour)." })
+    rows[#rows + 1] = line("Lower sale prices of reposted units", flow(-lost.price), { "Lower sale prices",
+        "Units that sold after you lowered your price because of an undercut: your first price minus the price they "
+            .. "sold at, times the units (first in, first out, along cancel and repost)." })
+    rows[#rows + 1] = totalLine("Profit lost to competitors", real(-lost.total), { "Profit lost to competitors",
+        "The sum of the three lines above. Units not sold yet are not in it: they are at stake (below)." }, true)
+    rows[#rows + 1] = GAP_ROW
+    rows[#rows + 1] = heading("At stake now (not sold yet)", { "At stake now", "Not lost yet: what your auctions on "
+        .. "the auction house now stand to lose to the listings under them." })
+    rows[#rows + 1] = line("Undercut auctions: your units × the gap", flow(-undercut), { "Undercut auctions",
+        "Your auctions with a cheaper listing of others in the last search of their material (30 minutes at most): "
+            .. "units times the gap to the cheapest." })
+    rows[#rows + 1] = line("Reposted units under their first price", flow(-lowered), { "Reposted units",
+        "Units you reposted lower after an undercut: units times your first price minus the price now." })
+    rows[#rows + 1] = totalLine("Gold at stake", real(-stake), { "Gold at stake", "The sum of the two lines above." })
+    rows[#rows + 1] = GAP_ROW
+    rows[#rows + 1] = heading("How you answered", { "How you answered", "What you did about the undercuts." })
+    rows[#rows + 1] = line("Undercut auctions you cancelled", tostring(answers.cancels), { "Cancelled",
+        "Cancels of your auctions while they were undercut." })
+    rows[#rows + 1] = line("Reposted after an undercut", string.format("%d of %d", answers.reposts, answers.cancels), {
+        "Reposted", "Posts that replaced an undercut auction you cancelled, of all such cancels." })
+    rows[#rows + 1] = line("Typical time from the undercut to the repost", answers.delay
+        and Reports.Length(answers.delay) or "-", { "Time to repost", "The median time from the first undercut seen "
+            .. "of the auction to the post that replaced it." })
+    return rows
+end
+
+--- One heading row per competitor (the most undercuts first) that opens to its materials; the totals last.
+function Reports.CompetitorRows()
+    local from, _, to = Reports.From()
+    local state, id = ns.db.competition, compMaterial()
+    local list, total = ns.Competition.Competitors(state, from, to, id)
+    if #list == 0 then
+        return { note("No undercut in this period. Check undercuts, the Post window's search and a material scan "
+            .. "record who lists under your price.") }
+    end
+    local lost = ns.Competition.Lost(state, from, to, id)
+    local pf, pt = previous(from, to)
+    local before = pf and ns.Competition.Counts(state, pf, pt, id)
+    local groups, rows = ns.GroupState("reports.competitors"), {}
+    for _, g in ipairs(list) do
+        local by = lost.by[g.key] or { total = 0, cancel = 0, repost = 0, price = 0, mats = {} }
+        local trend = GREY .. "-|r"
+        if before then
+            local d = g.n - (before[g.key] or 0)
+            trend = d == 0 and "0" or ((d < 0 and GREEN or RED) .. (d > 0 and "+" or "") .. d .. "|r")
+        end
+        local head = { group = true, cells = { g.key, tostring(g.n), share(g.n, total), matNames(g.matOrder),
+            gapCol(g.gap), gapPctCol(g.pct), money(g.lowest), when(g.first), when(g.last), hoursText(g.hourOrder), trend,
+            lostCol(by.total) },
+            tip = { g.key, "Profit lost to them: cancel fees and deposits " .. lostCol(by.cancel) .. ", deposits of the "
+                .. "reposts " .. lostCol(by.repost) .. ", lower sale prices " .. lostCol(by.price) .. ".",
+                string.format("Lowest price: %s each, on %s.", ns.Money(g.lowest), ns.MaterialName(g.lowestId) or "?"),
+                "Click: open or close, per material." } }
+        rows[#rows + 1] = head
+        if ns.HeadingToggle(head, groups, g.key, function() Reports.Refresh() end, true) then
+            for _, m in ipairs(g.matOrder) do
+                local x = g.byMat[m.id]
+                rows[#rows + 1] = { indent = INDENT, itemID = m.id, cells = { ns.MaterialName(m.id) or tostring(m.id),
+                    tostring(x.n), share(x.n, g.n), "", gapCol(x.gap), gapPctCol(x.pct), money(x.lowest), when(x.first),
+                    when(x.last), hoursText(x.hourOrder), "", lostCol(by.mats[m.id]) } }
+            end
+        end
+    end
+    rows[#rows + 1] = { rule = "total", bold = true, cells = { "Total", tostring(total), share(total, total), "", "", "",
+        "", "", "", "", "", lostCol(lost.total) } }
+    return rows
+end
+
+--- One heading row per material (the most undercut first) that opens to its competitors.
+function Reports.CompetitionMaterialRows()
+    local from, _, to = Reports.From()
+    local list = ns.Competition.Materials(ns.db.competition, from, to, compMaterial())
+    if #list == 0 then return { note("No undercut in this period.") } end
+    local groups, rows = ns.GroupState("reports.compMaterials"), {}
+    for _, g in ipairs(list) do
+        local main = g.nameOrder[1]
+        local head = { group = true, itemID = g.key, cells = { ns.MaterialName(g.key) or tostring(g.key), tostring(g.n),
+            tostring(#g.nameOrder), main and main.name or "-", gapCol(g.gap), gapPctCol(g.pct) } }
+        rows[#rows + 1] = head
+        if ns.HeadingToggle(head, groups, tostring(g.key), function() Reports.Refresh() end, true) then
+            for _, o in ipairs(g.nameOrder) do
+                local x = g.byName[o.name]
+                rows[#rows + 1] = { indent = INDENT, cells = { o.name, tostring(x.n), "", "", gapCol(x.gap), gapPctCol(x.pct) } }
+            end
+        end
+    end
+    return rows
+end
+
+--- The Material filter's choices: All, then every material seen undercut (by name).
+function Reports.MaterialOptions()
+    local out, seen = { { "all", "All" } }, {}
+    for _, e in ipairs(ns.db.competition.events or {}) do seen[e.id] = true end
+    for _, m in ipairs(ns.Data.MATERIALS) do
+        if seen[m.id] then out[#out + 1] = { tostring(m.id), m.name } end
+    end
+    return out
+end
+
 ------------------------------------------------------------------ window
 
 local f, list, filterRow, rangeDrop
 local tabs, filters, goldTabs, gearTabs = {}, {}, {}, {}
+local comp = {}   -- the Competition view: its Material filter (label, help, dropdown), titles and its three tables
 local GOLD_TABS = {
     { "statement", "Statement", "What the trading made and how much richer you are, then the check against your gold." },
     { "changes", "All gold changes", "Every change of your gold, newest first, with its kind." },
@@ -482,7 +688,10 @@ local bars = {}   -- tabs, gold and gear (the views' subtabs), filters
 
 --- Keeps the time and the subtabs with the window.
 function Reports.Save()
-    if f then f.saved.range, f.saved.goldTab, f.saved.gearTab = Reports.range, Reports.goldTab, Reports.gearTab end
+    if f then
+        f.saved.range, f.saved.goldTab, f.saved.gearTab = Reports.range, Reports.goldTab, Reports.gearTab
+        f.saved.compMaterial = Reports.compMaterial
+    end
 end
 local FILTERED = { gear = true }
 local MIN_W = 890   -- the smallest width: the filter row; wider where the table needs it   -- the views the filters apply to
@@ -491,6 +700,35 @@ local function show(l, cols, rows, setId)
     l:SetColumns(cols, setId)
     l:SetSource(#rows, function(i) return rows[i] end)
     l:Refresh()
+end
+
+--- The Competition view, from `top` down: the summary (a statement, as tall as its rows up to 45% of the room), then
+--- the table per competitor and the table per material, each with its title, sharing the rest (60/40).
+function Reports.LayoutCompetition(top)
+    local summary, names, mats = Reports.CompetitionSummaryRows(), Reports.CompetitorRows(), Reports.CompetitionMaterialRows()
+    local ROW, TITLE = 22, 20
+    local room = math.max(0, (tonumber((f:GetHeight())) or 0) - top - 14 - 2 * TITLE)
+    local hSum = math.max(2 * ROW, math.min(math.floor(room * 0.45), (#summary + 1) * ROW + 4))
+    local rest = math.max(4 * ROW, room - hSum - 6)
+    local hNames = math.floor(rest * 0.6)
+    comp.summary:ClearAllPoints()
+    comp.summary:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -top)
+    comp.summary:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -top)
+    comp.summary:SetHeight(hSum)
+    comp.namesTitle:ClearAllPoints()
+    comp.namesTitle:SetPoint("TOPLEFT", comp.summary, "BOTTOMLEFT", 2, -6)
+    comp.names:ClearAllPoints()
+    comp.names:SetPoint("TOPLEFT", comp.summary, "BOTTOMLEFT", 0, -6 - TITLE)
+    comp.names:SetPoint("TOPRIGHT", comp.summary, "BOTTOMRIGHT", 0, -6 - TITLE)
+    comp.names:SetHeight(hNames)
+    comp.matsTitle:ClearAllPoints()
+    comp.matsTitle:SetPoint("TOPLEFT", comp.names, "BOTTOMLEFT", 2, -4)
+    comp.mats:ClearAllPoints()
+    comp.mats:SetPoint("TOPLEFT", comp.names, "BOTTOMLEFT", 0, -4 - TITLE)
+    comp.mats:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
+    show(comp.summary, COLUMNS.statement, summary, "reports.compSummary")
+    show(comp.names, COLUMNS.compNames, names, "reports.compNames")
+    show(comp.mats, COLUMNS.compMats, mats, "reports.compMats")
 end
 
 function Reports.Refresh()
@@ -502,9 +740,14 @@ function Reports.Refresh()
     bars.gear:SetShown(gear)
     if gold or gear then top = top + W.BAR_H.subtabs + 4 end
     filterRow:Place(top, 12, 12)
+    local contentTop = top + W.BAR_H.filters + 4
     list:ClearAllPoints()
-    list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -(top + W.BAR_H.filters + 4))
+    list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -contentTop)
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
+    local competition = Reports.view == "competition"
+    list:SetShown(not competition)
+    for _, x in ipairs(comp.controls) do x:SetShown(competition) end
+    for _, x in ipairs(comp.parts) do x:SetShown(competition) end
     -- The Gear and Items views have their own filters after the period.
     local filtered = FILTERED[Reports.view] or false
     for _, x in ipairs(filters) do
@@ -526,11 +769,15 @@ function Reports.Refresh()
         else
             show(list, COLUMNS.profit, Reports.ProfitRows(), "reports.profit")
         end
+    elseif competition then
+        Reports.LayoutCompetition(contentTop)
     else
         show(list, COLUMNS.materials, Reports.MaterialRows(), "reports.materials")
     end
     -- As wide as the table's columns need, up to the screen (SDD 107).
-    if W.FitTables(f, MIN_W, { list }) then list:Refresh() end
+    local shown = competition and { comp.summary, comp.names, comp.mats } or { list }
+    if W.FitTables(f, MIN_W, shown) then for _, l in ipairs(shown) do l:Refresh() end end
+    if competition then comp.drop:Update() end
     for key, b in pairs(tabs) do b:SetSelected(key == Reports.view) end
     rangeDrop:SetOptions(Reports.PeriodOptions(), 190)
     rangeDrop:Update()
@@ -636,6 +883,31 @@ local function build()
             changed()
         end, "Disenchants with the Arcane Salvager's bonus, without it, or all.", "Salvager")
     add("Salvager", salvDrop, "Disenchants with the Arcane Salvager's bonus, without it, or all.")
+    -- The Competition view's filter after the period: one material, or all.
+    if f.saved.compMaterial then Reports.compMaterial = f.saved.compMaterial end
+    local MAT_HELP = "One material's undercuts, or all."
+    comp.drop = W.Dropdown(filterRow, 150, Reports.MaterialOptions(),
+        function(key) return key == (Reports.compMaterial or "all") end,
+        function(key)
+            Reports.compMaterial = key ~= "all" and key or nil
+            Reports.Save()
+            comp.drop:Close()
+            changed()
+        end, MAT_HELP, "Material",
+        function(names) return names[1] or "All" end)
+    -- (Its options follow the materials seen: filled again at each refresh.)
+    local oldUpdate = comp.drop.Update
+    function comp.drop.Update(self)
+        self:SetOptions(Reports.MaterialOptions(), 150)
+        oldUpdate(self)
+    end
+    -- (In the place of the Gear view's filters, right after the period: only one of them shows.)
+    local matLabel = W.Label(filterRow, "Material", "GameFontHighlightSmall")
+    matLabel:SetPoint("LEFT", rangeDrop, "RIGHT", 16, 0)
+    comp.drop:ClearAllPoints()
+    comp.drop:SetPoint("LEFT", matLabel, "RIGHT", 6, 0)
+    local matArea = W.HelpArea(filterRow, matLabel, "Material", MAT_HELP)
+    comp.controls = { matLabel, matArea, comp.drop }
     -- The Gold view's subtabs, on the row under the tabs (subtabs only).
     bars.gold = W.Bar(f, "subtabs"):Place(TABS_TOP + W.BAR_H.tabs + 4, 12, 12)
     for _, t in ipairs(GOLD_TABS) do
@@ -663,6 +935,20 @@ local function build()
     Reports.bars, Reports.tabs, Reports.gearTabs = bars, tabs, gearTabs   -- (the specs read them)
     list = W.List(f, { rowHeight = 22 })
     Reports.list = list
+    -- The Competition view's three tables (UI.md Tables 3: one inset per section), the last two with a title.
+    comp.summary = W.List(f, { rowHeight = 22 })
+    comp.namesTitle = W.Label(f, GOLD .. "Per competitor|r" .. GREY .. "  the most undercuts first; click one for its "
+        .. "materials|r", "GameFontNormal")
+    comp.names = W.List(f, { rowHeight = 22 })
+    comp.matsTitle = W.Label(f, GOLD .. "Per material|r" .. GREY .. "  the most undercut first; click one for its "
+        .. "competitors|r", "GameFontNormal")
+    comp.mats = W.List(f, { rowHeight = 22 })
+    comp.parts = { comp.summary, comp.namesTitle, comp.names, comp.matsTitle, comp.mats }
+    Reports.comp = comp   -- (the specs read it)
+    for _, l in ipairs({ comp.summary, comp.names, comp.mats }) do
+        l.onColumnsChanged = function() Reports.Refresh() end
+        l:Hide()
+    end
     f.onResize = Reports.Refresh
     f:HookScript("OnShow", Reports.Refresh)
 end
@@ -685,6 +971,7 @@ function Reports.Restore()
     f:Show()
 end
 
-for _, e in ipairs({ "SALVAGER_LEDGER", "SALVAGER_PRICES_DONE", "SALVAGER_SETTINGS", "SALVAGER_GOLD" }) do
+for _, e in ipairs({ "SALVAGER_LEDGER", "SALVAGER_PRICES_DONE", "SALVAGER_SETTINGS", "SALVAGER_GOLD",
+    "SALVAGER_COMPETITION", "SALVAGER_LISTINGS" }) do
     ns.On(e, function() Reports.Refresh() end)
 end

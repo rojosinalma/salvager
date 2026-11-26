@@ -50,6 +50,9 @@ local function store(itemID)
         if r then listed = listed + math.max(0, (r.quantity or 0) - (r.numOwnerItems or 0)) end
     end
     ns.History.Add(ns.db.history, itemID, time(), e and e.p, e and e.lo, listed)
+    -- Who lists under your auctions of it (every material search comes here: SDD 109).
+    local ok, err = pcall(ns.Listings.Observe, itemID)
+    if not ok then ns.Log("ERROR reading the sellers of %s: %s", ns.MaterialName(itemID), tostring(err)) end
     if e then
         e.t, e.cap = time(), cap
         ns.db.prices[itemID] = e

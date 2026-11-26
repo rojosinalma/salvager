@@ -190,7 +190,8 @@ local function pump()
     -- Buying first: while a purchase is on its way, waits or is offered, Buy was clicked a moment ago, or the mouse is
     -- where Buy is clicked, searches wait. Not the search a Buy click waits for (SDD 105).
     if ns.Scanner and ns.Scanner.Buying() and not Queue.items[1].forBuy then return end
-    if ns.Listings and ns.Listings.Cancelling() then return end
+    -- (Not the read of your auctions: it is how a cancel is known, SDD 77a; it waited for the cancel's 8 s before.)
+    if ns.Listings and ns.Listings.Cancelling() and not Queue.items[1].owned then return end
     if not ready() then return end
     Queue.current = table.remove(Queue.items, 1)
     local ok, err = pcall(send, Queue.current)
