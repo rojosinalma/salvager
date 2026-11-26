@@ -38,7 +38,7 @@ function Market.Rows()
         end
     end
     if #rows == 0 then
-        rows[1] = { cells = { GREY .. "No price history yet: scan the materials.|r", "", "" } }
+        rows[1] = { cells = { GREY .. "The addon has not seen a material price yet.|r", "", "" } }
     end
     return rows
 end
@@ -58,7 +58,7 @@ function Market.ChartData(matID)
         lines = { { points = lowest, color = { 0.6, 0.6, 0.6 }, label = "Lowest listing" },
             { points = price, color = { 1, 0.82, 0 }, label = "Price" } },
         levels = {}, bars = { points = units, label = "Units listed" },
-        empty = "No scans of this material in this time. Scan the materials, or pick a longer time.",
+        empty = "No price seen for this material in this time. Pick a longer time.",
     }
     -- One scan only: give the chart some width.
     if data.from and data.to - data.from < 600 then data.from = data.to - 600 end
@@ -79,7 +79,7 @@ function Market.Facts(points)
         end
     end
     local pct = math.floor(change * 100 + 0.5)
-    return string.format("%sNow|r %s    %sFrom|r %s (%s%d%%|r)    %sLowest|r %s    %sHighest|r %s    %sScans|r %d", GOLD,
+    return string.format("%sNow|r %s    %sFrom|r %s (%s%d%%|r)    %sLowest|r %s    %sHighest|r %s    %sPoints|r %d", GOLD,
         ns.Money(last), GOLD, ns.Money(first), pct > 0 and (GREEN .. "+") or pct < 0 and RED or GREY, pct, GOLD,
         ns.Money(lo), GOLD, ns.Money(hi), GOLD, #points)
 end
@@ -113,7 +113,7 @@ function Market.Refresh()
     else
         title:SetText("")
         facts:SetText("")
-        chart:SetData({ empty = "No price history yet. Every material scan adds a point: the charts fill as you play." })
+        chart:SetData({ empty = "The addon has not seen a material price yet." })
     end
     chart:Refresh()
 end

@@ -117,6 +117,55 @@ function Prices.Refresh(itemID, done)
     }, true)
 end
 
+--- Fills the price history from what the addon already knows from before it kept one: the price of each
+--- material at its last scan, the prices written in the log, the material prices at each disenchant, and
+--- the prices of your own posts (1 copper under the lowest listing of that moment). Runs once.
+--- @return number  observations found
+function Prices.SeedHistory()
+    local db = ns.db
+    if db.historySeeded then return 0 end
+    db.historySeeded = true
+    local points = {}
+    local function add(id, t, p, lo, n)
+        if Data.MATERIAL_BY_ID[id] and t and p and p > 0 then
+            points[#points + 1] = { id = id, t = t, p = math.floor(p + 0.5), lo = lo, n = n }
+        end
+    end
+    for id, e in pairs(db.prices) do add(id, e.t, e.p, e.lo) end
+    -- The log has the time of day only, newest last: walk back from now and step a day at each wrap.
+    local at = date("*t", time())
+    local limit = time()
+    for i = #db.log, 1, -1 do
+        local h, m, sec, id, money = db.log[i]:match("^(%d%d):(%d%d):(%d%d) price .- %((%d+)%): (.-) over %d+ units")
+        local hh, mm, ss = db.log[i]:match("^(%d%d):(%d%d):(%d%d) ")
+        if hh then
+            at.hour, at.min, at.sec = tonumber(hh), tonumber(mm), tonumber(ss)
+            local t = time(at)
+            while t > limit + 60 do
+                t = t - 86400
+                at = date("*t", t)
+            end
+            limit = t
+            if h and sec and m then add(tonumber(id), t, ns.Util.ParseMoney(money)) end
+        end
+    end
+    local keep = 1 - ns.Cut()
+    for _, r in ipairs(db.ledger.disenchants) do
+        for id, qty in pairs(r.got or {}) do
+            local v = r.vals and r.vals[id]
+            if v and qty > 0 then add(id, r.t, v / qty / keep) end
+        end
+    end
+    for _, post in ipairs(db.posted or {}) do add(post.itemID, post.t, post.each + 1, post.each + 1) end
+    ns.History.Merge(db.history, points)
+    ns.Log("price history: filled with %d earlier observations", #points)
+    return #points
+end
+ns.On("SALVAGER_READY", function()
+    local ok, err = pcall(Prices.SeedHistory)
+    if not ok then ns.Log("ERROR filling the price history: %s", tostring(err)) end
+end)
+
 --- Age in seconds of the oldest material price; math.huge when a material was never scanned.
 function Prices.OldestAge()
     local oldest = 0

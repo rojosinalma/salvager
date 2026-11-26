@@ -28,6 +28,30 @@ function History.Add(state, matID, t, p, lo, n)
     while #list > History.MAX_POINTS do table.remove(list, 1) end
 end
 
+--- Puts older observations into the history: { { id, t, p, lo, n }, ... } in any order. They are merged
+--- with the points already there, in time order.
+--- @return number  points given
+function History.Merge(state, points)
+    local byMat = {}
+    for _, pt in ipairs(points) do
+        if pt.id and pt.t and pt.p then
+            local list = byMat[pt.id]
+            if not list then
+                list = {}
+                for _, old in ipairs(state[pt.id] or {}) do list[#list + 1] = old end
+                byMat[pt.id] = list
+            end
+            list[#list + 1] = { t = pt.t, p = pt.p, lo = pt.lo, n = pt.n }
+        end
+    end
+    for id, list in pairs(byMat) do
+        table.sort(list, function(a, b) return a.t < b.t end)
+        state[id] = {}
+        for _, pt in ipairs(list) do History.Add(state, id, pt.t, pt.p, pt.lo, pt.n) end
+    end
+    return #points
+end
+
 --- The points of a material from `since` on (all when nil).
 function History.Points(state, matID, since)
     local out = {}

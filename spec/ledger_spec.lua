@@ -205,6 +205,11 @@ describe("Ledger", function()
         assert.are.equal(451, last)
         assert.are.equal(0.1, change)
         assert.is_nil(History.Change({}))
+        -- Older observations are merged in, in time order.
+        History.Merge(h, { { id = 5, t = 200, p = 380 }, { id = 5, t = 2600, p = 470 }, { id = 7, t = 50, p = 9 } })
+        assert.are.equal(380, h[5][1].p)
+        assert.are.equal(5, #h[5])                               -- 2600 and 3000 share a slot
+        assert.are.equal(1, #h[7])
         for i = 1, History.MAX_POINTS + 20 do History.Add(h, 6, i * 1000, i, i, 1) end
         assert.are.equal(History.MAX_POINTS, #h[6])
         assert.are.equal(21, h[6][1].p)                             -- the oldest went
