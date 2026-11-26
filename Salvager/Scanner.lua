@@ -50,9 +50,15 @@ local function readAuctions(task)
     local outcomes = ns.Model.Outcomes(task.quality, task.classID, task.ilvl)
     local s = ns.db.settings
     local odds = { salvager = ns.SalvagerForBuy(), salvagerChance = s.salvagerChance, cut = s.cut }
+    local wrong = 0
     for i = 1, n do
         local r = AH.GetItemSearchResultInfo(key, i)
-        if r and r.buyoutAmount and r.buyoutAmount > 0 and not r.containsOwnerItem and r.buyoutAmount <= maxBuy then
+        -- The auction's own link has the last word on the quality: an item valued as another quality is
+        -- never listed.
+        local real = r and r.itemLink and ns.QualityOf(r.itemLink)
+        if real and real ~= task.quality then
+            wrong = wrong + 1
+        elseif r and r.buyoutAmount and r.buyoutAmount > 0 and not r.containsOwnerItem and r.buyoutAmount <= maxBuy then
             Scanner.deals[#Scanner.deals + 1] = {
                 auctionID = r.auctionID, itemKey = key, keyString = task.keyString,
                 link = r.itemLink, itemID = key.itemID, ilvl = task.ilvl, quality = task.quality, classID = task.classID,
@@ -60,6 +66,10 @@ local function readAuctions(task)
                 lose = outcomes and ns.Model.LossChance(outcomes, ns.PriceOf, odds, r.buyoutAmount) or nil,
             }
         end
+    end
+    if wrong > 0 then
+        ns.Log("item %s left out: it is not %s, it was valued with the wrong quality", task.keyString,
+            ns.QUALITY_NAME[task.quality] or tostring(task.quality))
     end
     ns.Log("checked item %s: %d auctions, %d under %s", task.keyString, n, #Scanner.deals - before, ns.Money(maxBuy))
     sortDeals()
@@ -147,6 +157,10 @@ local function judge(r, pass, sum)
     -- Cheapest test first: above the highest limit of this quality and type, it can't be a deal.
     if price > pass.top then sum.overLimit = sum.overLimit + 1 return end
     if ns.NoDisenchant(key.itemID) then sum.noDisenchant = sum.noDisenchant + 1 return end
+    -- The item's own quality decides, not the browse it came in. A page of another browse can arrive in
+    -- this pass (measured 2026-11-26: uncommon items came during the rare pass and were valued as rare).
+    local quality = ns.QualityOf(key.itemID)
+    if quality and quality ~= pass.quality then sum.wrongQuality = sum.wrongQuality + 1 return end
     local ilvl, source = ns.Items.Level(key)
     if not ilvl then sum.learning = sum.learning + 1 return end
     if not ns.LevelAllowed(ilvl) then sum.levelOut = sum.levelOut + 1 return end
@@ -194,6 +208,9 @@ local function queueChecks()
         ns.Log("closest: item %d ilvl %s at %s, buy limit %s, value %s, margin %s", sum.best.itemID,
             tostring(sum.best.ilvl), ns.Money(sum.best.price), ns.Money(sum.best.limit), ns.Money(sum.best.value),
             ns.Money(sum.best.margin))
+    end
+    if sum.wrongQuality > 0 then
+        ns.Log("gear scan: %d items left out, they came in the browse of another quality", sum.wrongQuality)
     end
     if sum.levelDiffers > 0 then
         ns.Log("item levels: %d listings differ from the game's data (%s)", sum.levelDiffers, sum.levelExample)
@@ -374,7 +391,7 @@ function Scanner.Scan(clear)
     scan = {
         seq = Scanner.browseSeq, passes = passes, index = 0, candidates = {}, seen = {}, startedAt = GetTime(),
         sum = { browsed = 0, overLimit = 0, noDisenchant = 0, learning = 0, noValue = 0, noPrice = 0, candidates = 0,
-            levelDiffers = 0, levelOut = 0, best = nil },
+            levelDiffers = 0, levelOut = 0, wrongQuality = 0, best = nil },
     }
     Scanner.browsed = 0
     if clear then Scanner.ClearDeals() end

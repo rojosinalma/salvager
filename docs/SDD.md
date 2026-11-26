@@ -227,6 +227,10 @@ flipping is out of scope for now.
     times. `PlaceBid` is documented as restricted, so the game may refuse a purchase that is not from a click:
     on `ADDON_ACTION_BLOCKED`/`FORBIDDEN` for Salvager, `SalvagerDB.buyResendBlocked` is set, resends stop for
     good, and a dropped purchase frees its row instead. Not yet measured in the game.
+66. **An item's own quality decides its value, not the browse it came in.** Measured 2026-11-26 03:15: the
+    uncommon browse stalled, the rare pass started, and late uncommon pages were judged as rare (an uncommon
+    headband valued at one Large Radiant Shard, 2g 23s instead of 72s). `judge` drops an item whose known
+    quality differs from the pass; `readAuctions` drops an auction whose link has another quality.
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

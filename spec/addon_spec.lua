@@ -595,6 +595,26 @@ describe("Salvager scan safety", function()
         ns.db.settings.priceRescan = 0
     end)
 
+    it("never values an item with the quality of another browse", function()
+        ns.Scanner.Stop()
+        local q = ns.db.settings.qualities
+        local was = q[3]
+        q[3] = true                                                -- the uncommon pass, then the rare pass
+        ns.db.prices[11084] = { p = 433, t = 0 }
+        for _, band in ipairs(ns.Data.BLUE) do ns.db.prices[band.shard] = ns.db.prices[band.shard] or { p = 90000, t = 0, test = true } end
+        env.ah.fullBrowse = true
+        env.ah.browse = { row(1) }                                 -- the uncommon boots
+        ns.Scanner.Scan()
+        wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")       -- the uncommon pass reads them
+        wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_ADDED", { row(1) })   -- a late page of it, now in the rare pass
+        local sum = ns.Scanner.summary
+        ns.Scanner.Stop()
+        q[3] = was
+        for id, e in pairs(ns.db.prices) do if e.test then ns.db.prices[id] = nil end end
+        assert.are.equal(1, sum.wrongQuality)                      -- not valued as a rare item
+        assert.are.equal(1, sum.candidates)                        -- only as what it is
+    end)
+
     it("only lists item levels inside the ticked bands and the custom range", function()
         local s = ns.db.settings
         assert.is_true(ns.LevelAllowed(28))

@@ -19,25 +19,26 @@ local COLUMNS = {
     accBands = { { "Band", 170 }, { "Items", 44, "CENTER", help = { "Items", "How many disenchants with a recorded "
             .. "purchase are in the row. Grey = fewer than 20: too few to judge, one lucky shard moves it a lot." } },
         { "Paid", 70, "RIGHT" },
-        { "Promised", 70, "RIGHT", help = { "Promised", "The Value the Deals list showed when you bought: what the "
-            .. "disenchants were worth on average, at the prices of that moment, after the cut." } },
-        { "Got", 70, "RIGHT", help = { "Got", "What the materials were worth when you disenchanted, after the cut." } },
-        { "Diff", 46, "RIGHT", help = { "Got against Promised", "How far Got is from Promised. The gap is drop luck, "
-            .. "or odds that are not what the addon thinks." } },
-        { "Sold for", 70, "RIGHT", help = { "Sold for", "The same materials at the average price each one really sold "
-            .. "for, after the cut. Materials you have not sold yet count at their price at the disenchant." } },
-        { "Diff", 46, "RIGHT", help = { "Sold for against Got", "How far Sold for is from Got. The gap is prices that "
-            .. "moved, and undercutting. * = more than half of the row's materials are not sold yet, so most of it "
-            .. "is still the price at the disenchant." } },
-        { "Plan", 70, "RIGHT", help = { "Plan", "The profit the Deals list promised: Promised minus Paid." } },
-        { "Real", 70, "RIGHT", help = { "Real", "The profit as it went: Sold for minus Paid." } } },
+        { "Expected value", 70, "RIGHT", help = { "Expected value", "The Value the Deals list showed when you bought: "
+            .. "the average disenchant value at the material prices of that moment, after the auction house cut." } },
+        { "Disenchant value", 70, "RIGHT", help = { "Disenchant value", "The market value of the materials you got, "
+            .. "at the prices of the moment you disenchanted, after the auction house cut." } },
+        { "Diff", 46, "RIGHT", help = { "Disenchant value against Expected value", "How far the disenchant value is "
+            .. "from the expected value. The gap is drop luck, or drop rates that are not what the addon assumes." } },
+        { "Sold value", 70, "RIGHT", help = { "Sold value", "The same materials at the average price each one really "
+            .. "sold for, after the auction house cut. Materials you have not sold yet count at their disenchant value." } },
+        { "Diff", 46, "RIGHT", help = { "Sold value against Disenchant value", "How far the sold value is from the "
+            .. "disenchant value. The gap is prices that moved, and undercutting. * = more than half of the row's "
+            .. "materials are not sold yet, so most of it is still the disenchant value." } },
+        { "Expected profit", 70, "RIGHT", help = { "Expected profit", "Expected value minus Paid." } },
+        { "Actual profit", 70, "RIGHT", help = { "Actual profit", "Sold value minus Paid." } } },
     accMats = { { "Material", 170 }, { "Units", 44, "CENTER" },
-        { "Valued each", 80, "RIGHT", help = { "Valued each", "The average price of one unit when you disenchanted, "
-            .. "after the cut. This is what the Got column counts with." } },
-        { "Sold each", 80, "RIGHT", help = { "Sold each", "The average of what one unit really brought in your sales, "
-            .. "after the cut." } },
-        { "Difference", 80, "RIGHT", help = { "Difference", "Sold each minus Valued each." } },
-        { "Diff", 46, "RIGHT", help = { "Difference in percent", "The same difference as a share of Valued each." } },
+        { "Disenchant value each", 80, "RIGHT", help = { "Disenchant value each", "The average market price of one "
+            .. "unit at the moment you disenchanted, after the auction house cut." } },
+        { "Sold value each", 80, "RIGHT", help = { "Sold value each", "The average of what one unit really brought "
+            .. "in your sales, after the auction house cut." } },
+        { "Difference", 80, "RIGHT", help = { "Difference", "Sold value each minus Disenchant value each." } },
+        { "Diff", 46, "RIGHT", help = { "Difference in percent", "The same difference as a share of the disenchant value." } },
         { "Units sold", 70, "CENTER" } },
     -- The Sales view is two tables: your auctions, and the sales already paid.
     listed = { { "Material", 150 }, { "Status", 110 },
@@ -575,8 +576,8 @@ function Window.Refresh()
         salesParts[2]:SetHeight(math.max(TABLE_MIN, math.min(room - TABLE_MIN, math.floor(room * share_))))
     end
     if accuracy then
-        salesParts[1]:SetText(GOLD .. "By band|r" .. GREY .. "  promised when bought, got at the disenchant, sold for|r")
-        salesParts[3]:SetText(GOLD .. "By material|r" .. GREY .. "  its price at the disenchant against your real sales|r")
+        salesParts[1]:SetText(GOLD .. "By band|r" .. GREY .. "  expected value, disenchant value, sold value|r")
+        salesParts[3]:SetText(GOLD .. "By material|r" .. GREY .. "  disenchant value against sold value, per unit|r")
         local bands, mats = Window.AccuracyBandRows(), Window.AccuracyMaterialRows()
         salesParts[2]:SetColumns(COLUMNS.accBands)
         salesParts[2]:SetSource(#bands, function(i) return bands[i] end)
@@ -659,8 +660,8 @@ local function build()
         tabs[t[1]] = b
         x = x + (t[1] == "odds" and 116 or 92)   -- (the Odds tab has its pop-out button after it)
     end
-    W.Tooltip(tabs.accuracy, "Accuracy", "How well the Deals list's promise held: what it promised when you bought, "
-        .. "what the materials were worth at the disenchant, and what they really sold for. By band and by material.")
+    W.Tooltip(tabs.accuracy, "Accuracy", "Expected value when you bought, against the disenchant value of what you got, "
+        .. "against the sold value. By band and by material.")
     W.Tooltip(tabs.purchases, "Purchases", "Every item you bought, newest first. Under each one: what it was disenchanted "
         .. "into, the part of its price given to each material, and what each was worth then.")
     W.Tooltip(tabs.sales, "Sales", "Your open auctions, and what is sold with its money still to collect. The History "
