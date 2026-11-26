@@ -41,7 +41,7 @@ local COLUMNS = {
             .. "got, at the prices of the moment you disenchanted, after the auction house cut." } },
         { "DV/EV %", 46, "RIGHT", help = { "DV/EV %",
             "The difference between Disenchant value (DV) and Expected value (EV), in percent of the Expected value. The "
-            .. "gap comes from luck in the results, or from drop rates that are not what the addon assumes." } },
+            .. "gap comes from luck in the results, or from result rates that are not what the addon assumes." } },
         { "Sold value (SV)", 70, "RIGHT", help = { "Sold value (SV)", "The same materials at the average price each one "
             .. "really sold for, after the auction house cut. Materials you have not sold yet count at their disenchant "
             .. "value." } },
@@ -695,13 +695,13 @@ end
 -- The Odds view shows each band as a table of its own.
 local ODDS_COLUMNS = {
     { "Material", 150 },
-    { "Drops", 50, "CENTER", help = { "Drops", "How many of your own disenchants in this band gave this material." } },
-    { "Drop rate", 64, "CENTER", help = { "Drop rate", "How often this material comes from one disenchant in this "
+    { "Results", 56, "CENTER", help = { "Results", "How many of your own disenchants in this band gave this material." } },
+    { "Result rate", 70, "CENTER", help = { "Result rate", "How often this material comes from one disenchant in this "
         .. "band, by the table the addon uses (Classic's table; not confirmed for Forever)." } },
-    { "Quantity", 60, "CENTER", help = { "Quantity", "How many come when it drops, by the same table." } },
-    { "Your drop rate", 84, "CENTER", help = { "Your drop rate", "How often it came in your own disenchants in "
+    { "Quantity", 60, "CENTER", help = { "Quantity", "How many come when a disenchant gives it, by the same table." } },
+    { "Your result rate", 96, "CENTER", help = { "Your result rate", "How often it came in your own disenchants in "
         .. "this band." } },
-    { "Your quantity", 84, "CENTER", help = { "Your quantity", "How many came on average when it dropped for you." } },
+    { "Your quantity", 84, "CENTER", help = { "Your quantity", "How many came on average when a disenchant of yours gave it." } },
     { "Price now", 90, "RIGHT", help = { "Price now", "What one of this material costs on the auction house now, "
         .. "from your last material scan. Value now is worked out from these prices." } },
 }

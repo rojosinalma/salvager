@@ -710,7 +710,7 @@ local function build()
     stopButton = W.IconButton(f, 24, function() ns.Scanner.Stop() end)
     stopButton:SetPoint("LEFT", playButton, "RIGHT", 4, 0)
     stopButton:SetStopGlyph()
-    W.Tooltip(stopButton, "Stop", "Ends auto scanning and drops the scan that is running. Deals found so far stay in the list.")
+    W.Tooltip(stopButton, "Stop", "Ends auto scanning and cancels the scan that is running. Deals found so far stay in the list.")
     spinner = W.Spinner(f, 22)   -- (placed at the bottom, with the status, under the list)
 
     local options = W.IconButton(f, 22, function() ns.Options.Open() end)

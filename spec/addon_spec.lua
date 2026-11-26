@@ -224,7 +224,7 @@ describe("Salvager in a simulated client", function()
         assert.are.equal(11083, dust.itemID)
         assert.is_truthy(dust.cells[3]:find("75%", 1, true))       -- expected
         assert.are.equal("1-2", dust.cells[4])                     -- one value per cell: the quantity apart
-        assert.is_truthy(dust.cells[5]:find("100%", 1, true))      -- your drop rate
+        assert.is_truthy(dust.cells[5]:find("100%", 1, true))      -- your result rate
         -- The band row: its buy limit and the chance one disenchant is worth less than it.
         local v = ns.Model.Value(ns.Model.Outcomes(2, ns.Data.CLASS_ARMOR, 30), ns.PriceOf,
             { cut = ns.db.settings.cut })
