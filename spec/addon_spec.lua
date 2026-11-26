@@ -1365,6 +1365,8 @@ describe("Salvager listings", function()
         assert.are.equal(500, ns.History.At(ns.db.history, DUST, time() - 100))
         -- Sorting by a column, and every time range.
         ns.Market.view = "material"
+        local byChange = ns.Market.Rows()                          -- with no click: by change, the biggest rise first
+        assert.is_true(byChange[1].sort[3] >= byChange[#byChange].sort[3])
         ns.Market.sort.material = { col = 2, desc = true }
         local sorted = ns.Market.Rows()
         assert.is_true(sorted[1].sort[2] >= sorted[#sorted].sort[2])

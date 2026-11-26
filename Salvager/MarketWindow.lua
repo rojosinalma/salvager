@@ -310,6 +310,14 @@ local VIEWS = { material = Material, value = Value, profit = Profit, essence = E
 local ORDER = { "material", "value", "profit", "essence", "hour" }
 Market.VIEWS = VIEWS
 
+-- Each list starts sorted by its change column, the biggest rise first. (Profit keeps its days in order.)
+local DEFAULT_SORT = { material = 3, value = 3, hour = 3, essence = 4 }
+local function sortOf(view)
+    local sort = Market.sort[view]
+    if sort then return sort end
+    return DEFAULT_SORT[view] and { col = DEFAULT_SORT[view], desc = true } or nil
+end
+
 function Market.Select(key)
     Market.pick[Market.view] = key
     if f then
@@ -324,7 +332,7 @@ function Market.Rows()
     local view = VIEWS[Market.view]
     local rows = view.Rows()
     -- Sorted by the column whose title was clicked; without one, in the view's own order.
-    local sort = Market.sort[Market.view]
+    local sort = sortOf(Market.view)
     if sort then
         for i, row in ipairs(rows) do row.index = i end
         table.sort(rows, function(a, b)
@@ -359,7 +367,7 @@ function Market.Refresh()
     local view = VIEWS[Market.view]
     local rows, picked = Market.Rows()
     -- The sorted column shows an arrow in its title.
-    local sort, cols = Market.sort[Market.view], {}
+    local sort, cols = sortOf(Market.view), {}
     for i, col in ipairs(view.columns) do
         cols[i] = { col[1], col[2], col[3], help = col.help }
         if sort and sort.col == i then
@@ -428,15 +436,13 @@ local function build()
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -60)
     list:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 12, 14)
     list:SetWidth(370)
-    -- A click on a column title sorts by it; a second click turns the order around; a third one ends it.
+    -- A click on a column title sorts by it; a second click turns the order around.
     list.onSort = function(col)
-        local sort = Market.sort[Market.view]
+        local sort = sortOf(Market.view)
         if not sort or sort.col ~= col then
             Market.sort[Market.view] = { col = col, desc = col > 1 }   -- numbers start with the highest
-        elseif sort.desc == (col > 1) then
-            sort.desc = not sort.desc
         else
-            Market.sort[Market.view] = nil
+            Market.sort[Market.view] = { col = col, desc = not sort.desc }
         end
         f.saved.sort = Market.sort
         Market.Refresh()
