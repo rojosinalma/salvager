@@ -375,16 +375,18 @@ function Window.NotPickedUpRows()
     return rows
 end
 
---- The bag space for gear, and a warning in words when what waits in the mail does not fit.
+local BAG_ICON = "|TInterface\\Buttons\\Button-Backpack-Up:16:16:0:0|t"
+local ALERT_ICON = "|TInterface\\DialogFrame\\UI-Dialog-Icon-AlertNew:14:14:0:0|t"
+
+--- The bag space for gear: bag icon, free/total. When what waits in the mail does not fit, the numbers are
+--- red with the alert sign after them (the sign, not the color alone, says it).
 function Window.BagText()
     local free, total = ns.Items.BagSpace()
     local waiting = Window.NotPickedUpTotal()
-    local text = string.format("%sBag space|r %d free of %d", GOLD, free, total)
     if waiting > free then
-        text = text .. string.format("  %snot enough for the %d %s in the mail|r", RED, waiting,
-            waiting == 1 and "item" or "items")
+        return string.format("%s %s%d/%d|r %s", BAG_ICON, RED, free, total, ALERT_ICON)
     end
-    return text
+    return string.format("%s %d/%d", BAG_ICON, free, total)
 end
 
 --- A countdown: "44:05", or "23:10:42" from one hour up.
@@ -1129,8 +1131,9 @@ local function build()
     bagLabel = W.Label(f, "", "GameFontHighlightSmall")
     bagLabel:SetPoint("RIGHT", f, "TOPRIGHT", -14, -109)
     bagLabel:SetJustifyH("RIGHT")
-    bagArea = W.HelpArea(f, bagLabel, "Bag space", "Free slots in your backpack and bags, of all their slots, now. "
-        .. "Profession bags are left out: they do not hold gear. \"Not enough\" = the items in the mail do not fit.")
+    bagArea = W.HelpArea(f, bagLabel, "Bag space", "Free slots / all slots of your backpack and bags, now. "
+        .. "Profession bags are left out: they do not hold gear. Red with the alert sign: the items in the mail do "
+        .. "not fit.")
     bagLabel:Hide()
     bagArea:Hide()
     Window.purchaseTabs, Window.bagLabel = purchaseTabs, bagLabel   -- (the specs click and read them)

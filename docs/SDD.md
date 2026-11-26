@@ -428,7 +428,8 @@ flipping is out of scope for now.
     when they are taken. No arrival countdown: the delay of a buyer's mail on Forever is not measured. On
     the subtab row, at the right, for both subtabs: bag space, free of total slots of the backpack and the
     bags of family 0 (`Items.BagSpace`, `C_Container.GetContainerNumFreeSlots`; profession bags left out),
-    live on `BAG_UPDATE_DELAYED`; red with "not enough for the n items in the mail" when fewer are free.
+    live on `BAG_UPDATE_DELAYED`. Shown as a bag icon and free/total, no words (0.3.109, the user); red with
+    the alert sign after it when fewer are free than items in the mail.
 
 ## Data
 

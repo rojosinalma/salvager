@@ -82,7 +82,7 @@ describe("Salvager in a simulated client", function()
         W.Refresh()
         assert.is_true(W.purchaseTabs.all:IsShown())          -- the main subtab first, and shown
         assert.are.equal("Not picked up (1)", W.purchaseTabs.mail:GetText())
-        assert.is_truthy(W.bagLabel:GetText():find("4 free of 4", 1, true))   -- the stand-in's backpack
+        assert.is_truthy(W.bagLabel:GetText():find(" 4/4", 1, true))   -- the stand-in's backpack
         W.purchaseTabs.mail:Click()
         assert.are.equal("mail", W.PurchaseTab())
         local rows = W.NotPickedUpRows()
@@ -98,12 +98,12 @@ describe("Salvager in a simulated client", function()
         env.bagSize, env.bagFree, env.bagFamily = { [0] = 16, [1] = 10, [2] = 12 }, { [0] = 0, [1] = 0, [2] = 5 },
             { [2] = 8 }
         wow.fire(ns, "BAG_UPDATE_DELAYED")
-        assert.is_truthy(W.bagLabel:GetText():find("0 free of 26", 1, true))
-        assert.is_truthy(W.bagLabel:GetText():find("not enough for the 1 item in the mail", 1, true))
+        assert.is_truthy(W.bagLabel:GetText():find("0/26", 1, true))
+        assert.is_truthy(W.bagLabel:GetText():find("AlertNew", 1, true))
         env.bagFree[1] = 3                                    -- room made: the label follows the bag event
         wow.fire(ns, "BAG_UPDATE_DELAYED")
-        assert.is_truthy(W.bagLabel:GetText():find("3 free of 26", 1, true))
-        assert.is_nil(W.bagLabel:GetText():find("not enough", 1, true))
+        assert.is_truthy(W.bagLabel:GetText():find(" 3/26", 1, true))
+        assert.is_nil(W.bagLabel:GetText():find("AlertNew", 1, true))
         env.bagSize, env.bagFree, env.bagFamily = { [0] = 4 }, {}, {}
     end)
 
