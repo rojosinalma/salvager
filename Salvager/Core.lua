@@ -239,6 +239,11 @@ function ns.BandName(quality, classID, band)
         .. "|r|cffffd100, item level " .. lo .. ((band or 0) >= 999 and "+" or ("-" .. tostring(band))) .. "|r"
 end
 
+--- The short form for narrow columns: "Uncommon Armor 26-30".
+function ns.BandShort(quality, classID, band)
+    return (ns.BandName(quality, classID, band):gsub(", item level ", " "))
+end
+
 --- The item level bands, as the scan's level filter offers them: { { up, label }, ... }.
 --- They are the bands of green gear: 1-15, 16-20, ... 61+.
 function ns.LevelBands()

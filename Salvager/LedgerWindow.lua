@@ -16,26 +16,29 @@ local COLUMNS = {
     purchases = { { "Item", 220 }, { "Bought", 82 }, { "Paid", 84, "RIGHT" }, { "Expected", 84, "RIGHT" },
         { "Got", 96, "RIGHT" }, { "Result", 84, "RIGHT" } },
     -- The Accuracy view is two tables: by band, and by material.
-    accBands = { { "Band", 190 }, { "Items", 50, "CENTER", help = { "Items", "How many disenchants with a recorded "
+    accBands = { { "Band", 170 }, { "Items", 44, "CENTER", help = { "Items", "How many disenchants with a recorded "
             .. "purchase are in the row. Grey = fewer than 20: too few to judge, one lucky shard moves it a lot." } },
-        { "Paid", 72, "RIGHT" },
-        { "Promised", 76, "RIGHT", help = { "Promised", "The Value the Deals list showed when you bought: what the "
+        { "Paid", 70, "RIGHT" },
+        { "Promised", 70, "RIGHT", help = { "Promised", "The Value the Deals list showed when you bought: what the "
             .. "disenchants were worth on average, at the prices of that moment, after the cut." } },
-        { "Got", 112, "RIGHT", help = { "Got", "What the materials were worth when you disenchanted, after the cut, and "
-            .. "how far that is from Promised. The gap is drop luck, or odds that are not what the addon thinks." } },
-        { "Sold for", 112, "RIGHT", help = { "Sold for", "The same materials at the average price each one really sold "
-            .. "for, after the cut, and how far that is from Got. The gap is prices that moved, and undercutting. "
-            .. "Materials you have not sold yet count at their price at the disenchant; * marks a row where that is "
-            .. "more than half of it." } },
-        { "Plan", 76, "RIGHT", help = { "Plan", "The profit the Deals list promised: Promised minus Paid." } },
-        { "Real", 76, "RIGHT", help = { "Real", "The profit as it went: Sold for minus Paid." } } },
-    accMats = { { "Material", 190 }, { "Units", 50, "CENTER" },
-        { "Valued each", 96, "RIGHT", help = { "Valued each", "The average price of one unit when you disenchanted, "
+        { "Got", 70, "RIGHT", help = { "Got", "What the materials were worth when you disenchanted, after the cut." } },
+        { "Diff", 46, "RIGHT", help = { "Got against Promised", "How far Got is from Promised. The gap is drop luck, "
+            .. "or odds that are not what the addon thinks." } },
+        { "Sold for", 70, "RIGHT", help = { "Sold for", "The same materials at the average price each one really sold "
+            .. "for, after the cut. Materials you have not sold yet count at their price at the disenchant." } },
+        { "Diff", 46, "RIGHT", help = { "Sold for against Got", "How far Sold for is from Got. The gap is prices that "
+            .. "moved, and undercutting. * = more than half of the row's materials are not sold yet, so most of it "
+            .. "is still the price at the disenchant." } },
+        { "Plan", 70, "RIGHT", help = { "Plan", "The profit the Deals list promised: Promised minus Paid." } },
+        { "Real", 70, "RIGHT", help = { "Real", "The profit as it went: Sold for minus Paid." } } },
+    accMats = { { "Material", 170 }, { "Units", 44, "CENTER" },
+        { "Valued each", 80, "RIGHT", help = { "Valued each", "The average price of one unit when you disenchanted, "
             .. "after the cut. This is what the Got column counts with." } },
-        { "Sold each", 96, "RIGHT", help = { "Sold each", "The average of what one unit really brought in your sales, "
+        { "Sold each", 80, "RIGHT", help = { "Sold each", "The average of what one unit really brought in your sales, "
             .. "after the cut." } },
-        { "Difference", 90, "RIGHT" },
-        { "Units sold", 76, "CENTER" } },
+        { "Difference", 80, "RIGHT", help = { "Difference", "Sold each minus Valued each." } },
+        { "Diff", 46, "RIGHT", help = { "Difference in percent", "The same difference as a share of Valued each." } },
+        { "Units sold", 70, "CENTER" } },
     -- The Sales view is two tables: your auctions, and the sales already paid.
     listed = { { "Material", 150 }, { "Status", 110 },
         { "Time", 62, "RIGHT", help = { "Time", "A sold auction: the time until its money arrives by mail. "
@@ -43,9 +46,12 @@ local COLUMNS = {
             .. "your auctions (see \"as of\" above)." } },
         { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
         { "You get", 76, "RIGHT" }, { "Cost", 84, "RIGHT" }, { "Profit", 76, "RIGHT" } },
+    history = { { "Material", 150 }, { "Sold", 110 },
+        { "Collected", 110, "LEFT", help = { "Collected", "When you took the money of this sale from the mail." } },
+        { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
+        { "You got", 76, "RIGHT" }, { "Cost", 84, "RIGHT" }, { "Profit", 76, "RIGHT" } },
     paid = { { "Material", 150 }, { "Sold", 110 },
-        { "Time", 62, "RIGHT", help = { "Time", "The time until the money of this sale arrives by mail. "
-            .. "\"paid\" = you have taken its mail." } },
+        { "Time", 62, "RIGHT", help = { "Time", "The time until the money of this sale arrives by mail." } },
         { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
         { "You get", 76, "RIGHT" }, { "Cost", 84, "RIGHT" }, { "Profit", 76, "RIGHT" } },
 }
@@ -57,6 +63,7 @@ local oddsView          -- the Odds view in the ledger window: its filters and o
 local oddsFrame, oddsOut -- the odds in a window of their own
 local popOut            -- the button next to the Odds tab that moves them there and back
 local salesParts = {}   -- title, table, title, table of the Sales view
+local salesTabs = {}    -- the Sales view's subtabs: open and sold, history
 
 --- Which bands the Odds view shows: { quality = { [2], [3], [4] }, type = { a, w } }, kept with the window.
 local function oddsFilter()
@@ -133,61 +140,43 @@ function Window.ListingRows()
         rows[1] = note(l.t and "Nothing listed." or "Not read yet: open the auction house.")
         return rows
     end
-    local used = {}
+    -- Only the auctions still for sale. (The game keeps a sold auction in its list until the money is
+    -- mailed; those show in the table of sold auctions, as sales.)
     for _, r in ipairs(mine) do
+      if not r.sold then
         local gross = r.qty * r.each
         local net = math.floor(gross * (1 - ns.Cut()) + 0.5)
         local avg = Ledger.AvgCost(ns.db.ledger, r.itemID)
         local cost = avg and math.floor(avg * r.qty + 0.5) or nil
-        if r.sold then
-            -- A sold auction is booked as a sale already, and its units have left the stock: its cost is
-            -- the one of that sale.
-            cost = nil
-            for _, s in ipairs(ns.db.ledger.sales) do
-                if not used[s] and s.id == r.itemID and s.count == r.qty and (s.unpaid or 0) > 0
-                    and s.each and math.abs(s.each - r.each) < 1 then
-                    used[s] = true
-                    if (s.untracked or 0) < s.count then cost = s.cost end
-                    break
-                end
-            end
-        end
         local left = ns.Listings.TimeLeft(r)
         local status
-        if r.sold then
-            status = GOLD .. "sold|r"
+        local under, lowest = ns.Listings.Undercut(r), ns.Listings.Lowest(r)
+        if under then
+            status = RED .. "undercut by " .. ns.Money(under) .. "|r"
+        elseif lowest == false then
+            status = GREEN .. "only yours|r"
+        elseif lowest then
+            status = GREEN .. "lowest|r"
         else
-            local under, lowest = ns.Listings.Undercut(r), ns.Listings.Lowest(r)
-            if under then
-                status = RED .. "undercut by " .. ns.Money(under) .. "|r"
-            elseif lowest == false then
-                status = GREEN .. "only yours|r"
-            elseif lowest then
-                status = GREEN .. "lowest|r"
-            else
-                status = "listed"
-            end
+            status = "listed"
         end
         rows[#rows + 1] = {
             itemID = r.itemID, link = r.link,
             cells = { r.qty .. "x " .. ((r.link and r.link:match("%[(.-)%]")) or ns.MaterialName(r.itemID)), status,
-                (r.sold and GOLD or "") .. countdown(left) .. (r.sold and "|r" or ""),
+                countdown(left),
                 ns.Money(r.each), ns.Money(gross), ns.Money(net), cost and ns.Money(cost) or (GREY .. "not known|r"),
                 cost and signed(net - cost) or "" },
-            sold = r.sold and true or false, order = #rows + 1,
         }
+      end
     end
-    -- The auctions still for sale first, then the sold ones; each group in the game's order.
-    table.sort(rows, function(a, b)
-        if a.sold ~= b.sold then return not a.sold end
-        return a.order < b.order
-    end)
+    if #rows == 0 then rows[1] = note("No open auctions.") end
     return rows
 end
 
 --- Every sale, newest first. Profit = what you get after the cut - what those materials cost you.
 --- A sale is booked when its listing is seen as sold; Time counts down to its money, "paid" = mail taken.
-function Window.PaidRows()
+--- @param history boolean  true = the sales whose money you have taken; false = the ones still to collect
+function Window.SoldRows(history)
     local rows = {}
     local sales = ns.db.ledger.sales
     -- A sale booked before the due time was kept: its time is the one of the sold auction it came from.
@@ -202,7 +191,9 @@ function Window.PaidRows()
         end
     end
     for i = #sales, 1, -1 do
-        local s = sales[i]
+      local s = sales[i]
+      local due = (s.unpaid or 0) > 0
+      if due ~= history then
         local tracked = s.count - (s.untracked or 0)
         local cost, profit
         if tracked <= 0 then
@@ -215,22 +206,24 @@ function Window.PaidRows()
             itemID = s.id,
             cells = { s.count .. "x " .. ns.MaterialName(s.id),
                 when(s.t),
-                (s.unpaid or 0) > 0 and (GOLD .. countdown(dueOf(s)) .. "|r") or (GREY .. "paid|r"),
+                due and (GOLD .. countdown(dueOf(s)) .. "|r") or (s.paidAt and when(s.paidAt) or (GREY .. "-|r")),
                 ns.Money(math.floor(s.gross / s.count + 0.5)),
                 ns.Money(s.gross), ns.Money(s.net), cost, profit },
         }
+      end
     end
-    if #sales == 0 then
-        rows[1] = note("No sales yet. A sale is recorded when the addon sees it sold on the auction house, or when "
-            .. "you take its mail.")
+    if #rows == 0 then
+        rows[1] = note(history and "No sale collected yet. A sale comes here when you take its mail."
+            or "No sale is waiting for its money.")
     end
     return rows
 end
 
+--- "+5%" in green, "-3%" in red: how far `part` is from `whole`.
 local function share(part, whole)
-    if not whole or whole == 0 then return "" end
+    if not whole or whole == 0 then return GREY .. "-|r" end
     local pct = math.floor((part - whole) / whole * 100 + 0.5)
-    return " " .. (pct > 0 and (GREEN .. "+") or pct < 0 and RED or GREY) .. pct .. "%|r"
+    return (pct > 0 and (GREEN .. "+") or pct < 0 and RED or GREY) .. pct .. "%|r"
 end
 
 --- Accuracy, by band: what was promised, what the disenchants gave, what the sales brought.
@@ -240,8 +233,8 @@ function Window.AccuracyBandRows()
     local function row(b, name, group)
         local few = b.n < 20
         rows[#rows + 1] = { group = group, cells = { name, (few and GREY or "") .. b.n .. (few and "|r" or ""),
-            ns.Money(b.paid), ns.Money(b.promised), ns.Money(b.got) .. share(b.got, b.promised),
-            ns.Money(b.sold) .. share(b.sold, b.got) .. ((b.units > 0 and b.soldUnits < b.units / 2) and (GREY .. " *|r") or ""),
+            ns.Money(b.paid), ns.Money(b.promised), ns.Money(b.got), share(b.got, b.promised), ns.Money(b.sold),
+            share(b.sold, b.got) .. ((b.units > 0 and b.soldUnits < b.units / 2) and (GREY .. "*|r") or ""),
             signed(b.promised - b.paid), signed(math.floor(b.sold + 0.5) - b.paid) } }
     end
     if acc.total.n == 0 then
@@ -249,7 +242,7 @@ function Window.AccuracyBandRows()
         return rows
     end
     row(acc.total, GOLD .. "All bands|r", true)
-    for _, b in ipairs(acc.bands) do row(b, ns.BandName(b.quality, b.classID, b.band)) end
+    for _, b in ipairs(acc.bands) do row(b, ns.BandShort(b.quality, b.classID, b.band)) end
     return rows
 end
 
@@ -261,7 +254,7 @@ function Window.AccuracyMaterialRows()
         local sold = m.soldUnits > 0 and m.soldNet / m.soldUnits or nil
         rows[#rows + 1] = { itemID = m.id, cells = { ns.MaterialName(m.id), tostring(m.units),
             valued and ns.Money(valued) or (GREY .. "-|r"), sold and ns.Money(sold) or (GREY .. "not sold yet|r"),
-            (valued and sold) and (signed(sold - valued) .. share(sold, valued)) or "",
+            (valued and sold) and signed(sold - valued) or "", (valued and sold) and share(sold, valued) or "",
             m.soldUnits > 0 and tostring(m.soldUnits) or (GREY .. "0|r") } }
     end
     if #rows == 0 then rows[1] = note("No disenchant with a recorded purchase yet.") end
@@ -514,8 +507,9 @@ end
 
 -- The Sales view's two tables share the height under the tabs; the bar between them moves the border.
 local SPLIT_DEFAULT, SPLIT_MIN, SPLIT_MAX, TABLE_MIN = 0.45, 0.1, 0.9, 66
+local SUBTABS = 28   -- the height of a row of subtabs over the tables
 local function salesRoom()
-    return (f:GetHeight() or 0) - 98 - 14 - 2 * 20
+    return (f:GetHeight() or 0) - 98 - 14 - 2 * 20 - (Window.view == "sales" and SUBTABS or 0)
 end
 
 --- Sets how much of the room the upper Sales table takes (0.1 to 0.9), and remembers it.
@@ -532,11 +526,23 @@ function Window.Refresh()
     if not f or not f:IsShown() then return end
     -- While the odds are in their own window, the ledger shows another view.
     if Window.view == "odds" and Window.OddsPoppedOut() then Window.view = "sales" end
-    -- Sales and Accuracy are two tables, each in its own panel; the other views are one.
+    -- Sales (its first subtab) and Accuracy are two tables, each in its own panel; the other views are one.
     local accuracy = Window.view == "accuracy"
-    local split = Window.view == "sales" or accuracy
+    local sales = Window.view == "sales"
+    local history = sales and f.saved.salesTab == "history"
+    local split = (sales and not history) or accuracy
     local odds = Window.view == "odds"
     list:SetShown(not split and not odds)
+    -- The Sales view has a row of subtabs, and its tables start under it.
+    local down = sales and SUBTABS or 0
+    for key, b in pairs(salesTabs) do
+        b:SetShown(sales)
+        if (key == "history") == history then b:LockHighlight() else b:UnlockHighlight() end
+    end
+    list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98 - down)
+    salesParts[1]:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -100 - down)
+    salesParts[2]:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -118 - down)
+    salesParts[2]:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -118 - down)
     oddsView:SetShown(odds)
     for _, part in ipairs(salesParts) do part:SetShown(split) end
     if split then
@@ -557,9 +563,9 @@ function Window.Refresh()
         salesParts[4]:Refresh()
     elseif split then
         local l = ns.db.listings
-        salesParts[1]:SetText(GOLD .. "On the auction house|r" .. (l.t and (GREY .. "  as of " .. date("%H:%M", l.t) .. "|r") or ""))
-        salesParts[3]:SetText(GOLD .. "Sold|r" .. GREY .. "  every sale, newest first|r")
-        local listed, paid = Window.ListingRows(), Window.PaidRows()
+        salesParts[1]:SetText(GOLD .. "Open auctions|r" .. (l.t and (GREY .. "  as of " .. date("%H:%M", l.t) .. "|r") or ""))
+        salesParts[3]:SetText(GOLD .. "Sold|r" .. GREY .. "  the money is on its way, or waits in your mail|r")
+        local listed, paid = Window.ListingRows(), Window.SoldRows(false)
         salesParts[2]:SetColumns(COLUMNS.listed)
         salesParts[4]:SetColumns(COLUMNS.paid)
         salesParts[2]:SetSource(#listed, function(i) return listed[i] end)
@@ -568,6 +574,11 @@ function Window.Refresh()
         salesParts[4]:Refresh()
     elseif odds then
         oddsView:Refresh()
+    elseif history then
+        local rows = Window.SoldRows(true)
+        list:SetColumns(COLUMNS.history)
+        list:SetSource(#rows, function(i) return rows[i] end)
+        list:Refresh()
     else
         local rows = Window.PurchaseRows()
         list:SetColumns(COLUMNS.purchases)
@@ -583,7 +594,6 @@ function Window.Refresh()
     -- The pop-out button looks pressed while the odds are in their own window.
     if Window.OddsPoppedOut() then popOut:LockHighlight() else popOut:UnlockHighlight() end
     -- The two listing buttons belong to the Sales view.
-    local sales = Window.view == "sales"
     checkButton:SetShown(sales)
     cancelButton:SetShown(sales)
     if sales then
@@ -630,8 +640,9 @@ local function build()
         .. "what the materials were worth at the disenchant, and what they really sold for. By band and by material.")
     W.Tooltip(tabs.purchases, "Purchases", "Every item you bought, newest first. Under each one: what it was disenchanted "
         .. "into, the part of its price given to each material, and what each was worth then.")
-    W.Tooltip(tabs.sales, "Sales", "Your auctions: what is listed, and what is sold with its money on the way. Below "
-        .. "them, every sale already paid. Profit = what you get after the cut, minus what those materials cost you.")
+    W.Tooltip(tabs.sales, "Sales", "Your open auctions, and what is sold with its money still to collect. The History "
+        .. "subtab has the sales you have collected. Profit = what you get after the cut, minus what those "
+        .. "materials cost you.")
     W.Tooltip(tabs.odds, "Odds", "Every item level band of every quality and gear type. Expected = how often each "
         .. "material comes and how many (the table the addon uses). You got = what your own disenchants gave. Value "
         .. "now = what one disenchant is worth on average at today's prices, after the cut. Buy below = the buy "
@@ -721,6 +732,21 @@ local function build()
     bar:SetScript("OnMouseUp", function(self) self:SetScript("OnUpdate", nil) end)
     bar:SetScript("OnHide", function(self) self:SetScript("OnUpdate", nil) end)
     salesParts = { titleA, listA, titleB, listB, bar }
+    -- The subtabs of the Sales view: what is open and what is sold; and the history.
+    for _, t in ipairs({ { "open", "Open and sold", "Your open auctions, and what is sold with its money still to collect." },
+        { "history", "History", "The sales whose money you have taken from the mail, newest first." } }) do
+        local b = W.Button(f, t[2], t[1] == "open" and 120 or 90, function()
+            f.saved.salesTab = t[1]
+            list.offset = 0
+            Window.Refresh()
+        end, t[3])
+        if salesTabs.open then
+            b:SetPoint("LEFT", salesTabs.open, "RIGHT", 4, 0)
+        else
+            b:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98)
+        end
+        salesTabs[t[1]] = b
+    end
     if VIEWS[f.saved.view] then Window.view = f.saved.view end
     f.onResize = Window.Refresh
     f:SetScript("OnShow", Window.Refresh)

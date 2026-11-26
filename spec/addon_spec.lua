@@ -125,7 +125,7 @@ describe("Salvager in a simulated client", function()
         assert.are.equal(11083, rows[2].itemID)               -- what it gave, indented
         assert.is_true(rows[2].indent > 0)
         assert.is_truthy(rows[2].cells[1]:find("2x Soul Dust", 1, true))
-        local sales = ns.LedgerWindow.PaidRows()
+        local sales = ns.LedgerWindow.SoldRows(true)               -- booked from its mail: it is history at once
         local paid
         for _, r in ipairs(sales) do if r.itemID == 11083 then paid = r end end
         assert.is_truthy(paid.cells[1]:find("2x Soul Dust", 1, true))
@@ -1236,9 +1236,9 @@ describe("Salvager listings", function()
         assert.is_true(rows[1].commodity)
     end)
 
-    it("splits the Sales view into two tables: your auctions, and the paid sales", function()
-        local listed, paid = ns.LedgerWindow.ListingRows(), ns.LedgerWindow.PaidRows()
-        assert.are.equal(3, #listed)                               -- the three auctions
+    it("splits the Sales view: open auctions, sold with the money to collect, and a history subtab", function()
+        local listed, paid = ns.LedgerWindow.ListingRows(), ns.LedgerWindow.SoldRows(false)
+        assert.are.equal(2, #listed)                               -- the two auctions still for sale
         -- The sold one is booked as a sale as soon as it is seen, before its mail is taken.
         assert.are.equal(1, #paid)
         assert.is_truthy(paid[1].cells[1]:find("5x Soul Dust", 1, true))
@@ -1254,6 +1254,17 @@ describe("Salvager listings", function()
         assert.are.equal(1, #ns.db.ledger.sales)
         ns.LedgerWindow.Show()
         ns.LedgerWindow.view = "sales"
+        ns.LedgerWindow.Refresh()
+        -- The history is empty until the money is taken from the mail.
+        assert.is_truthy(ns.LedgerWindow.SoldRows(true)[1].cells[1]:find("No sale collected yet", 1, true))
+        ns.db.windows.ledger.salesTab = "history"
+        ns.LedgerWindow.Refresh()
+        ns.Ledger.SalePaid(ns.db.ledger, DUST, 5, 2400, 120, time())
+        local history = ns.LedgerWindow.SoldRows(true)
+        assert.is_truthy(history[1].cells[1]:find("5x Soul Dust", 1, true))
+        assert.is_truthy(ns.LedgerWindow.SoldRows(false)[1].cells[1]:find("No sale is waiting", 1, true))
+        sale.unpaid, sale.paidAt = 5, nil                          -- (back, for the tests that follow)
+        ns.db.windows.ledger.salesTab = nil
         ns.LedgerWindow.Refresh()
         -- The border between the two tables can be moved, within limits, and is remembered.
         ns.LedgerWindow.SetSalesSplit(0.7)
@@ -1273,12 +1284,11 @@ describe("Salvager listings", function()
             if r.cells[1]:find("5x", 1, true) then sold = r end
         end
         assert.is_truthy(listed.cells[2]:find("listed", 1, true))          -- not checked yet
-        assert.is_truthy(sold.cells[2]:find("sold", 1, true))
-        assert.is_true(rows[#rows].sold)                                   -- the sold ones come last
-        assert.is_false(rows[1].sold)
-        assert.is_nil(sold.cells[2]:find("money", 1, true))                -- the status and the timer are apart
+        assert.is_nil(sold)                                                -- a sold auction is not an open one
+        sold = ns.LedgerWindow.SoldRows(false)[1]
+        assert.is_truthy(sold.cells[1]:find("5x", 1, true))
         assert.is_truthy(sold.cells[3]:find("%d+:%d%d"))                   -- a running timer, minutes:seconds
-        assert.is_nil(sold.cells[7]:find("not known", 1, true))            -- its cost is the booked sale's: 5 x 3s
+        assert.is_nil(sold.cells[7]:find("not known", 1, true))            -- its cost: 5 x 3s
         assert.is_truthy(sold.cells[7]:find("15", 1, true))
         assert.is_truthy(listed.cells[8]:find("35", 1, true))              -- 20 x 500 x 0.95 - 20 x 300 = 35s profit
     end)

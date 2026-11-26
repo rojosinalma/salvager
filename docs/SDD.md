@@ -212,6 +212,10 @@ flipping is out of scope for now.
     `Widgets.CardList`, the main window's list) a column is as wide as its widest title or cell over all rows,
     plus 10 px; spare room stays at the right. The widths written in the code are the fallback where text
     cannot be measured, and the width of columns with input boxes. The Log is left out.
+64. **Sales view:** two subtabs. "Open and sold" has two tables: Open auctions (only what is still for sale)
+    and Sold (sales whose money is not collected yet, with a countdown). "History" lists the sales whose mail
+    was taken. The game keeps a sold auction in its own list until the money is mailed; the addon shows it
+    as a sale, not as an auction.
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),
