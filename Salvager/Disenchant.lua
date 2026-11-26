@@ -18,22 +18,24 @@ local function helpfulAuras()
     for i = 1, 60 do
         local a = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL")
         if not a then break end
-        out[#out + 1] = { name = a.name, id = a.spellId }
+        out[#out + 1] = { name = a.name, id = a.spellId, stacks = a.applications }
     end
     return out
 end
 
---- Is an Arcane Salvager effect on the player? Matches by name (English client),
---- and remembers the spell IDs it sees, so the ID can replace the name later.
+--- Is the Arcane Salvager's buff (Boosted Disenchanting) on the player? By its spell ID; by its name as well,
+--- in case the game gives it another ID. Its stacks are returned too: the buff grows with the time spent near
+--- the Salvager, and the stacks may tell how much.
+--- @return boolean, number|nil stacks
 function Disenchant.SalvagerActive()
-    local found = false
     for _, a in ipairs(helpfulAuras()) do
-        if a.name and a.name:find("Salvager", 1, true) then
-            found = true
+        if a.id == Data.SALVAGER_AURA or a.name == Data.SALVAGER_AURA_NAME
+            or (a.name and a.name:find("Salvager", 1, true)) then
             if a.id then ns.db.auraSeen[a.id] = a.name end
+            return true, a.stacks
         end
     end
-    return found
+    return false
 end
 
 function Disenchant.PrintAuras()
@@ -47,7 +49,9 @@ end
 local function snapshot()
     local snaps = ns.db.auraSnapshots
     local names = {}
-    for _, a in ipairs(helpfulAuras()) do names[#names + 1] = tostring(a.name) .. ":" .. tostring(a.id) end
+    for _, a in ipairs(helpfulAuras()) do
+        names[#names + 1] = tostring(a.name) .. ":" .. tostring(a.id) .. ((a.stacks or 0) > 1 and ("x" .. a.stacks) or "")
+    end
     snaps[#snaps + 1] = { t = time(), auras = table.concat(names, ", ") }
     ns.Util.Cap(snaps, SNAPSHOTS)
 end
@@ -85,8 +89,8 @@ local function book(p, got)
     end
     local rec = {
         t = time(), link = link, itemID = itemID, ilvl = ilvl, req = reqLevel, quality = quality,
-        classID = classID, band = outcomes and outcomes.band, salvager = salvager, salvagerBy = how, got = got,
-        planned = planned,
+        classID = classID, band = outcomes and outcomes.band, salvager = salvager, salvagerBy = how,
+        salvagerStacks = p.stacks, got = got, planned = planned,
     }
     local purchase = itemID and Ledger.TakePurchase(ns.db.ledger, itemID)
     Ledger.Disenchant(ns.db.ledger, rec, purchase, ns.PriceOf, ns.Cut())
@@ -101,7 +105,8 @@ end
 
 ns.On("UNIT_SPELLCAST_SENT", function(unit, _, _, spellID)
     if unit == "player" and spellID == Data.DISENCHANT_SPELL then
-        pending = { t = GetTime(), salvager = Disenchant.SalvagerActive() }
+        local on, stacks = Disenchant.SalvagerActive()
+        pending = { t = GetTime(), salvager = on, stacks = stacks }
         snapshot()
     end
 end)
@@ -158,4 +163,19 @@ ns.On("LOOT_READY", function()
     else
         ns.Log("disenchant of %s: the loot holds no disenchanting material, not booked", p.link)
     end
+end)
+
+-- The first batch at the Salvager (2026-11-26 06:14:42 to 06:17:12, 36 disenchants) was made before the addon
+-- knew the buff's name, and was booked without it. The player was at the Salvager for all of it.
+ns.On("SALVAGER_READY", function()
+    if ns.db.firstSalvagerBatchFixed then return end
+    ns.db.firstSalvagerBatchFixed = true
+    local n = 0
+    for _, r in ipairs(ns.db.ledger.disenchants) do
+        if not r.salvager and (r.t or 0) >= 1795670082 and r.t <= 1795670232 then
+            r.salvager, r.salvagerBy = true, "player"
+            n = n + 1
+        end
+    end
+    if n > 0 then ns.Log("disenchants: %d of the first Salvager batch now count as with the Salvager", n) end
 end)

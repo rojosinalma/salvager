@@ -100,7 +100,10 @@ Data.PURPLE = {
 Data.DISENCHANT_SPELL = 13262
 Data.SALVAGER_RECIPE_SPELL = 1263056
 Data.SALVAGER_ITEM = 279985
-Data.SALVAGER_AURA_NAME = "Arcane Salvager"
+-- The buff near a placed Arcane Salvager (wowhead.com/forever/spell=1283701): "Disenchanting boosted from time
+-- spent near Arcane Salvager. While near Arcane Salvager, chance of bonus disenchanting output is increased."
+Data.SALVAGER_AURA = 1283701
+Data.SALVAGER_AURA_NAME = "Boosted Disenchanting"
 Data.CLASS_WEAPON, Data.CLASS_ARMOR = 2, 4
 
 return Data

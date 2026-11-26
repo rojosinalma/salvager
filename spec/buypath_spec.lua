@@ -163,6 +163,15 @@ describe("Buy path safety", function()
         ns.db.settings.salvager = "on"
         assert.are.same({ true, "setting" }, { ns.Disenchant.HadSalvager(false, outcomes, { [dust.id] = 1 }) })
         ns.db.settings.salvager = was
+        -- The buff itself: Boosted Disenchanting, by its spell ID, with its stacks.
+        env.auras = { { name = "Warchief's Blessing", spellId = 16609 },
+            { name = "Something else", spellId = 1283701, applications = 3 } }
+        assert.are.same({ true, 3 }, { ns.Disenchant.SalvagerActive() })
+        env.auras = { { name = "Boosted Disenchanting", spellId = 1 } }
+        assert.is_true((ns.Disenchant.SalvagerActive()))
+        env.auras = { { name = "Warchief's Blessing", spellId = 16609 } }
+        assert.is_false((ns.Disenchant.SalvagerActive()))
+        env.auras = {}
     end)
 
     it("never lets a buy limit set by hand go over the value", function()

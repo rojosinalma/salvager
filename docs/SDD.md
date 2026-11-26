@@ -307,7 +307,11 @@ flipping is out of scope for now.
        The shape is not "+1 half of the time" (that gives 7 / 13 / 6); more data needed. Essences: 5 results,
        none above 2, too few to say if they get the bonus.
     - b. No Salvager effect was found on the player by name, and the snapshots were full (they kept the
-       first 30). Now the newest 30 stay, and a disenchant counts as "with Salvager" when the effect is seen,
+       first 30). The buff is **Boosted Disenchanting, spell 1283701** (wowhead.com/forever/spell=1283701):
+       "Disenchanting boosted from time spent near Arcane Salvager. While near Arcane Salvager, chance of
+       bonus disenchanting output is increased." It is matched by ID (and by name); its stacks are kept with
+       each disenchant (`salvagerStacks`), in case the bonus grows with the time spent near the Salvager.
+       The first batch (06:14:42–06:17:12) is marked as with the Salvager once (`salvagerBy = "player"`). Now the newest 30 stay, and a disenchant counts as "with Salvager" when the effect is seen,
        when a result has more units than the table allows, or when the setting is `on` (`salvagerBy`).
     - c. `PlaceBid` without a click is blocked by the game (`buyResendBlocked` set at 03:26): a purchase
        cannot be resent by the addon (65).
@@ -328,7 +332,7 @@ flipping is out of scope for now.
 
 ## Open
 
-1. The Salvager's effect on the player: not found by name on 2026-11-26 (74b). Read `auraSnapshots` after the
-   next disenchants at the camp; it may be no player aura at all.
+1. Whether Boosted Disenchanting (1283701) stacks with the time spent near the Salvager, and whether the
+   bonus grows with it: read `salvagerStacks` and the results after the next batches (74b).
 3. The shape of the Salvager bonus, and whether essences get it (74a): check after about 100 more disenchants.
 2. Whether Forever's disenchant results match the Classic table: the Ledger window (Odds) compares observed odds per band.
