@@ -7,7 +7,10 @@ local _, ns = ...
 
 local Ledger, W = ns.Ledger, ns.Widgets
 
-local Reports = { view = "gold", range = "24h" }
+local Reports = { view = "gold", range = "24h",
+    -- The Profit and Items views' filters (kept in the window's saved data).
+    filter = { classes = { [4] = true, [2] = true }, qualities = { [2] = true, [3] = true, [4] = true }, bandsOff = {},
+        salvager = "all" } }
 ns.Reports = Reports
 
 local GREY, GOLD, GREEN, RED = "|cff808080", "|cffffd100", "|cff40ff40", "|cffff4040"
@@ -77,11 +80,26 @@ local COLUMNS = {
         { "Deposits lost", 70, "RIGHT", help = { "Deposits lost", "Deposits of auctions that were cancelled or ran out." } },
         { "Profit", 80, "RIGHT", help = { "Profit", "Sold for, minus the cost of the units with a known cost, minus "
             .. "the deposits lost." } },
-        { "In stock", 50, "RIGHT", help = { "In stock", "Units you hold now, listed or not." } },
-        { "Stock value", 80, "RIGHT", help = { "Stock value", "Those units at the price now, after the cut." } } },
+        { "Held", 44, "RIGHT", help = { "Held", "Units in your bags and your bank now." } },
+        { "Listed", 44, "RIGHT", help = { "Listed", "Units on the auction house now, not sold yet (as of the last "
+            .. "time the addon read your auctions)." } },
+        { "Value", 80, "RIGHT", help = { "Value", "Held and listed units at the price now, after the cut." } } },
     items = { { "Item", 220 }, { "Items", 44, "RIGHT" }, { "Paid each", 70, "RIGHT" },
         { "Sold value each", 80, "RIGHT" }, { "Profit", 80, "RIGHT" }, { "Return", 50, "RIGHT" } },
 }
+
+--- Does a disenchant pass the filters? (Gear type, quality, item level band, with or without the Salvager.)
+function Reports.Keep(r)
+    local x = Reports.filter
+    if not x.classes[r.classID] or not x.qualities[r.quality] then return false end
+    if x.salvager == "with" and not r.salvager then return false end
+    if x.salvager == "without" and r.salvager then return false end
+    local ilvl = r.ilvl or r.band or 0
+    for _, b in ipairs(ns.LevelBands()) do
+        if ilvl <= b.up then return not x.bandsOff[b.up] end
+    end
+    return true
+end
 
 ------------------------------------------------------------------ rows
 
@@ -132,57 +150,83 @@ local function profitCells(x, name)
         signed(profit), pct(profit, x.paid), x.n > 0 and signed(profit / x.n) or "-" }
 end
 
---- By quality and gear type (a heading with its totals), and by item level band under each.
+local CLASS_ORDER = { { 4, "Armor" }, { 2, "Weapons" } }
+
+--- By gear type (a heading with its totals), by quality under it (with its totals), and by item level band
+--- under each quality (the range only).
 function Reports.ProfitRows()
-    local p = Ledger.Profits(ns.db.ledger, Reports.From())
+    local p = Ledger.Profits(ns.db.ledger, (Reports.From()), Reports.Keep)
     if p.total.n == 0 then
-        return { note("No disenchant of an item with a known price in this time. Buy from the Deals tab, then disenchant.") }
+        return { note("No disenchant of an item with a known price in this time and these filters. Buy from the "
+            .. "Deals tab, then disenchant.") }
     end
     local rows = { { group = true, cells = profitCells(p.total, GOLD .. "All|r") } }
-    for _, g in ipairs(p.groups) do
-        local name = ns.BandName(g.quality, g.classID, g.bands[1] and g.bands[1].band or 0):match("^(.-|r)") or "?"
-        rows[#rows + 1] = { group = true, cells = profitCells(g, name) }
-        for _, b in ipairs(g.bands) do
-            local range = ns.BandName(b.quality, b.classID, b.band):match("item level (.-)|r$") or tostring(b.band)
-            rows[#rows + 1] = { cells = profitCells(b, "item level " .. range), indent = INDENT }
+    for _, c in ipairs(CLASS_ORDER) do
+        local of = {}
+        for _, g in ipairs(p.groups) do if g.classID == c[1] then of[#of + 1] = g end end
+        if #of > 0 then
+            local sum = { n = 0, paid = 0, value = 0, sold = 0, salvager = 0 }
+            for _, g in ipairs(of) do for k in pairs(sum) do sum[k] = sum[k] + g[k] end end
+            rows[#rows + 1] = { group = true, cells = profitCells(sum, GOLD .. c[2] .. "|r") }
+            for _, g in ipairs(of) do
+                local name = (ns.QUALITY_COLOR[g.quality] or "") .. (ns.QUALITY_NAME[g.quality] or "?") .. "|r"
+                rows[#rows + 1] = { group = true, cells = profitCells(g, name), indent = INDENT }
+                for _, b in ipairs(g.bands) do
+                    local range = ns.BandName(b.quality, b.classID, b.band):match("item level (.-)|r$") or tostring(b.band)
+                    rows[#rows + 1] = { cells = profitCells(b, range), indent = 2 * INDENT }
+                end
+            end
         end
     end
     return rows
 end
 
 --- Each material: what it gave in this time, and what is left now.
+--- Units of a material in the bags and the bank, and on the auction house (not sold yet).
+local function heldAndListed(id)
+    local ok, n = pcall(ns.GetItemCount, id, true)
+    local listed = 0
+    for _, r in ipairs(ns.db.listings and ns.db.listings.rows or {}) do
+        if r.itemID == id and not r.sold then listed = listed + (r.qty or 0) end
+    end
+    return ok and tonumber(n) or 0, listed
+end
+Reports.HeldAndListed = heldAndListed
+
 function Reports.MaterialRows()
-    local p = Ledger.Profits(ns.db.ledger, Reports.From())
+    local p = Ledger.Profits(ns.db.ledger, (Reports.From()))
     local keep = 1 - ns.Cut()
     local seen, list = {}, {}
     for _, m in ipairs(p.mats) do seen[m.id] = true list[#list + 1] = m end
-    for id, s in pairs(ns.db.ledger.stock) do
-        if not seen[id] and (s.qty or 0) > 0 then
-            list[#list + 1] = { id = id, got = 0, sold = 0, net = 0, cost = 0, profit = 0, untracked = 0, depositsLost = 0 }
+    for _, mat in ipairs(ns.Data.MATERIALS) do
+        local held, listed = heldAndListed(mat.id)
+        if not seen[mat.id] and held + listed > 0 then
+            list[#list + 1] = { id = mat.id, got = 0, sold = 0, net = 0, cost = 0, profit = 0, untracked = 0,
+                depositsLost = 0 }
         end
     end
-    if #list == 0 then return { note("No material got or sold in this time.") } end
-    local rows, total = {}, { got = 0, sold = 0, net = 0, cost = 0, profit = 0, depositsLost = 0, qty = 0, value = 0 }
+    if #list == 0 then return { note("No material got, sold, held or listed in this time.") } end
+    local rows = {}
+    local total = { got = 0, sold = 0, net = 0, cost = 0, profit = 0, depositsLost = 0, held = 0, listed = 0, value = 0 }
     for _, m in ipairs(list) do
-        local s = ns.db.ledger.stock[m.id]
-        local qty = s and s.qty or 0
-        local value = qty > 0 and math.floor((ns.PriceOf(m.id) or 0) * qty * keep) or 0
+        local held, listed = heldAndListed(m.id)
+        local value = math.floor((ns.PriceOf(m.id) or 0) * (held + listed) * keep)
         for k, v in pairs({ got = m.got, sold = m.sold, net = m.net, cost = m.cost, profit = m.profit,
-            depositsLost = m.depositsLost, qty = qty, value = value }) do total[k] = total[k] + v end
+            depositsLost = m.depositsLost, held = held, listed = listed, value = value }) do total[k] = total[k] + v end
         rows[#rows + 1] = { itemID = m.id, cells = { ns.MaterialName(m.id) or tostring(m.id), tostring(m.got),
             tostring(m.sold), money(m.net), money(m.cost), m.depositsLost > 0 and signed(-m.depositsLost) or "-",
-            signed(m.profit), tostring(qty), money(value) } }
+            signed(m.profit), tostring(held), tostring(listed), money(value) } }
     end
     table.insert(rows, 1, { group = true, cells = { GOLD .. "All|r", tostring(total.got), tostring(total.sold),
         money(total.net), money(total.cost), total.depositsLost > 0 and signed(-total.depositsLost) or "-",
-        signed(total.profit), tostring(total.qty), money(total.value) } })
+        signed(total.profit), tostring(total.held), tostring(total.listed), money(total.value) } })
     return rows
 end
 
 --- Each item, the best first.
 function Reports.ItemRows()
-    local p = Ledger.Profits(ns.db.ledger, Reports.From())
-    if #p.items == 0 then return { note("No disenchant of an item with a known price in this time.") } end
+    local p = Ledger.Profits(ns.db.ledger, (Reports.From()), Reports.Keep)
+    if #p.items == 0 then return { note("No disenchant of an item with a known price in this time and these filters.") } end
     local rows = {}
     for _, it in ipairs(p.items) do
         local profit = math.floor(it.sold + 0.5) - it.paid
@@ -195,7 +239,8 @@ end
 ------------------------------------------------------------------ window
 
 local f, list, sumList, logList, sumTitle, logTitle, summary, rangeDrop
-local tabs = {}
+local tabs, filters = {}, {}
+local FILTERED = { profit = true, items = true }   -- the views the filters apply to
 
 local function show(l, cols, rows)
     l:SetColumns(cols)
@@ -210,6 +255,13 @@ function Reports.Refresh()
     for _, x in ipairs({ sumList, logList, sumTitle, logTitle }) do x:SetShown(gold) end
     local _, name = Reports.From()
     summary:SetText(GOLD .. name .. "|r" .. GREY .. "  " .. HELP[Reports.view] .. "|r")
+    -- The Profit and Items views have their filters on that row instead.
+    local filtered = FILTERED[Reports.view] or false
+    summary:SetShown(not filtered)
+    for _, x in ipairs(filters) do
+        x:SetShown(filtered)
+        if x.Update then x:Update() end
+    end
     if gold then
         local sums, log = Reports.GoldRows()
         sumTitle:SetText(GOLD .. "Sums|r" .. GREY .. "  " .. tostring(ns.Gold.Char()) .. "|r")
@@ -259,6 +311,72 @@ local function build()
     rangeDrop:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -30)
     local timeLabel = W.Label(f, "Time", "GameFontHighlightSmall")
     timeLabel:SetPoint("RIGHT", rangeDrop, "LEFT", -6, 0)
+    -- The filters of the Profit and Items views, on the row under the tabs.
+    local x0 = f.saved.filter
+    if type(x0) == "table" then
+        for _, k in ipairs({ "classes", "qualities", "bandsOff" }) do
+            if type(x0[k]) == "table" then Reports.filter[k] = x0[k] end
+        end
+        if x0.salvager then Reports.filter.salvager = x0.salvager end
+    end
+    f.saved.filter = Reports.filter
+    local flt = Reports.filter
+    local function changed()
+        list.offset = 0
+        Reports.Refresh()
+    end
+    -- A set where at least one stays ticked.
+    local function setOf(tbl, invert, all)
+        return function(key) if invert then return not tbl[key] end return tbl[key] and true or false end,
+            function(key, on)
+                if invert then tbl[key] = (not on) or nil else tbl[key] = on or nil end
+                local any = false
+                for _, k in ipairs(all) do if (invert and not tbl[k]) or (not invert and tbl[k]) then any = true end end
+                if not any then
+                    if invert then tbl[key] = nil else tbl[key] = true end
+                    ns.Print("at least one must stay ticked")
+                end
+                changed()
+            end
+    end
+    local function allOr(names, total) return #names == total and "All" or table.concat(names, ", ") end
+    local prev
+    local function add(label, drop, help)
+        local l = W.Label(f, label, "GameFontHighlightSmall")
+        if prev then l:SetPoint("LEFT", prev, "RIGHT", 14, 0) else l:SetPoint("LEFT", f, "TOPLEFT", 14, -69) end
+        drop:SetPoint("LEFT", l, "RIGHT", 6, 0)
+        W.HelpArea(f, l, label, help)
+        filters[#filters + 1] = l
+        filters[#filters + 1] = drop
+        prev = drop.Right and drop:Right() or drop
+    end
+    local gearGet, gearSet = setOf(flt.classes, false, { 4, 2 })
+    add("Gear", W.CheckDropdown(f, 100, { { 4, "Armor" }, { 2, "Weapons" } }, gearGet, gearSet,
+        "Which gear types count.", "Gear", allOr), "Armor, weapons, or both.")
+    local qGet, qSet = setOf(flt.qualities, false, { 2, 3, 4 })
+    add("Quality", W.CheckDropdown(f, 130, { { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" },
+        { 4, "|cffa335eeEpic|r" } }, qGet, qSet, "Which qualities count.", "Quality", allOr), "Uncommon, Rare, Epic.")
+    local bandOptions, bandKeys = {}, {}
+    for _, b in ipairs(ns.LevelBands()) do
+        bandOptions[#bandOptions + 1] = { b.up, b.label }
+        bandKeys[#bandKeys + 1] = b.up
+    end
+    local bGet, bSet = setOf(flt.bandsOff, true, bandKeys)
+    add("Bands", W.CheckDropdown(f, 130, bandOptions, bGet, bSet, "Which item level bands count.", "Bands",
+        function(names, total)
+            if #names == total then return "All" end
+            if #names > 3 then return #names .. " bands" end
+            return table.concat(names, ", ")
+        end), "Item level bands: a band is a range of item levels that disenchants into the same materials.")
+    local salvDrop
+    salvDrop = W.CheckDropdown(f, 110, { { "all", "All" }, { "with", "With it" }, { "without", "Without it" } },
+        function(key) return flt.salvager == key end,
+        function(key)
+            flt.salvager = key
+            salvDrop:Close()
+            changed()
+        end, "Disenchants with the Arcane Salvager's bonus, without it, or all.", "Salvager")
+    add("Salvager", salvDrop, "Disenchants with the Arcane Salvager's bonus, without it, or all.")
     summary = W.Label(f, "", "GameFontHighlightSmall")
     summary:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -62)
     summary:SetPoint("RIGHT", f, "RIGHT", -14, 0)

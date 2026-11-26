@@ -447,7 +447,8 @@ end
 ---   total = sums, groups = { { quality, classID, bands = { sums with band }, sums... } },
 ---   items = { sums with itemID, link }, mats = { id, got, sold, net, cost, profit, untracked, depositsLost } }
 ---   sums = { n, paid, value (disenchant value), sold (sold value), salvager (disenchants with it) }
-function Ledger.Profits(state, from)
+--- `keep(record)` (optional): only the disenchants it says yes to count (filters by gear type, quality, ...).
+function Ledger.Profits(state, from, keep)
     from = from or 0
     local each = {}
     for _, s in ipairs(state.sales) do
@@ -474,7 +475,7 @@ function Ledger.Profits(state, from)
         return m
     end
     for _, r in ipairs(state.disenchants) do
-        if (r.t or 0) >= from then
+        if (r.t or 0) >= from and (not keep or keep(r)) then
             for id, qty in pairs(r.got or {}) do mat(id).got = mat(id).got + qty end
             if r.costKnown then
                 local soldValue = 0

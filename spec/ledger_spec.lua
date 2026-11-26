@@ -43,6 +43,8 @@ describe("Ledger", function()
         for _, m in ipairs(p.mats) do if m.id == 11083 then dust = m end end
         assert.are.same({ 4, 2, 950 }, { dust.got, dust.sold, dust.net })
         assert.are.equal(4, Ledger.Profits(state).total.n)               -- all of it
+        local rare = Ledger.Profits(state, nil, function(r) return r.quality == 3 end)
+        assert.are.same({ 1, 18000 }, { rare.total.n, rare.total.paid })
     end)
 
     it("splits by quantity when nothing has a price", function()

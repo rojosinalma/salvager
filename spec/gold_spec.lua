@@ -120,8 +120,23 @@ describe("The gold journal in a simulated client", function()
             ns.Reports.view = view
             for _, range in ipairs({ "24h", "all" }) do ns.Reports.range = range ns.Reports.Refresh() end
         end
-        assert.is_truthy(ns.Reports.ProfitRows()[1].cells[1]:find("All", 1, true))
+        local rows = ns.Reports.ProfitRows()
+        assert.is_truthy(rows[1].cells[1]:find("All", 1, true))
+        assert.is_truthy(rows[2].cells[1]:find("Armor", 1, true))                -- gear type first
+        assert.is_truthy(rows[3].cells[1]:find("Uncommon", 1, true))             -- quality under it
+        assert.are.equal("26-30", rows[4].cells[1])                              -- the range only
         assert.are.equal(1, #ns.Reports.ItemRows())
+        ns.Reports.filter.classes[4] = nil                                       -- weapons only: nothing
+        assert.are.equal(1, #ns.Reports.ProfitRows())
+        assert.is_truthy(ns.Reports.ProfitRows()[1].cells[1]:find("filters", 1, true))
+        ns.Reports.filter.classes[4] = true
+        ns.Reports.filter.salvager = "with"
+        assert.are.equal(1, #ns.Reports.ProfitRows())
+        ns.Reports.filter.salvager = "all"
+        -- Held (bags and bank) and listed are apart.
+        env.bags[11083] = 7
+        ns.db.listings.rows = { { itemID = 11083, qty = 5, sold = false }, { itemID = 11083, qty = 2, sold = true } }
+        assert.are.same({ 7, 5 }, { ns.Reports.HeldAndListed(11083) })
         local l = ns.Gold.Losses(0)[1]
         assert.are.same({ -6661, true }, { l.loss, l.misjudged })
     end)

@@ -353,7 +353,11 @@ flipping is out of scope for now.
     Profit by quality and gear type with its bands under it (`Ledger.Profits`: disenchants with a known
     cost; Sold value = the materials at what one unit really sold for, at their disenchant value while that
     material has not sold; Profit = Sold value − Paid; grey under 20 disenchants); Materials (got, sold,
-    sold for, cost of sold, deposits lost, profit, in stock and its value now); Items (best first).
+    sold for, cost of sold, deposits lost, profit, held and listed now and their value); Items (best first).
+    Profit groups by gear type, then quality, then band (the range only, "26-30"). Profit and Items have
+    filters on the row under the tabs (gear type, quality, item level band, with or without the Salvager;
+    remembered; at least one ticked). Materials: Held = bags and bank (`GetItemCount(id, true)`), Listed = your
+    unsold auctions as last read; the ledger's stock counts both and is not shown as "in stock".
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),
