@@ -101,11 +101,25 @@ function Window.ListingRows()
         rows[1] = note(l.t and "Nothing listed." or "Not read yet: open the auction house.")
         return rows
     end
+    local used = {}
     for _, r in ipairs(mine) do
         local gross = r.qty * r.each
         local net = math.floor(gross * (1 - ns.Cut()) + 0.5)
         local avg = Ledger.AvgCost(ns.db.ledger, r.itemID)
         local cost = avg and math.floor(avg * r.qty + 0.5) or nil
+        if r.sold then
+            -- A sold auction is booked as a sale already, and its units have left the stock: its cost is
+            -- the one of that sale.
+            cost = nil
+            for _, s in ipairs(ns.db.ledger.sales) do
+                if not used[s] and s.id == r.itemID and s.count == r.qty and (s.unpaid or 0) > 0
+                    and s.each and math.abs(s.each - r.each) < 1 then
+                    used[s] = true
+                    if (s.untracked or 0) < s.count then cost = s.cost end
+                    break
+                end
+            end
+        end
         local left = ns.Listings.TimeLeft(r)
         local status
         if r.sold then
