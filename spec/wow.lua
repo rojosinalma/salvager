@@ -18,10 +18,11 @@ local function dependsOn(region, target, seen)
     return false
 end
 
---- A frame/region whose unknown methods do nothing. Scripts and state are kept.
-local function widget(kind)
-    local w = { kind = kind, scripts = {}, shown = true, events = {}, text = "", checked = false,
-        _children = {}, _regions = {} }
+local widget
+
+-- The methods every widget shares, as the client's do (one table, so a hook on it reaches every widget). Made new
+-- by each install, so a hook from one load does not stay for the next.
+local function newMethods()
     local methods = {
         SetScript = function(self, name, fn) self.scripts[name] = fn end,
         GetScript = function(self, name) return self.scripts[name] end,
@@ -57,13 +58,13 @@ local function widget(kind)
         end,
         ClearAllPoints = function(self) rawset(self, "points", nil) end,
         GetParent = function(self) return self.parent end,
-        CreateFontString = function(self)
-            local fs = widget("FontString") fs.parent = self
+        CreateFontString = function(self, _, layer)
+            local fs = widget("FontString") fs.parent = self fs.layer = layer
             table.insert(self._regions, fs)
             return fs
         end,
-        CreateTexture = function(self)
-            local t = widget("Texture") t.parent = self
+        CreateTexture = function(self, _, layer)
+            local t = widget("Texture") t.parent = self t.layer = layer
             table.insert(self._regions, t)
             return t
         end,
@@ -88,8 +89,29 @@ local function widget(kind)
             local old = self.scripts[name]
             self.scripts[name] = function(...) if old then old(...) end fn(...) end
         end,
+        -- What the layout dump reads of a text: its font, justification and color.
+        GetFont = function() return "Fonts\\FRIZQT__.TTF", 10, "" end,
+        SetJustifyH = function(self, j) self.justifyH = j end,
+        GetJustifyH = function(self) return rawget(self, "justifyH") or "CENTER" end,
+        SetTextColor = function(self, r, g, b, a) self.textColor = { r, g, b, a or 1 } end,
+        GetTextColor = function(self)
+            local c = rawget(self, "textColor") or { 1, 1, 1, 1 }
+            return c[1], c[2], c[3], c[4]
+        end,
+        GetDrawLayer = function(self) return rawget(self, "layer") end,
+        GetScale = function() return 1 end,
     }
-    return setmetatable(w, { __index = function(_, k) return methods[k] or noop end })
+    return setmetatable(methods, { __index = function() return noop end })
+end
+
+local methods = newMethods()
+local meta = { __index = methods }
+
+--- A frame/region whose unknown methods do nothing. Scripts and state are kept.
+function widget(kind)
+    local w = { kind = kind, scripts = {}, shown = true, events = {}, text = "", checked = false,
+        _children = {}, _regions = {} }
+    return setmetatable(w, meta)
 end
 M.widget = widget
 
@@ -102,6 +124,10 @@ function M.install()
     }
     M.env = env
     _G.SalvagerDB = nil   -- every install starts with fresh saved data
+    methods = newMethods()
+    meta.__index = methods
+    _G.GetScreenWidth = function() return 1920 end
+    _G.GetScreenHeight = function() return 1080 end
 
     _G.GetTime = function() return env.now end
     _G.time = function() return env.clock end

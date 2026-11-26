@@ -475,16 +475,37 @@ flipping is out of scope for now.
     while the button is off; the mouse on it shows the item's tooltip. It sits between the button's top and the
     list's bottom (37 to 51 px above the window's bottom, over the footer's first line), so the list keeps its
     place.
-94. **Layout dump for the agent** (0.3.114): on `PLAYER_LOGOUT` (logout and /reload; the game writes the saved
-    variables right after) `Layout.lua` walks every Salvager window that exists into `SalvagerDB.layout`, replaced
-    each time: `{ version, time, entries, size, windows = { [name] = { shown, w, h, x, y, view, regions, lists } } }`.
-    A region is one line: path key (parent key + the field name, the frame name, or `c<i>` / `r<i>`), type,
-    flags (S shown, V visible, T text cut), left,bottom,width,height (0.1 px), text (80 characters). Each
-    `Widgets.List` has its own record (columns as set, cells per row, each title: text, shown, width; the first
-    row's cells) and its rows are not walked. Hidden frames are not opened; depth 8, 2000 regions, windows on
-    show first. Past 300 KB the regions go, from the last window. Each window in `pcall`: a failure is
-    `{ error = msg }`. No chat output, no option. About 15-100 KB for a session with two or three windows open.
-    Read it with SSH from the saved variables after a /reload, instead of asking the user for a screenshot.
+94. **Layout dump for the agent** (0.3.114; complete enough to draw in 0.3.119): on `PLAYER_LOGOUT` (logout and
+    /reload; the game writes the saved variables right after) `Layout.lua` walks every Salvager window that exists into
+    `SalvagerDB.layout`, replaced each time: `{ version, time, entries, size, full, screen = { w, h, scale, eff },
+    hidden, windows = { [name] = { shown, w, h, x, y, scale, eff, view, regions, lists, dropped, rowsDropped } } }`
+    (`screen`: `GetScreenWidth/Height`, UIParent's scale and effective scale; a window's `x`, `y` are its left and
+    top; all sizes 0.1 px, as strings).
+    A region is one tab-separated line: path key (parent key + the field name, the frame name, or `c<i>` / `r<i>`),
+    type, flags (S shown, V visible, T text cut, D disabled control, C checked, K clips its children), left,bottom,width,height, text (in
+    full while visible, else 80 characters), then `k=v` fields where they apply: `f` font size, `j` justification
+    (L C R), `c` text color (FontString, when not white) or vertex color (Texture, when not white) as `rrggbbaa`, `sw`
+    the text's own width as the client measures it (`GetUnboundedStringWidth`), `d` draw layer (BG BD A O H), `ct` a
+    color texture's color, `tex` the texture's atlas or file name (last part, 40 characters), `a` alpha below 1,
+    `fl` frame level, `bg` and `bd` backdrop and border color. The client has no getter for a color texture: a
+    `hooksecurefunc` on the shared texture methods' `SetColorTexture` keeps it in a weak table.
+    Each `Widgets.List` also has its own record: `w`, `needed` (`neededWidth`), `offset`, `count`, columns as set
+    (title, width), `set` and `hidden` (95), `cells`, `rowsShown`, each title (text, shown, width, cut), and `rows`:
+    every row on screen (not hidden, not scrolled away), `{ n = data index, rect, cells, parts }`; a cell is flags,
+    width, text, rect, then the `k=v` fields (the first three as the 0.3.114 `row1`, which `rows` replaces); `parts`
+    are region lines of the row's open sign, icon, warning sign and button. The list's own regions and children are
+    walked, its rows and title help areas are not. Hidden frames are not opened; depth 8, 3000 regions, windows on
+    show first. Past 600 KB the regions go, from the last window, then the lists' rows, from the last window. Each
+    window in `pcall`: a failure is `{ error = msg }`. No chat output, no option.
+    `make layout` (`scripts/layout.py`, Python standard library): finds the newest
+    `<ADDONS_DIR>/../../WTF/Account/*/SavedVariables/Salvager.lua` on `INSTALL_HOST` (PowerShell over SSH), copies it
+    to `.agents/tmp/layout/` (mode 0600), draws each window that was on show as `<window>.svg` and `.png`
+    (`rsvg-convert` with DejaVu in Docker, image `salvager-layout` from `scripts/layout/Dockerfile`; texts at the
+    client's measured width, WoW color codes, coins as colored dots, other inline textures as squares) and prints per
+    window: texts cut, texts wider than their box or cell, regions outside the window, the window outside the screen,
+    controls and texts that overlap (a text button counts by its frame, a button without text by its art outside the
+    highlight layer), lists narrower than their columns need. `--file <path>` draws a local copy. It is the way to
+    see a window: /reload, `make layout`, read the PNG, instead of asking the user for a screenshot.
 95. **Column chooser** (0.3.117, the user): every table with column titles (`Widgets.List`, the Odds cards of
     `Widgets.CardList`, the main window's Deals and Materials tabs) has a small button at the right end of its title
     band, over the scroll bar, where the titles end (`Widgets.ColumnChooser`): three gold squares stacked (the game

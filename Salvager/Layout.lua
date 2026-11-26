@@ -1,12 +1,15 @@
 -- Salvager: what the client really draws, for the developer. At logout (and /reload) every Salvager window that
--- exists is walked and written to SalvagerDB.layout, replaced each time; read it from the saved variables (SDD 94).
--- Hidden columns (SDD 95): per list `set` and `hidden`, and `hidden[set]` for every column set.
+-- exists is walked and written to SalvagerDB.layout, replaced each time; read it from the saved variables, or draw
+-- it with `make layout` (SDD 94). Hidden columns (SDD 95): per list `set` and `hidden`, and `hidden[set]` for every
+-- column set.
 local _, ns = ...
 
 local Layout = {}
 ns.Layout = Layout
 
-local MAX_DEPTH, MAX_ENTRIES, TEXT_MAX, MAX_BYTES = 8, 2000, 80, 300 * 1024
+-- TEXT_MAX: hidden regions only; what is on show is written in full. MAX_BYTES bounds the dump in the saved file.
+local MAX_DEPTH, MAX_ENTRIES, TEXT_MAX, MAX_BYTES = 8, 3000, 80, 600 * 1024
+Layout.MAX_BYTES = MAX_BYTES
 -- name in the dump -> the window's global frame name
 local WINDOWS = {
     main = "SalvagerFrame", ledger = "SalvagerLedgerFrame", odds = "SalvagerOddsFrame", log = "SalvagerLogFrame",
@@ -14,6 +17,8 @@ local WINDOWS = {
     stand = "SalvagerStandFrame", breakdown = "SalvagerBreakdownFrame", post = "SalvagerPostFrame",
     options = "SalvagerOptionsFrame",
 }
+local LAYERS = { BACKGROUND = "BG", BORDER = "BD", ARTWORK = "A", OVERLAY = "O", HIGHLIGHT = "H" }
+local CONTROLS = { Button = true, CheckButton = true, EditBox = true, Slider = true }
 
 -- A method's results, or nothing where the client does not have it or it fails.
 local function call(obj, method, ...)
@@ -22,6 +27,18 @@ local function call(obj, method, ...)
     local ok, a, b, c, d = pcall(fn, obj, ...)
     if ok then return a, b, c, d end
     return nil
+end
+
+-- The client has no getter for a color texture's color: it is kept here as it is set (weak keys, so a texture
+-- the game frees goes too). Every texture shares one method table; hooked once, without taint.
+local colorOf = setmetatable({}, { __mode = "k" })
+do
+    local ok, probe = pcall(function() return CreateFrame("Frame"):CreateTexture() end)
+    local meta = ok and type(probe) == "table" and getmetatable(probe)
+    local methods = type(meta) == "table" and meta.__index
+    if type(methods) == "table" and type(methods.SetColorTexture) == "function" and hooksecurefunc then
+        hooksecurefunc(methods, "SetColorTexture", function(tex, r, g, b, a) colorOf[tex] = { r, g, b, a } end)
+    end
 end
 
 local function num(v)
@@ -40,14 +57,132 @@ local function cut(text)
     return #text > TEXT_MAX and text:sub(1, TEXT_MAX) or text
 end
 
+-- "rrggbbaa", or nil where the client gave no color.
+local function hex(r, g, b, a)
+    if type(r) ~= "number" or type(g) ~= "number" or type(b) ~= "number" then return nil end
+    local function byte(v) return math.max(0, math.min(255, math.floor(v * 255 + 0.5))) end
+    return string.format("%02x%02x%02x%02x", byte(r), byte(g), byte(b), byte(type(a) == "number" and a or 1))
+end
+
+-- The drawing facts of a region or frame, as "k=v" fields: f font size, j justification (L C R), c text or
+-- vertex color, sw the text's own width, d draw layer, ct color texture color, tex texture or atlas, a alpha,
+-- fl frame level, bg and bd backdrop and border color.
+local function extras(obj, kind, text)
+    local out = {}
+    local alpha = call(obj, "GetAlpha")
+    if type(alpha) == "number" and alpha < 0.99 then out[#out + 1] = "a=" .. num(alpha) end
+    if kind == "FontString" or kind == "Texture" then
+        local layer = LAYERS[call(obj, "GetDrawLayer") or ""]
+        if layer then out[#out + 1] = "d=" .. layer end
+    end
+    if kind == "FontString" then
+        local _, size = call(obj, "GetFont")
+        if type(size) == "number" then out[#out + 1] = "f=" .. num(size) end
+        local justify = call(obj, "GetJustifyH")
+        if type(justify) == "string" and justify ~= "" then out[#out + 1] = "j=" .. justify:sub(1, 1) end
+        local color = hex(call(obj, "GetTextColor"))
+        if color and color ~= "ffffffff" then out[#out + 1] = "c=" .. color end
+        if text ~= "" then
+            local sw = call(obj, "GetUnboundedStringWidth") or call(obj, "GetStringWidth")
+            if type(sw) == "number" then out[#out + 1] = "sw=" .. num(sw) end
+        end
+    elseif kind == "Texture" then
+        local fill = colorOf[obj]
+        if fill then out[#out + 1] = "ct=" .. (hex(fill[1], fill[2], fill[3], fill[4]) or "?") end
+        local color = hex(call(obj, "GetVertexColor"))
+        if color and color ~= "ffffffff" then out[#out + 1] = "c=" .. color end
+        local tex = call(obj, "GetAtlas") or call(obj, "GetTexture")
+        if type(tex) == "number" then tex = tostring(tex) end
+        if type(tex) == "string" and tex ~= "" then
+            out[#out + 1] = "tex=" .. (tex:match("([^\\/]+)$") or tex):sub(1, 40)
+        end
+    else
+        local level = call(obj, "GetFrameLevel")
+        if type(level) == "number" then out[#out + 1] = "fl=" .. num(level) end
+        if type(call(obj, "GetBackdrop")) == "table" then
+            local bg, bd = hex(call(obj, "GetBackdropColor")), hex(call(obj, "GetBackdropBorderColor"))
+            if bg then out[#out + 1] = "bg=" .. bg end
+            if bd then out[#out + 1] = "bd=" .. bd end
+        end
+    end
+    return out
+end
+
+-- S shown, V visible, T text cut, D disabled (a control), C checked, K clips its children (they show only inside it).
+local function flagsOf(obj, kind)
+    local flags = (call(obj, "IsShown") and "S" or "") .. (call(obj, "IsVisible") and "V" or "")
+        .. (kind == "FontString" and call(obj, "IsTruncated") and "T" or "")
+        .. ((kind == "ScrollFrame" or call(obj, "DoesClipChildren")) and "K" or "")
+    if CONTROLS[kind] then
+        if call(obj, "IsEnabled") == false then flags = flags .. "D" end
+        if kind == "CheckButton" and call(obj, "GetChecked") then flags = flags .. "C" end
+    end
+    return flags == "" and "-" or flags
+end
+
+-- The text of a region: in full while it is on show, else its first TEXT_MAX characters.
+local function textOf(obj, kind, visible)
+    if kind ~= "FontString" and kind ~= "Button" and kind ~= "EditBox" and kind ~= "CheckButton" then return "" end
+    local text = call(obj, "GetText")
+    if type(text) ~= "string" then return "" end
+    return visible and text or cut(text)
+end
+
+-- One line: key, type, flags, left,bottom,width,height, text, then the "k=v" fields.
+local function regionLine(obj, key)
+    local kind = call(obj, "GetObjectType") or "?"
+    local flags = flagsOf(obj, kind)
+    local text = textOf(obj, kind, flags:find("V", 1, true) ~= nil)
+    local fields = { key, kind, flags, rect(obj), text }
+    for _, x in ipairs(extras(obj, kind, text)) do fields[#fields + 1] = x end
+    return table.concat(fields, "\t"), kind, flags:find("S", 1, true) ~= nil
+end
+
+-- A cell of a list row: flags, width, text, then left,bottom,width,height and the "k=v" fields.
+local function cellLine(fs)
+    local flags = flagsOf(fs, "FontString")
+    local shown = flags:find("S", 1, true) ~= nil
+    local text = shown and textOf(fs, "FontString", true) or ""
+    local fields = { flags, num(call(fs, "GetWidth")), text }
+    if shown then
+        fields[4] = rect(fs)
+        for _, x in ipairs(extras(fs, "FontString", text)) do fields[#fields + 1] = x end
+    end
+    return table.concat(fields, "\t")
+end
+
 -- A list made by Widgets.List: its columns as set, its cells per row, and each title as drawn.
 local function isList(obj)
     return type(rawget(obj, "headers")) == "table" and type(rawget(obj, "rows")) == "table"
         and type(rawget(obj, "columns")) == "table"
 end
 
+-- Every row on screen (hidden rows and rows scrolled away are not), cell by cell; the row's icon, open sign,
+-- button and warning sign as region lines.
+local function listRows(list)
+    local rows, offset = {}, tonumber(rawget(list, "offset")) or 0
+    local ncols = math.min(#list.columns, 12)
+    for r, row in ipairs(list.rows) do
+        if call(row, "IsVisible") then
+            local rec = { n = offset + r, rect = rect(row), cells = {}, parts = {} }
+            local cells = type(rawget(row, "cells")) == "table" and row.cells or {}
+            for i = 1, ncols do
+                if cells[i] then rec.cells[i] = cellLine(cells[i]) end
+            end
+            for _, part in ipairs({ "toggle", "icon", "warn", "action" }) do
+                local obj = rawget(row, part)
+                if type(obj) == "table" and call(obj, "IsShown") then rec.parts[#rec.parts + 1] = (regionLine(obj, part)) end
+            end
+            if #rec.parts == 0 then rec.parts = nil end
+            rows[#rows + 1] = rec
+        end
+    end
+    return rows
+end
+
 local function listInfo(list)
-    local info = { w = num(call(list, "GetWidth")), needed = num(rawget(list, "neededWidth")), columns = {}, headers = {} }
+    local info = { w = num(call(list, "GetWidth")), needed = num(rawget(list, "neededWidth")), columns = {}, headers = {},
+        offset = tonumber(rawget(list, "offset")), count = tonumber(rawget(list, "count")) }
     for i, col in ipairs(list.columns) do info.columns[i] = tostring(col[1]) .. "\t" .. num(col[2]) end
     -- Its column set, and the titles hidden there with the chooser (by choice, not for want of room).
     local set = rawget(list, "columnSet")
@@ -63,33 +198,27 @@ local function listInfo(list)
     for _, row in ipairs(list.rows) do if call(row, "IsShown") then shownRows = shownRows + 1 end end
     info.rowsShown = shownRows
     for i, h in ipairs(list.headers) do
-        info.headers[i] = cut(call(h, "GetText")) .. "\t" .. (call(h, "IsShown") and "S" or "-") .. "\t"
-            .. num(call(h, "GetWidth")) .. "\t" .. (call(h, "IsTruncated") and "T" or "-")
+        local shown = call(h, "IsShown")
+        info.headers[i] = (shown and call(h, "GetText") or cut(call(h, "GetText"))) .. "\t" .. (shown and "S" or "-")
+            .. "\t" .. num(call(h, "GetWidth")) .. "\t" .. (call(h, "IsTruncated") and "T" or "-")
     end
-    -- The first row on show, cell by cell: shown, width, text.
-    if first and call(first, "IsShown") then
-        info.row1 = {}
-        for i, fs in ipairs(first.cells) do
-            info.row1[i] = (call(fs, "IsShown") and "S" or "-") .. "\t" .. num(call(fs, "GetWidth")) .. "\t"
-                .. cut(call(fs, "GetText"))
-        end
-    end
+    if call(list, "IsVisible") then info.rows = listRows(list) end
     return info
 end
 
--- One line per region: key, type, flags (S shown, V visible, T text cut), left,bottom,width,height, text.
+-- One line per region (regionLine); lists also get their own record (listInfo) and their rows are not walked.
 local function walk(obj, key, depth, out)
     if out.n >= MAX_ENTRIES then out.full = true return end
-    local kind = call(obj, "GetObjectType") or "?"
-    local shown = call(obj, "IsShown")
-    local flags = (shown and "S" or "") .. (call(obj, "IsVisible") and "V" or "")
-        .. (kind == "FontString" and call(obj, "IsTruncated") and "T" or "")
-    local text = (kind == "FontString" or kind == "Button" or kind == "EditBox") and cut(call(obj, "GetText")) or ""
+    local line, kind, shown = regionLine(obj, key)
     out.n = out.n + 1
-    out.regions[#out.regions + 1] = table.concat({ key, kind, flags == "" and "-" or flags, rect(obj), text }, "\t")
+    out.regions[#out.regions + 1] = line
+    -- The rows of a list (60 rows of 12 cells) and its title areas are in the list's own record.
+    local skip
     if isList(obj) then
         out.lists[key] = listInfo(obj)
-        return   -- (its rows are in the list's own record: 60 rows of 12 cells would fill the budget)
+        skip = {}
+        for _, row in ipairs(obj.rows) do skip[row] = true end
+        for _, area in ipairs(type(rawget(obj, "helps")) == "table" and obj.helps or {}) do skip[area] = true end
     end
     -- Hidden frames are not opened: nothing under them is on screen.
     if depth >= MAX_DEPTH or not shown or kind == "FontString" or kind == "Texture" then return end
@@ -103,7 +232,9 @@ local function walk(obj, key, depth, out)
     end
     local ok, kids = pcall(function() return { obj:GetChildren() } end)
     if ok then
-        for i, child in ipairs(kids) do walk(child, key .. "." .. nameOf(child, "c", i), depth + 1, out) end
+        for i, child in ipairs(kids) do
+            if not (skip and skip[child]) then walk(child, key .. "." .. nameOf(child, "c", i), depth + 1, out) end
+        end
     end
     local okR, regions = pcall(function() return { obj:GetRegions() } end)
     if okR then
@@ -115,10 +246,19 @@ local function views()
     return { main = ns.UI and rawget(ns.UI, "view"), ledger = ns.LedgerWindow and rawget(ns.LedgerWindow, "view") }
 end
 
+local function screen()
+    local s = {}
+    if type(GetScreenWidth) == "function" then s.w, s.h = num(GetScreenWidth()), num(GetScreenHeight()) end
+    if type(UIParent) == "table" then
+        s.scale, s.eff = num(call(UIParent, "GetScale")), num(call(UIParent, "GetEffectiveScale"))
+    end
+    return s
+end
+
 --- Walks every window that exists into a fresh dump. Called at logout; returns it.
 function Layout.Save()
     if type(SalvagerDB) ~= "table" then return nil end
-    local dump = { version = ns.VERSION, time = time(), windows = {} }
+    local dump = { version = ns.VERSION, time = time(), screen = screen(), windows = {} }
     local out = { n = 0, regions = nil, lists = nil }
     local view = views()
     -- Windows on show first: they get the budget before the hidden ones.
@@ -135,7 +275,8 @@ function Layout.Save()
         local ok, rec = pcall(function()
             local f = w.f
             local r = { shown = w.shown, w = num(call(f, "GetWidth")), h = num(call(f, "GetHeight")),
-                x = num(call(f, "GetLeft")), y = num(call(f, "GetTop")), view = view[w.name], regions = {}, lists = {} }
+                x = num(call(f, "GetLeft")), y = num(call(f, "GetTop")), scale = num(call(f, "GetScale")),
+                eff = num(call(f, "GetEffectiveScale")), view = view[w.name], regions = {}, lists = {} }
             local saved = rawget(f, "saved")
             if not r.view and type(saved) == "table" then r.view = saved.view or saved.tab end
             out.regions, out.lists = r.regions, r.lists
@@ -157,8 +298,8 @@ function Layout.Save()
             dump.hidden[tostring(set)] = table.concat(names, "\t")
         end
     end
-    -- Bounded in the saved file: past MAX_BYTES the regions go, from the last window (hidden ones are last);
-    -- the lists stay, they are the smallest and most useful part.
+    -- Bounded in the saved file: past MAX_BYTES the regions go, from the last window (hidden ones are last), then
+    -- the lists' rows, from the last window too; the list records stay, they are the smallest part.
     dump.size = ns.Util.SavedSize(dump)
     for i = #order, 1, -1 do
         if dump.size <= MAX_BYTES then break end
@@ -167,6 +308,14 @@ function Layout.Save()
             rec.regions, rec.dropped = nil, true
             dump.size = ns.Util.SavedSize(dump)
         end
+    end
+    for i = #order, 1, -1 do
+        if dump.size <= MAX_BYTES then break end
+        local rec = dump.windows[order[i].name]
+        for _, info in pairs(rec.lists or {}) do
+            if info.rows then info.rows, rec.rowsDropped = nil, true end
+        end
+        dump.size = ns.Util.SavedSize(dump)
     end
     SalvagerDB.layout = dump
     return dump

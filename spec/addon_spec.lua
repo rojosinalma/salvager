@@ -383,7 +383,7 @@ describe("Salvager in a simulated client", function()
         assert.is_table(bandList)
         assert.are.equal(12, bandList.cells)
         assert.are.equal("AP/EP %\tS", bandList.headers[11]:match("^[^\t]*\t[^\t]*"))
-        assert.is_true(layout.entries <= 2000 and layout.size < 300 * 1024)
+        assert.is_true(layout.entries <= 2000 and layout.size <= 600 * 1024)
         ns.Widgets.TextWidth = realWidth
         assert.is_true(frameW > 860)                          -- wider than its bounds at build
         frame.GetWidth, frame.SetWidth, frame.SetResizeBounds = nil, nil, nil
@@ -2340,5 +2340,94 @@ describe("Salvager column chooser", function()
         assert.is_nil(_G.SalvagerDB.columns.accBands)
         assert.is_true(byBand.chooser.menu:IsShown())
         for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
+    end)
+end)
+
+describe("Salvager layout dump", function()
+    local env, ns
+    setup(function()
+        env = wow.install()
+        ns = wow.loadAddon()
+        wow.fire(ns, "ADDON_LOADED", "Salvager")
+        wow.fire(ns, "AUCTION_HOUSE_SHOW")
+    end)
+
+    local function logList()
+        wow.fire(ns, "PLAYER_LOGOUT")
+        local layout = _G.SalvagerDB.layout
+        local _, info = next(layout.windows.log.lists)
+        return layout, info
+    end
+
+    it("writes every row on screen of a list in full, with the font, the justification and the color", function()
+        local long = string.rep("a long log line ", 10)        -- 160 characters: more than the cut of hidden texts
+        for i = 1, 50 do ns.Log(i == 50 and long or ("line %d"), i) end
+        ns.LogWindow.Show()
+        local layout, info = logList()
+        assert.are.same({ w = "1920", h = "1080", scale = "1", eff = "1" }, layout.screen)
+        assert.are.equal("1", layout.windows.log.scale)
+        -- The list follows its last line: the rows on screen are the last ones, the rows scrolled away are not written.
+        local fit = math.floor(560 / 15)
+        local count = #ns.db.log
+        assert.are.equal(count, info.count)
+        assert.are.equal(fit, #info.rows)
+        assert.are.equal(info.rowsShown, #info.rows)
+        assert.are.equal(count - fit + 1, info.rows[1].n)
+        assert.are.equal(count, info.rows[#info.rows].n)
+        local last = info.rows[#info.rows].cells[1]
+        local flags, width, text = last:match("^([^\t]*)\t([^\t]*)\t([^\t]*)")
+        assert.are.equal("SV", flags)
+        assert.are.equal("140", width)
+        assert.is_truthy(text:find(long, 1, true))            -- in full
+        assert.is_truthy(last:find("\tf=10", 1, true))
+        assert.is_truthy(last:find("\tj=L", 1, true))
+        assert.is_falsy(last:find("\tc=", 1, true))           -- white: no color written
+        -- Scrolled to the top: the first lines, and a text color that is not white.
+        local list
+        for _, f in ipairs(env.frames) do
+            if rawget(f, "rows") and rawget(f, "headers") and f.parent == _G.SalvagerLogFrame then list = f end
+        end
+        list.offset, list.atBottom = 0, false
+        list:Refresh()
+        list.rows[1].cells[1]:SetTextColor(1, 0, 0)
+        info = select(2, logList())
+        assert.are.equal(1, info.rows[1].n)
+        assert.is_truthy(info.rows[1].cells[1]:find("\tc=ff0000ff", 1, true))
+        -- Regions carry the drawing facts: a color texture's color, a text's font size.
+        local main = _G.SalvagerDB.layout.windows.main
+        local colored, sized = false, false
+        for _, line in ipairs(main.regions) do
+            if line:find("\tTexture\t", 1, true) and line:find("\tct=%x%x%x%x%x%x%x%x") then colored = true end
+            if line:find("\tFontString\t", 1, true) and line:find("\tf=10", 1, true) then sized = true end
+        end
+        assert.is_true(colored and sized)
+    end)
+
+    it("writes the texts on show in full and stays within its size bound", function()
+        local long = string.rep("x", 20000)
+        local function inMain(f)
+            while type(f) == "table" do
+                if f == _G.SalvagerFrame then return true end
+                f = rawget(f, "parent")
+            end
+            return false
+        end
+        -- Every text of the main window, and of the Log window's own, far too long for the bound together.
+        for _, f in ipairs(env.frames) do
+            if inMain(f) or f == _G.SalvagerLogFrame then
+                for _, r in ipairs(f._regions) do if r.kind == "FontString" then r.text = long end end
+            end
+        end
+        wow.fire(ns, "PLAYER_LOGOUT")
+        local layout = _G.SalvagerDB.layout
+        assert.is_true(layout.size <= 600 * 1024)
+        -- The regions went from the last window on show (main, after log); the first one keeps them, in full.
+        local log, main = layout.windows.log, layout.windows.main
+        assert.is_true(main.dropped)
+        assert.is_nil(main.regions)
+        local full = false
+        for _, line in ipairs(log.regions) do if line:find(long, 1, true) then full = true end end
+        assert.is_true(full)
+        for _, rec in pairs(layout.windows) do assert.is_table(rec.lists) end
     end)
 end)

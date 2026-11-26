@@ -5,7 +5,7 @@ RUN := docker run --rm -v "$(CURDIR)":/src $(DOCKER_IMAGE)
 -include .env
 export
 
-.PHONY: image test lint check install package release
+.PHONY: image test lint check install layout package release
 
 image:
 	docker build -q -t $(DOCKER_IMAGE) test/
@@ -28,6 +28,11 @@ install: check
 	got=$$(ssh -o RequestTTY=no $(INSTALL_HOST) 'Select-String -Path "$(ADDONS_DIR)/Salvager/Salvager.toc" -Pattern "^## Version:" | ForEach-Object { $$_.Line }' 2>/dev/null | tr -d '\r'); \
 	if [ "$$want" != "$$got" ]; then echo "install FAILED: $(INSTALL_HOST) has '$$got', expected '$$want'"; exit 1; fi; \
 	echo "installed: $$got"
+
+# Draws each window of the layout dump (SDD 94) from the gaming PC's saved variables into .agents/tmp/layout/
+# (<window>.png) and lists its layout problems. /reload the game first: the dump is written at logout and reload.
+layout:
+	python3 scripts/layout.py
 
 # dist/Salvager-<version>.zip, the file CurseForge gets.
 package: check

@@ -64,8 +64,10 @@ when you can use it, minus the 5% auction house cut. The buy limit is that value
 settings from `.env` (copy `.env.example`):
 
 1. `make install` copies the addon to a Windows PC over SSH (`INSTALL_HOST`, `ADDONS_DIR`).
-2. `make package` builds `dist/Salvager-<version>.zip`.
-3. `make release` uploads that zip to CurseForge as the TOC's version (`CURSEFORGE_TOKEN`,
+2. `make layout` copies the saved variables from that PC and draws each Salvager window that was open at the last
+   `/reload` as a PNG in `.agents/tmp/layout/`, with a list of layout problems (Docker for the PNG).
+3. `make package` builds `dist/Salvager-<version>.zip`.
+4. `make release` uploads that zip to CurseForge as the TOC's version (`CURSEFORGE_TOKEN`,
    `CURSEFORGE_PROJECT_ID`, `RELEASE_TYPE`), with the commit subjects since the last release as the
    changelog, tags `v<version>` and pushes the tag to GitHub. The working tree must be committed.
 
