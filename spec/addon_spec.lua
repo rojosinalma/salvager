@@ -2702,31 +2702,85 @@ describe("Sessions and the statement in a simulated client", function()
         ns.Reports.view, ns.Reports.range, ns.Reports.goldTab = "gold", "session", "statement"
         ns.Reports.Refresh()
         local rows = ns.Reports.StatementRows()
-        assert.is_truthy(labels(rows):find("= Trading profit", 1, true))
+        assert.is_truthy(labels(rows):find("Trading profit", 1, true))
         assert.is_nil(labels(rows):find("Sold while you were away", 1, true))
+        assert.is_nil(labels(rows):find("Sessions:", 1, true))              -- one session: no list of sessions
+        local seen = {}
         for _, r in ipairs(rows) do
-            if r.cells[1]:find("Trading profit", 1, true) then
-                assert.is_true(r.group)                                  -- a total, visibly
-                assert.are.equal("|cff40ff40+" .. ns.Money(807) .. "|r", r.cells[2])
+            local plain = r.cells[1]:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+            if (r.indent or 0) == 0 and (plain == "Trading" or plain == "Gold not from trading"
+                or plain == "Check against your gold") then
+                assert.is_true(r.group, plain)                           -- a section heading, no amount
+                assert.are.equal("", r.cells[2])
+                seen[plain] = true
+            end
+            if plain:find("^Sales, after the auction house cut") or plain:find("^Less gold at the start") then
+                assert.is_true((r.indent or 0) > 0, plain)               -- lines indented under their heading
+            end
+            if plain == "Trading profit" or plain == "Change in gold and mail" or plain == "Explained by the records"
+                or plain == "Total gold not from trading" then
+                assert.are.equal("total", r.rule, plain)                 -- a subtotal: a rule over the amount
+                assert.is_true(r.bold, plain)                            -- totals are bold
+                assert.are.equal(0, r.indent or 0)                       -- at the heading's level
+                seen[plain] = true
+            end
+            if plain == "Total: how much richer you are" or plain == "Not explained: none" then
+                assert.are.equal("final", r.rule, plain)                 -- the bottom line: a double rule under it
+                assert.is_true(r.bold, plain)
+                seen[plain] = true
+            end
+            assert.is_nil(plain:find("^="), plain)                       -- no "=" lines
+            -- One sign rule: + came in, - went out, on every amount.
+            local amount = r.cells[2]:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+            if amount ~= "" and amount ~= "-" and not amount:find("^0") then
+                assert.is_truthy(amount:find("^[+-]"), plain .. ": " .. amount)
+            end
+            if plain == "Trading profit" then
+                -- the sign with the amount, the coins of a column (8s 07c: every unit under the largest, two digits)
+                assert.are.equal("|cff40ff40+" .. ns.MoneyColumn(807) .. "|r", r.cells[2])
+                assert.is_truthy(ns.Util.FormatMoney(807, false, true) == "8s 07c")
             end
             if r.cells[1]:find("Not explained", 1, true) then
                 assert.is_nil(r.cells[1]:find("check", 1, true))        -- every change has its record
             end
             if r.cells[1] ~= "" and not r.cells[1]:find("^|cff808080") then assert.is_table(r.tip, r.cells[1]) end
         end
-        -- Each column as wide as its widest text (the stand-in measures 6 px a character), title included.
+        for _, want in ipairs({ "Trading", "Gold not from trading", "Check against your gold", "Trading profit",
+            "Change in gold and mail", "Explained by the records", "Total gold not from trading",
+            "Total: how much richer you are", "Not explained: none" }) do
+            assert.is_true(seen[want], want)
+        end
+        -- The heading says what it is, for which character and which time.
+        assert.are.equal("Gold statement of Tester-Realm", rows[1].cells[1])
+        assert.is_truthy(rows[2].cells[1]:find("This session: %d%d%-%d%d %d%d:%d%d to now %(%d+ min%)"), rows[2].cells[1])
+        -- A statement: the amount column as wide as its widest text (the stand-in measures 6 px a character) and
+        -- flush with the table's right edge; the label column takes the rest.
         local real = ns.Widgets.TextWidth
         ns.Widgets.TextWidth = shownWidth
         local list, widths = ns.Reports.list, {}
         list.GetWidth = function() return 860 end
         for i = 1, 2 do list.headers[i].SetWidth = function(_, w) widths[i] = w end end
         ns.Reports.Refresh()
-        local want = { shownWidth("What"), shownWidth("Amount") }
+        local want = shownWidth("Amount")   -- (a total's texts are in the larger font: 12 pt against 10)
         for _, r in ipairs(rows) do
-            want[1] = math.max(want[1], shownWidth(r.cells[1]) + (r.indent or 0))
-            want[2] = math.max(want[2], shownWidth(r.cells[2]))
+            want = math.max(want, r.bold and (math.ceil(shownWidth(r.cells[2]) * 1.2)) or shownWidth(r.cells[2]))
         end
-        assert.are.same({ want[1] + 10, want[2] + 10 }, widths)
+        local right = 860 - 18 - 4          -- the table's right: its width, less the scroll bar and the inset
+        local x2 = list.headers[2].points[1][4]
+        assert.are.equal(want + 10, widths[2])
+        assert.are.equal(right, x2 + widths[2])                          -- the amounts end at the right edge
+        assert.are.equal(right, list.amountsRight)
+        assert.are.equal(x2 - 6 - 4, widths[1])                          -- the labels fill the free width
+        assert.is_true(widths[1] > 600)
+        -- Every amount cell is right-justified, and a total line draws its rules over the amounts.
+        for _, row in ipairs(list.rows) do
+            local data = rawget(row, "data")
+            if data then
+                assert.are.equal("RIGHT", row.cells[2].justifyH)
+                assert.are.equal(data.rule ~= nil, row.rules[1].shown)
+                assert.are.equal(data.rule == "final", row.rules[2].shown and row.rules[3].shown)
+            end
+        end
         ns.Widgets.TextWidth = real
     end)
 
@@ -2767,20 +2821,61 @@ describe("Sessions and the statement in a simulated client", function()
         ns.Reports.view, ns.Reports.range, ns.Reports.goldTab = "gold", "session", "statement"
         ns.Reports.Refresh()
         assert.is_truthy(labels(ns.Reports.StatementRows()):find("Sold while you were away", 1, true))
-        -- The Sessions list: this one first, then the one before, with its trading profit; a click shows it.
-        local rows = ns.Reports.SessionRows()
-        assert.are.equal(2, #rows)
-        assert.is_truthy(rows[1].cells[1]:find("(now)", 1, true))
-        assert.are.equal("|cff40ff40+" .. ns.Money(807) .. "|r", rows[2].cells[3])
-        rows[2].onClick()
+        -- No Sessions subtab: the Gold view has Statement and All gold changes; a session is a choice of the period.
+        for _, fr in ipairs(env.frames) do assert.are_not.equal("Sessions", rawget(fr, "text")) end
+        local name = ns.Reports.SessionName(ns.db.sessions.list[1])
+        assert.is_truthy(name:match("^%d%d%-%d%d %d%d:%d%d, %d+ min$"), name)
+        local keys = {}
+        for _, o in ipairs(ns.Reports.PeriodOptions()) do keys[#keys + 1] = o[1] end
+        assert.are.same({ "session", "s:1700000000", "24h", "7d", "30d", "all" }, keys)
+        assert.are.same({ "all", "All time" }, ns.Reports.PeriodOptions()[6])
+        assert.are.equal(name, ns.Reports.PeriodOptions()[2][2])
+        -- All time: the statement of every record, then one line per session with its total; a click shows it.
+        ns.Reports.range = "all"
+        ns.Reports.Refresh()
+        local rows = ns.Reports.StatementRows()
+        assert.is_truthy(rows[2].cells[1]:find("All time: every record kept", 1, true))
+        local at
+        for i, r in ipairs(rows) do
+            if r.cells[1] == "|cffffd100Sessions: how much richer each one made you|r" then at = i end
+        end
+        assert.is_number(at)
+        assert.is_truthy(rows[at + 1].cells[1]:find("(now)", 1, true))
+        assert.are.equal(name, rows[at + 2].cells[1])
+        assert.are.equal("|cff40ff40+" .. ns.MoneyColumn(ns.db.sessions.list[1].sum.total) .. "|r", rows[at + 2].cells[2])
+        assert.is_truthy(table.concat(rows[at + 2].tip, " "):find("Trading profit: |cff40ff40+" .. ns.MoneyColumn(807), 1,
+            true))
+        rows[at + 2].onClick()
         assert.are.equal("s:1700000000", ns.Reports.range)
+        assert.are.equal("s:1700000000", ns.db.windows.reports.range)       -- remembered with the window
         local from, _, to = ns.Reports.From()
         assert.are.same({ 1700000000, stop }, { from, to })
-        assert.is_truthy(labels(ns.Reports.StatementRows()):find("Session of", 1, true))
-        for _, tab in ipairs({ "sessions", "changes", "statement" }) do
+        rows = ns.Reports.StatementRows()
+        assert.is_truthy(rows[2].cells[1]:find("Session " .. name, 1, true))
+        assert.is_nil(labels(rows):find("Sessions:", 1, true))              -- one session: no list of sessions
+        -- The rows from the top: tabs, the Gold subtabs, the filter row with "Period", then the table.
+        local function periodRow()
+            for _, r in ipairs(_G.SalvagerReportsFrame._regions) do
+                if r.text == "Period" then return r.points[1][2] end
+            end
+        end
+        local row = periodRow()
+        assert.are.equal(-86, row.points[1][5])
+        assert.are.equal(-114, ns.Reports.list.points[1][5])
+        ns.Reports.view = "profit"
+        ns.Reports.Refresh()
+        assert.are.equal(-58, row.points[1][5])                            -- no subtabs: right under the tabs
+        assert.are.equal(-86, ns.Reports.list.points[1][5])
+        ns.Reports.view = "gold"
+        for _, tab in ipairs({ "changes", "statement" }) do
             ns.Reports.goldTab = tab
             ns.Reports.Refresh()
         end
+        -- A /reload keeps the period picked.
+        wow.fire(ns, "PLAYER_LOGOUT")
+        load(_G.SalvagerDB, env.money, env.clock + 30, false, true)
+        ns.Reports.Show()
+        assert.are.equal("s:1700000000", ns.Reports.range)
         for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
     end)
 
@@ -2800,6 +2895,6 @@ describe("Sessions and the statement in a simulated client", function()
         for _, r in ipairs(ns.Reports.MaterialRows()) do
             if r.itemID == DUST then value = r.cells[10] end
         end
-        assert.are.equal(ns.Money(math.floor(each * 4)), value)
+        assert.are.equal(ns.MoneyColumn(math.floor(each * 4)), value)
     end)
 end)

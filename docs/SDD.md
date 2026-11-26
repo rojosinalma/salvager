@@ -264,11 +264,12 @@ flipping is out of scope for now.
     click frees the row at once; a late "purchase completed" for it is still booked.
 63. **Columns fit their content** (`Widgets.FitColumns`, `Widgets.TextWidth`): in every table (`Widgets.List`,
     `Widgets.CardList`, the main window's list) a column is as wide as its widest title or cell over all rows,
-    plus 10 px; spare room stays at the right. The title is measured as it shows: with the sort arrow on the
+    plus 10 px; spare room stays at the right, except in a statement (`cols.statement`, 0.3.126, UI.md Statements 2):
+    there the label column takes the spare room and the amounts end at the table's right edge. The title is measured as it shows: with the sort arrow on the
     sorted column (0.3.124: the main window's Deals measured "Return" without its arrow, which then ran into "Loss
     chance"). A column of live values has a `sample`, its widest possible value with every digit the widest one, so
     it keeps its width while the value changes: the Sales tables' Time ("00:00:00"), the Materials list's Age ("00m",
-    also in the main window's Materials tab), Reports' Sessions Length ("00 h 00 min"). The widths written in the code
+    also in the main window's Materials tab). The widths written in the code
     are the fallback where text cannot be measured, and the width of columns with input boxes. The Log is left out.
 64. **Sales view:** two subtabs. "Open and sold" has two tables: Open auctions (only what is still for sale)
     and Sold (sales whose money is not collected yet, with a countdown). "History" lists the sales whose mail
@@ -349,13 +350,16 @@ flipping is out of scope for now.
 71. **A click that cannot run now runs by itself** (`ns.Defer`): a gear scan clicked during a material scan,
     a material scan during a gear scan or an undercut check, and an undercut check during a material scan
     start when the other is done (dropped if the auction house closes). The chat says when it starts.
-72. **Gold view** (Reports window, 79; rewritten 0.3.123: the user found the old one very hard to understand): three
-    subtabs on the row under the tabs, kept with the window (`goldTab`). "Statement" first (97). "Sessions": one row per
-    session of this character, newest first (Session start, Length, Trading profit, Total; the open one marked
-    "(now)"); a click shows its statement, and the time choice reads "Session of <date>". "All gold changes": every
-    change of gold in the time picked, newest first (What, Time, Change, Kind, Gold after). The old sums (start, now,
-    mail, by kind, the buys that lost and the part valued wrong) left the view: the statement says it better;
-    `/salv gold <hours>` keeps them.
+72. **Gold view** (Reports window, 79; rewritten 0.3.123: the user found the old one very hard to understand; 0.3.126:
+    the Sessions subtab became a choice of the period, the user, 2026-11-26): two subtabs on the subtab row, kept with
+    the window (`goldTab`; a saved "sessions" falls back to Statement). "Statement" first (97). "All gold changes":
+    every change of gold in the period picked, newest first (What, Time, Change, Kind, Gold after). A session is picked
+    in the Period filter (79); a period longer than one session (the last hours or days, All time) ends the statement
+    with a Sessions part: one line per session of this character in it, newest first (its start and length, "(now)"
+    for the open one; amount: its Total; tooltip: Trading profit and Total), a click shows its statement. One amount
+    column, not four: the statement keeps its two columns (label, amount) and the trading profit is in the tooltip.
+    The old sums (start, now, mail, by kind, the buys that lost and the part valued wrong) left the view: the statement
+    says it better; `/salv gold <hours>` keeps them.
 73. **Min return** (`minReturn`, percent, 0 = off) next to the min profit: the recommended limit is the lower
     of value − min profit and value ÷ (1 + min return) (`Model.MaxBuy`, which also says which rule set it; the
     value is the forecast's: price × sell price ratio after the cut, less deposits lost, 3 and 96; the
@@ -417,16 +421,22 @@ flipping is out of scope for now.
     ForeverForge hides that one on purpose. Facts read from ForeverForge Auction (no code taken): its
     "ForeverForge AH" button hangs below the game's window, bottom right, and can be dragged (kept in its own
     saved data), so its overlaps can be fixed by dragging it, with no patch.
-79. **Reports window** (`ReportsWindow.lua`, the main window's Reports button, `/salv reports`): one time
-    choice for all views, remembered: This session (0.3.123, 97), 24 hours, 7 days, 30 days, all, or a past session
-    picked in Gold, Sessions (`range = "s:<start>"`; that time has an end too: `Ledger.Profits(state, from, keep, to)`).
+79. **Reports window** (`ReportsWindow.lua`, the main window's Reports button, `/salv reports`): one period for all
+    views, remembered (`range`), picked in the "Period" filter (0.3.126, UI.md Controls 1-5: it left the tab row, where it
+    read "Time", for the filter row of every view): This session (0.3.123, 97), each past session of this character
+    ("11-26 18:49, 1 h 10 min", newest first, the newest 15 (`Reports.MENU_SESSIONS`); older ones are picked from the
+    Sessions part of All time, 72), Last 24 hours, Last 7 days, Last 30 days, All time (`range = "s:<start>"` for a
+    session; that time has an end too: `Ledger.Profits(state, from, keep, to)`). The rows from the top: the view tabs,
+    the Gold subtabs (Gold only), the filter row (Period, then Gear, Quality, Bands, Salvager on Profit and Items), the
+    table. The line that repeated the period and the view's help left: the period shows in its filter and in the
+    statement's first line, the help is on the tab. Width at least 890 (was 760), so the longest filter row fits.
     Views: Gold (72, 97);
     Profit by quality and gear type with its bands under it (`Ledger.Profits`: disenchants with a known
     cost; Sold value = the materials at what one unit really sold for, at their disenchant value while that
     material has not sold; Profit = Sold value − Paid; grey under 20 disenchants); Materials (got, sold,
     sold for, cost of sold, deposits lost, profit, held and listed now and their value); Items (best first).
     Profit groups by gear type, then quality, then band (the range only, "26-30"). Profit and Items have
-    filters on the row under the tabs (gear type, quality, item level band, with or without the Salvager;
+    filters on their filter row after the period (gear type, quality, item level band, with or without the Salvager;
     remembered; at least one ticked). Materials: Held = bags and bank (`GetItemCount(id, true)`), Listed = your
     unsold auctions as last read; the ledger's stock counts both and is not shown as "in stock".
 80. **One grouping for every list of bands** (the user, 2026-11-26): gear type (Armor, then Weapons), quality
@@ -639,10 +649,27 @@ flipping is out of scope for now.
        collected"; with the mail on both sides that would count the money in the mail twice, so the sales booked are
        used (they go into the gold or the mail).
     - g. Words and colors: no trading jargon in the statement; every line has its help on hover (`row.tip` of
-       `Widgets.List`); amounts with coins, right-aligned, + or − always; totals are "= ..." lines with the gold band.
-       Green or red only for real gold (Trading profit, Total, Gold not from trading, Change in gold and mail, each
-       change of gold); Stock change is grey (it rests on today's prices).
-    - h. Limits: the ledger is account-wide and the gold journal per character, so another character's sales show
+       `Widgets.List`) and reads without it. Green or red only for real gold (Trading profit, Total, Gold not from
+       trading, Change in gold and mail, each change of gold); the stock's change is grey (it rests on today's prices).
+    - h. Layout (0.3.126, the user: "align the table to the right like a regular statement"; UI.md Statements, from
+       established practice): a two-line heading, what it is and for whom ("Gold statement of <character>"), then the
+       period ("This session: 11-26 18:49 to now (1 h 10 min)", a past session, a range, or "All time: every record
+       kept"). The label column takes the free width and the amount column ends at the table's right edge
+       (`cols.statement` in `Widgets.List`; `list.amountsRight`). Sections are heading rows with the gold band and no
+       amount: Trading; How much richer you are; Gold not from trading; Check against your gold; What your records
+       explain; Not explained; Sessions (72). Their lines are one step in (14 px); each total is at the heading's level,
+       in bold (12 pt, `row.bold`; its width measured at 12/10 of the small font), with a rule over the amount
+       (`row.rule = "total"`); the bottom lines (Total: how much richer you are, the statement's; Not explained, the
+       check's) have a double rule under them too (`"final"`). No "=" lines (0.3.123 had them). Every total is the sum
+       of the lines above it since its heading, so a total used again is carried down as a line ("Trading profit, from
+       above"; "Change in gold and mail, from above", "Less explained by the records"), and the balances of the check
+       are signed lines (gold and mail at the end +, "Less gold at the start" -). One sign rule on every amount: + came
+       in, - went out (zero has none). Amounts show every coin under the largest one with two digits
+       (`ns.MoneyColumn`, `Util.FormatMoney(c, icons, true)`: "12g 05s 00c"), so the coins line up; the other Reports
+       tables use the same form (UI.md Tables 9). The hyphen is the minus sign: the game font's U+2212 is not known to
+       exist. The Reports tables' totals row (Profit, Materials: "Total", was "All" at the top) is the last row with a
+       line over it, in bold (Tables 13); all Reports rows are 22 px, as the other tables (was 20).
+    - i. Limits: the ledger is account-wide and the gold journal per character, so another character's sales show
        as Not explained; a sold auction's mail delay is a guess; Clear history removes the records older statements
        are built from (the closed sessions keep their Trading profit and Total once shown).
 98. **Windows can go partly off the screen** (0.3.124, the user, 2026-11-26), to get them out of the way. Every

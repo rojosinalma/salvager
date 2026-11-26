@@ -59,6 +59,8 @@ function ns.Print(fmt, ...)
 end
 
 function ns.Money(copper) return Util.FormatMoney(copper, true) end
+--- Money in a column of amounts (a statement): every unit under the largest one, two digits each.
+function ns.MoneyColumn(copper) return Util.FormatMoney(copper, true, true) end
 
 local LOG_MAX = 5000
 

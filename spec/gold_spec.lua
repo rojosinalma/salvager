@@ -118,20 +118,20 @@ describe("The gold journal in a simulated client", function()
         local text = {}
         for _, r in ipairs(statement) do text[#text + 1] = r.cells[1] end
         text = table.concat(text, "\n")
-        for _, want in ipairs({ "Sales, after the auction house cut", "= Trading profit", "Stock change",
-            "= Total: how much richer you are", "Gold not from trading", "Check against your gold", "Money in the mail" }) do
+        for _, want in ipairs({ "Sales, after the auction house cut", "Trading profit", "Change in your stock's value",
+            "Total: how much richer you are", "Gold not from trading", "Check against your gold", "Money in the mail" }) do
             assert.is_truthy(text:find(want, 1, true), want)
         end
-        for _, tab in ipairs({ "sessions", "changes", "statement" }) do ns.Reports.goldTab = tab ns.Reports.Refresh() end
+        for _, tab in ipairs({ "changes", "statement" }) do ns.Reports.goldTab = tab ns.Reports.Refresh() end
         for _, view in ipairs({ "profit", "materials", "items" }) do   -- every view draws, with data and the time picked
             ns.Reports.view = view
             for _, range in ipairs({ "24h", "all" }) do ns.Reports.range = range ns.Reports.Refresh() end
         end
         local rows = ns.Reports.ProfitRows()
-        assert.is_truthy(rows[1].cells[1]:find("All", 1, true))
-        assert.is_truthy(rows[2].cells[1]:find("Armor", 1, true))                -- gear type first
-        assert.is_truthy(rows[3].cells[1]:find("Uncommon", 1, true))             -- quality under it
-        assert.are.equal("26-30", rows[4].cells[1])                              -- the range only
+        assert.are.same({ "Total", "total" }, { rows[#rows].cells[1], rows[#rows].rule })   -- the totals row last
+        assert.is_truthy(rows[1].cells[1]:find("Armor", 1, true))                -- gear type first
+        assert.is_truthy(rows[2].cells[1]:find("Uncommon", 1, true))             -- quality under it
+        assert.are.equal("26-30", rows[3].cells[1])                              -- the range only
         assert.are.equal(1, #ns.Reports.ItemRows())
         ns.Reports.filter.classes[4] = nil                                       -- weapons only: nothing
         assert.are.equal(1, #ns.Reports.ProfitRows())

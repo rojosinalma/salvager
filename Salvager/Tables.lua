@@ -188,14 +188,20 @@ end
 ---                                                         column set: the columns hidden with the chooser (the
 ---                                                         button at the right end of the titles) are saved under
 ---                                                         it; a list without one has no chooser.
+---   cols.statement = true                                 a statement (label and amounts): the first column takes
+---                                                         all the free width, so the amounts end at the table's
+---                                                         right edge (UI.md Tables 8)
 ---   list.onColumnsChanged = fn                            runs after a change in the chooser (else list:Refresh)
 ---   list:SetSource(count, getRow)                         getRow(i) -> row, only called for rows on screen
 ---   list:Refresh()
 --- row = { cells = { text, ... }, itemID = icon and tooltip, link = tooltip, indent = pixels,
----         tip = { title, line, ... } (hover help of the row, instead of an item tooltip) }
+---         tip = { title, line, ... } (hover help of the row, instead of an item tooltip),
+---         rule = "total" (a line over the amounts: a subtotal) or "final" (that line and a double one under),
+---         bold = true (a total: its texts in the larger font, BOLD_FONT) }
 --- row.group = true marks the first row of a group (an item with its materials under it): it gets a band.
 --- opts = { rowHeight = 22, header = true, plain = false }
 --- Unless `plain`, the list is drawn as a sunken table: dark panel, title band, every second row shaded.
+local BOLD_FONT, BOLD_SCALE = "GameFontHighlight", 12 / 10   -- a total's texts: 12 pt against the rows' 10 pt
 function Widgets.List(parent, opts)
     opts = opts or {}
     local ROW_H = opts.rowHeight or 22
@@ -292,6 +298,15 @@ function Widgets.List(parent, opts)
             row.groupBand:SetAllPoints()
             row.groupBand:SetColorTexture(1, 0.82, 0, 0.07)
             row.groupBand:Hide()
+        end
+        -- The rules of a total line, over the amount columns: one above, and a double one under the final total.
+        row.rules = {}
+        for i = 1, 3 do
+            local t = row:CreateTexture(nil, "ARTWORK")
+            t:SetHeight(1)
+            t:SetColorTexture(1, 0.82, 0, 0.6)
+            t:Hide()
+            row.rules[i] = t
         end
         row.icon = row:CreateTexture(nil, "ARTWORK")
         row.icon:SetSize(ROW_H - 4, ROW_H - 4)
@@ -413,10 +428,24 @@ function Widgets.List(parent, opts)
             if not data then return nil end
             return data.cells, (data.indent or 0) + (data.itemID and ROW_H or 0) + (data.open ~= nil and TOGGLE + 4 or 0)
         end, nil, samples) or nil
+        -- A total's texts are in the larger font: measured in the small one, then scaled.
+        if need then
+            for r = 1, math.min(self.count, 400) do
+                local data = self.getRow(r)
+                if data and data.bold then
+                    for i = 1, #cols do
+                        local w = Widgets.TextWidth(data.cells[i])
+                        if i == 1 then w = w and (w + (data.indent or 0) / BOLD_SCALE) end
+                        if w then need[i] = math.max(need[i], math.ceil(w * BOLD_SCALE) + 10) end
+                    end
+                end
+            end
+        end
         local fixed = 0
         for i = 2, #cols do if shown[i] then fixed = fixed + (need and need[i] or cols[i][2]) + GAP end end
         local first = math.max(MIN_FIRST, avail - fixed)
-        if need then first = math.max(40, math.min(need[1], first)) end
+        -- A statement's label column takes all the free width, so its amounts end at the right edge.
+        if need then first = math.max(40, cols.statement and (avail - fixed) or math.min(need[1], first)) end
         local xs, ws, fits, x = {}, {}, {}, 4
         for i, col in ipairs(cols) do
             xs[i], ws[i] = x, (i == 1 and first or (need and need[i] or col[2]))
@@ -430,6 +459,15 @@ function Widgets.List(parent, opts)
         -- The buttons' column is a column like the others: right after the last one, as wide as its warning
         -- sign and its button. (Where text cannot be measured, it stays at the right edge.)
         local actionX = need and ACTION_W > 0 and math.min(x, avail + 4) or nil
+        -- Where the amounts are: from the second column shown to the right end of the last one (the rules).
+        local ruleL, ruleR
+        for i = 2, #cols do
+            if fits[i] then
+                ruleL = ruleL or xs[i]
+                ruleR = xs[i] + ws[i]
+            end
+        end
+        self.amountsRight = ruleR
         -- The width the columns need, the buttons' column and the scroll bar included (a window that fits
         -- its list reads it), with the first column at its full width even where this one cut it. nil where
         -- text cannot be measured.
@@ -472,6 +510,16 @@ function Widgets.List(parent, opts)
                     row.action:SetPoint("LEFT", row, "LEFT", actionX + 22, 0)
                 end
             end
+            local rule = data and ruleL and data.rule
+            for i, t in ipairs(row.rules) do
+                local on = rule == "final" or (rule == "total" and i == 1)
+                if on then
+                    t:ClearAllPoints()
+                    t:SetPoint("TOPLEFT", row, i == 1 and "TOPLEFT" or "BOTTOMLEFT", ruleL, i == 1 and -1 or (i == 2 and 4 or 2))
+                    t:SetWidth(ruleR - ruleL)
+                end
+                t:SetShown(on and true or false)
+            end
             if not data then
                 row:Hide()
             else
@@ -504,6 +552,7 @@ function Widgets.List(parent, opts)
                         fs:SetPoint("LEFT", row, "LEFT", xs[i] + extra, 0)
                         fs:SetWidth(math.max(10, ws[i] - extra))
                         fs:SetJustifyH(col[3] or "LEFT")
+                        fs:SetFontObject(data.bold and BOLD_FONT or "GameFontHighlightSmall")
                         fs:SetText(data.cells[i] or "")
                         fs:Show()
                     else

@@ -1,6 +1,7 @@
--- Salvager: the Reports window. What the trading made, for a time you pick (a session, or the last hours or days):
---   Gold       Statement: the trading profit, the stock change, the total, gold not from trading, and the check
---              against your gold; Sessions: one row per session; All gold changes: every change, newest first
+-- Salvager: the Reports window. What the trading made, for a period you pick (this session, a past one, the last
+-- hours or days, or all time):
+--   Gold       Statement: the trading profit, the stock change, the total, gold not from trading, the check against
+--              your gold, and the sessions of a longer period; All gold changes: every change, newest first
 --   Profit     by quality and gear type, and by item level band under each
 --   Materials  what each material gave, sold for and cost, and what is left
 --   Items      by item: which ones paid
@@ -23,22 +24,24 @@ local RANGES = {
     { "24h", "Last 24 hours", 86400 },
     { "7d", "Last 7 days", 7 * 86400 },
     { "30d", "Last 30 days", 30 * 86400 },
-    { "all", "All", nil },
+    { "all", "All time", nil },
 }
+Reports.MENU_SESSIONS = 15   -- past sessions in the Period menu (older ones: the Sessions part of All time)
 local ORDER = { "gold", "profit", "materials", "items" }
 local TITLES = { gold = "Gold", profit = "Profit", materials = "Materials", items = "Items" }
 local HELP = {
-    gold = "What the trading made and how much richer you are, checked against your gold; your sessions; every "
-        .. "change of your gold.",
+    gold = "What the trading made and how much richer you are, checked against your gold; every change of your gold.",
     profit = "What your disenchants made, by quality and gear type, and by item level band under each.",
     materials = "Each material: how many you got and sold, what they sold for and cost, and what is left.",
     items = "Each item you bought and disenchanted: which ones paid, best first.",
 }
 
-local function money(c) return c and ns.Money(c) or "-" end
+-- Money in a column: every coin under the largest one with two digits, so the coins line up (UI.md Tables 9).
+local function money(c) return c and ns.MoneyColumn(c) or "-" end
 local function signed(c)
     c = math.floor((c or 0) + 0.5)
-    return (c >= 0 and (GREEN .. "+") or RED) .. ns.Money(c) .. "|r"
+    if c == 0 then return ns.MoneyColumn(0) end
+    return (c > 0 and (GREEN .. "+") or RED) .. ns.MoneyColumn(c) .. "|r"
 end
 local function pct(part, whole)
     if not whole or whole == 0 then return GREY .. "-|r" end
@@ -50,14 +53,26 @@ local function count(n) return (n < FEW and GREY or "") .. n .. (n < FEW and "|r
 
 local function sessions() return ns.db.sessions end
 
---- A session picked in the Sessions list (range "s:<start>"), or nil.
+--- A past session picked in the Period menu (range "s:<start>"), or nil.
 local function picked()
     local start = tonumber(tostring(Reports.range):match("^s:(%d+)$"))
     return start and ns.Statement.Find(sessions(), ns.Gold.Char(true), start) or nil
 end
 
-local function sessionName(s)
-    return "Session of " .. date("%m-%d %H:%M", s.start)
+--- "45 min", "2 h 05 min", "3 d 4 h".
+function Reports.Length(sec)
+    sec = math.max(0, math.floor(sec or 0))
+    local m = math.floor(sec / 60)
+    if m < 60 then return m .. " min" end
+    local h = math.floor(m / 60)
+    if h < 24 then return string.format("%d h %02d min", h, m % 60) end
+    return string.format("%d d %d h", math.floor(h / 24), h % 24)
+end
+local function when(t) return date("%m-%d %H:%M", t) end
+
+--- A session's name: its start and its length ("11-26 18:49, 1 h 10 min").
+function Reports.SessionName(s)
+    return when(s.start) .. ", " .. Reports.Length((s.stop or time()) - s.start)
 end
 
 --- The time picked: its start (nil = all), its name, and its end (nil = now).
@@ -67,21 +82,33 @@ function Reports.From()
         return s and s.start or time(), "This session", nil
     end
     local s = picked()
-    if s then return s.start, sessionName(s), s.stop end
+    if s then return s.start, "Session " .. Reports.SessionName(s), s.stop end
     for _, r in ipairs(RANGES) do
         if r[1] == Reports.range then return r[3] and (time() - r[3]) or nil, r[2], nil end
     end
-    return nil, "All", nil
+    return nil, "All time", nil
+end
+
+--- The choices of the Period filter: this session, the past sessions kept (the newest MENU_SESSIONS), the last
+--- 24 hours, 7 days, 30 days, and all time.
+function Reports.PeriodOptions()
+    local out = { { "session", "This session" } }
+    local n = 0
+    for _, s in ipairs(ns.Statement.Sessions(sessions(), ns.Gold.Char(true))) do
+        if s.stop and n < Reports.MENU_SESSIONS then
+            n = n + 1
+            out[#out + 1] = { "s:" .. s.start, Reports.SessionName(s) }
+        end
+    end
+    for i = 2, #RANGES do out[#out + 1] = { RANGES[i][1], RANGES[i][2] } end
+    return out
 end
 
 local COLUMNS = {
+    -- A statement: the labels take the free width, the amounts end at the right edge (UI.md Tables 8).
     statement = { { "What", 260 }, { "Amount", 90, "RIGHT", help = { "Amount", "Gold, silver and copper; + came in, "
-            .. "- went out. Green and red only for gold you really gained or lost; grey for values at today's prices." } } },
-    sessions = { { "Session start", 110 }, { "Length", 70, "RIGHT", sample = "00 h 00 min" },
-        { "Trading profit", 90, "RIGHT", help = { "Trading profit", "Sales after the cut, minus the cost of what you "
-            .. "sold, the deposits lost and the cancel fees, in that session." } },
-        { "Total", 90, "RIGHT", help = { "Total", "How much richer the session made you: the trading profit, the sales "
-            .. "made while you were away, and the stock change." } } },
+            .. "- went out. Green and red only for gold you really gained or lost; grey for values at today's prices." } },
+        statement = true },
     goldLog = { { "What", 200 }, { "Time", 90 }, { "Change", 90, "RIGHT" },
         { "Kind", 140, "LEFT", help = { "Kind", "What the change was: told by what the addon did (a purchase, a "
             .. "deposit, a mail taken), else by the window open then (vendor, mailbox, trade)." } },
@@ -134,42 +161,78 @@ end
 -- est: grey, for values at today's prices (never green or red).
 local function flow(c)
     c = math.floor((c or 0) + 0.5)
-    return (c > 0 and "+" or "") .. ns.Money(c)
+    return (c > 0 and "+" or "") .. ns.MoneyColumn(c)
 end
 local function real(c)
     c = math.floor((c or 0) + 0.5)
     return (c > 0 and GREEN or c < 0 and RED or "") .. flow(c) .. ((c ~= 0) and "|r" or "")
 end
 local function est(c) return GREY .. flow(c) .. "|r" end
-local function when(t) return date("%m-%d %H:%M", t) end
 
---- "45 min", "2 h 05 min", "3 d 4 h".
-function Reports.Length(sec)
-    sec = math.max(0, math.floor(sec or 0))
-    local m = math.floor(sec / 60)
-    if m < 60 then return m .. " min" end
-    local h = math.floor(m / 60)
-    if h < 24 then return string.format("%d h %02d min", h, m % 60) end
-    return string.format("%d d %d h", math.floor(h / 24), h % 24)
-end
-
+-- A statement's lines (UI.md Statements): a section heading without an amount, its lines one step in, its total at
+-- the heading's level with a rule over the amount (the bottom line: a double rule under it too), in bold.
+-- Every amount has its sign: + came in, - went out.
+local SUB = 14   -- the lines under a heading
 local function line(label, amount, tip, extra)
-    local r = { cells = { label, amount }, tip = tip }
+    local r = { cells = { label, amount }, tip = tip, indent = SUB }
     for k, v in pairs(extra or {}) do r[k] = v end
     return r
 end
-local function totalLine(label, amount, tip) return line(GOLD .. "= " .. label .. "|r", amount, tip, { group = true }) end
-local function heading(label, amount, tip) return line(GOLD .. label .. "|r", amount or "", tip, { group = true }) end
-local SUB = 12   -- the lines under a heading
+local function heading(label, tip) return { cells = { GOLD .. label .. "|r", "" }, tip = tip, group = true } end
+local function totalLine(label, amount, tip, final)
+    return { cells = { label, amount }, tip = tip, rule = final and "final" or "total", bold = true }
+end
+local GAP_ROW = { cells = { "", "" } }
 
---- The Statement: one table that reads top to bottom, for the time picked.
+--- The sessions of this character in a period longer than a session (from .. to, nil = all, now), newest first.
+local function sessionsIn(from, to)
+    local out = {}
+    for _, s in ipairs(ns.Statement.Sessions(sessions(), ns.Gold.Char(true))) do
+        if (s.stop or time()) >= (from or 0) and s.start <= (to or time()) then out[#out + 1] = s end
+    end
+    return out
+end
+
+--- One line per session of the period: its start and length, and how much richer it made you. A click shows it.
+local function sessionLines(rows, from, to)
+    rows[#rows + 1] = GAP_ROW
+    rows[#rows + 1] = heading("Sessions: how much richer each one made you", { "Sessions", "Each session of this "
+        .. "period, from login to logout, newest first, with its Total: how much richer it made you. Click one to see "
+        .. "its statement." })
+    local list = sessionsIn(from, to)
+    if #list == 0 then
+        rows[#rows + 1] = line(GREY .. "None recorded in this time: a session runs from login to logout.|r", "")
+        return
+    end
+    for _, s in ipairs(list) do
+        local sum = ns.Gold.SessionSums(s)
+        local open = not s.stop
+        local name = Reports.SessionName(s)
+        rows[#rows + 1] = line(name .. (open and (GREY .. " (now)|r") or ""), real(sum.total), { name,
+            "Trading profit: " .. real(sum.trading), "Total, how much richer you are: " .. real(sum.total),
+            "Click: show its statement." }, { onClick = function()
+                Reports.range = open and "session" or ("s:" .. s.start)
+                Reports.Save()
+                Reports.Refresh()
+            end })
+    end
+end
+
+--- The Statement: one table that reads top to bottom, for the period picked. Every total is the sum of the lines
+--- above it since the heading of its section.
 function Reports.StatementRows()
     local from, name, to = Reports.From()
     local st = ns.Gold.Statement(from or 0, to)
     local rows = {}
-    rows[1] = { cells = { GREY .. name .. ": " .. (from and when(from) or "all") .. " to " .. (to and when(to) or "now")
-        .. (from and (", " .. Reports.Length((to or time()) - from)) or "") .. "|r", "" } }
+    -- What it is, for whom, for which time.
+    local span = from and (when(from) .. " to " .. (to and when(to) or "now") .. " ("
+        .. Reports.Length((to or time()) - from) .. ")") or "every record kept"
+    rows[1] = { cells = { "Gold statement of " .. ns.Gold.Char(true), "" }, bold = true, tip = { "Gold statement",
+        "What your trading made and how much richer you are, for this character, checked against your gold." } }
+    rows[2] = { cells = { GREY .. name .. ": " .. span .. "|r", "" } }
     -- What the trading made.
+    rows[#rows + 1] = GAP_ROW
+    rows[#rows + 1] = heading("Trading", { "Trading", "What your sales brought, minus what the things sold cost you." })
     rows[#rows + 1] = line("Sales, after the auction house cut", flow(st.sales), { "Sales, after the auction house cut",
         string.format("What your materials sold for in this time, after the auction house cut: %d sales, each counted "
             .. "when it showed as sold (or when its mail was taken, if the addon did not see it sold).", st.salesN) })
@@ -180,115 +243,115 @@ function Reports.StatementRows()
         "The deposits of your auctions that ran out or that you cancelled: the auction house keeps them." })
     rows[#rows + 1] = line("Cancel fees", flow(st.cancel), { "Cancel fees", "What cancelling auctions cost on top of "
         .. "the deposit, from the record of your gold." })
-    rows[#rows + 1] = totalLine("Trading profit", real(st.trading), { "Trading profit", "Sales, minus the cost of what you "
-        .. "sold, minus the deposits lost, minus the cancel fees." })
+    rows[#rows + 1] = totalLine("Trading profit", real(st.trading), { "Trading profit", "Sales, minus the cost "
+        .. "of what you sold, minus the deposits lost, minus the cancel fees." })
+    -- How much richer: the trading profit carried down, with what is not this time's trading.
+    rows[#rows + 1] = GAP_ROW
+    rows[#rows + 1] = heading("How much richer you are", { "How much richer you are", "The trading profit, plus what "
+        .. "sold while you were away, plus the change in what your stock is worth." })
+    rows[#rows + 1] = line("Trading profit, from above", flow(st.trading), { "Trading profit", "The total of the "
+        .. "Trading part above." })
     if st.away.n > 0 then
-        rows[#rows + 1] = line("Sold while you were away", flow(st.away.profit), { "Sold while you were away",
-            string.format("%d sales made before this session started and found now (their mail, or your auctions): "
-                .. "%s after the cut, minus their cost %s. Not counted as this session's trading.", st.away.n,
-                ns.Money(st.away.net), ns.Money(st.away.cost)) })
+        rows[#rows + 1] = line("Sold while you were away, less its cost", flow(st.away.profit), {
+            "Sold while you were away", string.format("%d sales made before this session started and found now (their "
+                .. "mail, or your auctions): %s after the cut, minus their cost %s. Not counted as this session's "
+                .. "trading.", st.away.n, ns.Money(st.away.net), ns.Money(st.away.cost)) })
     end
     local sk = st.stock
     if sk then
-        local tip = { "Stock change", "Your unsold materials and the gear you have not disenchanted yet: what they are "
-            .. "worth minus what they cost, at the end, minus the same at the start.",
+        local tip = { "Change in your stock's value", "Your unsold materials and the gear you have not disenchanted yet: "
+            .. "what they are worth minus what they cost, at the end, minus the same at the start.",
             string.format("At the end: worth %s, cost %s. At the start: worth %s, cost %s.", ns.Money(sk.v1),
                 ns.Money(sk.c1), ns.Money(sk.v0), ns.Money(sk.c0)),
             "Materials at their price now times their sell price ratio, after the cut, less the deposits lost per unit "
                 .. "sold; gear at its expected value. Grey: it rests on prices, not on gold you have." }
-        local label = "Stock change"
+        local label = "Change in your stock's value, at today's prices"
         if not sk.known then
-            label = "Stock change, since " .. when(sk.since)
+            label = "Change in your stock's value since " .. when(sk.since) .. ", at today's prices"
             tip[#tip + 1] = "The stock's value at the start of this time is not known: it is counted from " .. when(sk.since)
                 .. ", the first record of it."
         end
         rows[#rows + 1] = line(label, est(sk.change), tip)
     else
-        rows[#rows + 1] = line("Stock change", GREY .. "not known|r", { "Stock change", "Not known yet: the addon "
-            .. "records what your stock is worth at each login and logout." })
+        rows[#rows + 1] = line("Change in your stock's value: not known yet", GREY .. "-|r", {
+            "Change in your stock's value", "Not known yet: the addon records what your stock is worth at each login "
+                .. "and logout." })
     end
-    rows[#rows + 1] = totalLine("Total: how much richer you are", real(st.total), { "Total: how much richer you are",
-        "Trading profit" .. (st.away.n > 0 and ", plus Sold while you were away" or "") .. ", plus Stock change." })
+    rows[#rows + 1] = totalLine("Total: how much richer you are", real(st.total), {
+        "Total: how much richer you are", "Trading profit" .. (st.away.n > 0 and ", plus Sold while you were away" or "")
+            .. ", plus the change in your stock's value." }, true)
     -- Gold not from trading.
-    rows[#rows + 1] = heading("Gold not from trading", real(st.otherSum), { "Gold not from trading", "Gold that came "
-        .. "or went for other reasons than trading, by kind, from the record of every change of your gold." })
+    rows[#rows + 1] = GAP_ROW
+    rows[#rows + 1] = heading("Gold not from trading", { "Gold not from trading", "Gold that came or went for other "
+        .. "reasons than trading, by kind, from the record of every change of your gold." })
     for _, o in ipairs(st.other) do
-        rows[#rows + 1] = line(o.name, flow(o.amount), { o.name, string.format("%d changes of your gold.", o.n) },
-            { indent = SUB })
+        rows[#rows + 1] = line(o.name, flow(o.amount), { o.name, string.format("%d changes of your gold.", o.n) })
     end
-    if #st.other == 0 then rows[#rows + 1] = line(GREY .. "None|r", "", nil, { indent = SUB }) end
-    -- The check against the gold.
-    local c = st.check
-    rows[#rows + 1] = heading("Check against your gold", "", { "Check against your gold", "Your gold and the money in "
+    if #st.other == 0 then rows[#rows + 1] = line(GREY .. "None in this time|r", "") end
+    rows[#rows + 1] = totalLine("Total gold not from trading", real(st.otherSum), {
+        "Total gold not from trading", "The sum of the lines above." })
+    -- The check against the gold: what the gold and the mail did, what the records explain, and the gap.
+    rows[#rows + 1] = GAP_ROW
+    rows[#rows + 1] = heading("Check against your gold", { "Check against your gold", "Your gold and the money in "
         .. "your mail must change by what the records explain. What is left is Not explained: near 0 when every "
         .. "change has its record." })
+    local c = st.check
     if not c.g0 then
-        rows[#rows + 1] = line(GREY .. "No gold recorded in this time.|r", "", nil, { indent = SUB })
-        return rows
-    end
-    local live = to == nil
-    local MAIL = "Money from sales that waits in your mail (sold, not collected yet)."
-    for _, x in ipairs({
-        { "Gold at the start", ns.Money(c.g0), "Your gold when this time started." },
-        { "Money in the mail at the start", ns.Money(c.m0), MAIL },
-        { live and "Gold now" or "Gold at the end", ns.Money(c.g1), "Your gold at the end of this time." },
-        { live and "Money in the mail now" or "Money in the mail at the end", ns.Money(c.m1), MAIL },
-    }) do
-        rows[#rows + 1] = line(x[1], x[2], { x[1], x[3] }, { indent = SUB })
-    end
-    rows[#rows + 1] = line(GOLD .. "= Change in gold and mail|r", real(c.change), { "Change in gold and mail",
-        "Gold and mail at the end, minus gold and mail at the start." }, { indent = SUB })
-    local parts = {
-        { "Sales, after the cut", c.sales, "Every sale in this time (also those made while you were away): its money "
-            .. "went into your gold or your mail." },
-        { "Deposits given back with sales", c.back, "The deposit the auction house gave back in the mail of a sale." },
-        { "Gear bought", c.buy, "What you paid for gear, from the record of your gold." },
-        { "Deposits paid", c.deposit, "Deposits paid when you posted, from the record of your gold." },
-        { "Cancel fees", c.cancel, "What cancelling auctions cost, from the record of your gold." },
-        { "Other auction house", c.auction, "Changes of gold at the auction house that the addon did not make (an "
-            .. "other addon's purchase, for example)." },
-        { "Gold not from trading", c.other, "The sum of the part above." },
-    }
-    for i, x in ipairs(parts) do
-        if x[2] ~= 0 or i == 1 or i == 3 or i == 7 then
-            rows[#rows + 1] = line(x[1], flow(x[2]), { x[1], x[3] }, { indent = SUB })
+        rows[#rows + 1] = line(GREY .. "No gold recorded in this time|r", "")
+    else
+        local live = to == nil
+        local MAIL = "Money from sales that waits in your mail (sold, not collected yet)."
+        for _, x in ipairs({
+            { live and "Gold now" or "Gold at the end", c.g1, "Your gold at the end of this time." },
+            { live and "Money in the mail now" or "Money in the mail at the end", c.m1, MAIL },
+            { "Less gold at the start", -c.g0, "Your gold when this time started, taken off." },
+            { "Less money in the mail at the start", -c.m0, MAIL .. " At the start of this time, taken off." },
+        }) do
+            rows[#rows + 1] = line(x[1], flow(x[2]), { x[1], x[3] })
+        end
+        rows[#rows + 1] = totalLine("Change in gold and mail", real(c.change), { "Change in gold and mail",
+            "Gold and mail at the end, minus gold and mail at the start." })
+        rows[#rows + 1] = GAP_ROW
+        rows[#rows + 1] = heading("What your records explain", { "What your records explain", "Each change of gold and "
+            .. "mail that has its record: sales, purchases, deposits, fees and gold not from trading." })
+        local parts = {
+            { "Sales, after the cut", c.sales, "Every sale in this time (also those made while you were away): its money "
+                .. "went into your gold or your mail." },
+            { "Deposits given back with sales", c.back, "The deposit the auction house gave back in the mail of a sale." },
+            { "Gear bought", c.buy, "What you paid for gear, from the record of your gold." },
+            { "Deposits paid", c.deposit, "Deposits paid when you posted, from the record of your gold." },
+            { "Cancel fees", c.cancel, "What cancelling auctions cost, from the record of your gold." },
+            { "Other auction house", c.auction, "Changes of gold at the auction house that the addon did not make (an "
+                .. "other addon's purchase, for example)." },
+            { "Gold not from trading", c.other, "The total of that part above." },
+        }
+        for i, x in ipairs(parts) do
+            if x[2] ~= 0 or i == 1 or i == 3 or i == 7 then
+                rows[#rows + 1] = line(x[1], flow(x[2]), { x[1], x[3] })
+            end
+        end
+        rows[#rows + 1] = totalLine("Explained by the records", flow(c.explained), {
+            "Explained by the records", "The sum of the lines above: what your records say your gold and mail did." })
+        rows[#rows + 1] = GAP_ROW
+        rows[#rows + 1] = heading("Not explained", { "Not explained", "The change in gold and mail that no record "
+            .. "explains. Near 0 when every change of your gold has its record." })
+        rows[#rows + 1] = line("Change in gold and mail, from above", flow(c.change), { "Change in gold and mail",
+            "The total of the first part of the check." })
+        rows[#rows + 1] = line("Less explained by the records", flow(-c.explained), { "Explained by the records",
+            "The total of What your records explain, taken off." })
+        if c.ok then
+            rows[#rows + 1] = totalLine("Not explained: none", GREY .. flow(c.missing) .. "|r", { "Not explained",
+                "Change in gold and mail, minus Explained by the records. Near 0 (1s or less): every change of your "
+                    .. "gold has its record." }, true)
+        else
+            rows[#rows + 1] = totalLine(WARN .. "Not explained: a record is missing|r", WARN .. flow(c.missing) .. " !|r",
+                { "Not explained", string.format("Change in gold and mail, minus Explained by the records, is %s: a "
+                    .. "record is probably missing. A sale or a purchase the addon did not see (another addon, another "
+                    .. "character), or money taken from the mail that was not booked.", flow(c.missing)) }, true)
         end
     end
-    if c.ok then
-        rows[#rows + 1] = line(GOLD .. "= Not explained|r", GREY .. flow(c.missing) .. "|r", { "Not explained",
-            "Change in gold and mail, minus every line under it. Near 0: every change of your gold has its record." },
-            { indent = SUB })
-    else
-        rows[#rows + 1] = line(WARN .. "= Not explained (check)|r", WARN .. flow(c.missing) .. " !|r", { "Not explained",
-            string.format("Change in gold and mail, minus every line under it, is %s: a record is probably missing. "
-                .. "A sale or a purchase the addon did not see (another addon, another character), or money taken "
-                .. "from the mail that was not booked.", flow(c.missing)) }, { indent = SUB })
-    end
-    return rows
-end
-
---- One row per session of this character, newest first: start, length, trading profit, total. A click shows it.
-function Reports.SessionRows()
-    local list = ns.Statement.Sessions(sessions(), ns.Gold.Char(true))
-    if #list == 0 then
-        return { { cells = { GREY .. "No session recorded yet: a session runs from login to logout.|r" } } }
-    end
-    local chosen = picked()
-    local rows = {}
-    for _, s in ipairs(list) do
-        local sum = ns.Gold.SessionSums(s)
-        local open = not s.stop
-        rows[#rows + 1] = { group = (chosen == s) or (open and Reports.range == "session") or nil,
-            cells = { when(s.start) .. (open and (GREY .. " (now)|r") or ""), Reports.Length((s.stop or time()) - s.start),
-                real(sum.trading), real(sum.total) },
-            tip = { sessionName(s), "Click: show its statement." },
-            onClick = function()
-                Reports.range = open and "session" or ("s:" .. s.start)
-                Reports.goldTab = "statement"
-                Reports.Save()
-                Reports.Refresh()
-            end }
-    end
+    -- A period longer than a session: one line per session in it.
+    if not (Reports.range == "session" or picked()) then sessionLines(rows, from, to) end
     return rows
 end
 
@@ -301,7 +364,7 @@ function Reports.ChangeRows()
         local e = s.entries[i]
         if e.k ~= "start" then
             log[#log + 1] = { cells = { e.r or GREY .. "-|r", date("%m-%d %H:%M", e.t), real(e.d),
-                ns.Journal.KIND_NAME[e.k] or e.k, ns.Money(e.b) }, link = e.r and e.r:match("|Hitem:[^|]+|h") and e.r }
+                ns.Journal.KIND_NAME[e.k] or e.k, ns.MoneyColumn(e.b) }, link = e.r and e.r:match("|Hitem:[^|]+|h") and e.r }
         end
     end
     if #log == 0 then log[1] = note("No change of gold in this time: every change of your gold is recorded.") end
@@ -323,7 +386,7 @@ function Reports.ProfitRows()
         return { note("No disenchant of an item with a known price in this time and these filters. Buy from the "
             .. "Deals tab, then disenchant.") }
     end
-    local rows = { { group = true, cells = profitCells(p.total, GOLD .. "All|r") } }
+    local rows = {}
     local bands = {}
     for _, g in ipairs(p.groups) do for _, b in ipairs(g.bands) do bands[#bands + 1] = b end end
     local function sum(of)
@@ -335,6 +398,8 @@ function Reports.ProfitRows()
         function(of, label) return { group = true, cells = profitCells(sum(of), label) } end, INDENT)) do
         rows[#rows + 1] = r
     end
+    -- The totals row is the last one, with a line over it (UI.md Tables 13).
+    rows[#rows + 1] = { rule = "total", bold = true, cells = profitCells(p.total, "Total") }
     return rows
 end
 
@@ -374,9 +439,9 @@ function Reports.MaterialRows()
             tostring(m.sold), money(m.net), money(m.cost), m.depositsLost > 0 and signed(-m.depositsLost) or "-",
             signed(m.profit), tostring(held), tostring(listed), money(value) } }
     end
-    table.insert(rows, 1, { group = true, cells = { GOLD .. "All|r", tostring(total.got), tostring(total.sold),
+    rows[#rows + 1] = { rule = "total", bold = true, cells = { "Total", tostring(total.got), tostring(total.sold),
         money(total.net), money(total.cost), total.depositsLost > 0 and signed(-total.depositsLost) or "-",
-        signed(total.profit), tostring(total.held), tostring(total.listed), money(total.value) } })
+        signed(total.profit), tostring(total.held), tostring(total.listed), money(total.value) } }
     return rows
 end
 
@@ -396,13 +461,14 @@ end
 
 ------------------------------------------------------------------ window
 
-local f, list, summary, rangeDrop
+local f, list, filterRow, rangeDrop
 local tabs, filters, goldTabs = {}, {}, {}
 local GOLD_TABS = {
     { "statement", "Statement", "What the trading made and how much richer you are, then the check against your gold." },
-    { "sessions", "Sessions", "One row per session, from login to logout: a click shows its statement." },
     { "changes", "All gold changes", "Every change of your gold, newest first, with its kind." },
 }
+-- The rows from the top (UI.md Layout 8): the tabs, the subtabs (Gold only), the filter row, the content.
+local TABS_Y, ROW_STEP = -30, 28
 
 --- Keeps the time and the Gold subtab with the window.
 function Reports.Save()
@@ -419,11 +485,15 @@ end
 function Reports.Refresh()
     if not f or not f:IsShown() then return end
     local gold = Reports.view == "gold"
-    local _, name = Reports.From()
-    summary:SetText(GOLD .. name .. "|r" .. GREY .. "  " .. HELP[Reports.view] .. "|r")
-    -- The Profit and Items views have their filters on that row instead, the Gold view its subtabs.
+    -- The filter row: under the Gold view's subtabs, else right under the tabs; the content under it.
+    local filterY = TABS_Y - ROW_STEP * (gold and 2 or 1)
+    filterRow:ClearAllPoints()
+    filterRow:SetPoint("TOPLEFT", f, "TOPLEFT", 12, filterY)
+    list:ClearAllPoints()
+    list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, filterY - ROW_STEP)
+    list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
+    -- The Profit and Items views have their own filters after the period.
     local filtered = FILTERED[Reports.view] or false
-    summary:SetShown(not filtered and not gold)
     for _, x in ipairs(filters) do
         x:SetShown(filtered)
         if x.Update then x:Update() end
@@ -433,9 +503,7 @@ function Reports.Refresh()
         if key == Reports.goldTab then b:LockHighlight() else b:UnlockHighlight() end
     end
     if gold then
-        if Reports.goldTab == "sessions" then
-            show(list, COLUMNS.sessions, Reports.SessionRows(), "reports.sessions")
-        elseif Reports.goldTab == "changes" then
+        if Reports.goldTab == "changes" then
             show(list, COLUMNS.goldLog, Reports.ChangeRows(), "reports.goldLog")
         else
             show(list, COLUMNS.statement, Reports.StatementRows(), "reports.statement")
@@ -450,11 +518,12 @@ function Reports.Refresh()
     for key, b in pairs(tabs) do
         if key == Reports.view then b:LockHighlight() else b:UnlockHighlight() end
     end
+    rangeDrop:SetOptions(Reports.PeriodOptions(), 190)
     rangeDrop:Update()
 end
 
 local function build()
-    f = W.Window("SalvagerReportsFrame", "Salvager reports", "reports", 860, 480, 760, 300)
+    f = W.Window("SalvagerReportsFrame", "Salvager reports", "reports", 900, 480, 890, 300)
     if TITLES[f.saved.view] then Reports.view = f.saved.view end
     for _, r in ipairs(RANGES) do if r[1] == f.saved.range then Reports.range = r[1] end end
     if tostring(f.saved.range):match("^s:%d+$") then Reports.range = f.saved.range end
@@ -467,27 +536,31 @@ local function build()
             list.offset = 0
             Reports.Refresh()
         end, HELP[key])
-        b:SetPoint("TOPLEFT", f, "TOPLEFT", x, -30)
+        b:SetPoint("TOPLEFT", f, "TOPLEFT", x, TABS_Y)
         tabs[key] = b
         x = x + 94
     end
-    local options = {}
-    for _, r in ipairs(RANGES) do options[#options + 1] = { r[1], r[2] } end
-    rangeDrop = W.CheckDropdown(f, 150, options, function(key) return key == Reports.range end, function(key)
-        Reports.range = key
-        Reports.Save()
-        rangeDrop:Close()
-        Reports.Refresh()
-    end, "The time the reports cover: this session (from login to logout; a /reload keeps it), the last hours "
-        .. "or days, or all. A past session is picked in Gold, Sessions.", "Time", function(names)
-        if #names > 0 then return names[1] end
-        local s = picked()
-        return s and sessionName(s) or "This session"
-    end)
-    rangeDrop:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -30)
-    local timeLabel = W.Label(f, "Time", "GameFontHighlightSmall")
-    timeLabel:SetPoint("RIGHT", rangeDrop, "LEFT", -6, 0)
-    -- The filters of the Profit and Items views, on the row under the tabs.
+    -- The filter row: the period for every view, then the Profit and Items views' own filters.
+    filterRow = CreateFrame("Frame", nil, f)
+    filterRow:SetSize(1, 22)
+    rangeDrop = W.CheckDropdown(f, 170, Reports.PeriodOptions(), function(key) return key == Reports.range end,
+        function(key)
+            Reports.range = key
+            Reports.Save()
+            rangeDrop:Close()
+            list.offset = 0
+            Reports.Refresh()
+        end, "The period every report covers: this session (from login to logout; a /reload keeps it), a past "
+            .. "session (its start and length), the last 24 hours, 7 or 30 days, or all time.", "Period",
+        function(names)
+            if #names > 0 then return names[1] end
+            local s = picked()
+            return s and Reports.SessionName(s) or "All time"
+        end)
+    local periodLabel = W.Label(f, "Period", "GameFontHighlightSmall")
+    periodLabel:SetPoint("LEFT", filterRow, "LEFT", 2, 0)
+    rangeDrop:SetPoint("LEFT", periodLabel, "RIGHT", 6, 0)
+    W.HelpArea(f, periodLabel, "Period", "The time the reports cover.")
     local x0 = f.saved.filter
     if type(x0) == "table" then
         for _, k in ipairs({ "classes", "qualities", "bandsOff" }) do
@@ -516,10 +589,10 @@ local function build()
             end
     end
     local function allOr(names, total) return #names == total and "All" or table.concat(names, ", ") end
-    local prev
+    local prev = rangeDrop
     local function add(label, drop, help)
         local l = W.Label(f, label, "GameFontHighlightSmall")
-        if prev then l:SetPoint("LEFT", prev, "RIGHT", 14, 0) else l:SetPoint("LEFT", f, "TOPLEFT", 14, -69) end
+        l:SetPoint("LEFT", prev, "RIGHT", 14, 0)
         drop:SetPoint("LEFT", l, "RIGHT", 6, 0)
         W.HelpArea(f, l, label, help)
         filters[#filters + 1] = l
@@ -531,7 +604,7 @@ local function build()
     add("Gear", W.CheckDropdown(f, 100, { { 4, "Armor" }, { 2, "Weapons" } }, gearGet, gearSet,
         "Which gear types count.", "Gear", allOr), "Armor, weapons, or both.")
     local qGet, qSet = setOf(flt.qualities, false, { 2, 3, 4 })
-    add("Quality", W.CheckDropdown(f, 130, { { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" },
+    add("Quality", W.CheckDropdown(f, 120, { { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" },
         { 4, "|cffa335eeEpic|r" } }, qGet, qSet, "Which qualities count.", "Quality", allOr), "Uncommon, Rare, Epic.")
     local bandOptions, bandKeys = {}, {}
     for _, b in ipairs(ns.LevelBands()) do
@@ -539,14 +612,14 @@ local function build()
         bandKeys[#bandKeys + 1] = b.up
     end
     local bGet, bSet = setOf(flt.bandsOff, true, bandKeys)
-    add("Bands", W.CheckDropdown(f, 130, bandOptions, bGet, bSet, "Which item level bands count.", "Bands",
+    add("Bands", W.CheckDropdown(f, 110, bandOptions, bGet, bSet, "Which item level bands count.", "Bands",
         function(names, total)
             if #names == total then return "All" end
             if #names > 3 then return #names .. " bands" end
             return table.concat(names, ", ")
         end), "Item level bands: a band is a range of item levels that disenchants into the same materials.")
     local salvDrop
-    salvDrop = W.CheckDropdown(f, 110, { { "all", "All" }, { "with", "With it" }, { "without", "Without it" } },
+    salvDrop = W.CheckDropdown(f, 100, { { "all", "All" }, { "with", "With it" }, { "without", "Without it" } },
         function(key) return flt.salvager == key end,
         function(key)
             flt.salvager = key
@@ -554,7 +627,7 @@ local function build()
             changed()
         end, "Disenchants with the Arcane Salvager's bonus, without it, or all.", "Salvager")
     add("Salvager", salvDrop, "Disenchants with the Arcane Salvager's bonus, without it, or all.")
-    -- The Gold view's subtabs, on the row under the tabs.
+    -- The Gold view's subtabs, on the row under the tabs (subtabs only).
     local gx = 12
     for _, t in ipairs(GOLD_TABS) do
         local b = W.Button(f, t[2], t[1] == "changes" and 120 or 90, function()
@@ -563,19 +636,12 @@ local function build()
             list.offset = 0
             Reports.Refresh()
         end, t[3])
-        b:SetPoint("TOPLEFT", f, "TOPLEFT", gx, -58)
+        b:SetPoint("TOPLEFT", f, "TOPLEFT", gx, TABS_Y - ROW_STEP)
         goldTabs[t[1]] = b
         gx = gx + (t[1] == "changes" and 124 or 94)
     end
-    summary = W.Label(f, "", "GameFontHighlightSmall")
-    summary:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -62)
-    summary:SetPoint("RIGHT", f, "RIGHT", -14, 0)
-    summary:SetJustifyH("LEFT")
-    summary:SetWordWrap(false)
-    list = W.List(f, { rowHeight = 20 })
+    list = W.List(f, { rowHeight = 22 })
     Reports.list = list
-    list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -84)
-    list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
     f.onResize = Reports.Refresh
     f:SetScript("OnShow", Reports.Refresh)
 end

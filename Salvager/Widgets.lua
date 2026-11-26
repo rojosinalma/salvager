@@ -318,6 +318,8 @@ end
 --- A button that opens a small list of check boxes.
 --- options = { {value, label}, ... }; get(value) -> bool; set(value, bool). Returns the button.
 --- `summary(names, total)` (optional) gives the button's text from the ticked names.
+--- b:SetOptions(options, menuWidth) changes the choices (a list that grows: past sessions); the menu may be wider
+--- than the button.
 function Widgets.CheckDropdown(parent, width, options, get, set, tooltip, title, summary)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetSize(width, 22)
@@ -376,14 +378,25 @@ function Widgets.CheckDropdown(parent, width, options, get, set, tooltip, title,
     arrow:SetSize(12, 12)
     arrow:SetTexture("Interface\\Buttons\\Arrow-Down-Up")
     arrow:SetPoint("RIGHT", b, "RIGHT", -7, -2)
-    for i, o in ipairs(options) do
-        local c = Widgets.Check(list, o[2], nil, function(on)
-            set(o[1], on)
-            b:Update()
-        end)
-        c:SetPoint("TOPLEFT", list, "TOPLEFT", 8, -6 - (i - 1) * 22)
-        checks[i] = c
+    function b.SetOptions(_, opts, menuWidth)
+        options = opts
+        list:SetSize(menuWidth or width, #options * 22 + 12)
+        for i, o in ipairs(options) do
+            local c = checks[i]
+            if not c then
+                c = Widgets.Check(list, o[2], nil, function(on)
+                    set(options[i][1], on)
+                    b:Update()
+                end)
+                c:SetPoint("TOPLEFT", list, "TOPLEFT", 8, -6 - (i - 1) * 22)
+                checks[i] = c
+            end
+            c.label:SetText(o[2])
+            c:Show()
+        end
+        for i = #options + 1, #checks do checks[i]:Hide() end
     end
+    b:SetOptions(options)
     b:SetScript("OnClick", function() list:SetShown(not list:IsShown()) end)
     b:SetScript("OnHide", function() list:Hide() end)
     function b.Close() list:Hide() end

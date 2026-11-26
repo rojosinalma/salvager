@@ -22,7 +22,9 @@ end
 
 --- "1g 2s 3c" style text for a copper amount. Negative amounts get a minus sign.
 --- With `icons`, coin icons replace the letters.
-function Util.FormatMoney(copper, icons)
+--- `aligned`: the form for a column of amounts (UI.md Tables 8): every unit under the largest one is shown, with two
+--- digits ("12g 05s 00c", "5s 03c"), so right-aligned amounts keep their coins under each other.
+function Util.FormatMoney(copper, icons, aligned)
     if copper == nil then return "-" end
     copper = math.floor(copper + 0.5)
     local sign = ""
@@ -33,6 +35,12 @@ function Util.FormatMoney(copper, icons)
     local G, S, C = "g", "s", "c"
     if icons then G, S, C = Util.COIN.g, Util.COIN.s, Util.COIN.c end
     local parts = {}
+    if aligned then
+        if g > 0 then parts[1] = g .. G end
+        if g > 0 then parts[#parts + 1] = string.format("%02d", s) .. S elseif s > 0 then parts[#parts + 1] = s .. S end
+        parts[#parts + 1] = ((g > 0 or s > 0) and string.format("%02d", c) or tostring(c)) .. C
+        return sign .. table.concat(parts, " ")
+    end
     if g > 0 then parts[#parts + 1] = g .. G end
     if s > 0 or (g > 0 and c > 0) then parts[#parts + 1] = s .. S end
     if c > 0 or #parts == 0 then parts[#parts + 1] = c .. C end
