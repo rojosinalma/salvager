@@ -662,17 +662,17 @@ describe("Salvager scan safety", function()
         table.remove(ns.db.ledger.bought)
     end)
 
-    it("does not send a purchase the busy auction house would throw away, and frees a dropped one at once", function()
+    it("always sends a purchase at once, holds the scan while the mouse aims at Buy, and frees a dropped one", function()
         ns.Scanner.Stop()
         local bids = #env.ah.bids
         local deal = { auctionID = 992, buyout = 100, itemID = 2001, value = 200, profit = 100 }
-        env.ah.ready = false
+        ns.Scanner.Aim(true)                                       -- the mouse is on a Buy button
+        assert.is_true(ns.Scanner.Buying())                        -- the scan sends nothing new
+        ns.Scanner.Aim(false)
+        assert.is_false(ns.Scanner.Buying())
+        env.ah.ready = false                                       -- the auction house is busy: the click still buys
         ns.Scanner.Buy(deal)
-        assert.are.equal(bids, #env.ah.bids)                       -- not sent
-        assert.is_nil(deal.pending)
-        assert.is_true(ns.Scanner.Buying())                        -- and everything else waits for the next click
         env.ah.ready = true
-        ns.Scanner.Buy(deal)
         assert.are.equal(bids + 1, #env.ah.bids)
         assert.is_true(deal.pending)
         wow.fire(ns, "AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED")    -- the auction house threw it away

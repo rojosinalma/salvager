@@ -491,14 +491,23 @@ end)
 
 local BUY_QUIET = 1.0      -- seconds after a Buy click in which searches wait (more clicks may follow)
 local BUY_EXPIRES = 10     -- seconds after which a purchase with no answer is given up
-local BUSY_HOLD = 2        -- extra seconds everything is held after a Buy click the busy auction house could not take
+local BUSY_HOLD = 2        -- extra seconds everything is held after the auction house dropped a purchase
 local DROP_WINDOW = 2      -- a "request dropped" this soon after a Buy click is taken to be about the purchase
+local AIM_HOLD = 4         -- seconds the scan stays quiet while the mouse is on a Buy button
 local lastBuyAt = 0
+local aimUntil = 0
+
+--- The mouse is on a Buy button (or left it): the scan sends nothing new, so the auction house is free
+--- when the click comes. The purchase must never wait for the scan; the scan waits for the purchase.
+function Scanner.Aim(on)
+    aimUntil = on and (GetTime() + AIM_HOLD) or 0
+end
 
 --- Is a purchase on its way, or was Buy clicked a moment ago? Then nothing else talks to the
 --- auction house: a search sent now would be dropped, or would make it drop the purchase.
 function Scanner.Buying()
     if GetTime() - lastBuyAt < BUY_QUIET then return true end
+    if GetTime() < aimUntil then return true end
     for id, d in pairs(pendingBuys) do
         if GetTime() - d.clickedAt < BUY_EXPIRES then return true end
         -- No answer at all: free the row again.
@@ -515,16 +524,7 @@ function Scanner.Buy(deal)
     -- One at a time with a cancel: the auction house's error message does not say which one failed.
     if ns.Listings and ns.Listings.Cancelling() then ns.Print("wait for the cancel to finish") return end
     if GetMoney() < deal.buyout then ns.Print("not enough money for %s", deal.link or "this item") return end
-    -- The auction house takes one request at a time. While it is busy with one of ours (a browse page, a
-    -- search), a purchase sent now is thrown away without an answer. So it is not sent: everything else
-    -- is held, and the next click, a moment later, goes through.
-    if AH.IsThrottledMessageSystemReady and not AH.IsThrottledMessageSystemReady() then
-        lastBuyAt = GetTime() + BUSY_HOLD
-        ns.Print("the auction house is busy for a moment: click Buy again")
-        ns.Log("buy of %s not sent: the auction house was busy; searches held for %ds", deal.link or deal.itemID,
-            BUSY_HOLD + BUY_QUIET)
-        return
-    end
+    -- A click on Buy always buys: the purchase goes out at once, whatever else is going on.
     deal.pending = true
     deal.clickedAt = GetTime()
     lastBuyAt = deal.clickedAt
@@ -570,7 +570,7 @@ ns.On("AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED", function()
             dropped[id] = d
             d.pending = false
             lastBuyAt = GetTime() + BUSY_HOLD
-            ns.Print("the auction house dropped the purchase of %s (it was busy): click Buy again", d.link or "the item")
+            ns.Print("purchase of %s was dropped by the auction house: the row is free, click Buy again", d.link or "the item")
             ns.Log("purchase of %s dropped by the auction house (busy with another request)", d.link or d.itemID)
             ns.Fire("SALVAGER_DEALS")
         end

@@ -872,6 +872,9 @@ local function build()
             local deal = item.deal or (item.group and ns.Scanner.Cheapest(item.group.deals))
             if deal then ns.Scanner.Buy(deal) end
         end)
+        -- The mouse on a Buy button holds the scan, so the auction house is free when the click comes.
+        row.buy:HookScript("OnEnter", function() if row.item and not row.item.post then ns.Scanner.Aim(true) end end)
+        row.buy:HookScript("OnLeave", function() ns.Scanner.Aim(false) end)
         row.warn = CreateFrame("Frame", nil, row)
         row.warn:SetSize(18, 18)
         row.warn:SetPoint("RIGHT", row.buy, "LEFT", -4, 0)

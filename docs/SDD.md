@@ -204,7 +204,7 @@ flipping is out of scope for now.
     materials at the average price each really sold for; at the disenchant's price where none sold yet), and
     the planned and real profit. A second table per material: valued each against sold each. Sales are not
     tied to items (pooled stock), so "Sold for" per band is an estimate.
-62. **A Buy click while the auction house is busy is not sent** (`IsThrottledMessageSystemReady` false): it
+62. **(Replaced 2026-11-26 by 65.) A Buy click while the auction house is busy is not sent** (`IsThrottledMessageSystemReady` false): it
     would be thrown away without an answer (measured 2026-11-26: four clicks during a browse, none answered).
     Everything else is held for 3 s and the player clicks again. A "request dropped" within 2 s of a Buy
     click frees the row at once; a late "purchase completed" for it is still booked.
@@ -216,6 +216,10 @@ flipping is out of scope for now.
     and Sold (sales whose money is not collected yet, with a countdown). "History" lists the sales whose mail
     was taken. The game keeps a sold auction in its own list until the money is mailed; the addon shows it
     as a sale, not as an auction.
+65. **A Buy click always buys** (the user's rule: a deal is lost if it waits). The purchase is sent at once,
+    whatever the auction house is doing; nothing ever asks the player to wait or click again first. To keep
+    the line free, the scan holds while the mouse is on a Buy button (`Scanner.Aim`, 4 s at most) and while a
+    purchase is on its way. A purchase the auction house reports as dropped frees its row at once.
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),
