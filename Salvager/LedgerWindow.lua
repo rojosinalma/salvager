@@ -768,7 +768,8 @@ local function build()
     cancelButton = W.Button(f, "Cancel undercut (0)", 150, function() ns.Listings.CancelNext() end,
         "Cancels one undercut listing per click (the game wants a click for each). The materials come back by mail, "
         .. "and the auction house keeps its deposit. Needs the auction house open, and a check first.")
-    cancelButton:SetPoint("RIGHT", clear, "LEFT", -6, 0)
+    -- On the row of the Sales subtabs, at the right: the row of the main tabs is full.
+    cancelButton:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -98)
     cancelButton:SetMotionScriptsWhileDisabled(true)
     cancelButton:HookScript("OnEnter", function(self)
         local why = self.reason
