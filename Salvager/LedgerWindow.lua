@@ -14,6 +14,7 @@ local PROFIT_HELP = { "Profit", "What you got after the cut minus what the mater
     .. "known cost only. \"+3?\" in Cost = 3 units with no recorded cost, left out. An auction that expired or was "
     .. "cancelled shows the deposit the auction house kept, as a loss." }
 local INDENT = 22
+local ODDS_INDENT = 12   -- each level of the Odds cards (gear type, quality, band) sits in this much
 -- The longest countdown (an auction runs up to 48 hours): the Time columns keep this width while they count.
 local COUNTDOWN_MAX = "00:00:00"
 
@@ -634,7 +635,7 @@ function Window.OddsCards()
     -- and closes.
     local rows = ns.GroupedRows(Window.OddsBands(), function(band)
         return { key = Ledger.BandKey(band.quality, band.classID, band.band), cells = { "" } }
-    end, nil, INDENT, { collapsed = x.collapsed, changed = function() Window.Refresh() end })
+    end, nil, ODDS_INDENT, { collapsed = x.collapsed, changed = function() Window.Refresh() end })
     for _, r in ipairs(rows) do
         if r.head then
             cards[#cards + 1] = { heading = true, title = r.cells[1], open = r.open, onClick = r.onClick,
@@ -715,7 +716,9 @@ local VIEWS = { sales = true, purchases = true, odds = true, accuracy = true }
 
 --- The Odds view: the three filters and the stack of tables, one per band. The caller anchors its parts.
 --- The ledger window has one, and the popped-out odds window has one.
-function newOddsView(parent, point)
+--- `checkPoint` = { x, y }: "Only bands with my data" on a row of its own there (a narrow window); else at the
+--- end of the filter row.
+function newOddsView(parent, point, checkPoint)
     local view = {}
     local function changed()
         view.stack.offset = 0
@@ -730,7 +733,11 @@ function newOddsView(parent, point)
             oddsFilter().dataOnly = on or nil
             changed()
         end)
-    view.dataOnly:SetPoint("LEFT", last, "RIGHT", 12, 0)
+    if checkPoint then
+        view.dataOnly:SetPoint("LEFT", parent, "TOPLEFT", checkPoint[1], checkPoint[2])
+    else
+        view.dataOnly:SetPoint("LEFT", last, "RIGHT", 12, 0)
+    end
     controls[#controls + 1] = view.dataOnly
     view.stack = W.CardList(parent)
     view.stack:SetColumns(ODDS_COLUMNS)
@@ -761,7 +768,7 @@ function Window.SetSalesSplit(part)
     Window.Refresh()
 end
 
-local ODDS_TOP = 60
+local ODDS_TOP, ODDS_W = 84, 740
 
 function Window.Refresh()
     if oddsFrame and oddsFrame:IsShown() then oddsOut:Refresh() end
@@ -1086,9 +1093,11 @@ StaticPopupDialogs["SALVAGER_CLEAR_LEDGER"] = {
 
 local function buildOdds()
     -- As wide as its tables need; the height is the player's (the corner sizes it up and down only).
-    oddsFrame = W.Window("SalvagerOddsFrame", "Salvager odds", "odds", 860, 520, 860, 200, "vertical")   -- (its filter row needs 860)
+    -- 740 wide: the cards need about 700 (their columns, the icon, two levels of indent, the scroll bar); the
+    -- filter row about 700, with "Only bands with my data" on the row under it.
+    oddsFrame = W.Window("SalvagerOddsFrame", "Salvager odds", "odds", ODDS_W, 520, ODDS_W, 200, "vertical")
     oddsFrame.onResize = Window.Refresh
-    oddsOut = newOddsView(oddsFrame, { 14, -41 })
+    oddsOut = newOddsView(oddsFrame, { 14, -41 }, { 12, -66 })
     oddsOut.stack:SetPoint("TOPLEFT", oddsFrame, "TOPLEFT", 12, -ODDS_TOP)
     oddsOut.stack:SetPoint("BOTTOMRIGHT", oddsFrame, "BOTTOMRIGHT", -12, 14)
     oddsFrame:SetScript("OnShow", Window.Refresh)

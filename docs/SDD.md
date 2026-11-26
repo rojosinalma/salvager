@@ -385,7 +385,8 @@ flipping is out of scope for now.
     it; old settings move over once). Every heading of a grouped list opens and closes (`ns.GroupedRows`
     `opts.collapsed`); Odds cards too, each band on its own (`Widgets.CardList`: `heading`, `open`,
     `onClick`, `indent`). Accuracy has a Profit difference column (Actual profit − Expected profit), on the
-    headings too. The odds window is 860 wide for its filter row.
+    headings too. The odds window is 740 wide (0.3.101): "Only bands with my data" on a row of its own under
+    the filter row; the Odds cards sit in 12 px per level (22 in the other tables).
 84. **The Materials window fits its list** (0.3.100): as wide as its columns need, the Post column ending
     with its button (`list.neededWidth` from `Widgets.List`), at least 620 for the row above the list (help
     and check box from the right, the status cut before them).
