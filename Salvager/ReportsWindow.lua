@@ -340,7 +340,8 @@ local function build()
         W.HelpArea(f, l, label, help)
         filters[#filters + 1] = l
         filters[#filters + 1] = drop
-        prev = drop.Right and drop:Right() or drop
+        -- (The drop-down is a button of the game's template: its "Right" is a texture of its art, not a method.)
+        prev = drop
     end
     local gearGet, gearSet = setOf(flt.classes, false, { 4, 2 })
     add("Gear", W.CheckDropdown(f, 100, { { 4, "Armor" }, { 2, "Weapons" } }, gearGet, gearSet,

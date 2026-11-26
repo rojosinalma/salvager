@@ -77,8 +77,12 @@ function M.install()
     _G.SlashCmdList = {}
     _G.StaticPopupDialogs = {}
     _G.StaticPopup_Show = function(name) env.popup = name end
-    _G.CreateFrame = function(kind, name, parent)
+    _G.CreateFrame = function(kind, name, parent, template)
         local f = widget(kind)
+        -- The game's button templates bring their art as fields (Left, Middle, Right textures), as the client does.
+        if template and template:find("Button") then
+            f.Left, f.Middle, f.Right = widget("Texture"), widget("Texture"), widget("Texture")
+        end
         f.parent = parent
         table.insert(env.frames, f)
         if name then _G[name] = f end
