@@ -171,8 +171,14 @@ function Window.ListingRows()
                 (r.sold and GOLD or "") .. countdown(left) .. (r.sold and "|r" or ""),
                 ns.Money(r.each), ns.Money(gross), ns.Money(net), cost and ns.Money(cost) or (GREY .. "not known|r"),
                 cost and signed(net - cost) or "" },
+            sold = r.sold and true or false, order = #rows + 1,
         }
     end
+    -- The auctions still for sale first, then the sold ones; each group in the game's order.
+    table.sort(rows, function(a, b)
+        if a.sold ~= b.sold then return not a.sold end
+        return a.order < b.order
+    end)
     return rows
 end
 

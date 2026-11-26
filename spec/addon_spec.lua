@@ -1273,6 +1273,8 @@ describe("Salvager listings", function()
         end
         assert.is_truthy(listed.cells[2]:find("listed", 1, true))          -- not checked yet
         assert.is_truthy(sold.cells[2]:find("sold", 1, true))
+        assert.is_true(rows[#rows].sold)                                   -- the sold ones come last
+        assert.is_false(rows[1].sold)
         assert.is_nil(sold.cells[2]:find("money", 1, true))                -- the status and the timer are apart
         assert.is_truthy(sold.cells[3]:find("%d+:%d%d"))                   -- a running timer, minutes:seconds
         assert.is_nil(sold.cells[7]:find("not known", 1, true))            -- its cost is the booked sale's: 5 x 3s
