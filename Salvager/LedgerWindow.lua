@@ -502,18 +502,22 @@ function Window.SoldRows(history)
     return rows
 end
 
---- "+5%", "-3%" in grey: how far `part` is from `whole`. A gap from a forecast is not gold gained or lost, so it is
---- never green or red (UI.md Tables 7); the sign says which way.
+--- A signed number's color (UI.md Tables 7): green when it is good (more than planned, a gain), red when it is
+--- bad, none at 0; the sign says it too.
+local function tone(n) return n > 0 and GREEN or n < 0 and RED or "" end
+local function toned(n, text) return n ~= 0 and (tone(n) .. text .. "|r") or text end
+
+--- "+5%", "-3%": how far `part` is from `whole`, green above, red below.
 local function share(part, whole)
     if not whole or whole == 0 then return GREY .. "-|r" end
     local pct = math.floor((part - whole) / whole * 100 + 0.5)
-    return GREY .. (pct > 0 and "+" or "") .. pct .. "%|r"
+    return toned(pct, (pct > 0 and "+" or "") .. pct .. "%")
 end
 
---- A gap from a forecast in coins: grey, with its sign.
+--- An amount with its sign, green when it gains, red when it loses (Expected profit).
 local function gap(c)
     c = math.floor(c + 0.5)
-    return GREY .. (c > 0 and "+" or "") .. ns.Money(c) .. "|r"
+    return toned(c, (c > 0 and "+" or "") .. ns.Money(c))
 end
 
 --- AP/EP %: how far the actual profit is from the expected one, in percent of the expected one
@@ -521,7 +525,7 @@ end
 local function profitShare(actual, expected)
     if not expected or expected == 0 then return GREY .. "-|r" end
     local pct = math.floor((actual - expected) / math.abs(expected) * 100 + 0.5)
-    return GREY .. (pct > 0 and "+" or "") .. pct .. "%|r"
+    return toned(pct, (pct > 0 and "+" or "") .. pct .. "%")
 end
 
 --- Accuracy, by band: what was promised, what the disenchants gave, what the sales brought.

@@ -77,13 +77,9 @@ local function dealName(d)
     return (d.link and d.link:match("%[(.-)%]")) or (ns.GetItemInfo(d.itemID)) or ("gear " .. d.itemID)
 end
 
--- Expected profit and Return are forecasts, with their sign. The one the Gear list is sorted by drives the buy
--- (Buy Top, the order): it is green when it gains and red when it loses; the other one is grey (UI.md Tables 7).
+-- Expected profit and Return, with their sign: green when they gain, red when they lose (UI.md Tables 7).
 local GREY, GREEN, RED = "|cff808080", "|cff40ff40", "|cffff4040"
-local function driverColor(isDriver, gain)
-    if not isDriver then return GREY end
-    return gain and GREEN or RED
-end
+local function driverColor(_, gain) return gain and GREEN or RED end
 local function byReturn() return ns.db.settings.dealSort == "return" end
 local function profitText(d)
     return driverColor(not byReturn(), d.profit >= 0) .. (d.profit >= 0 and "+" or "-") .. ns.Money(math.abs(d.profit))

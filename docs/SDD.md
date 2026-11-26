@@ -251,7 +251,7 @@ flipping is out of scope for now.
     By material `Material | Units | Disenchant value each (DV) | Sold value each (SV) | SV - DV | SV/DV % | Units sold`.
     DV/EV % = Disenchant value against Expected value, SV/DV % = Sold value against Disenchant value (the same name
     in both tables), AP/EP % = (Actual profit − Expected profit) / |Expected profit|, "-" where Expected profit is 0;
-    all in percent, grey with "+" or "-" (0.3.123, UI.md Tables 7: a gap from a forecast is not gold gained or lost;
+    all in percent, green above and red below with "+" or "-" (0.3.133; 0.3.123 to 0.3.132 grey: a gap from a forecast was not counted as gold gained or lost;
     Expected profit and SV - DV too; Actual profit stays green or red). SV - DV is in coins, with a plain hyphen: the game
     font's minus sign (U+2212) is not confirmed. The help on each comparison names both values in full. Purchases
     (Expected value, Disenchant value, Profit) has no comparison column, so it keeps its titles without
@@ -657,7 +657,7 @@ flipping is out of scope for now.
        used (they go into the gold or the mail).
     - g. Words and colors: no trading jargon in the statement; every line has its help on hover (`row.tip` of
        `Widgets.List`) and reads without it. Green or red only for real gold (Trading profit, Total, Gold not from
-       trading, Change in gold and mail, each change of gold); the stock's change is grey (it rests on today's prices).
+       trading, Change in gold and mail, each change of gold); the stock's change is green or red too (0.3.133; it was grey as it rests on today's prices).
     - h. Layout (0.3.126, the user: "align the table to the right like a regular statement"; UI.md Statements, from
        established practice): a two-line heading, what it is and for whom ("Gold statement of <character>"), then the
        period ("This session: 11-26 18:49 to now (1 h 10 min)", a past session, a range, or "All time: every record
@@ -762,7 +762,7 @@ flipping is out of scope for now.
     player's, its place remembered, Escape closes it, it closes with the main window. Content, a report from the top:
     the heading (icon, the link with the game's tooltip on hover; quality, gear type, item level, band; "this
     auction, as of the last scan"); "The deal" as a statement (Expected value of one disenchant +, Buyout -, Expected
-    profit as the bold total, grey: forecasts); "Return and risk", one row (Return, Loss chance, Buy limit, Limit set
+    profit as the bold total, green or red like every signed amount, 0.3.133); "Return and risk", one row (Return, Loss chance, Buy limit, Limit set
     by: Min profit, Min return, You (Limits) or Max price; Time to sell, Return per day); "How the Expected value is
     built" (`Model.ValueBuild`: one row per result with Rate used, Quantity used, Value each = price × sell price
     ratio after the cut less the deposits lost per unit sold, Part of the value = their product; the total "Expected
@@ -788,7 +788,7 @@ flipping is out of scope for now.
     "Salvager <Name>", the name capitalized (UI.md Layout 10): Salvager Ledger, Reports, Materials, Market, Log, Odds,
     Options, Breakdown, Limits, Post, Stand, Gear Details. The log keeps "item <ID>" in its lines (the Log window
     shows the name in its place). Expected profit and Return in the Gear list: the one the list is sorted by
-    (it drives Buy Top and the order) is green when it gains, red when it loses; the other is grey (0.3.132, the
+    (it drives Buy Top and the order) is green when it gains, red when it loses; since 0.3.133 the other too (0.3.132, the
     user: 0.3.129 made both grey). The same in the row's and Buy Top's tooltips. A click on the gear above Buy Top
     opens its Gear Details, as a click on its row does.
 

@@ -305,11 +305,11 @@ describe("Salvager in a simulated client", function()
             return cells[11], cells
         end
         local vs, cells = vsExpected(1000, 2000, 2500)              -- expected 1000, actual 1500
-        assert.are.equal("|cff808080+50%|r", vs)                    -- a gap from a forecast: grey, signed
-        assert.are.equal("+" .. ns.Money(1000), cells[9]:match("^|cff808080(.*)|r$"))    -- Expected profit, grey
+        assert.are.equal("|cff40ff40+50%|r", vs)                    -- better than the forecast: green, signed
+        assert.are.equal("+" .. ns.Money(1000), cells[9]:match("^|cff40ff40(.*)|r$"))    -- Expected profit, green
         assert.are.equal(ns.Money(1500), cells[10]:match("^|c%x%x%x%x%x%x%x%x(.*)|r$"))  -- Actual profit
-        assert.are.equal("|cff808080-25%|r", (vsExpected(1000, 2000, 1750)))          -- actual 750: less
-        assert.are.equal("|cff808080-100%|r", (vsExpected(1000, 800, 600)))           -- expected -200, actual -400
+        assert.are.equal("|cffff4040-25%|r", (vsExpected(1000, 2000, 1750)))          -- actual 750: less, red
+        assert.are.equal("|cffff4040-100%|r", (vsExpected(1000, 800, 600)))           -- expected -200, actual -400
         assert.are.equal("|cff808080-|r", (vsExpected(1000, 1000, 1500)))             -- nothing expected
         assert.is_true(acc[2].open)
         acc[2].onClick()                                            -- the Armor heading closes
@@ -362,8 +362,8 @@ describe("Salvager in a simulated client", function()
         assert.is_true(cell:IsShown())
         local expected, actual = total.promised - total.paid, math.floor(total.sold + 0.5) - total.paid
         local pct = math.floor((actual - expected) / math.abs(expected) * 100 + 0.5)
-        assert.are.equal("|cff808080" .. (pct > 0 and "+" or "") .. pct .. "%|r",
-            cell:GetText())
+        local tone = pct > 0 and "|cff40ff40" or pct < 0 and "|cffff4040" or ""
+        assert.are.equal(tone .. (pct > 0 and "+" or "") .. pct .. "%" .. (pct ~= 0 and "|r" or ""), cell:GetText())
         local matTitles = {}
         for _, h in ipairs(byMat.headers) do if h:IsShown() then matTitles[#matTitles + 1] = h:GetText() end end
         assert.are.same({ "Material", "Units", "Disenchant value each (DV)", "Sold value each (SV)", "SV - DV",
@@ -3180,11 +3180,9 @@ describe("Salvager gear, Gear details and headings that open and close (0.3.129)
         assert.are.equal((fromTop:gsub("\n[^\n]*$", "")), (fromRow:gsub("\n[^\n]*$", "")))
         assert.is_truthy(fromRow:find("Click: open or close the group", 1, true))
         assert.is_truthy(fromTop:find("Click: Gear Details", 1, true))
-        -- Expected profit and Return are forecasts with their sign; the one the list is sorted by drives the buy:
-        -- green when it gains, the other grey (UI.md Tables 7).
-        local byReturn = ns.db.settings.dealSort == "return"
-        assert.is_truthy(head.item.cells[6]:find(byReturn and "^|cff808080%+" or "^|cff40ff40%+"))
-        assert.is_truthy(head.item.cells[7]:find(byReturn and "^|cff40ff40%+" or "^|cff808080%+"))
+        -- Expected profit and Return with their sign: green when they gain (UI.md Tables 7).
+        assert.is_truthy(head.item.cells[6]:find("^|cff40ff40%+"))
+        assert.is_truthy(head.item.cells[7]:find("^|cff40ff40%+"))
         -- A click on the gear above Buy Top opens its Gear Details.
         local realOpen, opened = ns.GearWindow.Open, nil
         ns.GearWindow.Open = function(deal) opened = deal end
@@ -3227,7 +3225,7 @@ describe("Salvager gear, Gear details and headings that open and close (0.3.129)
         local deal = g.DealRows(d)
         assert.are.same({ "Expected value of one disenchant", "Buyout", "Expected profit" },
             { deal[1].cells[1], deal[2].cells[1], deal[3].cells[1] })
-        assert.are.equal("|cff808080+" .. ns.MoneyColumn(d.value) .. "|r", deal[1].cells[2])  -- a forecast: grey, +
+        assert.are.equal("|cff40ff40+" .. ns.MoneyColumn(d.value) .. "|r", deal[1].cells[2])  -- comes in: green, +
         assert.are.equal("-" .. ns.MoneyColumn(d.buyout), deal[2].cells[2])                    -- goes out: -
         assert.are.same({ "final", true }, { deal[3].rule, deal[3].bold })
         assert.are.equal(14, deal[1].indent)                                                    -- lines one step in

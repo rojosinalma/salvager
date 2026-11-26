@@ -161,7 +161,7 @@ end
 ------------------------------------------------------------------ rows
 
 -- Amounts. flow: + or - and the coins, no color. real: the same in green (gain) or red (loss), for real gold.
--- est: grey, for values at today's prices (never green or red).
+-- est: values at today's prices, green or red like gold (UI.md Tables 7).
 local function flow(c)
     c = math.floor((c or 0) + 0.5)
     return (c > 0 and "+" or "") .. ns.MoneyColumn(c)
@@ -170,7 +170,7 @@ local function real(c)
     c = math.floor((c or 0) + 0.5)
     return (c > 0 and GREEN or c < 0 and RED or "") .. flow(c) .. ((c ~= 0) and "|r" or "")
 end
-local function est(c) return GREY .. flow(c) .. "|r" end
+local function est(c) return real(c) end   -- a value at today's prices: green or red like gold (UI.md Tables 7)
 
 -- A statement's lines (UI.md Statements): a section heading without an amount, its lines one step in, its total at
 -- the heading's level with a rule over the amount (the bottom line: a double rule under it too), in bold.

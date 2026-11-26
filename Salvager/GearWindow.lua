@@ -16,19 +16,17 @@ local parts = {}   -- per section: { title = label, list = Widgets.List }
 
 local function grey(t) return GREY .. t .. "|r" end
 local function money(c) return c and ns.MoneyColumn(math.floor(c + 0.5)) or grey("-") end
--- A forecast: grey with its sign (UI.md Tables 7). Real gold: green or red with its sign.
-local function est(c)
-    c = math.floor((c or 0) + 0.5)
-    return grey((c > 0 and "+" or c < 0 and "-" or "") .. ns.MoneyColumn(math.abs(c)))
-end
+-- Every amount with its sign, green when it gains, red when it loses, forecasts too (UI.md Tables 7).
 local function real(c)
     c = math.floor((c or 0) + 0.5)
     if c == 0 then return ns.MoneyColumn(0) end
     return (c > 0 and (GREEN .. "+") or (RED .. "-")) .. ns.MoneyColumn(math.abs(c)) .. "|r"
 end
+local function est(c) return real(c) end
 local function pct(part, whole)
     if not whole or whole == 0 then return grey("-") end
-    return string.format("%+d%%", math.floor(part / whole * 100 + 0.5))
+    local p = math.floor(part / whole * 100 + 0.5)
+    return p == 0 and "+0%" or string.format("%s%+d%%|r", p > 0 and GREEN or RED, p)
 end
 local function count(n) return n < FEW and grey(tostring(n)) or tostring(n) end
 

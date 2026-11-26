@@ -57,12 +57,10 @@ reply must say so.
 5. A marker that belongs to a row (your price, your break-even) is on that row, not on a line
    next to it.
 6. An empty table says why it is empty and what fills it.
-7. Money has coin icons, right-aligned. Green is gold gained, red is gold lost, and only for real
-   gold (a sale, a profit made, a change of your gold). A gap from a forecast or a value at today's
-   prices (Accuracy's comparisons, Expected profit, luck, price change, Stock change) is grey with
-   its + or -, never green or red. One exception: in the Gear list and its tooltips, the forecast the list is
-   sorted by (Expected profit or Return: the one that drives the buy) is green when it gains and red when it
-   loses; the other one stays grey. Color is never the only signal: the sign or a word says it too.
+7. Money has coin icons, right-aligned. Every signed number (gold, a profit, a forecast, a gap from a forecast,
+   a percent change) is green when it is good (a gain, more than planned) and red when it is bad, with its + or -
+   (the user, 2026-11-26: grey forecasts read as "nothing there"). Grey is only for what is not known, rests on
+   too few samples, or is a note. Color is never the only signal: the sign or a word says it too.
 8. Text, names and dates left-aligned. Numbers, money, percentages and times right-aligned. A title aligns like its
    column.
 9. The numbers of a column have the same decimals and unit. Silver and copper show two digits after a larger coin,
