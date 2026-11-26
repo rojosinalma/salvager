@@ -9,17 +9,35 @@ local Gold = {}
 ns.Gold = Gold
 
 local expected = {}   -- what the addon knows is coming (Journal.Expect)
-local open = {}       -- [window] = true while it shows, then the time it closed
+local opened = {}     -- [window] = time it opened, while it shows
+local closed = {}     -- [window] = time it closed
 local char
 
 local function db() return ns.db.money end
 
---- "Name-Realm" of the character played.
-function Gold.Char()
+-- Before 0.3.82 the realm could be empty at login ("Name-"): those records move to the full name.
+local function adopt(name, full)
+    local m = db()
+    local old = name .. "-"
+    if old ~= full and m.chars[old] then
+        if not m.chars[full] or (m.chars[full].t or 0) < (m.chars[old].t or 0) then m.chars[full] = m.chars[old] end
+        m.chars[old] = nil
+        for _, e in ipairs(m.entries) do if e.c == old then e.c = full end end
+        ns.Log("gold: the records of %s are now under %s", old, full)
+    end
+end
+
+--- "Name-Realm" of the character played. nil while the game does not tell the realm yet (just after login);
+--- with `anyway`, the name alone when it never does.
+function Gold.Char(anyway)
     if not char then
         local name = UnitName and UnitName("player")
         if not name then return nil end
-        char = name .. "-" .. ((GetRealmName and GetRealmName()) or "?")
+        local realm = (GetRealmName and GetRealmName()) or ""
+        if realm == "" and GetNormalizedRealmName then realm = GetNormalizedRealmName() or "" end
+        if realm == "" and not anyway then return nil end
+        char = realm == "" and name or (name .. "-" .. realm)
+        if ns.db then adopt(name, char) end
     end
     return char
 end
@@ -32,20 +50,34 @@ end
 
 -- A change that comes just after a window closed still belongs to it.
 local AFTER_CLOSE = 2
-local function isOpen(w)
-    local v = open[w]
-    return v == true or (v and GetTime() - v <= AFTER_CLOSE) or false
+local KIND_OF = { trade = "trade", mail = "mail", taxi = "flight", trainer = "training", auction = "auction" }
+
+-- What an unexplained change is: the window opened last of those that show (the game does not always say
+-- that a window closed when another one opens), else one that closed just now.
+local function byWindow(d)
+    local best, at
+    for w, t in pairs(opened) do
+        if not at or t > at then best, at = w, t end
+    end
+    if not best then
+        for w, t in pairs(closed) do
+            if GetTime() - t <= AFTER_CLOSE and (not at or t > at) then best, at = w, t end
+        end
+    end
+    if best == "merchant" then return d > 0 and "vendor" or "merchant" end
+    return KIND_OF[best] or "other"
 end
 
--- What an unexplained change is, by the window open when it happened.
-local function byWindow(d)
-    if isOpen("merchant") then return d > 0 and "vendor" or "merchant" end
-    if isOpen("trade") then return "trade" end
-    if isOpen("mail") then return "mail" end
-    if isOpen("taxi") then return "flight" end
-    if isOpen("trainer") then return "training" end
-    if ns.Queue and ns.Queue.open then return "auction" end
-    return "other"
+-- One window at a time: opening one closes the others.
+local function show(w)
+    for other, t in pairs(opened) do
+        if other ~= w then opened[other], closed[other] = nil, t and GetTime() end
+    end
+    opened[w], closed[w] = GetTime(), nil
+end
+local function hide(w)
+    if opened[w] then closed[w] = GetTime() end
+    opened[w] = nil
 end
 
 local function seen(kindIfChanged)
@@ -67,29 +99,44 @@ local function seen(kindIfChanged)
 end
 
 local sessionStart
-ns.On("PLAYER_ENTERING_WORLD", function()
+-- The session starts when the game tells the character's realm: at login, or a moment later.
+local function start(anyway)
+    if sessionStart or not Gold.Char(anyway) or not GetMoney then return false end
     seen("unseen")
-    if not sessionStart and GetMoney then
-        sessionStart = GetMoney()
-        ns.Log("session: %s logged in with %s (Salvager %s)", tostring(Gold.Char()), ns.Money(sessionStart), ns.VERSION)
+    sessionStart = GetMoney()
+    ns.Log("session: %s logged in with %s (Salvager %s)", Gold.Char(), ns.Money(sessionStart), ns.VERSION)
+    return true
+end
+ns.On("PLAYER_ENTERING_WORLD", function()
+    if sessionStart then seen() return end   -- (a loading screen, not a login)
+    if start() then return end
+    local tries = 0
+    local function again()
+        tries = tries + 1
+        if not start(tries >= 30) and tries < 30 then C_Timer.After(1, again) end
     end
+    C_Timer.After(1, again)
 end)
-ns.On("PLAYER_MONEY", function() seen() end)
+ns.On("PLAYER_MONEY", function() if sessionStart or start() then seen() end end)
+-- (At logout the game reports 0 gold: the balance is not read then, the last one seen is the one logged.)
 ns.On("PLAYER_LOGOUT", function()
-    seen()
-    if sessionStart and GetMoney then
-        local now = GetMoney()
-        ns.Log("session: logged out with %s (%s%s this session)", ns.Money(now), now >= sessionStart and "+" or "",
-            ns.Money(now - sessionStart))
+    local last = Gold.Char() and ns.db and db().chars[Gold.Char()]
+    if sessionStart and last then
+        ns.Log("session: logged out with %s (%s%s this session)", ns.Money(last.b), last.b >= sessionStart and "+" or "",
+            ns.Money(last.b - sessionStart))
     end
 end)
 
 for _, w in ipairs({ { "merchant", "MERCHANT_SHOW", "MERCHANT_CLOSED" }, { "mail", "MAIL_SHOW", "MAIL_CLOSED" },
     { "trade", "TRADE_SHOW", "TRADE_CLOSED" }, { "taxi", "TAXIMAP_OPENED", "TAXIMAP_CLOSED" },
-    { "trainer", "TRAINER_SHOW", "TRAINER_CLOSED" } }) do
-    ns.On(w[2], function() open[w[1]] = true end)
-    ns.On(w[3], function() open[w[1]] = GetTime() end)
+    { "trainer", "TRAINER_SHOW", "TRAINER_CLOSED" }, { "auction", "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED" } }) do
+    ns.On(w[2], function() show(w[1]) end)
+    ns.On(w[3], function() hide(w[1]) end)
 end
+-- This client opens and closes its windows through the interaction manager (Enum.PlayerInteractionType).
+local INTERACTION = { [1] = "trade", [5] = "merchant", [6] = "taxi", [7] = "trainer", [17] = "mail", [21] = "auction" }
+ns.On("PLAYER_INTERACTION_MANAGER_FRAME_SHOW", function(kind) if INTERACTION[kind] then show(INTERACTION[kind]) end end)
+ns.On("PLAYER_INTERACTION_MANAGER_FRAME_HIDE", function(kind) if INTERACTION[kind] then hide(INTERACTION[kind]) end end)
 
 -- Mail money: its amount is known before it is taken. An auction sale is a sale; other money is "mail".
 local function mailTaken(index)

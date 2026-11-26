@@ -255,6 +255,11 @@ flipping is out of scope for now.
     what the addon itself did (purchase −buyout, deposit, cancel fee, mail money taken: auction sale or
     other mail) matched by exact amount, else from the window open (vendor, merchant, repair, trade, mail,
     flight, training, auction house), else "other". A change found at login is "unseen" (the addon was off).
+    The window is the one opened last (opening one closes the others): the client does not always send
+    MAIL_CLOSED (measured 2026-11-26: every auction house purchase after a mailbox visit was booked as mail),
+    so the interaction manager's events (`PLAYER_INTERACTION_MANAGER_FRAME_SHOW/HIDE`) count too. The gold
+    is never read at logout (the game reports 0 then). The character is "Name-Realm" once the game tells the
+    realm (it can be empty at login: records kept as "Name-" move to the full name).
     `/salv gold <hours>`: start, now, money in the mail (unpaid sales), after pickup, by kind, and the buys
     that lost, marking those that were valued as something they were not. Each purchase keeps its judgment
     (`j` = quality, gear type, band, item level, version), copied to the disenchant as `judged`.

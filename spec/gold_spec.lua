@@ -65,10 +65,23 @@ describe("The gold journal in a simulated client", function()
         assert.are.equal("other", last().k)
     end)
 
-    it("finds a change made while the addon was off at the next login", function()
-        env.money = env.money + 777
-        wow.fire(ns, "PLAYER_ENTERING_WORLD")
-        assert.are.same({ "unseen", 777 }, { last().k, last().d })
+    it("tells the kind by the window opened last, also when the game did not say the other one closed", function()
+        wow.fire(ns, "PLAYER_INTERACTION_MANAGER_FRAME_SHOW", 17)   -- the mailbox, never closed
+        wow.fire(ns, "PLAYER_INTERACTION_MANAGER_FRAME_SHOW", 21)   -- then the auction house
+        money(-500)
+        assert.are.equal("auction", last().k)
+        wow.fire(ns, "PLAYER_INTERACTION_MANAGER_FRAME_HIDE", 21)
+        wow.tick(ns, 3)
+        money(10)
+        assert.are.equal("other", last().k)
+    end)
+
+    it("does not read the gold at logout (the game says 0 then)", function()
+        local n = #ns.db.money.entries
+        env.money, env.realMoney = 0, env.money
+        wow.fire(ns, "PLAYER_LOGOUT")
+        assert.are.equal(n, #ns.db.money.entries)
+        env.money = env.realMoney
     end)
 
     it("starts each day of the log with a date line, and filters trades and errors", function()
@@ -105,5 +118,28 @@ describe("The gold journal in a simulated client", function()
         assert.is_true(#log >= 5)
         local l = ns.Gold.Losses(0)[1]
         assert.are.same({ -6661, true }, { l.loss, l.misjudged })
+    end)
+end)
+
+describe("The gold journal at login", function()
+    it("waits for the realm name, and moves records kept without it", function()
+        local realm = ""
+        wow.install()
+        _G.GetRealmName = function() return realm end
+        _G.UnitName = function() return "Solo" end
+        local ns = wow.loadAddon()
+        _G.SalvagerDB = { money = { chars = { ["Solo-"] = { b = 50, t = 1 } },
+            entries = { { t = 1, c = "Solo-", d = 0, b = 50, k = "start" } } } }
+        wow.fire(ns, "ADDON_LOADED", "Salvager")
+        wow.fire(ns, "PLAYER_ENTERING_WORLD")
+        assert.is_nil(ns.Gold.Char())                           -- no realm yet: no session yet
+        realm = "Realm"
+        wow.tick(ns, 1.5)
+        assert.are.equal("Solo-Realm", ns.Gold.Char())
+        assert.is_table(ns.db.money.chars["Solo-Realm"])
+        assert.is_nil(ns.db.money.chars["Solo-"])
+        assert.are.equal("Solo-Realm", ns.db.money.entries[1].c)
+        local e = ns.db.money.entries[#ns.db.money.entries]          -- the gold moved while the addon was off
+        assert.are.same({ "unseen", 1000000 - 50 }, { e.k, e.d })
     end)
 end)
