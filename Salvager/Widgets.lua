@@ -12,16 +12,19 @@ function Widgets.Button(parent, text, width, onClick, tooltip)
     b:SetText(text)
     b:SetScript("OnClick", onClick)
     if tooltip then Widgets.Tooltip(b, text, tooltip) end
+    b.uiKind = "button"
     return b
 end
 
 --- A small "?" button. A click shows `getLines()` (a title, then one line per explanation) in a
 --- panel under it; a second click, or a click anywhere else, closes it.
---- `opts.glyph` = "chart": a bar chart in place of the "?"; `opts.tooltip` = { title, text }.
+--- `opts.glyph` = "chart": a bar chart in place of the "?"; `opts.tooltip` = { title, text }; `opts.left`: it opens
+--- to the right; `opts.up`: it opens over the button.
 function Widgets.HelpButton(parent, title, getLines, opts)
     opts = opts or {}
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetSize(22, 22)
+    b.uiKind = "button"
     b:SetText(opts.glyph and "" or "?")
     if opts.glyph == "chart" then
         -- Three gold bars of rising height on a base line.
@@ -38,7 +41,10 @@ function Widgets.HelpButton(parent, title, getLines, opts)
     local panel = CreateFrame("Frame", nil, b, BackdropTemplateMixin and "BackdropTemplate" or nil)
     panel:SetFrameStrata("DIALOG")
     -- Under the button, opening to the left; with `opts.left` (a button at a left edge), to the right.
-    if opts.left then panel:SetPoint("TOPLEFT", b, "BOTTOMLEFT", 0, -2) else panel:SetPoint("TOPRIGHT", b, "BOTTOMRIGHT", 0, -2) end
+    -- (`opts.up`: over the button, for a button in a footer.)
+    if opts.up then
+        panel:SetPoint(opts.left and "BOTTOMLEFT" or "BOTTOMRIGHT", b, opts.left and "TOPLEFT" or "TOPRIGHT", 0, 2)
+    elseif opts.left then panel:SetPoint("TOPLEFT", b, "BOTTOMLEFT", 0, -2) else panel:SetPoint("TOPRIGHT", b, "BOTTOMRIGHT", 0, -2) end
     panel:SetWidth(WIDTH)
     if panel.SetBackdrop then
         panel:SetBackdrop({
@@ -115,6 +121,7 @@ end
 --- Help text for a label: an invisible area over `region` that shows a tooltip.
 function Widgets.HelpArea(parent, region, title, text)
     local area = CreateFrame("Frame", nil, parent)
+    area.uiKind = "help"   -- (no look of its own: the label it lies over)
     area:SetAllPoints(region)
     area:EnableMouse(true)
     Widgets.Tooltip(area, title, text)
@@ -125,6 +132,7 @@ end
 function Widgets.IconButton(parent, size, onClick)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetSize(size, size)
+    b.uiKind = "button"
     b:SetText("")
     local icon = b:CreateTexture(nil, "OVERLAY")
     icon:SetPoint("CENTER", b, "CENTER", 0, 0)
@@ -185,6 +193,7 @@ end
 
 function Widgets.Check(parent, label, tooltip, onClick)
     local c = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    c.uiKind = "check"
     c:SetSize(24, 24)
     local text = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     text:SetPoint("LEFT", c, "RIGHT", 2, 0)
@@ -219,6 +228,7 @@ end
 
 function Widgets.Edit(parent, width, numeric)
     local e = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+    e.uiKind = "edit"
     e:SetSize(width, 20)
     e:SetAutoFocus(false)
     if numeric then e:SetNumeric(true) end
@@ -233,6 +243,7 @@ function Widgets.Money(parent, onChange)
     -- (The gold box holds three digits: up to 999 gold.)
     local BOX_W, SMALL_W, COIN, COIN_GAP, NEXT_GAP, LEFT_PAD = 36, 30, 13, 3, 11, 6
     local frame = CreateFrame("Frame", nil, parent)
+    frame.uiKind = "edit"
     frame:SetSize(LEFT_PAD + BOX_W + 2 * SMALL_W + 3 * (COIN_GAP + COIN) + 2 * NEXT_GAP + 2, 20)
     local m = { boxes = {}, frame = frame }
     local prevCoin
@@ -315,14 +326,195 @@ function Widgets.Spinner(parent, size)
     return f
 end
 
---- A button that opens a small list of check boxes.
---- options = { {value, label}, ... }; get(value) -> bool; set(value, bool). Returns the button.
---- `summary(names, total)` (optional) gives the button's text from the ticked names.
---- b:SetOptions(options, menuWidth) changes the choices (a list that grows: past sessions); the menu may be wider
---- than the button.
-function Widgets.CheckDropdown(parent, width, options, get, set, tooltip, title, summary)
-    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    b:SetSize(width, 22)
+--- How wide a text is in the small font; an estimate (5.5 px a letter, color codes left out) where the client cannot
+--- measure. For laying out rows before the client has drawn them, and for the specs.
+local function textWidth(text)
+    text = tostring(text or "")
+    local w = Widgets.TextWidth and Widgets.TextWidth(text)
+    if w then return w end
+    return #(text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) * 5.5
+end
+Widgets.EstimateWidth = textWidth
+
+-- Creates a frame from one of the game's templates, or nil where the client does not have it or the frame lacks
+-- the parts the look needs (`need`: field names); the fallback then draws its own look. Each template is tried
+-- once, on a frame of its own, so a failed try leaves nothing in the window.
+local templateOK = {}
+local function fromTemplate(kind, parent, template, need)
+    if templateOK[template] == nil then
+        local ok, probe = pcall(CreateFrame, kind, nil, nil, template)
+        local good = ok and type(probe) == "table"
+        for _, key in ipairs(need) do if good and rawget(probe, key) == nil then good = false end end
+        if ok and type(probe) == "table" then probe:Hide() end
+        templateOK[template] = good
+    end
+    if not templateOK[template] then return nil end
+    local ok, f = pcall(CreateFrame, kind, nil, parent, template)
+    return ok and f or nil
+end
+
+-- A 1 px frame drawn around `f`: four textures in its BORDER layer. Returns them, to color them later.
+local function edges(f, r, g, b, a, skipBottom)
+    local out = {}
+    local function edge(p1, p2, horizontal)
+        local t = f:CreateTexture(nil, "BORDER")
+        t:SetColorTexture(r, g, b, a)
+        t:SetPoint(p1, f, p1, 0, 0)
+        t:SetPoint(p2, f, p2, 0, 0)
+        if horizontal then t:SetHeight(1) else t:SetWidth(1) end
+        out[#out + 1] = t
+        return t
+    end
+    edge("TOPLEFT", "TOPRIGHT", true)
+    edge("TOPLEFT", "BOTTOMLEFT", false)
+    edge("TOPRIGHT", "BOTTOMRIGHT", false)
+    if not skipBottom then out.bottom = edge("BOTTOMLEFT", "BOTTOMRIGHT", true) end
+    return out
+end
+
+------------------------------------------------------------------ tabs, subtabs, dropdowns (UI.md Controls)
+-- Each kind of control has one look, made here and nowhere else, and carries `uiKind` ("tab", "subtab",
+-- "dropdown", "button", "check", "edit"); the layout dump writes it (k=) and `make layout` checks it.
+-- Rows of controls are made with Widgets.Bar ("tabrow", "subtabrow", "filterrow", "footer").
+
+local TAB_H, SUBTAB_H, FIELD_H = 26, 20, 22
+
+--- A main tab: the game's top tab (`PanelTopTabButtonTemplate`) where the client has it, else a flat tab drawn
+--- here (the selected one brighter, with a gold edge, joined to the content under it; the others dim).
+--- tab:SetSelected(on) shows the choice; tab:SetText(text) sets the title (the tab fits it). Put tabs in a
+--- Widgets.Bar(parent, "tabs") with bar:Add(tab).
+function Widgets.Tab(parent, text, onClick, tooltip)
+    local b = PanelTemplates_SelectTab and PanelTemplates_DeselectTab and PanelTemplates_TabResize
+        and fromTemplate("Button", parent, "PanelTopTabButtonTemplate", { "Left", "LeftActive", "Text" }) or nil
+    if b then
+        b.template = true
+        function b.SetSelected(self, on)
+            self.selected = on and true or false
+            if on then PanelTemplates_SelectTab(self) else PanelTemplates_DeselectTab(self) end
+        end
+        local setText = b.SetText
+        function b.SetText(self, t)
+            setText(self, t)
+            pcall(PanelTemplates_TabResize, self, 0)
+        end
+    else
+        b = CreateFrame("Button", nil, parent)
+        b:SetHeight(TAB_H)
+        local bg = b:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        local hl = b:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints()
+        hl:SetColorTexture(1, 1, 1, 0.08)
+        local frame = edges(b, 0.4, 0.4, 0.4, 1, true)
+        b:SetNormalFontObject("GameFontNormalSmall")
+        b:SetHighlightFontObject("GameFontHighlightSmall")
+        function b.SetSelected(self, on)
+            self.selected = on and true or false
+            -- Selected: a lighter fill and gold edges, white text, and 1 px lower, over the row's line, so it
+            -- joins the content under it. The others: a dark fill, grey edges, gold text.
+            bg:SetColorTexture(on and 0.24 or 0.07, on and 0.21 or 0.07, on and 0.15 or 0.07, on and 1 or 0.9)
+            bg:ClearAllPoints()
+            bg:SetPoint("TOPLEFT", self, "TOPLEFT", 0, 0)
+            bg:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", 0, on and 0 or 1)   -- (the others leave the line)
+            for _, t in ipairs(frame) do
+                if on then t:SetColorTexture(0.85, 0.68, 0.3, 1) else t:SetColorTexture(0.4, 0.4, 0.4, 1) end
+            end
+            self:SetNormalFontObject(on and "GameFontHighlightSmall" or "GameFontNormalSmall")
+        end
+        local setText = b.SetText
+        function b.SetText(self, t)
+            setText(self, t)
+            self:SetWidth(math.max(64, math.ceil(textWidth(t)) + 28))
+        end
+    end
+    b.uiKind = "tab"
+    b:SetText(text)
+    b:SetSelected(false)
+    b:SetScript("OnClick", onClick)
+    if tooltip then Widgets.Tooltip(b, text, tooltip) end
+    return b
+end
+
+--- A subtab: a second level under a tab. Flat text with no box; the selected one white with a gold line under it,
+--- the others gold text. Never looks like a tab or a button. subtab:SetSelected(on), subtab:SetText(text). Put
+--- subtabs in a Widgets.Bar(parent, "subtabs").
+function Widgets.Subtab(parent, text, onClick, tooltip)
+    local b = CreateFrame("Button", nil, parent)
+    b.uiKind = "subtab"
+    b:SetHeight(SUBTAB_H)
+    local fill = b:CreateTexture(nil, "BACKGROUND")
+    fill:SetAllPoints()
+    fill:SetColorTexture(1, 1, 1, 0.06)
+    local line = b:CreateTexture(nil, "ARTWORK")
+    line:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 0, 0)
+    line:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 0, 0)
+    line:SetHeight(2)
+    line:SetColorTexture(1, 0.82, 0, 1)
+    local hl = b:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints()
+    hl:SetColorTexture(1, 1, 1, 0.06)
+    b:SetNormalFontObject("GameFontNormalSmall")
+    b:SetHighlightFontObject("GameFontHighlightSmall")
+    function b.SetSelected(self, on)
+        self.selected = on and true or false
+        fill:SetShown(on and true or false)
+        line:SetShown(on and true or false)
+        self:SetNormalFontObject(on and "GameFontHighlightSmall" or "GameFontNormalSmall")
+    end
+    local setText = b.SetText
+    function b.SetText(self, t)
+        setText(self, t)
+        self:SetWidth(math.ceil(textWidth(t)) + 16)
+    end
+    b:SetText(text)
+    b:SetSelected(false)
+    b:SetScript("OnClick", onClick)
+    if tooltip then Widgets.Tooltip(b, text, tooltip) end
+    return b
+end
+
+--- A dropdown: a field that shows its value, with a down arrow at its right end; a click opens a list of check
+--- boxes under it. The game's dropdown look (`WowStyle1DropdownTemplate`) where the client has it, else a dark
+--- field with a grey edge and the game's dropdown arrow. Never a red button.
+--- options = { {value, label}, ... }; get(value) -> bool; set(value, bool). `summary(names, total)` (optional)
+--- gives the field's text from the ticked names. `tooltip`, `title`: the help on hover.
+--- d:Update() shows the values again (call it on refresh); d:Close() closes the list;
+--- d:SetOptions(options, menuWidth) changes the choices (the list may be wider than the field);
+--- d.list, d.checks: the list and its check boxes. One choice only: call d:Close() in `set`.
+function Widgets.Dropdown(parent, width, options, get, set, tooltip, title, summary)
+    local b = fromTemplate("DropdownButton", parent, "WowStyle1DropdownTemplate", { "Text", "Arrow" })
+    local label
+    if b then
+        b.template = true
+        label = b.Text
+        b:SetHeight(FIELD_H + 3)
+    else
+        b = CreateFrame("Button", nil, parent)
+        b:SetHeight(FIELD_H)
+        local bg = b:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(0, 0, 0, 0.75)
+        edges(b, 0.55, 0.55, 0.55, 1)
+        local hl = b:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints()
+        hl:SetColorTexture(1, 1, 1, 0.06)
+        b:SetNormalFontObject("GameFontHighlightSmall")
+        b:SetText(" ")
+        label = b.GetFontString and b:GetFontString()
+        local arrow = b:CreateTexture(nil, "OVERLAY")
+        arrow:SetSize(18, 18)
+        arrow:SetTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up")
+        arrow:SetPoint("RIGHT", b, "RIGHT", -2, 0)
+        b.Arrow = arrow
+        if type(label) == "table" then
+            label:ClearAllPoints()
+            label:SetPoint("LEFT", b, "LEFT", 7, 0)
+            label:SetJustifyH("LEFT")
+            label:SetWordWrap(false)
+        end
+    end
+    b.uiKind, b.maxWidth = "dropdown", width
+    b:SetWidth(width)
     local list = CreateFrame("Frame", nil, b, BackdropTemplateMixin and "BackdropTemplate" or nil)
     list:SetFrameStrata("DIALOG")
     list:SetPoint("TOPLEFT", b, "BOTTOMLEFT", 0, -2)
@@ -345,39 +537,26 @@ function Widgets.CheckDropdown(parent, width, options, get, set, tooltip, title,
     list:EnableMouse(true)
     list:Hide()
     local checks = {}
-    function b:Update()
+    function b.Update(self)
         local names = {}
         for i, o in ipairs(options) do
             local on = get(o[1]) and true or false
             checks[i]:SetChecked(on)
             if on then names[#names + 1] = o[2] end
         end
-        self:SetText(summary and summary(names, #options) or (#names > 0 and table.concat(names, ", ") or "none"))
-        -- As wide as its text needs, never wider than the width asked for.
-        local label = self.GetFontString and self:GetFontString()
+        local text = summary and summary(names, #options) or (#names > 0 and table.concat(names, ", ") or "none")
+        self:SetText(text)
+        -- As wide as its text needs (and the arrow), never wider than the width asked for.
+        local measured
         if type(label) == "table" then
             label:SetWidth(0)   -- (measure the whole text, not the cut one)
             local measure = label.GetUnboundedStringWidth or label.GetStringWidth
-            local textWidth = tonumber(measure(label))
-            if textWidth then
-                local w = math.max(64, math.min(width, math.ceil(textWidth) + 36))
-                self:SetWidth(w)
-                label:SetWidth(w - 32)
-            end
+            measured = tonumber((measure(label)))
         end
+        local w = math.max(64, math.min(width, math.ceil(measured or textWidth(text)) + 34))
+        self:SetWidth(w)
+        if type(label) == "table" then label:SetWidth(w - 32) end
     end
-    -- The names on the left, the arrow at the right edge.
-    local label = b.GetFontString and b:GetFontString()
-    if type(label) == "table" then
-        label:ClearAllPoints()
-        label:SetPoint("LEFT", b, "LEFT", 10, 0)
-        label:SetJustifyH("LEFT")
-        label:SetWordWrap(false)
-    end
-    local arrow = b:CreateTexture(nil, "OVERLAY")
-    arrow:SetSize(12, 12)
-    arrow:SetTexture("Interface\\Buttons\\Arrow-Down-Up")
-    arrow:SetPoint("RIGHT", b, "RIGHT", -7, -2)
     function b.SetOptions(_, opts, menuWidth)
         options = opts
         list:SetSize(menuWidth or width, #options * 22 + 12)
@@ -398,7 +577,7 @@ function Widgets.CheckDropdown(parent, width, options, get, set, tooltip, title,
     end
     b:SetOptions(options)
     b:SetScript("OnClick", function() list:SetShown(not list:IsShown()) end)
-    b:SetScript("OnHide", function() list:Hide() end)
+    b:HookScript("OnHide", function() list:Hide() end)
     function b.Close() list:Hide() end
     -- A click anywhere else closes the list. The click still does what it was aimed at.
     local watching = pcall(list.RegisterEvent, list, "GLOBAL_MOUSE_DOWN")
@@ -420,6 +599,91 @@ function Widgets.CheckDropdown(parent, width, options, get, set, tooltip, title,
     b.list = list
     b.checks = checks
     return b
+end
+-- (The old name, for code not moved yet.)
+Widgets.CheckDropdown = Widgets.Dropdown
+
+--- A row of controls of one kind, left to right (and right to left from its right end), as UI.md Controls 1 orders
+--- them: kind = "tabs" (tabs only, on a line that the selected tab joins), "subtabs" (subtabs only), "filters"
+--- (a label at the left of each filter; the table's actions at the right end), "footer" (status at the left,
+--- the window's actions at the right). bar:Place(top) puts it `top` px under the window's top edge,
+--- bar:PlaceBottom(bottom) above its bottom edge; bar:Add(region, width, gap) adds at the left, bar:AddRight(region,
+--- width, gap) at the right; bar:AddFilter(text, control, width, help) adds a filter with its label (returns the
+--- label and its help area);
+--- bar:AddCheck(check) a check box with its label on its right. bar.used = the width it needs (the specs keep it
+--- within the window's smallest width). Hide the bar to hide its row.
+local BAR_H = { tabs = 30, subtabs = 24, filters = 26, footer = 28 }
+Widgets.BAR_H = BAR_H
+function Widgets.Bar(parent, kind, height)
+    local bar = CreateFrame("Frame", nil, parent)
+    bar.uiKind = kind == "footer" and "footer" or (kind:gsub("s$", "") .. "row")
+    bar.kind = kind
+    bar:SetHeight(height or BAR_H[kind] or 24)
+    bar.used, bar.items = 0, {}
+    local last, lastRight
+    local bottom = kind == "tabs"   -- (tabs stand on the row's line)
+    if bottom then
+        local base = bar:CreateTexture(nil, "BACKGROUND")
+        base:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 0, 0)
+        base:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 0, 0)
+        base:SetHeight(1)
+        base:SetColorTexture(0.85, 0.68, 0.3, 0.7)
+    end
+    function bar.Place(self, top, left, right)
+        self:ClearAllPoints()
+        self:SetPoint("TOPLEFT", parent, "TOPLEFT", left or 10, -top)
+        self:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -(right or 10), -top)
+        self.top = top
+        return self
+    end
+    function bar.PlaceBottom(self, y, left, right)
+        self:ClearAllPoints()
+        self:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", left or 10, y)
+        self:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -(right or 10), y)
+        self.bottom = y
+        return self
+    end
+    function bar.Add(self, region, width, gap)
+        gap = gap or (kind == "tabs" and 2 or kind == "subtabs" and 6 or 8)
+        region:ClearAllPoints()
+        if bottom then
+            if last then region:SetPoint("BOTTOMLEFT", last, "BOTTOMRIGHT", gap, 0)
+            else region:SetPoint("BOTTOMLEFT", self, "BOTTOMLEFT", 4, 0) end
+        else
+            if last then region:SetPoint("LEFT", last, "RIGHT", gap, 0)
+            else region:SetPoint("LEFT", self, "LEFT", 2, 0) end
+        end
+        self.used = self.used + (last and gap or 2) + (width or tonumber(region:GetWidth()) or 0)
+        last = region
+        self.items[#self.items + 1] = region
+        return region
+    end
+    function bar.AddRight(self, region, width, gap)
+        gap = gap or 6
+        region:ClearAllPoints()
+        if lastRight then region:SetPoint("RIGHT", lastRight, "LEFT", -gap, 0)
+        else region:SetPoint("RIGHT", self, "RIGHT", -2, 0) end
+        -- (+ 12: the least gap between the left and the right parts)
+        self.used = self.used + (lastRight and gap or 2) + (width or tonumber(region:GetWidth()) or 0) + (lastRight and 0 or 12)
+        lastRight = region
+        self.items[#self.items + 1] = region
+        return region
+    end
+    function bar.AddLabel(self, text, gap)
+        local l = Widgets.Label(self, text, "GameFontHighlightSmall")
+        return self:Add(l, textWidth(text), gap)
+    end
+    function bar.AddFilter(self, text, control, width, help)
+        local l = self:AddLabel(text, last and 16 or nil)
+        self:Add(control, width, 6)
+        return l, help and Widgets.HelpArea(self, l, text, help) or nil
+    end
+    function bar.AddCheck(self, check, gap)
+        self:Add(check, 24 + 2 + textWidth(check.label and check.label:GetText()), gap or (last and 14 or nil))
+        last = check.label or check
+        return check
+    end
+    return bar
 end
 
 --- A vertical scroll bar for a list drawn by offset. onScroll(offset) runs when the player moves it.
@@ -511,6 +775,7 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
     -- fixed = "vertical": the width is always `w` (it fits the content); only the height can change.
     local vertical = fixed == "vertical"
     if vertical then fixed = false end
+    f.minWidth = (fixed or vertical) and w or minW   -- (the narrowest it gets: its rows must fit it, UI.md Layout 6)
     f:SetSize(vertical and w or math.max(minW, saved.w or w), math.max(minH, saved.h or h))
     f:SetFrameStrata("HIGH")
     f:SetToplevel(true)

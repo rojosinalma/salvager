@@ -646,9 +646,9 @@ function ns.SetLimitOverride(quality, classID, band, copper)
     ns.Fire("SALVAGER_SETTINGS")
 end
 
---- Buy limits per disenchant band, for the Limits tab.
+--- Buy limits per disenchant band, for the Limits window.
 --- @return table  rows { quality, lo, up, armor = {value, recommended, limit, manual, missing}, weapon = {...} }
---- `all` = every quality, whatever the scan looks at (the Limits tab).
+--- `all` = every quality, whatever the scan looks at (the Limits window).
 function ns.Limits(all)
     local rows, s = {}, ns.db.settings
     local opts = ns.ValueOptions()

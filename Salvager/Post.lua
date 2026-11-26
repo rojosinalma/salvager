@@ -488,18 +488,22 @@ local function build()
     }, "post.market")
     d.list:SetPoint("TOPLEFT", d, "TOPLEFT", 382, -70)
     d.list:SetPoint("BOTTOMRIGHT", d, "BOTTOMRIGHT", -14, 44)
-    d.toLowest = W.Button(d, "Undercut lowest", 120, function()
+    -- The footer: at the left the two buttons that set the price, under the price; at the right end the main
+    -- action, Post, then Cancel, the last one (UI.md Actions 5, Controls 7).
+    local footer = W.Bar(d, "footer"):PlaceBottom(8, 14, 14)
+    d.footer = footer
+    d.toLowest = W.Button(footer, "Undercut lowest", 120, function()
         local s = Post.Suggest(d.itemID)
         if s.lowest then d.price:Set(math.max(1, s.lowest - 1)) d.confirm = nil recalc() end
     end, "Sets the price to 1 copper under the cheapest listing: yours sells first.")
-    d.toLowest:SetPoint("BOTTOMLEFT", d, "BOTTOMLEFT", 382, 12)
-    d.toEven = W.Button(d, "Break-even", 100, function()
+    footer:Add(d.toLowest, 120)
+    d.toEven = W.Button(footer, "Break-even", 100, function()
         local s = Post.Suggest(d.itemID)
         if s.breakEven then d.price:Set(s.breakEven) d.confirm = nil recalc() end
     end, "Sets the price to your break-even: no loss, but everything cheaper sells before yours.")
-    d.toEven:SetPoint("LEFT", d.toLowest, "RIGHT", 6, 0)
+    footer:Add(d.toEven, 100, 6)
 
-    d.post = W.Button(d, "Post", 100, function()
+    d.post = W.Button(footer, "Post", 100, function()
         local result, why = Post.Send(d.itemID, quantityOf(), d.price:Get(), ns.db.settings.postDuration, d.confirm)
         if result == "confirm" then
             d.confirm = true
@@ -512,11 +516,9 @@ local function build()
             ns.Print("could not post: %s", tostring(why))
         end
     end)
-    -- Under the left column; the two price buttons have the right side, under the table.
-    -- Cancel is always the last button of its group.
-    local cancel = W.Button(d, "Cancel", 90, function() d:Hide() end)
-    cancel:SetPoint("BOTTOMRIGHT", d, "BOTTOMLEFT", 366, 12)
-    d.post:SetPoint("RIGHT", cancel, "LEFT", -6, 0)
+    local cancel = W.Button(footer, "Cancel", 90, function() d:Hide() end)
+    footer:AddRight(cancel, 90)
+    footer:AddRight(d.post, 100)
     -- A switched-off Post button says why.
     d.post:SetMotionScriptsWhileDisabled(true)
     d.post:SetScript("OnEnter", function(self)

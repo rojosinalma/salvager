@@ -624,6 +624,73 @@ def problems(name, win, dump):
                 n, text = hits[0]
                 out.append(f"{key} column \"{plain(title)}\": {len(hits)} of {len(rows)} rows {what} "
                            f"(row {n}: \"{short(text, 36)}\")")
+    out += control_problems(regions, win)
+    return out
+
+
+# The kinds of control (k= in the dump, UI.md Controls) a row may hold.
+ROW_KINDS = {"tabrow": ("tab",), "subtabrow": ("subtab",)}
+RED_ART = ("UI-Panel-Button", "RedButton", "UIPanelButton")
+
+
+def control_problems(regions, win):
+    """UI.md Controls: (1) a row of tabs or subtabs holds tabs only; (2) a statement's amounts end at the panel's
+    right edge; (3) a tab, a subtab or a dropdown never has the red button's art."""
+    out = []
+    by_key = {r["key"]: r for r in regions}
+    shown = [r for r in regions if "V" in r["flags"] and r["rect"]]
+    for row in shown:
+        allowed = ROW_KINDS.get(row.get("k"))
+        if not allowed:
+            continue
+        rx, ry, rw, rh = row["rect"]
+        for r in shown:
+            if r is row or r["kind"] == "Texture":
+                continue
+            if r["kind"] == "FontString" and not plain(r["text"]).strip():
+                continue
+            # What is inside a tab (its text, its art) belongs to it.
+            k, owner = r["key"], None
+            while k is not None:
+                if by_key.get(k, {}).get("k") in ("tab", "subtab"):
+                    owner = k
+                    break
+                k = parent_key(k)
+            if owner is not None:
+                continue
+            if r["kind"] not in ("Button", "CheckButton", "EditBox", "FontString", "Frame") or \
+                    (r["kind"] == "Frame" and not r.get("k")):
+                continue
+            inside = r["key"].startswith(row["key"] + ".")
+            x, y, w, h = box(r)
+            cy = y + h / 2
+            on_row = ry <= cy <= ry + rh and x < rx + rw and x + w > rx
+            if (inside or on_row) and r.get("k") not in allowed and not r["key"].startswith(row["key"].rsplit(".", 1)[0] + ".CloseButton"):
+                out.append(f"{row['k']} holds a {r.get('k') or r['kind']}: {r['key']} \"{short(r['text'], 24)}\"")
+    for r in shown:
+        if r.get("k") in ("tab", "subtab", "dropdown"):
+            for q in regions:
+                if q["kind"] == "Texture" and q["key"].startswith(r["key"] + ".") and \
+                        any(a in (q.get("tex") or "") for a in RED_ART):
+                    out.append(f"{r['k']} with the red button look: {r['key']} \"{short(r['text'], 24)}\"")
+                    break
+    for key, info in (win.get("lists") or {}).items():
+        if info.get("kind") != "statement":
+            continue
+        lr = by_key.get(key)
+        if not lr or not lr["rect"] or "V" not in lr["flags"]:
+            continue
+        right = lr["rect"][0] + lr["rect"][2]
+        ends = []
+        for row in items(info.get("rows")):
+            cells = [cell(c) for c in items(row.get("cells"))]
+            filled = [c for c in cells if "S" in c["flags"] and plain(c["text"]).strip() and c["rect"]]
+            if len(filled) >= 2:
+                c = filled[-1]
+                ends.append(c["rect"][0] + c["rect"][2])
+        if ends and right - max(ends) > 30:
+            out.append(f"statement amounts not at the panel's right edge: {key} ends {right - max(ends):.0f} px "
+                       f"before it")
     return out
 
 

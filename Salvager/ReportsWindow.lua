@@ -467,8 +467,9 @@ local GOLD_TABS = {
     { "statement", "Statement", "What the trading made and how much richer you are, then the check against your gold." },
     { "changes", "All gold changes", "Every change of your gold, newest first, with its kind." },
 }
--- The rows from the top (UI.md Layout 8): the tabs, the subtabs (Gold only), the filter row, the content.
-local TABS_Y, ROW_STEP = -30, 28
+-- The rows from the top (UI.md Controls 1): the tabs, the subtabs (Gold only), the filter row, the content.
+local TABS_TOP = 24
+local bars = {}   -- tabs, gold (the Gold view's subtabs), filters
 
 --- Keeps the time and the Gold subtab with the window.
 function Reports.Save()
@@ -486,11 +487,12 @@ function Reports.Refresh()
     if not f or not f:IsShown() then return end
     local gold = Reports.view == "gold"
     -- The filter row: under the Gold view's subtabs, else right under the tabs; the content under it.
-    local filterY = TABS_Y - ROW_STEP * (gold and 2 or 1)
-    filterRow:ClearAllPoints()
-    filterRow:SetPoint("TOPLEFT", f, "TOPLEFT", 12, filterY)
+    local top = TABS_TOP + W.BAR_H.tabs + 4
+    bars.gold:SetShown(gold)
+    if gold then top = top + W.BAR_H.subtabs + 4 end
+    filterRow:Place(top, 12, 12)
     list:ClearAllPoints()
-    list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, filterY - ROW_STEP)
+    list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -(top + W.BAR_H.filters + 4))
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
     -- The Gear and Items views have their own filters after the period.
     local filtered = FILTERED[Reports.view] or false
@@ -498,10 +500,7 @@ function Reports.Refresh()
         x:SetShown(filtered)
         if x.Update then x:Update() end
     end
-    for key, b in pairs(goldTabs) do
-        b:SetShown(gold)
-        if key == Reports.goldTab then b:LockHighlight() else b:UnlockHighlight() end
-    end
+    for key, b in pairs(goldTabs) do b:SetSelected(key == Reports.goldTab) end
     if gold then
         if Reports.goldTab == "changes" then
             show(list, COLUMNS.goldLog, Reports.ChangeRows(), "reports.goldLog")
@@ -515,9 +514,7 @@ function Reports.Refresh()
     else
         show(list, COLUMNS.items, Reports.ItemRows(), "reports.items")
     end
-    for key, b in pairs(tabs) do
-        if key == Reports.view then b:LockHighlight() else b:UnlockHighlight() end
-    end
+    for key, b in pairs(tabs) do b:SetSelected(key == Reports.view) end
     rangeDrop:SetOptions(Reports.PeriodOptions(), 190)
     rangeDrop:Update()
 end
@@ -528,22 +525,21 @@ local function build()
     for _, r in ipairs(RANGES) do if r[1] == f.saved.range then Reports.range = r[1] end end
     if tostring(f.saved.range):match("^s:%d+$") then Reports.range = f.saved.range end
     for _, t in ipairs(GOLD_TABS) do if t[1] == f.saved.goldTab then Reports.goldTab = t[1] end end
-    local x = 12
+    bars.tabs = W.Bar(f, "tabs"):Place(TABS_TOP, 12, 12)
     for _, key in ipairs(ORDER) do
-        local b = W.Button(f, TITLES[key], 90, function()
+        local b = W.Tab(bars.tabs, TITLES[key], function()
             Reports.view = key
             f.saved.view = key
             list.offset = 0
             Reports.Refresh()
         end, HELP[key])
-        b:SetPoint("TOPLEFT", f, "TOPLEFT", x, TABS_Y)
+        bars.tabs:Add(b, 90)
         tabs[key] = b
-        x = x + 94
     end
     -- The filter row: the period for every view, then the Profit and Items views' own filters.
-    filterRow = CreateFrame("Frame", nil, f)
-    filterRow:SetSize(1, 22)
-    rangeDrop = W.CheckDropdown(f, 170, Reports.PeriodOptions(), function(key) return key == Reports.range end,
+    filterRow = W.Bar(f, "filters")
+    bars.filters = filterRow
+    rangeDrop = W.Dropdown(filterRow, 170, Reports.PeriodOptions(), function(key) return key == Reports.range end,
         function(key)
             Reports.range = key
             Reports.Save()
@@ -557,10 +553,7 @@ local function build()
             local s = picked()
             return s and Reports.SessionName(s) or "All time"
         end)
-    local periodLabel = W.Label(f, "Period", "GameFontHighlightSmall")
-    periodLabel:SetPoint("LEFT", filterRow, "LEFT", 2, 0)
-    rangeDrop:SetPoint("LEFT", periodLabel, "RIGHT", 6, 0)
-    W.HelpArea(f, periodLabel, "Period", "The time the reports cover.")
+    filterRow:AddFilter("Period", rangeDrop, 170, "The time the reports cover.")
     local x0 = f.saved.filter
     if type(x0) == "table" then
         for _, k in ipairs({ "classes", "qualities", "bandsOff" }) do
@@ -589,22 +582,18 @@ local function build()
             end
     end
     local function allOr(names, total) return #names == total and "All" or table.concat(names, ", ") end
-    local prev = rangeDrop
     local function add(label, drop, help)
-        local l = W.Label(f, label, "GameFontHighlightSmall")
-        l:SetPoint("LEFT", prev, "RIGHT", 14, 0)
-        drop:SetPoint("LEFT", l, "RIGHT", 6, 0)
-        W.HelpArea(f, l, label, help)
+        local l, area = filterRow:AddFilter(label, drop, drop.maxWidth, help)
+        -- (The help area hides with its label, so it never covers another view's content.)
         filters[#filters + 1] = l
+        filters[#filters + 1] = area
         filters[#filters + 1] = drop
-        -- (The drop-down is a button of the game's template: its "Right" is a texture of its art, not a method.)
-        prev = drop
     end
     local gearGet, gearSet = setOf(flt.classes, false, { 4, 2 })
-    add("Gear", W.CheckDropdown(f, 100, { { 4, "Armor" }, { 2, "Weapons" } }, gearGet, gearSet,
+    add("Gear", W.Dropdown(filterRow, 100, { { 4, "Armor" }, { 2, "Weapons" } }, gearGet, gearSet,
         "Which gear types count.", "Gear", allOr), "Armor, weapons, or both.")
     local qGet, qSet = setOf(flt.qualities, false, { 2, 3, 4 })
-    add("Quality", W.CheckDropdown(f, 120, { { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" },
+    add("Quality", W.Dropdown(filterRow, 120, { { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" },
         { 4, "|cffa335eeEpic|r" } }, qGet, qSet, "Which qualities count.", "Quality", allOr), "Uncommon, Rare, Epic.")
     local bandOptions, bandKeys = {}, {}
     for _, b in ipairs(ns.LevelBands()) do
@@ -612,14 +601,14 @@ local function build()
         bandKeys[#bandKeys + 1] = b.up
     end
     local bGet, bSet = setOf(flt.bandsOff, true, bandKeys)
-    add("Bands", W.CheckDropdown(f, 110, bandOptions, bGet, bSet, "Which item level bands count.", "Bands",
+    add("Bands", W.Dropdown(filterRow, 110, bandOptions, bGet, bSet, "Which item level bands count.", "Bands",
         function(names, total)
             if #names == total then return "All" end
             if #names > 3 then return #names .. " bands" end
             return table.concat(names, ", ")
         end), "Item level bands: a band is a range of item levels that disenchants into the same materials.")
     local salvDrop
-    salvDrop = W.CheckDropdown(f, 100, { { "all", "All" }, { "with", "With it" }, { "without", "Without it" } },
+    salvDrop = W.Dropdown(filterRow, 100, { { "all", "All" }, { "with", "With it" }, { "without", "Without it" } },
         function(key) return flt.salvager == key end,
         function(key)
             flt.salvager = key
@@ -628,18 +617,18 @@ local function build()
         end, "Disenchants with the Arcane Salvager's bonus, without it, or all.", "Salvager")
     add("Salvager", salvDrop, "Disenchants with the Arcane Salvager's bonus, without it, or all.")
     -- The Gold view's subtabs, on the row under the tabs (subtabs only).
-    local gx = 12
+    bars.gold = W.Bar(f, "subtabs"):Place(TABS_TOP + W.BAR_H.tabs + 4, 12, 12)
     for _, t in ipairs(GOLD_TABS) do
-        local b = W.Button(f, t[2], t[1] == "changes" and 120 or 90, function()
+        local b = W.Subtab(bars.gold, t[2], function()
             Reports.goldTab = t[1]
             Reports.Save()
             list.offset = 0
             Reports.Refresh()
         end, t[3])
-        b:SetPoint("TOPLEFT", f, "TOPLEFT", gx, TABS_Y - ROW_STEP)
+        bars.gold:Add(b, t[1] == "changes" and 110 or 70)
         goldTabs[t[1]] = b
-        gx = gx + (t[1] == "changes" and 124 or 94)
     end
+    Reports.bars = bars   -- (the specs read them)
     list = W.List(f, { rowHeight = 22 })
     Reports.list = list
     f.onResize = Reports.Refresh

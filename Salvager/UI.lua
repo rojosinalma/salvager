@@ -1,7 +1,7 @@
--- Salvager: the main window (Deals, Materials, Limits) and the Log panel attached to its right side.
+-- Salvager: the main window: the Deals and Materials tabs, the scan settings, and the footer with the other windows.
 local _, ns = ...
 
-local Data, W = ns.Data, ns.Widgets
+local W = ns.Widgets
 
 local UI = { view = "deals", offset = 0, expanded = {} }
 ns.UI = UI
@@ -10,6 +10,9 @@ local MAX_ROWS, ROW_H = 40, 24
 local MAX_COLS = 11
 local WIDTH, HEIGHT = 800, 560
 local MIN_W, MIN_H = 800, 470
+-- Under the title bar: the tabs (24 to 54 px), then the view: the Deals view's settings block, or the Materials
+-- view's filter row; the list under it. The footer: two lines of text and the row of buttons (UI.md Controls 1).
+local TABS_TOP, SETTINGS_TOP, SETTINGS_H, FILTERS_TOP, LIST_BOTTOM = 24, 58, 108, 58, 68
 local ROWS = 15          -- rows that fit now (set from the list height)
 local CLASS_NAME = { [2] = "Weapon", [4] = "Armor" }
 
@@ -52,31 +55,6 @@ local VIEWS = {
             { 85, "RIGHT" }, { 85, "RIGHT" }, { 85, "RIGHT" }, { 90, "RIGHT" }, { 80, "RIGHT" } },   -- (as Materials.COLUMNS)
         help = "materials",                        -- (the titles' help is Materials.HELP)
     },
-    limits = {
-        icon = false,
-        -- Two halves, Armor and Weapons, each with its title over its two columns; the rows are the bands,
-        -- every quality (whatever the scan looks at), by quality, then the range.
-        header = { "Item level", "Recommended price threshold", "Override price threshold",
-            "Recommended price threshold", "Override price threshold" },
-        groupHeader = { { 2, 3, "Armor" }, { 4, 5, "Weapons" } },
-        -- The long titles wrap to two lines: the columns are measured by their longest word.
-        measure = { "Item level", "Recommended", "Override", "Recommended", "Override" },
-        dividers = { 1, 3 },   -- vertical lines after these columns
-        help = {
-            [2] = { "Recommended price threshold", "The most to pay for one armor item of this band: its value after "
-                .. "the cut, less the min profit, or less the min return when that asks for more. A % after the "
-                .. "amount: the min return sets it." },
-            [3] = { "Override price threshold", "The most the scan pays for one armor item of this band. Type your "
-                .. "own (yellow); the X button next to it goes back to the recommended one. Grey: the scan does not "
-                .. "look at armor, or at this quality." },
-            [4] = { "Recommended price threshold", "The same for weapons." },
-            [5] = { "Override price threshold", "The same for weapons." },
-        },
-        -- (The override columns are as wide as their gold, silver and copper boxes, title centered.)
-        cols = { { 64, "LEFT" }, { 100, "RIGHT" }, { 184, "CENTER" }, { 100, "RIGHT" }, { 184, "CENTER" } },
-        edit = { [3] = "armor", [5] = "weapon" },
-        indent = 28,   -- (room for the help button before the first title)
-    },
 }
 
 local f, rows, headers, status, footer, minProfit, playButton, stopButton, gearChoice, tabs =
@@ -89,6 +67,7 @@ local actionHeader
 local REFRESH_GAP, lastRefresh, refreshQueued = 0.25, 0, false
 local spinner, bigSpinner, bigSpinnerText
 local buyTop, topItem, footer2
+local P = {}   -- the window's rows and panels: footerBar, tabBar, settingsBox, materialsBar, inset
 
 ------------------------------------------------------------------ rows per view
 
@@ -144,40 +123,10 @@ local function dealRows()
     return out
 end
 
-local function recommendedText(x, dim)
-    if not x then return "-" end
-    local t = ns.Money(x.recommended)
-    if x.missing then t = t .. "?" end
-    if x.rule == "return" then t = t .. " %" end   -- (set by the min return, not the min profit)
-    if dim then return "|cff808080" .. t .. "|r" end
-    return t
-end
+local SOURCES = { deals = dealRows, materials = function() return ns.Materials.Rows() end,
+    limits = function() return ns.LimitsWindow.Rows() end }   -- (Limits: its own window, LimitsWindow.lua)
 
-local function limitRows()
-    local out = {}
-    local classes, qualities = ns.GearClasses(), ns.db.settings.qualities
-    local last
-    for _, r in ipairs(ns.Limits(true)) do
-        if r.quality ~= last then
-            last = r.quality
-            out[#out + 1] = { cells = { ns.QualityText(r.quality), "", "", "", "" }, head = true }
-        end
-        -- Grey where the scan does not look: that gear type, or that quality.
-        local off = not qualities[r.quality]
-        local dimA, dimW = off or not classes[Data.CLASS_ARMOR], off or not classes[Data.CLASS_WEAPON]
-        out[#out + 1] = {
-            cells = { "   " .. ns.BandRange(r.quality, r.up), recommendedText(r.armor, dimA), "",
-                recommendedText(r.weapon, dimW), "" },
-            limits = { armor = r.armor, weapon = r.weapon },
-            dim = { armor = dimA, weapon = dimW },
-        }
-    end
-    return out
-end
-
-local SOURCES = { deals = dealRows, materials = function() return ns.Materials.Rows() end, limits = limitRows }
-
---- The rows of a tab of the main window (for the tests).
+--- The rows of a tab of the main window, or of the Limits window (for the tests).
 function UI.Rows(view) return SOURCES[view]() end
 
 ------------------------------------------------------------------ drawing
@@ -230,8 +179,6 @@ local function footerText()
             text = text .. string.format(" |cffff8040Max price %s is on: dearer items are never listed.|r", ns.Money(cap))
         end
         return text, closest
-    elseif UI.view == "limits" and ns.db.settings.cautious then
-        return "Cautious pricing is on.", ""
     end
     return "", ""
 end
@@ -278,20 +225,6 @@ UI.TopDeal = topDeal
 local function helpLines()
     if UI.view == "materials" then return ns.Materials.HelpLines() end
     local cut = math.floor(ns.Cut() * 100 + 0.5) .. "%"
-    if UI.view == "limits" then
-        return {
-            "Armor and Weapons: each half has its own two columns. The rows are the bands of every quality.",
-            ns.db.settings.cautious and ("Recommended price threshold: the value with every material at its lowest "
-                .. "amount, after the " .. cut .. " cut, minus your min profit (cautious pricing is on).")
-                or ("Recommended price threshold: the disenchant value after the " .. cut .. " cut, minus your min "
-                    .. "profit, or minus your min return when that asks for more (a % after the amount)."),
-            "Override price threshold: the limit in use. Type gold, silver and copper to set your own; it then shows "
-                .. "in yellow. x: back to the recommended one.",
-            "Grey: a gear type or a quality the scan does not look at.",
-            "?: a material of that band has no price yet.",
-            "Max price, when set, still applies on top of these limits.",
-        }
-    end
     local by = ns.db.settings.dealSort == "return" and "Return" or "Expected profit"
     return {
         "Sorted by: " .. by .. ", highest first (the title with the arrow). Click the Return or the Expected profit "
@@ -303,7 +236,7 @@ local function helpLines()
         "A name with x3 stands for three auctions of one item. Its numbers and its Buy are for the cheapest one.",
         "Click such a row to open it and see each auction.",
         "Buy needs one click per item. After a purchase the item is searched again.",
-        string.format("Each scan checks the %d best items (Item checks, in the Levels row).", ns.db.settings.maxChecks),
+        string.format("Each scan checks the %d best items (Item checks, in the Settings).", ns.db.settings.maxChecks),
         "Hover a column title for more about that column.",
     }
 end
@@ -332,7 +265,7 @@ local function widths(view, data)
     local need = data and W.FitColumns(titles, #data, function(r) return data[r].cells end, nil, samples)
     local w = {}
     if need then
-        for i, col in ipairs(view.cols) do w[i] = (view.edit and view.edit[i]) and col[1] or need[i] end
+        for i = 1, #view.cols do w[i] = need[i] end
         return w
     end
     local extra = math.max(0, math.floor((f:GetWidth() or WIDTH) - WIDTH))
@@ -345,8 +278,7 @@ local groupTitles, dividers, titleBand = {}, {}, nil
 --- The room a view takes over its column titles: one more row for titles over groups of columns.
 local function topOf(view) return view.groupHeader and ROW_H or 0 end
 
---- Does column i of a view show? The first always does; the others unless hidden with the chooser. (Limits has
---- no chooser: its columns go in pairs under Armor and Weapons.)
+--- Does column i of a view show? The first always does; the others unless hidden with the chooser.
 local function colShown(view, i)
     return i == 1 or not view.id or W.ColumnShown(view.id, view.header[i])
 end
@@ -370,12 +302,6 @@ local function layout(view, data)
         for _, row in ipairs(rows) do
             row.cells[i]:ClearAllPoints()
             row.cells[i]:SetPoint("LEFT", row, "LEFT", x, 0)
-            local which = view.edit and view.edit[i]
-            if which then
-                local e = row.edits[which]
-                e:ClearAllPoints()
-                e:SetPoint("LEFT", row, "LEFT", x + 4, 0)
-            end
         end
         if col and colShown(view, i) then x = x + w[i] + 6 end
     end
@@ -427,18 +353,6 @@ local function layout(view, data)
         end
     end
     return w
-end
-
---- Shows one buy-limit box: yellow when set by hand, white for the recommended limit.
-local function showEdit(e, x, dim)
-    e.limit = x
-    if not x then e:Hide() e.reset:Hide() return end
-    e:Show()
-    e.reset:SetShown(x.manual)
-    e:Set(x.limit)
-    if dim then e:SetTextColor(0.5, 0.5, 0.5)
-    elseif x.manual then e:SetTextColor(1, 0.82, 0)
-    else e:SetTextColor(1, 1, 1) end
 end
 
 --- Rows that fit in the list now.
@@ -515,13 +429,20 @@ end
 function UI.Refresh()
     if not f or not f:IsShown() then return end
     -- The materials list is in its own window: this window does not show it too.
+    if not VIEWS[UI.view] then UI.view, UI.offset = "deals", 0 end   -- (Limits was a tab before 0.3.128)
     local out = ns.Materials.IsPoppedOut()
     if out and UI.view == "materials" then UI.view, UI.offset = "deals", 0 end
     tabs.materials:SetAlpha(out and 0.5 or 1)
     if out then popOut:LockHighlight() else popOut:UnlockHighlight() end
     gold:SetText(ns.Money(GetMoney() or 0))
-    materialsOnly:SetShown(UI.view == "materials")
-    scanOwned:SetShown(UI.view == "materials")
+    -- The view under the tabs: Deals has the settings block, Materials its filter row; the list starts under it.
+    local materials = UI.view == "materials"
+    P.settingsBox:SetShown(not materials)
+    P.materialsBar:SetShown(materials)
+    P.inset:ClearAllPoints()
+    P.inset:SetPoint("TOPLEFT", f, "TOPLEFT", 10,
+        -(materials and (FILTERS_TOP + W.BAR_H.filters + 4) or (SETTINGS_TOP + SETTINGS_H + 6)))
+    P.inset:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, LIST_BOTTOM)
     materialsOnly:SetChecked(ns.db.settings.materialsDataOnly)
     local view = VIEWS[UI.view]
     ROWS = fitRows()
@@ -557,9 +478,6 @@ function UI.Refresh()
                 fs:Hide()
             end
         end
-        for which, e in pairs(row.edits) do
-            if item and item.limits then showEdit(e, item.limits[which], item.dim[which]) else e:Hide() end
-        end
         local icon = item and view.icon and W.IconOf(item.itemID)
         row.icon:ClearAllPoints()
         row.icon:SetPoint("LEFT", row, "LEFT", (view.indent and 22 or 4) + (item and item.child and 10 or 0), 0)
@@ -589,7 +507,7 @@ function UI.Refresh()
         row:SetShown(item ~= nil)
     end
     for name, b in pairs(tabs) do
-        if name == UI.view then b:LockHighlight() else b:UnlockHighlight() end
+        b:SetSelected(name == UI.view)
     end
     status:SetText(statusText())
     -- As wide as its text, at most half the room left of "Buy top": the footer keeps the rest.
@@ -681,6 +599,7 @@ end
 
 local function build()
     f = CreateFrame("Frame", "SalvagerFrame", UIParent, "BasicFrameTemplateWithInset")
+    f.minWidth = MIN_W
     local saved = ns.db.window
     f:SetSize(math.max(MIN_W, saved.w or WIDTH), math.max(MIN_H, saved.h or HEIGHT))
     f:SetFrameStrata("HIGH")
@@ -721,12 +640,16 @@ local function build()
     W.TitleVersion(f, title, MIN_W)
     tinsert(UISpecialFrames, "SalvagerFrame")
 
-    ---------------------------------------------------------------- top bar: run, status, windows
-    playButton = W.IconButton(f, 24, function()
+    ---------------------------------------------------------------- footer: the other windows; run and buy
+    -- (UI.md Controls 1 and 7: nothing but the tabs under the title bar. The buttons that open the other windows are
+    -- one group at the left of the footer, away from the tabs; the run buttons and "Buy top", the main action, at
+    -- its right end, left of the resize grip.)
+    P.footerBar = W.Bar(f, "footer"):PlaceBottom(6, 10, 24)
+    UI.footerBar = P.footerBar
+    playButton = W.IconButton(P.footerBar, 24, function()
         local s = ns.Scanner
         if s.auto and not s.paused then s.Pause() else s.Play() end
     end)
-    playButton:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -29)
     playButton:SetScript("OnEnter", function(self)
         local s = ns.Scanner
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -745,46 +668,46 @@ local function build()
         GameTooltip:Show()
     end)
     playButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    stopButton = W.IconButton(f, 24, function() ns.Scanner.Stop() end)
-    stopButton:SetPoint("LEFT", playButton, "RIGHT", 4, 0)
+    stopButton = W.IconButton(P.footerBar, 24, function() ns.Scanner.Stop() end)
     stopButton:SetStopGlyph()
     W.Tooltip(stopButton, "Stop", "Ends auto scanning and cancels the scan that is running. Deals found so far stay in the list.")
-    spinner = W.Spinner(f, 22)   -- (placed at the bottom, with the status, under the list)
+    spinner = W.Spinner(f, 18)   -- (with the status, under the list)
 
-    local options = W.IconButton(f, 22, function() ns.Options.Open() end)
-    options:SetIcon("Interface\\Buttons\\UI-OptionsButton", 16, 16)
-    options:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -30)
-    W.Tooltip(options, "Options", "Opens the addon's options.")
-    local log = W.Button(f, "Log", 80, function() ns.LogWindow.Toggle() end,
-        "Opens the log in its own window: what the addon did, and any error. For debugging.")
-    log:SetPoint("RIGHT", options, "LEFT", -6, 0)
-    local ledger = W.Button(f, "Ledger", 80, function() ns.LedgerWindow.Toggle() end,
-        "Opens the ledger in its own window: what you bought, what each item was disenchanted into, "
-        .. "your sales and their profit.")
-    local market = W.Button(f, "Market", 80, function() ns.Market.Toggle() end,
-        "Opens the market charts in their own window: the price of each material over time, from your scans.")
-    market:SetPoint("RIGHT", log, "LEFT", -6, 0)
-    ahButton = W.Button(f, "Auction house", 104, function() UI.ToAuctionHouse() end,
+    -- Left to right: Auction house, Ledger, Reports, Market, Limits, Log, Options (the user's order, 0.3.113).
+    ahButton = W.Button(P.footerBar, "Auction house", 104, function() UI.ToAuctionHouse() end,
         "Closes the Salvager windows: only the auction house window stays. Scans keep running. The Salvager button "
         .. "above the auction house window brings them back.")
-    local reports = W.Button(f, "Reports", 80, function() ns.Reports.Toggle() end,
-        "Opens the reports in their own window: your gold, and the profit by quality, band, material and item.")
-    reports:SetPoint("RIGHT", market, "LEFT", -6, 0)
-    -- Left to right: Auction house, Ledger, Reports, Market, Log, Options (the user, 0.3.113).
-    ledger:SetPoint("RIGHT", reports, "LEFT", -6, 0)
-    ahButton:SetPoint("RIGHT", ledger, "LEFT", -6, 0)
     ahButton:SetMotionScriptsWhileDisabled(true)
     ahButton:HookScript("OnEnter", function(self)
         if self.reason then GameTooltip:AddLine(self.reason, 1, 0.3, 0.3, true) GameTooltip:Show() end
     end)
+    P.footerBar:Add(ahButton, 104)
+    P.footerBar:Add(W.Button(P.footerBar, "Ledger", 64, function() ns.LedgerWindow.Toggle() end,
+        "Opens the ledger in its own window: what you bought, what each item was disenchanted into, "
+        .. "your sales and their profit."), 64, 4)
+    P.footerBar:Add(W.Button(P.footerBar, "Reports", 70, function() ns.Reports.Toggle() end,
+        "Opens the reports in their own window: your gold, and the profit by quality, band, material and item."), 70, 4)
+    P.footerBar:Add(W.Button(P.footerBar, "Market", 64, function() ns.Market.Toggle() end,
+        "Opens the market charts in their own window: the price of each material over time, from your scans."), 64, 4)
+    P.footerBar:Add(W.Button(P.footerBar, "Limits", 60, function() ns.LimitsWindow.Toggle() end,
+        "Opens the buy limits in their own window: the most the addon lets you pay per item level band, for armor "
+        .. "and for weapons. You can set your own."), 60, 4)
+    P.footerBar:Add(W.Button(P.footerBar, "Log", 48, function() ns.LogWindow.Toggle() end,
+        "Opens the log in its own window: what the addon did, and any error. For debugging."), 48, 4)
+    local options = W.IconButton(P.footerBar, 22, function() ns.Options.Open() end)
+    options:SetIcon("Interface\\Buttons\\UI-OptionsButton", 16, 16)
+    W.Tooltip(options, "Options", "Opens the addon's options.")
+    P.footerBar:Add(options, 22, 4)
     -- At the bottom right, left of the resize grip: "Buy top" buys the best auction of the list (the click is the
     -- hardware event the purchase needs). Left of it, what the addon is doing now (scanning, searching), the
     -- spinner before it; the footer takes the room on the left.
-    buyTop = W.Button(f, "Buy top", 80, function()
+    buyTop = W.Button(P.footerBar, "Buy top", 80, function()
         local d = topDeal()
         if d then ns.Scanner.Buy(d) end
     end)
-    buyTop:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -24, 9)
+    P.footerBar:AddRight(buyTop, 80)
+    P.footerBar:AddRight(stopButton, 24, 12)
+    P.footerBar:AddRight(playButton, 24, 4)
     buyTop:SetMotionScriptsWhileDisabled(true)
     buyTop:SetScript("OnEnter", function(self)
         self.hover = true
@@ -798,12 +721,11 @@ local function build()
         GameTooltip:Hide()
     end)
     UI.buyTop = buyTop
-    -- Above "Buy top", right-aligned to it: the icon and the name of the item the next click buys. It sits
-    -- between the button's top (31 px above the window's bottom) and the list's bottom (54 px): 37 to 51 px,
-    -- over the footer's first line (26 to 36 px), so it touches nothing whatever its width.
+    -- Above "Buy top", right-aligned to it: the icon and the name of the item the next click buys, on the
+    -- footer's lower line of text (36 to 50 px above the window's bottom, over the buttons' top at 34).
     topItem = CreateFrame("Button", nil, f)
     topItem:SetHeight(14)
-    topItem:SetPoint("BOTTOMRIGHT", buyTop, "TOPRIGHT", 0, 6)
+    topItem:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -24, 36)
     topItem.text = topItem:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     topItem.text:SetPoint("RIGHT", topItem, "RIGHT", 0, 0)
     topItem.text:SetJustifyH("RIGHT")
@@ -820,17 +742,29 @@ local function build()
     end)
     topItem:SetScript("OnLeave", function() GameTooltip:Hide() end)
     UI.topItem = topItem
+    -- The upper line of text, at the right: what the addon is doing now (the spinner before it), then your gold.
+    gold = W.Label(f, "", "GameFontHighlightSmall")
+    gold:SetPoint("RIGHT", f, "BOTTOMRIGHT", -24, 58)
+    gold:SetJustifyH("RIGHT")
     status = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    status:SetPoint("RIGHT", buyTop, "LEFT", -10, 0)
+    status:SetPoint("RIGHT", gold, "LEFT", -14, 0)
     status:SetJustifyH("RIGHT")
     status:SetWordWrap(false)
     spinner:SetPoint("RIGHT", status, "LEFT", -6, 0)
 
     ---------------------------------------------------------------- settings box: what to scan, what to pay
-    local box = W.Panel(f, 1, 1, 1, 0.04)
-    box:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -60)
-    box:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -60)
-    box:SetHeight(92)
+    -- One bounded block with its heading (UI.md Controls 10): settings, not filters of the list. It belongs to the
+    -- Deals view (what the scan looks for and what a deal is), under the tabs; the Materials view has none.
+    local box = W.Panel(f, 1, 1, 1, 0.05)
+    box.uiKind = "settings"
+    box:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -(SETTINGS_TOP))
+    box:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -(SETTINGS_TOP))
+    box:SetHeight(SETTINGS_H)
+    P.settingsBox = box
+    local heading = W.Label(box, "Scan settings", "GameFontNormal")
+    heading:SetPoint("TOPLEFT", box, "TOPLEFT", 10, -6)
+    W.HelpArea(box, heading, "Scan settings", "What the scan looks at and what counts as a deal. They apply to Play and "
+        .. "to every scan, and set the buy limits (the Limits window).")
     local CAPTION_W = 46
     local function caption(text, y)
         local l = W.Label(box, text, "GameFontNormal")
@@ -841,17 +775,17 @@ local function build()
     end
 
     -- Row "Scan": which gear, which quality; on the right the one-off scans.
-    local scanCaption = caption("Scan", -10)
+    local scanCaption = caption("Scan", -26)
     local gearLabel = W.Label(box, "Gear", "GameFontHighlightSmall")
     gearLabel:SetPoint("LEFT", scanCaption, "RIGHT", 6, 0)
-    gearChoice = W.CheckDropdown(box, 140, { { "weapons", "Weapons" }, { "armor", "Armor" } },
+    gearChoice = W.Dropdown(box, 140, { { "weapons", "Weapons" }, { "armor", "Armor" } },
         ns.GearTypeOn, ns.SetGearType,
-        "Which gear the scan looks at. Armor gives mostly dust, weapons mostly essence. The Limits tab shows the buy limits.",
+        "Which gear the scan looks at. Armor gives mostly dust, weapons mostly essence. The Limits window shows the buy limits.",
         "Gear")
     gearChoice:SetPoint("LEFT", gearLabel, "RIGHT", 6, 0)
     local qLabel = W.Label(box, "Quality", "GameFontHighlightSmall")
     qLabel:SetPoint("LEFT", gearChoice, "RIGHT", 14, 0)
-    qualityDrop = W.CheckDropdown(box, 160, {
+    qualityDrop = W.Dropdown(box, 160, {
         { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" }, { 4, "|cffa335eeEpic|r" },
     }, function(q) return ns.db.settings.qualities[q] end, function(q, on)
         local qs = ns.db.settings.qualities
@@ -868,7 +802,7 @@ local function build()
 
     local scanBoth = W.Button(box, "Both", 58, function() ns.ScanBoth(true) end,
         "Once: scans the material prices first, then the gear.")
-    scanBoth:SetPoint("TOPRIGHT", box, "TOPRIGHT", -8, -6)
+    scanBoth:SetPoint("TOPRIGHT", box, "TOPRIGHT", -8, -22)
     local scanGear = W.Button(box, "Gear", 58, function() ns.Scanner.Scan(true) end,
         "Once: lists the gear on the auction house and checks each item that is below its buy limit.")
     scanGear:SetPoint("RIGHT", scanBoth, "LEFT", -4, 0)
@@ -880,7 +814,7 @@ local function build()
     W.HelpArea(box, onceLabel, "Scan once", "A single scan by hand. Play does all of this by itself, again and again.")
 
     -- Row "Buy": the least profit, the most to pay.
-    local buyCaption = caption("Buy", -38)
+    local buyCaption = caption("Buy", -54)
     local mpLabel = W.Label(box, "Min profit", "GameFontHighlightSmall")
     mpLabel:SetPoint("LEFT", buyCaption, "RIGHT", 6, 0)
     W.HelpArea(box, mpLabel, "Min profit", "The least profit an item must make on average: an item is a deal when it "
@@ -930,15 +864,15 @@ local function build()
         ns.Log("cautious pricing %s", on and "on" or "off")
         ns.Fire("SALVAGER_SETTINGS")
     end)
-    cautious:SetPoint("TOPRIGHT", box, "TOPRIGHT", -78, -34)
+    cautious:SetPoint("TOPRIGHT", box, "TOPRIGHT", -78, -50)
 
     -- Row "Levels": which item levels the scan looks at, by band or by a range of your own.
-    local levelCaption = caption("Levels", -66)
+    local levelCaption = caption("Levels", -82)
     local bandLabel = W.Label(box, "Bands", "GameFontHighlightSmall")
     bandLabel:SetPoint("LEFT", levelCaption, "RIGHT", 6, 0)
     local bandOptions = {}
     for _, band in ipairs(ns.LevelBands()) do bandOptions[#bandOptions + 1] = { band.up, band.label } end
-    bandDrop = W.CheckDropdown(box, 200, bandOptions,
+    bandDrop = W.Dropdown(box, 200, bandOptions,
         function(up) return not ns.db.settings.levelBandsOff[up] end,
         function(up, on)
             local off = ns.db.settings.levelBandsOff
@@ -953,7 +887,7 @@ local function build()
             ns.Fire("SALVAGER_SETTINGS")
         end,
         "Which item level bands the scan looks at. A band is a range of item levels that disenchants into the same "
-            .. "materials. The Limits tab and the Ledger's Odds view list them.", "Bands",
+            .. "materials. The Limits window and the Ledger's Odds view list them.", "Bands",
         function(names, total)
             if #names == total then return "All" end
             if #names > 3 then return #names .. " bands" end
@@ -992,7 +926,7 @@ local function build()
     maxChecks:SetMaxLetters(3)
     maxChecks:SetJustifyH("RIGHT")
     maxChecks:SetTextInsets(2, 4, 0, 0)
-    maxChecks:SetPoint("TOPRIGHT", box, "TOPRIGHT", -10, -63)
+    maxChecks:SetPoint("TOPRIGHT", box, "TOPRIGHT", -10, -79)
     maxChecks:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
     maxChecks:SetScript("OnEditFocusLost", function(self)
         local n = math.max(1, math.floor(tonumber(self:GetText()) or 0))
@@ -1012,10 +946,13 @@ local function build()
     levelHint:SetJustifyH("LEFT")
     levelHint:SetWordWrap(false)
 
-    ---------------------------------------------------------------- tabs, above the list they switch
-    local x = 12
-    for _, t in ipairs({ { "deals", "Deals" }, { "materials", "Materials" }, { "limits", "Limits" } }) do
-        local b = W.Button(f, t[2], 96, function()
+    ---------------------------------------------------------------- tabs, right under the title bar
+    -- The row holds the tabs only (UI.md Controls 3): the pop-out, the materials' filter and Scan owned are on the
+    -- Materials view's filter row, the gold in the footer.
+    P.tabBar = W.Bar(f, "tabs"):Place(TABS_TOP)
+    UI.tabBar = P.tabBar
+    for _, t in ipairs({ { "deals", "Deals" }, { "materials", "Materials" } }) do
+        local b = W.Tab(P.tabBar, t[2], function()
             -- The Materials tab, while its list is in its own window: put it back here.
             if t[1] == "materials" then ns.Materials.PutBack() end
             UI.view = t[1]
@@ -1024,65 +961,53 @@ local function build()
             UI.Refresh()
         end)
         tabs[t[1]] = b
-        if t[1] == "limits" then
-            -- Limits is a setting more than a list: it sits at the right end of the row.
-            b:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -159)
-        else
-            b:SetPoint("TOPLEFT", f, "TOPLEFT", x, -159)
-            x = x + 98
-        end
-        if t[1] == "materials" then
-            -- Right next to the Materials tab: its list in a window of its own, and back.
-            popOut = W.IconButton(f, 22, function()
-                if ns.Materials.IsPoppedOut() then ns.Materials.PutBack() else ns.Materials.PopOut() end
-            end)
-            popOut:SetPoint("LEFT", b, "RIGHT", 0, 0)
-            popOut:SetPopOutGlyph()
-            popOut:SetScript("OnEnter", function(self)
-                local out = ns.Materials.IsPoppedOut()
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(out and "Put the materials list back" or "Pop out the materials list", 1, 1, 1)
-                GameTooltip:AddLine(out and "Closes its window and shows the list in the Materials tab again."
-                    or "Moves the materials list to a window of its own, so you can watch it next to the deals. "
-                        .. "Scans keep running. Click again, or close that window, to put it back.", 1, 0.82, 0, true)
-                GameTooltip:Show()
-            end)
-            popOut:SetScript("OnLeave", function() GameTooltip:Hide() end)
-            x = x + 26
-        end
+        P.tabBar:Add(b, 90)
     end
-    W.Tooltip(tabs.deals, "Deals", "The auctions that cost no more than their buy limit, best profit first.")
+    W.Tooltip(tabs.deals, "Deals", "The auctions that cost no more than their buy limit, best profit first, with the "
+        .. "scan settings.")
     W.Tooltip(tabs.materials, "Materials", "Prices, stock and break-even of the disenchanting materials. "
         .. "While the list is in its own window (Pop out), a click here puts it back.")
-    W.Tooltip(tabs.limits, "Limits", "The most the addon lets you pay per item level band, for armor and for weapons. "
-        .. "You can set your own.")
 
-    -- At the right end of the tab row, before the Limits tab: the gold you have now.
-    gold = W.Label(f, "", "GameFontHighlight")
-    gold:SetPoint("RIGHT", tabs.limits, "LEFT", -12, 0)
-    gold:SetJustifyH("RIGHT")
-    -- In the Materials tab, after the tabs.
-    scanOwned = ns.Materials.ScanOwnedButton(f)
-    scanOwned:SetPoint("TOPLEFT", f, "TOPLEFT", x + 10, -159)
-    scanOwned:Hide()
-    materialsOnly = ns.Materials.DataOnlyCheck(f)
-    materialsOnly:SetPoint("LEFT", scanOwned, "RIGHT", 8, 0)
-    materialsOnly:Hide()
+    -- The Materials view's filter row: the filter at the left, its actions at the right end.
+    P.materialsBar = W.Bar(f, "filters"):Place(FILTERS_TOP)
+    UI.materialsBar = P.materialsBar
+    materialsOnly = ns.Materials.DataOnlyCheck(P.materialsBar)
+    P.materialsBar:AddCheck(materialsOnly)
+    -- The list in a window of its own, and back.
+    popOut = W.IconButton(P.materialsBar, 22, function()
+        if ns.Materials.IsPoppedOut() then ns.Materials.PutBack() else ns.Materials.PopOut() end
+    end)
+    popOut:SetPopOutGlyph()
+    popOut:SetScript("OnEnter", function(self)
+        local out = ns.Materials.IsPoppedOut()
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(out and "Put the materials list back" or "Pop out the materials list", 1, 1, 1)
+        GameTooltip:AddLine(out and "Closes its window and shows the list in the Materials tab again."
+            or "Moves the materials list to a window of its own, so you can watch it next to the deals. "
+                .. "Scans keep running. Click again, or close that window, to put it back.", 1, 0.82, 0, true)
+        GameTooltip:Show()
+    end)
+    popOut:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    P.materialsBar:AddRight(popOut, 22)
+    scanOwned = ns.Materials.ScanOwnedButton(P.materialsBar)
+    P.materialsBar:AddRight(scanOwned, 96)
+    P.materialsBar:Hide()
 
     ---------------------------------------------------------------- the list, in its own sunken panel
-    local inset = W.Panel(f, 0, 0, 0, 0.5)
-    inset:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -184)
-    -- (Its bottom leaves room for the two footer lines and the "Buy top" button.)
-    inset:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, 54)
-    titleBand = inset:CreateTexture(nil, "BACKGROUND", nil, 1)
-    titleBand:SetPoint("TOPLEFT", inset, "TOPLEFT", 1, -1)
-    titleBand:SetPoint("TOPRIGHT", inset, "TOPRIGHT", -1, -1)
+    -- (Its top follows the view: under the settings block or the filter row. Its bottom leaves room for the
+    -- footer's two lines and its row of buttons.)
+    P.inset = W.Panel(f, 0, 0, 0, 0.5)
+    P.inset:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -(SETTINGS_TOP + SETTINGS_H + 6))
+    P.inset:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, LIST_BOTTOM)
+    titleBand = P.inset:CreateTexture(nil, "BACKGROUND", nil, 1)
+    titleBand:SetPoint("TOPLEFT", P.inset, "TOPLEFT", 1, -1)
+    titleBand:SetPoint("TOPRIGHT", P.inset, "TOPRIGHT", -1, -1)
     titleBand:SetHeight(ROW_H)
     titleBand:SetColorTexture(1, 1, 1, 0.07)
 
-    local list = CreateFrame("Frame", nil, inset)
-    list:SetPoint("TOPLEFT", inset, "TOPLEFT", 2, -1)
-    list:SetPoint("BOTTOMRIGHT", inset, "BOTTOMRIGHT", -20, 2)
+    local list = CreateFrame("Frame", nil, P.inset)
+    list:SetPoint("TOPLEFT", P.inset, "TOPLEFT", 2, -1)
+    list:SetPoint("BOTTOMRIGHT", P.inset, "BOTTOMRIGHT", -20, 2)
     list:EnableMouseWheel(true)
     list:SetScript("OnMouseWheel", function(_, delta)
         UI.offset = math.max(0, UI.offset - delta * 3)
@@ -1092,30 +1017,30 @@ local function build()
     if list.SetClipsChildren then list:SetClipsChildren(true) end
     -- What the list's columns and marks mean: the first thing on the row of column titles.
     helpButton = W.HelpButton(list, function()
-        return UI.view == "materials" and "Materials" or UI.view == "limits" and "Limits" or "Deals"
+        return UI.view == "materials" and "Materials" or "Deals"
     end, helpLines, { left = true })
     helpButton:SetSize(20, 20)
 
     -- Scroll bar on the right, inside the panel.
-    local bar = W.ScrollBar(inset, function(value)
+    local bar = W.ScrollBar(P.inset, function(value)
         if value ~= UI.offset then
             UI.offset = value
             UI.Refresh()
         end
     end)
-    bar:SetPoint("TOPRIGHT", inset, "TOPRIGHT", -3, -ROW_H - 3)
-    bar:SetPoint("BOTTOMRIGHT", inset, "BOTTOMRIGHT", -3, 3)
+    bar:SetPoint("TOPRIGHT", P.inset, "TOPRIGHT", -3, -ROW_H - 3)
+    bar:SetPoint("BOTTOMRIGHT", P.inset, "BOTTOMRIGHT", -3, 3)
     bar:EnableMouseWheel(true)
     bar:SetScript("OnMouseWheel", list:GetScript("OnMouseWheel"))
     UI.bar = bar
     -- The column chooser: at the right end of the title band, over the scroll bar (the list ends before it).
-    columnsButton = W.ColumnChooser(inset, function()
+    columnsButton = W.ColumnChooser(P.inset, function()
         local view, entries = VIEWS[UI.view], {}
         for i, name in ipairs(view.header) do entries[i] = { key = name, locked = i == 1 and W.FIRST_COLUMN_REASON or nil } end
         if view.actionTitle then entries[#entries + 1] = { key = view.actionTitle, locked = W.ACTION_COLUMN_REASON } end
         return view.id, entries
     end, function() UI.Refresh() end)
-    columnsButton:SetPoint("TOPRIGHT", inset, "TOPRIGHT", -3, -4)
+    columnsButton:SetPoint("TOPRIGHT", P.inset, "TOPRIGHT", -3, -4)
     UI.columnsButton = columnsButton
     UI.headers = headers
     -- The title over the rows' buttons (Buy, Post).
@@ -1176,27 +1101,6 @@ local function build()
             fs:SetWordWrap(false)
             row.cells[i] = fs
         end
-        row.edits = {}
-        for _, which in ipairs({ "armor", "weapon" }) do
-            local e
-            e = W.Money(row, function(copper)
-                local lim = e.limit
-                if not lim or copper == lim.limit then return end
-                if copper == lim.recommended and lim.manual then
-                    ns.SetLimitOverride(lim.quality, lim.classID, lim.band, nil)
-                elseif copper ~= lim.recommended then
-                    ns.SetLimitOverride(lim.quality, lim.classID, lim.band, copper)
-                end
-            end)
-            e.reset = W.Button(e:Right(), "x", 20, function()
-                local lim = e.limit
-                if lim then ns.SetLimitOverride(lim.quality, lim.classID, lim.band, nil) end
-            end, "Use the recommended price again.")
-            e.reset:SetPoint("LEFT", e:Right(), "RIGHT", -6, 0)
-            e.reset:Hide()
-            e:Hide()
-            row.edits[which] = e
-        end
         row.buy = W.Button(row, "Buy", 64, function()
             local item = row.item
             if not item then return end
@@ -1247,19 +1151,18 @@ local function build()
     bigSpinnerText = list:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     bigSpinnerText:SetPoint("TOP", bigSpinner, "BOTTOM", 0, -6)
 
-    -- Two lines under the list, each one line cut at the spinner: what the last scan found, then the item
-    -- closest to its limit. (Left and right ends on one height: the spinner's middle is the button's, 20 px
-    -- above the window's bottom; line 2 sits 3 px under it, line 1 14 px above line 2.)
-    footer2 = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    footer2:SetPoint("LEFT", f, "BOTTOMLEFT", 14, 17)
-    footer2:SetPoint("RIGHT", spinner, "LEFT", -12, -3)
-    footer2:SetJustifyH("LEFT")
-    footer2:SetWordWrap(false)
+    -- Two lines of text under the list, over the footer's buttons: what the last scan found (cut at the spinner and
+    -- the status), then the item closest to its limit (cut at the item "Buy top" buys).
     footer = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    footer:SetPoint("LEFT", f, "BOTTOMLEFT", 14, 31)
-    footer:SetPoint("RIGHT", spinner, "LEFT", -12, 11)
+    footer:SetPoint("LEFT", f, "BOTTOMLEFT", 14, 58)
+    footer:SetPoint("RIGHT", spinner, "LEFT", -12, 0)
     footer:SetJustifyH("LEFT")
     footer:SetWordWrap(false)
+    footer2 = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    footer2:SetPoint("LEFT", f, "BOTTOMLEFT", 14, 43)
+    footer2:SetPoint("RIGHT", topItem, "LEFT", -12, 0)
+    footer2:SetJustifyH("LEFT")
+    footer2:SetWordWrap(false)
     UI.footerLines = { footer, footer2 }
 
     -- Resize from the bottom right corner.
@@ -1305,7 +1208,7 @@ end
 
 -- Every window of the addon besides the main one.
 local OTHERS = { "SalvagerLedgerFrame", "SalvagerLogFrame", "SalvagerMaterialsFrame", "SalvagerMarketFrame",
-    "SalvagerReportsFrame", "SalvagerStandFrame",
+    "SalvagerReportsFrame", "SalvagerStandFrame", "SalvagerLimitsFrame",
     "SalvagerBreakdownFrame", "SalvagerOddsFrame", "SalvagerPostFrame", "SalvagerOptionsFrame" }
 
 --- Hides the other windows, without changing what is remembered as open.
@@ -1324,6 +1227,7 @@ function UI.RestoreWindows()
     ns.Materials.Restore()
     ns.Market.Restore()
     ns.Reports.Restore()
+    ns.LimitsWindow.Restore()
 end
 
 --- Only the auction house window (the game's, or another addon's): the Salvager windows close, scans and

@@ -48,7 +48,7 @@ function Window.Row(line)
     return { cells = { text }, link = id and ("item:" .. id) or nil }
 end
 
--- What the filter button shows: every line, or only trades and gold, or only errors. Day lines always show.
+-- The Lines filter: every line, or only trades and gold, or only errors. Day lines always show.
 local FILTERS = {
     { "all", "All lines" },
     { "trades", "Trades and gold", { "bought ", "sold ", "posted ", "post sent", "mail:", "gold:", "cancelling", "session:", "disenchant:",
@@ -86,7 +86,7 @@ function Window.Refresh()
     end)
     if list.atBottom ~= false then list.offset = math.huge end
     list:Refresh()
-    filterButton:SetText(filter[2])
+    filterButton:Update()
     count:SetText(string.format("%d of %d lines", n, #log))
     ns.logChanged = false
     lastRefresh = GetTime()
@@ -94,34 +94,39 @@ end
 
 local function build()
     f = W.Window("SalvagerLogFrame", "Salvager log", "log", 640, 360, 360, 160)
-    local clear = W.Button(f, "Clear", 80, function()
+    -- The filter row under the title bar; the footer: the count at the left, Clear at the right (UI.md Controls 1).
+    local filters = W.Bar(f, "filters"):Place(28, 12, 12)
+    local options = {}
+    for _, x in ipairs(FILTERS) do options[#options + 1] = { x[1], x[2] } end
+    filterButton = W.Dropdown(filters, 140, options, function(key) return currentFilter()[1] == key end,
+        function(key)
+            local saved = ns.db.windows.log or {}
+            ns.db.windows.log = saved
+            saved.filter = key
+            filterButton:Close()
+            list.offset, list.atBottom = math.huge, nil
+            Window.Refresh()
+        end, "All lines, only trades and gold, or only errors.", "Lines shown")
+    filters:AddFilter("Lines", filterButton, 140, "All lines, only trades and gold, or only errors.")
+    local footer = W.Bar(f, "footer"):PlaceBottom(8, 12, 24)
+    local clear = W.Button(footer, "Clear", 80, function()
         wipe(ns.db.log)
         list.offset = 0
         list.atBottom = nil
         Window.Refresh()
-    end)
-    clear:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -30)
-    filterButton = W.Button(f, FILTERS[1][2], 120, function()
-        local saved = ns.db.windows.log or {}
-        ns.db.windows.log = saved
-        local at = 1
-        for i, x in ipairs(FILTERS) do if x[1] == currentFilter()[1] then at = i end end
-        saved.filter = FILTERS[at % #FILTERS + 1][1]
-        list.offset, list.atBottom = math.huge, nil
-        Window.Refresh()
-    end)
-    filterButton:SetPoint("RIGHT", clear, "LEFT", -6, 0)
-    W.Tooltip(filterButton, "Lines shown", "Click to show all lines, only trades and gold, or only errors.")
-    count = W.Label(f, "", "GameFontDisableSmall")
-    count:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -36)
+    end, "Empties the log. The game saves the log to disk on /reload or logout.")
+    footer:AddRight(clear, 80)
+    count = W.Label(footer, "", "GameFontDisableSmall")
+    footer:Add(count, 120)
     count:SetWordWrap(false)
-    count:SetPoint("RIGHT", filterButton, "LEFT", -8, 0)
-    W.HelpArea(f, count, "Log", "Newest at the bottom. Hover a line to see its item. The game saves the log to disk "
+    count:SetPoint("RIGHT", clear, "LEFT", -12, 0)
+    W.HelpArea(footer, count, "Log", "Newest at the bottom. Hover a line to see its item. The game saves the log to disk "
         .. "on /reload or logout.")
+    Window.bars = { filters = filters, footer = footer }   -- (the specs read them)
     list = W.List(f, { rowHeight = 15, header = false, plain = true, fit = false })
     list:SetColumns({ { "", 300 } })
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -58)
-    list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
+    list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 40)
     f.onResize = Window.Refresh
     f:SetScript("OnShow", Window.Refresh)
 end

@@ -396,9 +396,7 @@ function Market.Refresh()
     list:SetSource(#rows, function(i) return rows[i] end)
     list:Refresh()
     rangeDrop:Update()
-    for key, b in pairs(tabs) do
-        if key == Market.view then b:LockHighlight() else b:UnlockHighlight() end
-    end
+    for key, b in pairs(tabs) do b:SetSelected(key == Market.view) end
     if picked ~= nil or Market.view == "profit" then
         local data, name, text = view.Chart(picked)
         title:SetText(name or "")
@@ -418,7 +416,10 @@ local function build()
     for key, value in pairs(f.saved.pick or {}) do Market.pick[key] = value end
     for _, r in ipairs(RANGES) do if r[1] == f.saved.range then Market.range = r[1] end end
     for key, value in pairs(f.saved.sort or {}) do Market.sort[key] = value end
-    local x = 12
+    -- From the top: the tabs, the filter row (Time), then the list and the chart (UI.md Controls 1).
+    local tabBar = W.Bar(f, "tabs"):Place(24, 12, 12)
+    local filters = W.Bar(f, "filters"):Place(58, 12, 12)
+    Market.bars = { tabs = tabBar, filters = filters }   -- (the specs read them)
     local help = {
         material = "The price of one material over time, its lowest listing, your break-even, and how many units were listed.",
         value = "What one disenchant of an item level band was worth over time, against its buy limit: is gear worth buying now?",
@@ -427,30 +428,27 @@ local function build()
         hour = "The average price of a material at each time of day, over the time picked: when to post, and when to buy.",
     }
     for _, key in ipairs(ORDER) do
-        local b = W.Button(f, VIEWS[key].title, key == "value" and 124 or 90, function()
+        local b = W.Tab(tabBar, VIEWS[key].title, function()
             Market.view = key
             f.saved.view = key
             list.offset = 0
             Market.Refresh()
         end, help[key])
-        b:SetPoint("TOPLEFT", f, "TOPLEFT", x, -30)
+        tabBar:Add(b, key == "value" and 124 or 90)
         tabs[key] = b
-        x = x + (key == "value" and 128 or 94)
     end
     -- The time the charts cover: one choice.
     local options = {}
     for _, r in ipairs(RANGES) do options[#options + 1] = { r[1], r[2] } end
-    rangeDrop = W.CheckDropdown(f, 120, options, function(key) return key == Market.range end, function(key)
+    rangeDrop = W.Dropdown(filters, 120, options, function(key) return key == Market.range end, function(key)
         Market.range = key
         f.saved.range = key
         rangeDrop:Close()
         Market.Refresh()
     end, "How far back the charts and the Change column go.", "Time")
-    rangeDrop:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -30)
-    local timeLabel = W.Label(f, "Time", "GameFontHighlightSmall")
-    timeLabel:SetPoint("RIGHT", rangeDrop, "LEFT", -6, 0)
+    filters:AddFilter("Time", rangeDrop, 120, "How far back the charts and the Change column go.")
     list = W.List(f, { rowHeight = 22 })
-    list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -60)
+    list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -88)
     list:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 12, 14)
     list:SetWidth(370)
     -- A click on a column title sorts by it; a second click turns the order around.

@@ -45,8 +45,8 @@ Materials.COLUMNS = {
 for i, help in pairs(Materials.HELP) do Materials.COLUMNS[i].help = help end
 
 -- The window's own size: it fits its content and has no resize corner.
-local WIDTH, TOP, BOTTOM, ROW_H = 800, 58, 14, 24
-local MIN_W = 620   -- the row of buttons over the list: Scan materials, Scan owned, the check box, help
+local WIDTH, TOP, BOTTOM, ROW_H = 800, 58, 40, 24   -- (TOP: under the filter row; BOTTOM: over the footer)
+local MIN_W = 520   -- the footer: the status, Scan owned and Scan materials
 
 local function ago(seconds)
     if not seconds then return "-" end
@@ -218,23 +218,23 @@ end
 
 local function build()
     f = W.Window("SalvagerMaterialsFrame", "Salvager materials", "materials", WIDTH, 520, WIDTH, 120, true)
-    local scan = W.Button(f, "Scan materials", 115, function() ns.Prices.Scan() end,
+    -- No tabs: the filter row is right under the title bar (the filter at the left, the help at its right end);
+    -- the footer has the status at the left and the scans at the right (UI.md Controls 1).
+    local filters = W.Bar(f, "filters"):Place(28, 12, 12)
+    dataOnly = Materials.DataOnlyCheck(filters)
+    filters:AddCheck(dataOnly)
+    filters:AddRight(W.HelpButton(filters, "Materials", Materials.HelpLines), 22)
+    local footer = W.Bar(f, "footer"):PlaceBottom(8, 12, 12)
+    local scan = W.Button(footer, "Scan materials", 115, function() ns.Prices.Scan() end,
         "Searches each disenchanting material once (about 20 seconds) and stores its price.")
-    scan:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -30)
-    local owned = Materials.ScanOwnedButton(f)
-    owned:SetPoint("LEFT", scan, "RIGHT", 6, 0)
-    -- On the right: the help, and the check box with its label on its left; the status between, cut there.
-    local helpButton = W.HelpButton(f, "Materials", Materials.HelpLines)
-    helpButton:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -30)
-    dataOnly = Materials.DataOnlyCheck(f)
-    dataOnly:SetPoint("RIGHT", helpButton, "LEFT", -8, 0)
-    dataOnly.label:ClearAllPoints()
-    dataOnly.label:SetPoint("RIGHT", dataOnly, "LEFT", -2, 0)
-    status = W.Label(f, "", "GameFontHighlightSmall")
-    status:SetPoint("LEFT", owned, "RIGHT", 10, 0)
-    status:SetPoint("RIGHT", dataOnly.label, "LEFT", -10, 0)
+    footer:AddRight(scan, 115)
+    footer:AddRight(Materials.ScanOwnedButton(footer), 96)
+    status = W.Label(footer, "", "GameFontHighlightSmall")
+    footer:Add(status, 300)
+    status:SetPoint("RIGHT", footer, "RIGHT", -230, 0)
     status:SetJustifyH("LEFT")
     status:SetWordWrap(false)
+    Materials.bars = { filters = filters, footer = footer }   -- (the specs read them)
     list = W.List(f, { rowHeight = ROW_H, actionWidth = 96, actionTitle = "Post" })
     list:SetColumns(Materials.COLUMNS, "materials")
     list.onColumnsChanged = function() Materials.Refresh() end

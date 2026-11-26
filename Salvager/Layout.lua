@@ -15,7 +15,7 @@ local WINDOWS = {
     main = "SalvagerFrame", ledger = "SalvagerLedgerFrame", odds = "SalvagerOddsFrame", log = "SalvagerLogFrame",
     materials = "SalvagerMaterialsFrame", reports = "SalvagerReportsFrame", market = "SalvagerMarketFrame",
     stand = "SalvagerStandFrame", breakdown = "SalvagerBreakdownFrame", post = "SalvagerPostFrame",
-    options = "SalvagerOptionsFrame",
+    options = "SalvagerOptionsFrame", limits = "SalvagerLimitsFrame",
 }
 local LAYERS = { BACKGROUND = "BG", BORDER = "BD", ARTWORK = "A", OVERLAY = "O", HIGHLIGHT = "H" }
 local CONTROLS = { Button = true, CheckButton = true, EditBox = true, Slider = true }
@@ -66,7 +66,8 @@ end
 
 -- The drawing facts of a region or frame, as "k=v" fields: f font size, j justification (L C R), c text or
 -- vertex color, sw the text's own width, d draw layer, ct color texture color, tex texture or atlas, a alpha,
--- fl frame level, bg and bd backdrop and border color.
+-- fl frame level, bg and bd backdrop and border color, k the widget kind (`uiKind`: tab, subtab, dropdown, button,
+-- check, edit, tabrow, subtabrow, filterrow, footer, settings; UI.md Controls; `make layout` checks it).
 local function extras(obj, kind, text)
     local out = {}
     local alpha = call(obj, "GetAlpha")
@@ -97,6 +98,8 @@ local function extras(obj, kind, text)
             out[#out + 1] = "tex=" .. (tex:match("([^\\/]+)$") or tex):sub(1, 40)
         end
     else
+        local uiKind = rawget(obj, "uiKind")
+        if type(uiKind) == "string" then out[#out + 1] = "k=" .. uiKind end
         local level = call(obj, "GetFrameLevel")
         if type(level) == "number" then out[#out + 1] = "fl=" .. num(level) end
         if type(call(obj, "GetBackdrop")) == "table" then
@@ -187,6 +190,8 @@ local function listInfo(list)
     -- Its column set, and the titles hidden there with the chooser (by choice, not for want of room).
     local set = rawget(list, "columnSet")
     info.set = type(set) == "string" and set or nil
+    -- "statement": a statement (UI.md Statements), whose amounts end flush with the panel's right edge.
+    info.kind = list.columns.statement and "statement" or nil
     info.hidden = {}
     for i, col in ipairs(list.columns) do
         local key = ns.Widgets.ColumnKey(col)

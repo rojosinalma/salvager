@@ -16,12 +16,40 @@ reply must say so.
 5. Cancel is the last button of its group. The main action comes before it.
 6. Destructive actions ask first, and say what stays.
 
+## Controls
+
+1. A window from top to bottom: title bar and close button (top right); main tabs; the view's subtabs; the view's
+   filter row; the content; the footer (totals, status, the window's actions). A view's summary line is with its
+   content, under the tabs, never above them.
+2. Each kind of control has one look, from one widget, and no other kind uses it: tab (`Widgets.Tab`), subtab
+   (`Widgets.Subtab`), dropdown with its arrow (`Widgets.Dropdown`), check box (`Widgets.Check`), action button (the
+   red button, `Widgets.Button`). A tab or a dropdown is never a red button. Rows are made with `Widgets.Bar`.
+3. A row of tabs or subtabs holds tabs only: no filter, no action, no readout.
+4. A filter is in the filter row directly above the content it filters. Never next to a tab.
+5. A filter has a label at its left that says what it filters ("Period:"), and shows its value. "All" is the first
+   option. A filter that hides rows shows it and clears in one click. A check box has its label at its right.
+6. Filter row order: search, filters, then the table's actions at the right end.
+7. Status (bag space, gold, progress) is in the footer. The window's main action is at the bottom right. A
+   destructive action stands apart from the frequent ones and is never the default.
+8. Tabs separate different content. A choice that only narrows or re-sorts the same content is a filter.
+9. The selected tab shows it in two ways (shape and text color). Tab titles are nouns, one or two words; six at most.
+10. What belongs together is close and aligned; what does not is apart by a clearly larger gap; a group of settings
+    sits in its own inset with a heading (the main window's Scan settings), apart from the tabs and the list.
+11. Text that cannot be clicked never looks like a control.
+12. Text contrast 4.5:1 or more; control edges 3:1; one color means one thing everywhere.
+13. Buttons that open other windows are one group in the footer, at its left (the main window: Auction house, Ledger,
+    Reports, Market, Limits, Log, Options), never where they read as tabs.
+14. Checked by the specs (rows of tabs hold tabs only; filters under the subtabs; every row fits the smallest width)
+    and by `make layout` (a row of tabs with another control; a statement's amounts not at the panel's right edge; a
+    tab, subtab or dropdown with the red button's art).
+
 ## Tables
 
 1. One value per cell. A number and its percentage, or a rate and a quantity, are two columns.
 2. A column is as wide as its widest content, title included (with its sort arrow). No fixed spare width, the button
-   column included. A column of live values (a countdown) is as wide as its widest possible value
-   (`sample = "00:00:00"`), so it does not shrink while it counts.
+   column included. One column of long text may take the spare width; text that does not fit ends with "..." and
+   shows in full on hover. A column of live values is as wide as its widest possible value (`sample`). A statement
+   is the exception (Statements 2).
 3. A table with sections is one inset per section, or a heading row per section with its own
    totals. A value that is the same for every row of a section goes in the heading, not in the rows.
 4. Rows the player acts on first come first (open before sold, newest before oldest).
@@ -32,6 +60,27 @@ reply must say so.
    gold (a sale, a profit made, a change of your gold). A gap from a forecast or a value at today's
    prices (Accuracy's comparisons, Expected profit, luck, price change, Stock change) is grey with
    its + or -, never green or red. Color is never the only signal: the sign or a word says it too.
+8. Text, names and dates left-aligned. Numbers, money, percentages and times right-aligned. A title aligns like its
+   column.
+9. The numbers of a column have the same decimals and unit. Silver and copper show two digits after a larger coin,
+   so the coins line up. A percentage keeps its "%".
+10. One sort arrow, on the sorted column. A click on the title reverses it. The sort is remembered.
+11. Rows are told apart by space and a highlight under the pointer, faint stripes in wide tables. No grid.
+12. The titles stay in view when the table scrolls. Titles and rows have one height in every table.
+13. A totals row is the last row, with a line above it; it does not sort.
+14. A column computed from others is at their right. While a table loads it says so, not "nothing".
+
+## Statements
+
+1. The heading says what it is, for which character and for which time.
+2. Labels at the left; amounts in one column flush with the right edge of the panel. The label column takes the
+   spare width. Faint stripes or a highlight carry the eye across.
+3. A section is a heading row without an amount; its lines are indented one step; its total is at the heading's level.
+4. A thin line above a total's amount, a double line under the last total. Totals are bold. No "=" lines.
+5. One sign rule in the whole statement: "+" comes in, "-" goes out, on every amount. Every total is the sum of the
+   lines above it since the last total.
+6. Every line reads without the pointer; the hover says how it is computed.
+7. A comparison with another time is a second amount column at the right, with the same rows.
 
 ## Words
 
@@ -58,16 +107,19 @@ reply must say so.
 1. A setting lives in one place. What the main window sets is not in the options.
 2. Windows remember their place, size, tab and filters. A window that only lists content fits it;
    a window with long lists is resizable in the direction that helps.
-3. Secondary views are subtabs of the view they belong to, the main one first.
+3. Secondary views are subtabs of the view they belong to, the main one first. Two levels at most; subtabs look
+   different from tabs.
 4. Live values (countdowns, gold) update while they show.
 5. The main window leads: the other windows close with it and come back with it. The game's auction
    house is one click away (Auction house button), and Salvager one click back (its button under the
    auction house). Hiding windows never stops a scan.
-6. Nothing overlaps, at the smallest size a window allows. A control row that is full moves controls to the
-   row of the view they belong to (Odds filters on its subtab row). A text that can grow either wraps and
-   pushes what is under it down, or is one line cut at the next control.
+6. Nothing overlaps, at the smallest size a window allows. A filter row that is full wraps to a second filter row,
+   or the window's smallest width grows; a control never moves to a row of tabs. A text that can grow either wraps
+   and pushes what is under it down, or is one line cut at the next control.
 7. A window can be dragged partly off the screen, until 40 px of its title bar are left, so it can always be
    dragged back. `/salv windows reset` brings every window back on the screen.
+8. Only a question about a destructive action blocks the game. Every other window leaves the game usable.
+9. Every window has the close button at its top right. Escape closes the windows (`UISpecialFrames`).
 
 ## Data
 

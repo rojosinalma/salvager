@@ -97,7 +97,7 @@ local purchaseControls = {} -- the Purchases view's search box and filters
 local accuracyControls = {} -- the Accuracy view's filters
 local salesTabs = {}    -- the Sales view's subtabs: open and sold, history
 local purchaseTabs = {} -- the Purchases view's subtabs: all purchases, not picked up
-local bagLabel, bagArea -- the Purchases view's bag space, on its subtab row
+local bagLabel, bagArea -- the Purchases view's bag space, in the footer
 
 --- Which bands the Odds view shows: { quality = { [2], [3], [4] }, type = { a, w } }, kept with the window.
 --- A filter set as every view keeps it: gear types, qualities, item level bands left out, Salvager
@@ -138,11 +138,11 @@ local function filterPasses(x, classID, quality, ilvl, salvager)
 end
 Window.FilterPasses = filterPasses
 
---- The filter row every view has: Gear, Quality, Bands (and Salvager with `salvager`), after `after` (a
---- region) or at `point` = { x, y } of `parent`. `changed()` runs after each change.
---- @return table controls, region the last one
-local function filterRow(parent, x, changed, point, salvager)
-    local controls, prev = {}, nil
+--- The filters every view has: Gear, Quality, Bands (and Salvager with `salvager`), each with its label at its
+--- left, added to `bar` (a Widgets.Bar of filters). `changed()` runs after each change.
+--- @return table controls  the dropdowns (Update them on refresh)
+local function filterRow(bar, x, changed, salvager)
+    local controls = {}
     local function setOf(tbl, invert, all)
         return function(key) if invert then return not tbl[key] end return tbl[key] and true or false end,
             function(key, on)
@@ -157,27 +157,15 @@ local function filterRow(parent, x, changed, point, salvager)
             end
     end
     local function allOr(names, total) return #names == total and "All" or table.concat(names, ", ") end
-    local function add(label, drop, help)
-        local l = W.Label(parent, label, "GameFontHighlightSmall")
-        if prev then
-            l:SetPoint("LEFT", prev, "RIGHT", 14, 0)
-        elseif type(point) == "table" and point.GetObjectType then
-            l:SetPoint("LEFT", point, "RIGHT", 14, 0)
-        else
-            l:SetPoint("LEFT", parent, "TOPLEFT", point[1], point[2])
-        end
-        drop:SetPoint("LEFT", l, "RIGHT", 6, 0)
-        -- (The help area hides with its label, so it never covers the table of another subtab or view.)
-        controls[#controls + 1] = W.HelpArea(parent, l, label, help)
-        controls[#controls + 1] = l
+    local function add(label, width, drop, help)
+        bar:AddFilter(label, drop, width, help)
         controls[#controls + 1] = drop
-        prev = drop
     end
     local gGet, gSet = setOf(x.classes, false, { Data.CLASS_ARMOR, Data.CLASS_WEAPON })
-    add("Gear", W.CheckDropdown(parent, 100, { { Data.CLASS_ARMOR, "Armor" }, { Data.CLASS_WEAPON, "Weapons" } }, gGet, gSet,
-        "Which gear types show.", "Gear", allOr), "Armor, weapons, or both.")
+    add("Gear", 100, W.Dropdown(bar, 100, { { Data.CLASS_ARMOR, "Armor" }, { Data.CLASS_WEAPON, "Weapons" } }, gGet,
+        gSet, "Which gear types show.", "Gear", allOr), "Armor, weapons, or both.")
     local qGet, qSet = setOf(x.qualities, false, { 2, 3, 4 })
-    add("Quality", W.CheckDropdown(parent, 130, { { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" },
+    add("Quality", 120, W.Dropdown(bar, 120, { { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" },
         { 4, "|cffa335eeEpic|r" } }, qGet, qSet, "Which qualities show.", "Quality", allOr), "Uncommon, Rare, Epic.")
     local bandOptions, bandKeys = {}, {}
     for _, b in ipairs(ns.LevelBands()) do
@@ -185,7 +173,7 @@ local function filterRow(parent, x, changed, point, salvager)
         bandKeys[#bandKeys + 1] = b.up
     end
     local bGet, bSet = setOf(x.bandsOff, true, bandKeys)
-    add("Bands", W.CheckDropdown(parent, 120, bandOptions, bGet, bSet, "Which item level bands show.", "Bands",
+    add("Bands", 110, W.Dropdown(bar, 110, bandOptions, bGet, bSet, "Which item level bands show.", "Bands",
         function(names, total)
             if #names == total then return "All" end
             if #names > 3 then return #names .. " bands" end
@@ -193,16 +181,16 @@ local function filterRow(parent, x, changed, point, salvager)
         end), "Item level bands: a band is a range of item levels that disenchants into the same materials.")
     if salvager then
         local drop
-        drop = W.CheckDropdown(parent, 100, { { "all", "All" }, { "with", "With it" }, { "without", "Without it" } },
+        drop = W.Dropdown(bar, 100, { { "all", "All" }, { "with", "With it" }, { "without", "Without it" } },
             function(key) return x.salvager == key end,
             function(key)
                 x.salvager = key
                 drop:Close()
                 changed()
             end, "Disenchants with the Arcane Salvager's bonus, without it, or all.", "Salvager")
-        add("Salvager", drop, "Disenchants with the Arcane Salvager's bonus, without it, or all.")
+        add("Salvager", 100, drop, "Disenchants with the Arcane Salvager's bonus, without it, or all.")
     end
-    return controls, prev
+    return controls
 end
 
 --- The Odds view's filters (saved; the gear type was a subtab before 0.3.99, the qualities and bands
@@ -735,7 +723,7 @@ local BAND_HELP = { "This band", "Disenchants: how many of yours are in this ban
     .. "Value now: what ONE disenchant is worth on average over many, at today's material prices, after the 5% cut. "
     .. "It is not the buy limit.\n\n"
     .. "Buy below: the most the addon lets you pay: Value now minus your minimum profit, or the limit you set in the "
-    .. "Limits tab.\n\n"
+    .. "Limits window.\n\n"
     .. "Loss chance: the chance that one disenchant is worth less than Buy below, so the risk when you pay the full limit.\n\n"
     .. "Your average: what your own disenchants gave on average, at the prices of the moment. Compare it with Value now.\n\n"
     .. "Rates used from: how many of your disenchants of this band the rates used rest on, with or without the Salvager "
@@ -831,36 +819,30 @@ local VIEWS = { sales = true, purchases = true, odds = true, accuracy = true }
 
 ------------------------------------------------------------------ the window
 
---- The Odds view: the three filters and the stack of tables, one per band. The caller anchors its parts.
---- The ledger window has one, and the popped-out odds window has one.
---- `checkPoint` = { x, y }: "Only bands with my data" on a row of its own there (a narrow window); else at the
---- end of the filter row.
-function newOddsView(parent, point, checkPoint)
-    local view = {}
+--- The Odds view: its filter row (`bar`) and the stack of tables, one per band. The caller places the bar and the
+--- stack. The ledger window has one, and the popped-out odds window has one. `checkBar`: a second filter row for
+--- "Only bands with my data" (a narrow window); else it ends the first one.
+function newOddsView(parent, bar, checkBar)
+    local view = { bar = bar, checkBar = checkBar }
     local function changed()
         view.stack.offset = 0
         Window.Refresh()
     end
     -- The filter row, as everywhere: Gear, Quality, Bands, Salvager; then "Only bands with my data".
-    local controls, last = filterRow(parent, oddsFilter(), changed, point, true)
-    view.controls = controls
-    view.dataOnly = W.Check(parent, "Only bands with my data",
+    view.controls = filterRow(bar, oddsFilter(), changed, true)
+    view.dataOnly = W.Check(checkBar or bar, "Only bands with my data",
         "Lists only the item level bands you have disenchanted in. Untick it to see the table of every band.",
         function(on)
             oddsFilter().dataOnly = on or nil
             changed()
         end)
-    if checkPoint then
-        view.dataOnly:SetPoint("LEFT", parent, "TOPLEFT", checkPoint[1], checkPoint[2])
-    else
-        view.dataOnly:SetPoint("LEFT", last, "RIGHT", 12, 0)
-    end
-    controls[#controls + 1] = view.dataOnly
+    ;(checkBar or bar):AddCheck(view.dataOnly)
     view.stack = W.CardList(parent)
     view.stack:SetColumns(ODDS_COLUMNS, "odds")
     view.stack.onColumnsChanged = function() Window.Refresh() end
     function view:SetShown(on)
-        for _, c in ipairs(self.controls) do c:SetShown(on) end
+        self.bar:SetShown(on)
+        if self.checkBar then self.checkBar:SetShown(on) end
         self.stack:SetShown(on)
     end
     function view:Refresh()
@@ -874,9 +856,13 @@ end
 
 -- The Sales view's two tables share the height under the tabs; the bar between them moves the border.
 local SPLIT_DEFAULT, SPLIT_MIN, SPLIT_MAX, TABLE_MIN = 0.45, 0.1, 0.9, 66
-local SUBTABS = 28   -- the height of a row of subtabs over the tables
+-- From the top (UI.md Controls 1): the tabs (24 to 54 px), the view's subtabs, its filter row, the tables; the
+-- footer (FOOT px) has the totals and the view's actions.
+local TABS_TOP, FOOT = 24, 40
+local bars = {}          -- the rows: tabs, sales and purchases (subtabs), purchaseFilters, accuracyFilters, footer
+local contentTop = 86    -- where the tables of the view on show start (set by Window.Refresh)
 local function salesRoom()
-    return (f:GetHeight() or 0) - 98 - 14 - 2 * 20 - ((Window.view == "sales" or Window.view == "accuracy") and SUBTABS or 0)
+    return (f:GetHeight() or 0) - contentTop - FOOT - 2 * 20
 end
 
 --- Sets how much of the room the upper Sales table takes (0.1 to 0.9), and remembers it.
@@ -886,7 +872,7 @@ function Window.SetSalesSplit(part)
     Window.Refresh()
 end
 
-local ODDS_TOP, ODDS_W = 84, 740
+local ODDS_TOP, ODDS_W = 28 + 2 * 26 + 2 + 6, 740
 local WIDTH = 860   -- the ledger window's width; wider where the tables on show need it
 
 function Window.Refresh()
@@ -904,35 +890,37 @@ function Window.Refresh()
     -- The Sales view has a row of subtabs, the Purchases view its search and filters; the tables start under.
     local purchases = Window.view == "purchases"
     local mailTab = purchases and Window.PurchaseTab() == "mail"
-    for _, c in ipairs(purchaseControls) do
-        c:SetShown(purchases and not mailTab)
-        if purchases and not mailTab and c.Update then c:Update() end
+    -- Under the tabs: the view's subtabs (Sales, Purchases), then its filter row (Purchases' first subtab,
+    -- Accuracy, Odds), then its tables.
+    local top = TABS_TOP + W.BAR_H.tabs + 4
+    bars.sales:SetShown(sales)
+    bars.purchases:SetShown(purchases)
+    if sales or purchases then top = top + W.BAR_H.subtabs + 4 end
+    local filterBar = (purchases and not mailTab and bars.purchaseFilters) or (accuracy and bars.accuracyFilters)
+        or (odds and oddsView.bar) or nil
+    for _, b in ipairs({ bars.purchaseFilters, bars.accuracyFilters }) do b:SetShown(b == filterBar) end
+    for _, c in ipairs((filterBar == bars.purchaseFilters and purchaseControls)
+        or (filterBar == bars.accuracyFilters and accuracyControls) or {}) do
+        if c.Update then c:Update() end
     end
-    for _, c in ipairs(accuracyControls) do
-        c:SetShown(accuracy)
-        if accuracy and c.Update then c:Update() end
+    if filterBar then
+        filterBar:Place(top, 12, 12)
+        top = top + W.BAR_H.filters + 4
     end
-    -- (The Purchases view has its subtabs, then on the first one its search and filters under them.)
-    local down = (sales or purchases or accuracy) and SUBTABS or 0
-    if purchases and not mailTab then down = 2 * SUBTABS end
-    for key, b in pairs(salesTabs) do
-        b:SetShown(sales)
-        if (key == "history") == history then b:LockHighlight() else b:UnlockHighlight() end
-    end
-    for key, b in pairs(purchaseTabs) do
-        b:SetShown(purchases)
-        if (key == "mail") == mailTab then b:LockHighlight() else b:UnlockHighlight() end
-    end
+    contentTop = top
+    for key, b in pairs(salesTabs) do b:SetSelected((key == "history") == history) end
+    for key, b in pairs(purchaseTabs) do b:SetSelected((key == "mail") == mailTab) end
     bagLabel:SetShown(purchases)
     bagArea:SetShown(purchases)
     if purchases then
         purchaseTabs.mail:SetText(string.format("Not picked up (%d)", (Window.NotPickedUpTotal())))
         bagLabel:SetText(Window.BagText())
     end
-    list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98 - down)
-    salesParts[1]:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -100 - down)
-    salesParts[2]:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -118 - down)
-    salesParts[2]:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -118 - down)
+    list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -top)
+    salesParts[1]:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -top - 2)
+    salesParts[2]:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -top - 20)
+    salesParts[2]:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -top - 20)
+    oddsView.stack:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -top)
     oddsView:SetShown(odds)
     for _, part in ipairs(salesParts) do part:SetShown(split) end
     if split then
@@ -1013,14 +1001,14 @@ function Window.Refresh()
         end
     end
     summary:SetText((Window.Summary()))
-    for name, button in pairs(tabs) do
-        if name == Window.view then button:LockHighlight() else button:UnlockHighlight() end
-    end
-    -- The pop-out button looks pressed while the odds are in their own window.
-    if Window.OddsPoppedOut() then popOut:LockHighlight() else popOut:UnlockHighlight() end
-    -- The two listing buttons belong to the Sales view.
+    for name, button in pairs(tabs) do button:SetSelected(name == Window.view) end
+    -- The two listing buttons belong to the Sales view; the bag space to the Purchases view. The totals take the
+    -- footer's room left of them.
     checkButton:SetShown(sales)
     cancelButton:SetShown(sales)
+    popOut:SetShown(odds)
+    local right = (sales and checkButton) or (purchases and bagLabel) or (odds and popOut) or nil
+    summary:SetPoint("RIGHT", right or bars.footer, right and "LEFT" or "RIGHT", -12, 0)
     if sales then
         local c, n = ns.Listings.checking, ns.Listings.CountUndercut()
         -- Only what is still for sale can be undercut: sold auctions are not checked.
@@ -1039,19 +1027,21 @@ end
 local function build()
     -- As wide as its tables need; the height is the player's.
     f = W.Window("SalvagerLedgerFrame", "Salvager ledger", "ledger", WIDTH, 480, WIDTH, 260, "vertical")
-    -- The totals: one short line, and all of them behind the chart button at its right end.
-    local details = W.HelpButton(f, "Totals", function() return select(2, Window.Summary()) end, {
-        glyph = "chart", tooltip = { "Totals", "Click to see every total of the ledger, one per line." } })
-    details:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -30)
-    summary = W.Label(f, "", "GameFontHighlightSmall")
-    summary:SetPoint("LEFT", f, "TOPLEFT", 14, -41)
-    summary:SetPoint("RIGHT", details, "LEFT", -8, 0)
+    -- The footer: the ledger's totals at the left (one short line, all of them behind the chart button before
+    -- it), the view's actions or its bag space at the right.
+    bars.footer = W.Bar(f, "footer"):PlaceBottom(8, 12, 24)
+    local details = W.HelpButton(bars.footer, "Totals", function() return select(2, Window.Summary()) end, {
+        glyph = "chart", left = true, up = true,
+        tooltip = { "Totals", "Click to see every total of the ledger, one per line." } })
+    bars.footer:Add(details, 22)
+    summary = W.Label(bars.footer, "", "GameFontHighlightSmall")
+    bars.footer:Add(summary, 300)
     summary:SetJustifyH("LEFT")
     summary:SetWordWrap(false)
-    local x = 12
+    bars.tabs = W.Bar(f, "tabs"):Place(TABS_TOP, 12, 12)
     for _, t in ipairs({ { "sales", "Sales" }, { "purchases", "Purchases" }, { "accuracy", "Accuracy" },
         { "odds", "Odds" } }) do
-        local b = W.Button(f, t[2], 88, function()
+        local b = W.Tab(bars.tabs, t[2], function()
             -- The Odds tab, while the odds are in their own window: put them back here.
             if t[1] == "odds" then Window.OddsPutBack() end
             Window.view = t[1]
@@ -1060,9 +1050,8 @@ local function build()
             oddsView.stack.offset = 0
             Window.Refresh()
         end)
-        b:SetPoint("TOPLEFT", f, "TOPLEFT", x, -68)
+        bars.tabs:Add(b, 90)
         tabs[t[1]] = b
-        x = x + (t[1] == "odds" and 116 or 92)   -- (the Odds tab has its pop-out button after it)
     end
     W.Tooltip(tabs.accuracy, "Accuracy", "Expected value when you bought, against the disenchant value of what you got, "
         .. "against the sold value. By band and by material.")
@@ -1077,30 +1066,39 @@ local function build()
         .. "now = what one disenchant is worth on average at today's prices, after the cut. Buy below = the buy "
         .. "limit; Loss chance = the chance one disenchant is worth less than it. Point at a column title for more.")
     -- (Clear history is in the options, with the backups.)
-    cancelButton = W.Button(f, "Cancel undercut (0)", 150, function() ns.Listings.CancelNext() end,
+    cancelButton = W.Button(bars.footer, "Cancel undercut (0)", 150, function() ns.Listings.CancelNext() end,
         "Cancels one undercut listing per click (the game wants a click for each). The materials come back by mail, "
         .. "and the auction house keeps its deposit. Needs the auction house open, and a check first.")
-    -- On the row of the Sales subtabs, at the right: the row of the main tabs is full.
-    cancelButton:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -98)
+    -- The Sales view's actions, at the footer's right end; Cancel the last one (UI.md Actions 5).
+    bars.footer:AddRight(cancelButton, 150)
     cancelButton:SetMotionScriptsWhileDisabled(true)
     cancelButton:HookScript("OnEnter", function(self)
         local why = self.reason
         if why then GameTooltip:AddLine(why, 1, 0.3, 0.3, true) GameTooltip:Show() end
     end)
-    checkButton = W.Button(f, "Check undercuts (0)", 150, function() ns.Listings.Check() end,
+    checkButton = W.Button(bars.footer, "Check undercuts (0)", 150, function() ns.Listings.Check() end,
         "Searches each material you still have for sale and compares your price with the lowest listing that is not "
         .. "yours. Auctions that are sold are not checked. The number is how many listings are still for sale. "
         .. "About one second per material. Needs the auction house open.")
-    checkButton:SetPoint("RIGHT", cancelButton, "LEFT", -6, 0)
-    -- The Odds filters on the row under the tabs, as in the other views.
-    oddsView = newOddsView(f, { 14, -109 })
-    oddsView.stack:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -126)
-    oddsView.stack:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
-    -- Right next to the Odds tab: the odds in a window of their own, and back.
-    popOut = W.IconButton(f, 22, function()
+    bars.footer:AddRight(checkButton, 150)
+    -- The bag space (the Purchases view), where the Sales actions are in that view.
+    bagLabel = W.Label(bars.footer, "", "GameFontHighlightSmall")
+    bagLabel:SetPoint("RIGHT", bars.footer, "RIGHT", -2, 0)
+    bagLabel:SetJustifyH("RIGHT")
+    bagArea = W.HelpArea(bars.footer, bagLabel, "Bag space", "Free slots / all slots of your backpack and bags, now; "
+        .. "after the arrow: the free slots once you take every item still in the mail (one slot each). Below 0, red "
+        .. "with the alert sign: that many slots are missing. Profession bags are left out: they do not hold gear.")
+    bagLabel:Hide()
+    bagArea:Hide()
+    -- The Odds view: its filter row under the tabs.
+    oddsView = newOddsView(f, W.Bar(f, "filters"))
+    oddsView.stack:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, FOOT)
+    -- The Odds view's action, at the footer's right end (where the Sales view has its own): the odds in a window
+    -- of their own, and back.
+    popOut = W.IconButton(bars.footer, 22, function()
         if Window.OddsPoppedOut() then Window.OddsPutBack() else Window.OddsPopOut() end
     end)
-    popOut:SetPoint("LEFT", tabs.odds, "RIGHT", 0, 0)
+    popOut:SetPoint("RIGHT", bars.footer, "RIGHT", -2, 0)
     popOut:SetPopOutGlyph()
     popOut:SetScript("OnEnter", function(self)
         local out = Window.OddsPoppedOut()
@@ -1113,22 +1111,22 @@ local function build()
     end)
     popOut:SetScript("OnLeave", function() GameTooltip:Hide() end)
     list = W.List(f, { rowHeight = 22 })
-    list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98)
-    list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
+    list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -contentTop)
+    list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, FOOT)
     -- The Sales view: a title and a table for your auctions, a title and a table for the paid sales.
     local titleA = W.Label(f, "", "GameFontNormal")
-    titleA:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -100)
+    titleA:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -contentTop - 2)
     local listA = W.List(f, { rowHeight = 22 })
     listA:SetColumns(COLUMNS.listed, "listed")
-    listA:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -118)
-    listA:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -118)
+    listA:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -contentTop - 20)
+    listA:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -contentTop - 20)
     listA:SetHeight(120)
     local titleB = W.Label(f, "", "GameFontNormal")
     titleB:SetPoint("TOPLEFT", listA, "BOTTOMLEFT", 2, -6)
     local listB = W.List(f, { rowHeight = 22 })
     listB:SetColumns(COLUMNS.paid, "paid")
     listB:SetPoint("TOPLEFT", listA, "BOTTOMLEFT", 0, -24)
-    listB:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
+    listB:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, FOOT)
     -- A column shown or hidden with a table's chooser: the window fits its tables again.
     for _, l in ipairs({ list, listA, listB }) do l.onColumnsChanged = function() Window.Refresh() end end
     -- The bar between the two tables: drag it up or down to make one table taller and the other shorter.
@@ -1164,47 +1162,33 @@ local function build()
     bar:SetScript("OnHide", function(self) self:SetScript("OnUpdate", nil) end)
     salesParts = { titleA, listA, titleB, listB, bar }
     -- The subtabs of the Sales view: what is open and what is sold; and the history.
+    bars.sales = W.Bar(f, "subtabs"):Place(TABS_TOP + W.BAR_H.tabs + 4, 12, 12)
     for _, t in ipairs({ { "open", "Open and sold", "Your open auctions, and what is sold with its money still to collect." },
         { "history", "History", "The sales whose money you have taken from the mail, newest first." } }) do
-        local b = W.Button(f, t[2], t[1] == "open" and 120 or 90, function()
+        local b = W.Subtab(bars.sales, t[2], function()
             f.saved.salesTab = t[1]
             list.offset = 0
             Window.Refresh()
         end, t[3])
-        if salesTabs.open then
-            b:SetPoint("LEFT", salesTabs.open, "RIGHT", 4, 0)
-        else
-            b:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98)
-        end
+        bars.sales:Add(b, t[1] == "open" and 100 or 60)
         salesTabs[t[1]] = b
     end
     -- The subtabs of the Purchases view: every purchase; and what waits in the mail.
+    bars.purchases = W.Bar(f, "subtabs"):Place(TABS_TOP + W.BAR_H.tabs + 4, 12, 12)
     for _, t in ipairs({ { "all", "All purchases", "Every item you bought, with what it was disenchanted into." },
         { "mail", "Not picked up", "The items you bought with Buy whose \"Auction won\" mail you have not taken "
             .. "yet, the first bought first. The number is how many." } }) do
-        local b = W.Button(f, t[2], t[1] == "all" and 110 or 140, function()
+        local b = W.Subtab(bars.purchases, t[2], function()
             f.saved.purchaseTab = t[1] == "mail" and "mail" or nil
             list.offset = 0
             Window.Refresh()
         end, t[3])
-        if purchaseTabs.all then
-            b:SetPoint("LEFT", purchaseTabs.all, "RIGHT", 4, 0)
-        else
-            b:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98)
-        end
+        bars.purchases:Add(b, t[1] == "all" and 90 or 120)
         purchaseTabs[t[1]] = b
-        b:Hide()
     end
-    -- On the same row, at the right: the bag space, for both subtabs (do the mails fit?).
-    bagLabel = W.Label(f, "", "GameFontHighlightSmall")
-    bagLabel:SetPoint("RIGHT", f, "TOPRIGHT", -14, -109)
-    bagLabel:SetJustifyH("RIGHT")
-    bagArea = W.HelpArea(f, bagLabel, "Bag space", "Free slots / all slots of your backpack and bags, now; after "
-        .. "the arrow: the free slots once you take every item still in the mail (one slot each). Below 0, red with "
-        .. "the alert sign: that many slots are missing. Profession bags are left out: they do not hold gear.")
-    bagLabel:Hide()
-    bagArea:Hide()
+    bars.purchases:Hide()
     Window.purchaseTabs, Window.bagLabel = purchaseTabs, bagLabel   -- (the specs click and read them)
+    Window.bars, Window.tabs, Window.salesTabs = bars, tabs, salesTabs
     Window.salesParts = salesParts
     -- The Purchases view: a search box, and filters by gear type, quality and item level band.
     do
@@ -1213,10 +1197,11 @@ local function build()
             list.offset = 0
             Window.Refresh()
         end
-        local searchLabel = W.Label(f, "Search", "GameFontHighlightSmall")
-        searchLabel:SetPoint("LEFT", f, "TOPLEFT", 14, -109 - SUBTABS)
-        local search = W.Edit(f, 120)
-        search:SetPoint("LEFT", searchLabel, "RIGHT", 8, 0)
+        -- The filter row: the search first, then the filters (UI.md Controls 6).
+        local fbar = W.Bar(f, "filters")
+        bars.purchaseFilters = fbar
+        local search = W.Edit(fbar, 120)
+        fbar:AddFilter("Search", search, 120, "Shows the items whose name has this text in it.")
         search:SetText(pf.search or "")
         search:SetScript("OnTextChanged", function(self)
             local text = self:GetText() or ""
@@ -1227,28 +1212,24 @@ local function build()
         end)
         search:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
         search:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-        purchaseControls = { searchLabel, search,
-            W.HelpArea(f, searchLabel, "Search", "Shows the items whose name has this text in it.") }
-        local row, last = filterRow(f, pf, changed, search, false)
-        for _, c in ipairs(row) do purchaseControls[#purchaseControls + 1] = c end
-        local prev = last
-        local waiting = W.Check(f, "Not disenchanted", "Shows the items you bought and have not disenchanted yet. "
+        purchaseControls = filterRow(fbar, pf, changed, false)
+        local waiting = W.Check(fbar, "Not disenchanted", "Shows the items you bought and have not disenchanted yet. "
             .. "Untick it to see only what was disenchanted.", function(on)
             pf.hideWaiting = (not on) or nil
             changed()
         end)
-        waiting:SetPoint("LEFT", prev, "RIGHT", 12, 0)
+        fbar:AddCheck(waiting)
         waiting:SetChecked(not pf.hideWaiting)
-        purchaseControls[#purchaseControls + 1] = waiting
-        for _, c in ipairs(purchaseControls) do c:Hide() end
+        fbar:Hide()
     end
     -- The Accuracy view: the filter row, Salvager too.
     do
-        accuracyControls = filterRow(f, accuracyFilter(), function()
+        bars.accuracyFilters = W.Bar(f, "filters")
+        accuracyControls = filterRow(bars.accuracyFilters, accuracyFilter(), function()
             salesParts[2].offset, salesParts[4].offset = 0, 0
             Window.Refresh()
-        end, { 14, -109 }, true)
-        for _, c in ipairs(accuracyControls) do c:Hide() end
+        end, true)
+        bars.accuracyFilters:Hide()
     end
     if VIEWS[f.saved.view] then Window.view = f.saved.view end
     f.onResize = Window.Refresh
@@ -1259,10 +1240,12 @@ end
 local function buildOdds()
     -- As wide as its tables need; the height is the player's (the corner sizes it up and down only).
     -- 740 wide: the cards need about 700 (their columns, the icon, two levels of indent, the scroll bar); the
-    -- filter row about 700, with "Only bands with my data" on the row under it.
+    -- filter row about 700, with "Only bands with my data" on a second filter row under it. No tabs: the filter
+    -- rows are right under the title bar.
     oddsFrame = W.Window("SalvagerOddsFrame", "Salvager odds", "odds", ODDS_W, 520, ODDS_W, 200, "vertical")
     oddsFrame.onResize = Window.Refresh
-    oddsOut = newOddsView(oddsFrame, { 14, -41 }, { 12, -66 })
+    oddsOut = newOddsView(oddsFrame, W.Bar(oddsFrame, "filters"):Place(28, 12, 12),
+        W.Bar(oddsFrame, "filters"):Place(28 + W.BAR_H.filters + 2, 12, 12))
     oddsOut.stack:SetPoint("TOPLEFT", oddsFrame, "TOPLEFT", 12, -ODDS_TOP)
     oddsOut.stack:SetPoint("BOTTOMRIGHT", oddsFrame, "BOTTOMRIGHT", -12, 14)
     oddsFrame:SetScript("OnShow", Window.Refresh)

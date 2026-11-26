@@ -150,6 +150,7 @@ function M.install()
     _G.StaticPopup_Show = function(name) env.popup = name end
     _G.CreateFrame = function(kind, name, parent, template)
         local f = widget(kind)
+        f._template = template   -- (the specs check which look a control has)
         -- The game's button templates bring their art as fields (Left, Middle, Right textures), as the client does.
         if template and template:find("Button") then
             f.Left, f.Middle, f.Right = widget("Texture"), widget("Texture"), widget("Texture")

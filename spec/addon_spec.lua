@@ -462,10 +462,12 @@ describe("Salvager in a simulated client", function()
     end)
 
     it("draws every view and runs the slash commands", function()
-        for _, v in ipairs({ "deals", "materials", "limits" }) do
+        for _, v in ipairs({ "deals", "materials" }) do
             ns.UI.view = v
             ns.UI.Refresh()
         end
+        ns.LimitsWindow.Show()
+        ns.LimitsWindow.Refresh()
         local before = #env.chat
         SlashCmdList.SALVAGER("minprofit 20s")
         assert.are.equal(2000, ns.db.settings.minProfit)
@@ -586,13 +588,13 @@ describe("Salvager window and options", function()
     end)
 
     it("draws every view and the log panel without errors", function()
-        for _, v in ipairs({ "deals", "materials", "limits" }) do
+        for _, v in ipairs({ "deals", "materials" }) do
             ns.UI.view = v
             ns.UI.Refresh()
         end
-        ns.UI.view = "limits"
-        ns.UI.Refresh()
-        -- The Limits tab: an Armor half and a Weapons half; the rows are the bands of every quality, whatever
+        ns.LimitsWindow.Show()
+        ns.LimitsWindow.Refresh()
+        -- The Limits window: an Armor half and a Weapons half; the rows are the bands of every quality, whatever
         -- the scan looks at, under a heading per quality.
         local limitRows = ns.UI.Rows("limits")
         assert.is_truthy(limitRows[1].cells[1]:find("Uncommon", 1, true))
@@ -710,10 +712,12 @@ describe("Salvager window and options", function()
         assert.are.equal(8 * 6 + 4 + 10, width)                    -- "88:88:88", not "1:05"
         ns.Widgets.TextWidth = digits
         -- Every window draws with fitted columns.
-        for _, v in ipairs({ "deals", "materials", "limits" }) do
+        for _, v in ipairs({ "deals", "materials" }) do
             ns.UI.view = v
             ns.UI.Refresh()
         end
+        ns.LimitsWindow.Show()
+        ns.LimitsWindow.Refresh()
         for _, v in ipairs({ "purchases", "sales", "odds", "accuracy" }) do
             ns.LedgerWindow.view = v
             ns.LedgerWindow.Refresh()
@@ -2337,10 +2341,9 @@ describe("Salvager column chooser", function()
         b:Click()
         b:Click()
         assert.is_false(b.menu:IsShown())
-        -- Limits has none: its columns go in pairs under Armor and Weapons.
-        ns.UI.view = "limits"
-        ns.UI.Refresh()
-        assert.is_false(b:IsShown())
+        -- The Limits window has none: its columns go in pairs, Armor and Weapons.
+        ns.LimitsWindow.Show()
+        assert.is_false(ns.LimitsWindow.list.chooser:IsShown())
         ns.UI.view = "deals"
         -- The Materials window's list.
         ns.Materials.PopOut()
@@ -2854,18 +2857,16 @@ describe("Sessions and the statement in a simulated client", function()
         assert.is_truthy(rows[2].cells[1]:find("Session " .. name, 1, true))
         assert.is_nil(labels(rows):find("Sessions:", 1, true))              -- one session: no list of sessions
         -- The rows from the top: tabs, the Gold subtabs, the filter row with "Period", then the table.
-        local function periodRow()
-            for _, r in ipairs(_G.SalvagerReportsFrame._regions) do
-                if r.text == "Period" then return r.points[1][2] end
-            end
-        end
-        local row = periodRow()
-        assert.are.equal(-86, row.points[1][5])
-        assert.are.equal(-114, ns.Reports.list.points[1][5])
+        local bars = ns.Reports.bars
+        assert.are.equal("filterrow", bars.filters.uiKind)
+        assert.are.equal(86, bars.filters.top)                            -- under the tabs (24-54) and the subtabs
+        assert.are.equal(58, bars.gold.top)
+        assert.are.equal(-116, ns.Reports.list.points[1][5])
         ns.Reports.view = "profit"
         ns.Reports.Refresh()
-        assert.are.equal(-58, row.points[1][5])                            -- no subtabs: right under the tabs
-        assert.are.equal(-86, ns.Reports.list.points[1][5])
+        assert.are.equal(58, bars.filters.top)                            -- no subtabs: right under the tabs
+        assert.is_false(bars.gold:IsShown())
+        assert.are.equal(-88, ns.Reports.list.points[1][5])
         ns.Reports.view = "gold"
         for _, tab in ipairs({ "changes", "statement" }) do
             ns.Reports.goldTab = tab
@@ -2896,5 +2897,147 @@ describe("Sessions and the statement in a simulated client", function()
             if r.itemID == DUST then value = r.cells[10] end
         end
         assert.are.equal(ns.MoneyColumn(math.floor(each * 4)), value)
+    end)
+end)
+
+describe("Salvager control hierarchy (UI.md Controls)", function()
+    local env, ns
+    local KINDS = { tabrow = { tab = true }, subtabrow = { subtab = true },
+        filterrow = { dropdown = true, check = true, edit = true, button = true, help = true } }
+    setup(function()
+        env = wow.install()
+        env.items[11083] = { name = "Soul Dust", quality = 1, ilvl = 1, classID = 7 }
+        ns = wow.loadAddon()
+        wow.fire(ns, "ADDON_LOADED", "Salvager")
+        wow.fire(ns, "AUCTION_HOUSE_SHOW")
+        -- Every window, every view.
+        ns.UI.Show()
+        for _, v in ipairs({ "deals", "materials" }) do ns.UI.view = v ns.UI.Refresh() end
+        ns.LedgerWindow.Show()
+        for _, v in ipairs({ "sales", "purchases", "accuracy", "odds" }) do
+            ns.LedgerWindow.view = v
+            ns.LedgerWindow.Refresh()
+        end
+        ns.LedgerWindow.OddsPopOut()
+        ns.Materials.PopOut()
+        ns.Market.Toggle()
+        ns.Reports.Show()
+        ns.LogWindow.Show()
+        ns.LimitsWindow.Show()
+        ns.Options.Open()
+        pcall(ns.Post.Open, 11083)
+    end)
+
+    local function windowOf(frame)
+        local p = frame
+        while type(p) == "table" and rawget(p, "parent") ~= _G.UIParent and rawget(p, "parent") ~= nil do p = p.parent end
+        return p
+    end
+
+    it("puts only tabs on a tab row and only subtabs on a subtab row, and nothing hangs on them", function()
+        local rows = 0
+        for _, fr in ipairs(env.frames) do
+            local allowed = KINDS[rawget(fr, "uiKind") or ""]
+            if allowed then
+                rows = rows + 1
+                for _, child in ipairs(fr._children) do
+                    -- (A dropdown's list is its own child, not the row's.)
+                    assert.is_true(allowed[rawget(child, "uiKind") or ""] or false,
+                        fr.uiKind .. " holds a " .. tostring(rawget(child, "uiKind") or child.kind))
+                end
+                if fr.uiKind ~= "filterrow" then
+                    for _, r in ipairs(fr._regions) do
+                        assert.are_not.equal("FontString", r.kind, fr.uiKind .. " holds a text: " .. tostring(r.text))
+                    end
+                end
+            end
+        end
+        assert.is_true(rows >= 12)
+        -- No other control is placed by a tab or a row of tabs.
+        local function isTabby(x) return type(x) == "table" and (rawget(x, "uiKind") == "tab" or rawget(x, "uiKind") == "tabrow"
+            or rawget(x, "uiKind") == "subtab" or rawget(x, "uiKind") == "subtabrow") end
+        local function check(obj)
+            for _, p in ipairs(rawget(obj, "points") or {}) do
+                for i = 1, #p do
+                    -- (A row's or a tab's own art and text hang on it.)
+                    if isTabby(p[i]) and not isTabby(obj) and rawget(obj, "parent") ~= p[i] then
+                        error("a " .. tostring(rawget(obj, "uiKind") or obj.kind) .. " hangs on a " .. p[i].uiKind
+                            .. ": " .. tostring(rawget(obj, "text")))
+                    end
+                end
+            end
+        end
+        for _, fr in ipairs(env.frames) do
+            check(fr)
+            for _, r in ipairs(fr._regions) do check(r) end
+        end
+    end)
+
+    it("gives each kind of control its own look", function()
+        local seen = {}
+        for _, fr in ipairs(env.frames) do
+            local kind = rawget(fr, "uiKind")
+            if kind == "tab" or kind == "subtab" or kind == "dropdown" then
+                seen[kind] = true
+                assert.are_not.equal("UIPanelButtonTemplate", rawget(fr, "_template"), kind .. " looks like a button")
+            end
+        end
+        assert.are.same({ tab = true, subtab = true, dropdown = true }, seen)
+    end)
+
+    it("labels every filter at its left, and puts a check box's label at its right", function()
+        for _, fr in ipairs(env.frames) do
+            if rawget(fr, "uiKind") == "filterrow" then
+                for i, item in ipairs(fr.items) do
+                    local kind = rawget(item, "uiKind")
+                    if kind == "dropdown" or kind == "edit" then
+                        local before = fr.items[i - 1]
+                        assert.are.equal("FontString", before and before.kind, "a filter without its label")
+                    elseif kind == "check" then
+                        assert.are.equal("RIGHT", item.label.points[1][3])
+                    end
+                end
+            end
+        end
+    end)
+
+    it("orders the rows: tabs, subtabs, filters, then the content", function()
+        local L = ns.LedgerWindow
+        L.view = "purchases"
+        L.Refresh()
+        local b = L.bars
+        assert.is_true(b.tabs.top < b.purchases.top and b.purchases.top < b.purchaseFilters.top)
+        L.view = "accuracy"
+        L.Refresh()
+        assert.is_true(b.tabs.top < b.accuracyFilters.top)
+        assert.are.equal(b.purchases.top, b.accuracyFilters.top)   -- no subtabs: right under the tabs
+        -- The main window: tabs, then the Deals view's settings or the Materials view's filter row.
+        assert.are.equal(24, ns.UI.tabBar.top)
+        assert.is_true(ns.UI.materialsBar.top > ns.UI.tabBar.top)
+        assert.are.equal("footer", ns.UI.footerBar.uiKind)
+        -- The Market: tabs, then its filter row.
+        assert.is_true(ns.Market.bars.tabs.top < ns.Market.bars.filters.top)
+    end)
+
+    it("fits every row in its window at the smallest width", function()
+        for _, fr in ipairs(env.frames) do
+            if rawget(fr, "used") and rawget(fr, "items") then
+                local w = windowOf(fr)
+                local min = rawget(w, "minWidth")
+                assert.is_number(min, "a row in a window without a smallest width")
+                assert.is_true(fr.used <= min - 20, string.format("%s needs %d px in a window of %d",
+                    fr.uiKind, fr.used, min))
+            end
+        end
+    end)
+
+    it("closes every window with Escape", function()
+        local names = {}
+        for _, n in ipairs(_G.UISpecialFrames) do names[n] = true end
+        for _, n in ipairs({ "SalvagerFrame", "SalvagerLedgerFrame", "SalvagerOddsFrame", "SalvagerMaterialsFrame",
+            "SalvagerMarketFrame", "SalvagerReportsFrame", "SalvagerLogFrame", "SalvagerLimitsFrame",
+            "SalvagerOptionsFrame" }) do
+            assert.is_true(names[n] or false, n)
+        end
     end)
 end)

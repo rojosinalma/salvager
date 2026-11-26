@@ -18,5 +18,6 @@ read_globals = {
     "TooltipDataProcessor", "UIParent", "UISpecialFrames", "ATTACHMENTS_MAX_RECEIVE",
     "BackdropTemplateMixin", "StaticPopup_Show", "ItemLocation", "Settings", "InterfaceOptions_AddCategory", "InterfaceOptionsFrame_OpenToCategory", "GetCursorPosition",
     "UnitName", "GetRealmName", "GetNormalizedRealmName", "InCombatLockdown", "GetScreenWidth", "GetScreenHeight",
+    "PanelTemplates_SelectTab", "PanelTemplates_DeselectTab", "PanelTemplates_TabResize",
     "date", "hooksecurefunc", "time", "tinsert", "wipe",
 }
