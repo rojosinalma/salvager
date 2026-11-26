@@ -19,7 +19,7 @@ reply must say so.
 ## Tables
 
 1. One value per cell. A number and its percentage, or a rate and a quantity, are two columns.
-2. A column is as wide as its widest content, title included. No fixed spare width, the button
+2. A column is as wide as its widest content, title included (with its sort arrow). No fixed spare width, the button
    column included. A column of live values (a countdown) is as wide as its widest possible value
    (`sample = "00:00:00"`), so it does not shrink while it counts.
 3. A table with sections is one inset per section, or a heading row per section with its own
@@ -64,6 +64,8 @@ reply must say so.
 6. Nothing overlaps, at the smallest size a window allows. A control row that is full moves controls to the
    row of the view they belong to (Odds filters on its subtab row). A text that can grow either wraps and
    pushes what is under it down, or is one line cut at the next control.
+7. A window can be dragged partly off the screen, until 40 px of its title bar are left, so it can always be
+   dragged back. `/salv windows reset` brings every window back on the screen.
 
 ## Data
 

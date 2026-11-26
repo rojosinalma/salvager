@@ -63,6 +63,16 @@ end
 local function one() return 1 end
 local function none() return 0 end
 
+--- What one unit of a material is worth to the forecast (SDD 3, 96): its price × its sell price ratio, after the
+--- cut, less the deposits lost per unit sold; never below 0. nil without a price. (opts as Model.Value)
+function Model.UnitValue(id, priceOf, opts)
+    opts = opts or {}
+    local price = priceOf(id)
+    if not price then return nil end
+    local keep = 1 - (opts.cut or Model.DEFAULT_CUT)
+    return math.max(0, price * (opts.ratio or one)(id) * keep - (opts.deposit or none)(id))
+end
+
 --- Expected value of one disenchant.
 --- @param outcomes table  from Model.Outcomes
 --- @param priceOf function(id) -> copper each or nil (the material's value, SDD 3)

@@ -77,7 +77,7 @@ end
 local COLUMNS = {
     statement = { { "What", 260 }, { "Amount", 90, "RIGHT", help = { "Amount", "Gold, silver and copper; + came in, "
             .. "- went out. Green and red only for gold you really gained or lost; grey for values at today's prices." } } },
-    sessions = { { "Session start", 110 }, { "Length", 70, "RIGHT" },
+    sessions = { { "Session start", 110 }, { "Length", 70, "RIGHT", sample = "00 h 00 min" },
         { "Trading profit", 90, "RIGHT", help = { "Trading profit", "Sales after the cut, minus the cost of what you "
             .. "sold, the deposits lost and the cancel fees, in that session." } },
         { "Total", 90, "RIGHT", help = { "Total", "How much richer the session made you: the trading profit, the sales "
@@ -109,7 +109,8 @@ local COLUMNS = {
         { "Held", 44, "RIGHT", help = { "Held", "Units in your bags and your bank now." } },
         { "Listed", 44, "RIGHT", help = { "Listed", "Units on the auction house now, not sold yet (as of the last "
             .. "time the addon read your auctions)." } },
-        { "Value", 80, "RIGHT", help = { "Value", "Held and listed units at the price now, after the cut." } } },
+        { "Value", 80, "RIGHT", help = { "Value", "Held and listed units at what one unit is worth now: the price times "
+            .. "its sell price ratio, after the cut, less the deposits lost per unit sold (as in the statement's stock)." } } },
     items = { { "Item", 220 }, { "Items", 44, "RIGHT" }, { "Paid each", 70, "RIGHT" },
         { "Sold value each", 80, "RIGHT" }, { "Profit", 80, "RIGHT" }, { "Return", 50, "RIGHT" } },
 }
@@ -193,8 +194,8 @@ function Reports.StatementRows()
             .. "worth minus what they cost, at the end, minus the same at the start.",
             string.format("At the end: worth %s, cost %s. At the start: worth %s, cost %s.", ns.Money(sk.v1),
                 ns.Money(sk.c1), ns.Money(sk.v0), ns.Money(sk.c0)),
-            "Materials at their price now, after the cut; gear at its expected value. Grey: it rests on prices, not on "
-                .. "gold you have." }
+            "Materials at their price now times their sell price ratio, after the cut, less the deposits lost per unit "
+                .. "sold; gear at its expected value. Grey: it rests on prices, not on gold you have." }
         local label = "Stock change"
         if not sk.known then
             label = "Stock change, since " .. when(sk.since)
@@ -352,7 +353,6 @@ Reports.HeldAndListed = heldAndListed
 function Reports.MaterialRows()
     local from, _, to = Reports.From()
     local p = Ledger.Profits(ns.db.ledger, from, nil, to)
-    local keep = 1 - ns.Cut()
     local seen, list = {}, {}
     for _, m in ipairs(p.mats) do seen[m.id] = true list[#list + 1] = m end
     for _, mat in ipairs(ns.Data.MATERIALS) do
@@ -367,7 +367,7 @@ function Reports.MaterialRows()
     local total = { got = 0, sold = 0, net = 0, cost = 0, profit = 0, depositsLost = 0, held = 0, listed = 0, value = 0 }
     for _, m in ipairs(list) do
         local held, listed = heldAndListed(m.id)
-        local value = math.floor((ns.SellValue(m.id) or 0) * (held + listed) * keep)
+        local value = math.floor((ns.UnitValue(m.id) or 0) * (held + listed))
         for k, v in pairs({ got = m.got, sold = m.sold, net = m.net, cost = m.cost, profit = m.profit,
             depositsLost = m.depositsLost, held = held, listed = listed, value = value }) do total[k] = total[k] + v end
         rows[#rows + 1] = { itemID = m.id, cells = { ns.MaterialName(m.id) or tostring(m.id), tostring(m.got),

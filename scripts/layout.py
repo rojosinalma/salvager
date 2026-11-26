@@ -539,7 +539,11 @@ def problems(name, win, dump):
         sw, sh = float(screen["w"]), float(screen["h"])
         k = float(win.get("eff") or 1) / float(screen.get("eff") or 1)
         if wx * k < -1 or wb * k < -1 or (wx + ww) * k > sw + 1 or wy * k > sh + 1:
-            out.append(f"window outside the screen: {wx * k:.0f},{wb * k:.0f} to {(wx + ww) * k:.0f},{wy * k:.0f}"
+            # Allowed (SDD 98) while 40 px of the title bar stay on the screen; a problem past that.
+            left, right, top = wx * k, (wx + ww) * k, wy * k
+            bad = right < 40 - 1 or left > sw - 40 + 1 or top > sh + 1 or top - 24 < -1
+            out.append(f"window {'past its clamp' if bad else 'partly off the screen (allowed)'}: "
+                       f"{wx * k:.0f},{wb * k:.0f} to {(wx + ww) * k:.0f},{wy * k:.0f}"
                        f" on {sw:.0f} x {sh:.0f}")
     except (KeyError, ValueError, TypeError):
         pass

@@ -10,7 +10,7 @@
 local _, ns = ...
 ns = ns or {}
 
-local Util, Journal = ns.Util, ns.Journal
+local Util, Journal, Model = ns.Util, ns.Journal, ns.Model
 local Statement = {}
 ns.Statement = Statement
 
@@ -27,18 +27,18 @@ function Statement.Init(state)
     return state
 end
 
---- The stock now: unsold materials at `priceOf` (copper each, before the cut) after the cut, and gear not
+--- The stock now: unsold materials at what one unit is worth to the forecast (`Model.UnitValue`: price × sell
+--- price ratio, after the cut, less the deposits lost per unit sold; `opts` as Model.Value), and gear not
 --- disenchanted yet at its expected value. Without a price (or an expected value), at its cost: no gain, no loss.
 --- Units with no known cost count at no cost.
 --- @return table { v = value, c = cost, mv, mc (materials), gv, gc (gear) }
-function Statement.StockValue(ledger, priceOf, cut)
-    local keep = 1 - (cut or 0.05)
+function Statement.StockValue(ledger, priceOf, opts)
     local out = { mv = 0, mc = 0, gv = 0, gc = 0 }
     for id, s in pairs(ledger.stock or {}) do
-        local p = priceOf(id)
+        local each = Model.UnitValue(id, priceOf, opts)
         local cost = s.cost or 0
         out.mc = out.mc + cost
-        out.mv = out.mv + (p and math.floor(p * (s.qty or 0) * keep) or cost)
+        out.mv = out.mv + (each and math.floor(each * (s.qty or 0)) or cost)
     end
     for _, list in pairs(ledger.purchases or {}) do
         for _, p in ipairs(list) do

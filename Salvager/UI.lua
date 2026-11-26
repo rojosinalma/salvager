@@ -312,8 +312,24 @@ end
 --- Every column is as wide as its widest text (title or cell), and no wider. The columns with input
 --- boxes keep the width of their boxes. Where the client cannot measure text, the widths given are used
 --- and the first column takes the room the window has over its default width.
+--- A title as it shows: the one the list is ordered by has the arrow (so the column is measured with it).
+local SORT_ARROW = " |TInterface\\Buttons\\Arrow-Down-Up:10|t"
+local function shownTitle(view, i, title)
+    local sortKey = view.sortable and view.sortable[i]
+    if sortKey and sortKey == ns.db.settings.dealSort then return title .. SORT_ARROW end
+    return title
+end
+
 local function widths(view, data)
-    local need = data and W.FitColumns(view.measure or view.header, #data, function(r) return data[r].cells end)
+    local titles = {}
+    for i, title in ipairs(view.measure or view.header) do titles[i] = shownTitle(view, i, title) end
+    -- (A column of live values is as wide as its widest possible value: the Materials tab's Age.)
+    local samples
+    if view.help == "materials" then
+        samples = {}
+        for i, col in ipairs(ns.Materials.COLUMNS) do samples[i] = col.sample end
+    end
+    local need = data and W.FitColumns(titles, #data, function(r) return data[r].cells end, nil, samples)
     local w = {}
     if need then
         for i, col in ipairs(view.cols) do w[i] = (view.edit and view.edit[i]) and col[1] or need[i] end
@@ -518,12 +534,7 @@ function UI.Refresh()
     for i, h in ipairs(headers) do
         local col = view.cols[i] and colShown(view, i) and view.cols[i]
         if col then
-            -- The title the list is ordered by has a mark.
-            local sortKey = view.sortable and view.sortable[i]
-            local title = view.header[i] or ""
-            if sortKey and sortKey == ns.db.settings.dealSort then
-                title = title .. " |TInterface\\Buttons\\Arrow-Down-Up:10|t"   -- the order of the list, highest first
-            end
+            local title = shownTitle(view, i, view.header[i] or "")
             h:SetWidth(w[i]) h:SetJustifyH(col[2]) h:SetText(title) h:Show()
         else
             h:Hide()
@@ -662,6 +673,7 @@ local function build()
     f:SetSize(math.max(MIN_W, saved.w or WIDTH), math.max(MIN_H, saved.h or HEIGHT))
     f:SetFrameStrata("HIGH")
     f:SetClampedToScreen(true)
+    W.ClampToTitle(f)
     f:SetMovable(true)
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
@@ -671,12 +683,23 @@ local function build()
         anchorTopLeft()
         savePosition()
     end)
+    -- The default place: 200 px right of the center, less where the screen is too narrow for the window there.
+    local function defaultPlace()
+        local room = ((UIParent:GetWidth() or 0) - (f:GetWidth() or WIDTH)) / 2
+        f:SetPoint("CENTER", UIParent, "CENTER", math.max(0, math.min(200, math.floor(room))), 0)
+    end
     local pos = ns.db.window
     if pos and pos.point then
         f:SetPoint(pos.point, UIParent, pos.rel or pos.point, pos.x or 0, pos.y or 0)
     else
-        f:SetPoint("CENTER", UIParent, "CENTER", 200, 0)
+        defaultPlace()
     end
+    W.windows[#W.windows + 1] = { frame = f, reset = function()
+        local win = ns.db.window
+        win.point, win.rel, win.x, win.y = nil, nil, nil, nil
+        f:ClearAllPoints()
+        defaultPlace()
+    end }
     local title = f.TitleText
     if type(title) ~= "table" then
         title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -1252,7 +1275,10 @@ local function build()
         savePosition()
         UI.Refresh()
     end)
-    f:SetScript("OnSizeChanged", function() UI.Refresh() end)
+    f:SetScript("OnSizeChanged", function()
+        W.ClampToTitle(f)
+        UI.Refresh()
+    end)
 
     if VIEWS[ns.db.window.view] then UI.view = ns.db.window.view end
     f:SetScript("OnShow", function()

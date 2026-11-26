@@ -33,8 +33,9 @@ Materials.HELP = {
         .. "The material's tooltip has the number of sales and the deposits lost per unit sold." },
 }
 
+-- (Age grows while it shows: its column is as wide as "00m" with the widest digit, so it does not change width.)
 Materials.COLUMNS = {
-    { "Material", 160 }, { "Price", 80, "RIGHT" }, { "Age", 36, "CENTER" }, { "Bags", 40, "CENTER" },
+    { "Material", 160 }, { "Price", 80, "RIGHT" }, { "Age", 36, "CENTER", sample = "00m" }, { "Bags", 40, "CENTER" },
     { "Listed", 46, "CENTER" }, { "Sold", 46, "CENTER" }, { "Avg cost", 85, "RIGHT" }, { "Break-even", 85, "RIGHT" },
     { "Profit", 85, "RIGHT" }, { "Sell price ratio", 90, "RIGHT" },
 }

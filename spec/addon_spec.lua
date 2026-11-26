@@ -725,6 +725,81 @@ describe("Salvager window and options", function()
         for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
     end)
 
+    it("counts the sort arrow in the width of the main window's sorted column, and keeps a live column's width", function()
+        local real = ns.Widgets.TextWidth
+        ns.Widgets.TextWidth = shownWidth
+        local ARROW = " |TInterface\\Buttons\\Arrow-Down-Up:10|t"
+        local function want(view, i, title)
+            local w = shownWidth(title)
+            for _, r in ipairs(ns.UI.Rows(view)) do w = math.max(w, shownWidth(r.cells[i])) end
+            return w + 10
+        end
+        local widths = {}
+        for i = 1, 8 do ns.UI.headers[i].SetWidth = function(_, w) widths[i] = w end end
+        ns.UI.view = "deals"
+        ns.db.settings.dealSort = "return"
+        ns.UI.Refresh()
+        assert.are.equal(want("deals", 7, "Return" .. ARROW), widths[7])          -- the title with its arrow
+        assert.are.equal(want("deals", 6, "Expected profit"), widths[6])
+        ns.db.settings.dealSort = "profit"
+        ns.UI.Refresh()
+        assert.are.equal(want("deals", 6, "Expected profit" .. ARROW), widths[6])
+        assert.are.equal(want("deals", 7, "Return"), widths[7])
+        -- The Materials tab's Age grows while it shows: its width stays that of "88m" (8 the widest digit here).
+        ns.Widgets.TextWidth = function(text)
+            return text and (shownWidth(text) + select(2, text:gsub("8", "")) * 4) or 0
+        end
+        ns.UI.view = "materials"
+        ns.db.prices[11083] = { p = 433, t = time() - 10 }
+        ns.UI.Refresh()
+        local now = widths[3]
+        ns.db.prices[11083] = { p = 433, t = time() - 58 * 60 }
+        ns.UI.Refresh()
+        assert.are.equal(now, widths[3])
+        assert.are.equal(3 * 6 + 2 * 4 + 10, widths[3])
+        for i = 1, 8 do ns.UI.headers[i].SetWidth = nil end
+        ns.Widgets.TextWidth = real
+        ns.UI.view = "deals"
+    end)
+
+    it("lets a window go off the screen until 40 px of its title bar are left, and brings them all back", function()
+        ns.UI.Show()
+        ns.LedgerWindow.Toggle()
+        for _, f in ipairs({ _G.SalvagerFrame, _G.SalvagerLedgerFrame }) do
+            local insets
+            f.SetClampRectInsets = function(_, ...) insets = { ... } end
+            f.GetWidth = function() return 860 end
+            f.GetHeight = function() return 500 end
+            f:GetScript("OnSizeChanged")(f)
+            assert.are.same({ 820, -820, 0, 476 }, insets)                    -- 40 px on the left or right, the bar
+            f.GetWidth = function() return 900 end                            -- resized: computed again
+            f:GetScript("OnSizeChanged")(f)
+            assert.are.same({ 860, -860, 0, 476 }, insets)
+            f.GetWidth, f.GetHeight, f.SetClampRectInsets = nil, nil, nil
+        end
+        local ledger = ns.db.windows.ledger
+        ledger.x, ledger.y = -700, 300                                         -- dragged mostly off the screen
+        ns.db.windows.reports = ns.db.windows.reports or {}
+        ns.db.windows.reports.x, ns.db.windows.reports.y = 3000, 10
+        ns.db.windows.ahButton = { x = -40, y = 2 }
+        ns.db.window.point, ns.db.window.x, ns.db.window.y = "TOPLEFT", -600, 900
+        env.chat = {}
+        SlashCmdList.SALVAGER("windows reset")
+        assert.are.same({ nil, nil }, { ledger.x, ledger.y })
+        assert.is_nil(ns.db.windows.reports.x)
+        assert.is_nil(ns.db.window.point)
+        assert.are.same({ x = -40, y = 2 }, ns.db.windows.ahButton)          -- the auction house button stays
+        local p = _G.SalvagerLedgerFrame.points
+        assert.are.same({ "CENTER", _G.UIParent, "CENTER", 0, 0 }, p[#p])
+        p = _G.SalvagerFrame.points
+        assert.are.equal("CENTER", p[#p][1])
+        assert.is_truthy(env.chat[#env.chat]:find("back on the screen", 1, true))
+        local help = {}
+        SlashCmdList.SALVAGER("help")
+        for _, m in ipairs(env.chat) do help[#help + 1] = m end
+        assert.is_truthy(table.concat(help, "\n"):find("/salv windows reset", 1, true))
+    end)
+
     it("reads gold, silver and copper boxes", function()
         local got
         local m = ns.Widgets.Money(_G.UIParent, function(c) got = c end)
@@ -2669,7 +2744,10 @@ describe("Sessions and the statement in a simulated client", function()
         local st = ns.Gold.Statement(s.start)
         assert.are.same({ 0, 0 }, { st.sales, st.trading })
         assert.are.same({ 1, 570, 167, 403 }, { st.away.n, st.away.net, st.away.cost, st.away.profit })
-        assert.are.equal(-(411 - 167), st.stock.change)               -- the dust left the stock
+        -- The dust left the stock: at the start worth what the forecast gave one unit then (under 433 x 0.95 = 411:
+        -- its deposits lost per unit sold come off, SDD 97b).
+        assert.is_true(st.stock.v0 < 411)
+        assert.are.same({ 0, -(st.stock.v0 - 167) }, { st.stock.v1, st.stock.change })
         assert.are.equal(st.away.profit + st.stock.change, st.total)
         assert.are.equal(0, st.check.missing)
         ns.Reports.Show()
@@ -2691,5 +2769,24 @@ describe("Sessions and the statement in a simulated client", function()
             ns.Reports.Refresh()
         end
         for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
+    end)
+
+    it("values stock the same in the statement and in Reports, Materials: as the forecast values a unit", function()
+        ns.db.prices[DUST] = { p = 433, t = time() }
+        ns.db.ledger.stock[DUST] = { qty = 4, cost = 600 }
+        env.bags[DUST] = 4
+        ns.ForecastChanged()
+        local each = ns.UnitValue(DUST)
+        local opts = ns.ValueOptions()
+        -- price x sell price ratio x (1 - cut) - deposits lost per unit sold, not price x (1 - cut)
+        assert.are.equal(433 * opts.ratio(DUST) * 0.95 - opts.deposit(DUST), each)
+        assert.is_true(opts.deposit(DUST) > 0)
+        assert.are.equal(math.floor(each * 4), ns.Gold.Stock().mv)
+        ns.Reports.view, ns.Reports.range = "materials", "all"
+        local value
+        for _, r in ipairs(ns.Reports.MaterialRows()) do
+            if r.itemID == DUST then value = r.cells[10] end
+        end
+        assert.are.equal(ns.Money(math.floor(each * 4)), value)
     end)
 end)

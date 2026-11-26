@@ -62,6 +62,9 @@ when you can use it, minus the 5% auction house cut. The buy limit is that value
 
 `/salv` opens the window. `/salv help` lists the rest.
 
+Windows can be dragged partly off the screen, until 40 px of their title bar are left. `/salv windows reset`
+brings every Salvager window back on the screen, at its default place.
+
 ## Development
 
 `make check` runs the tests and lint in Docker (Lua 5.1, busted, luacheck). The other targets read local

@@ -460,6 +460,34 @@ function Widgets.TitleVersion(f, title, minW)
     return v
 end
 
+-- A window can be dragged partly off the screen, until only this much of its title bar is left on it (SDD 98).
+Widgets.ON_SCREEN, Widgets.TITLE_H = 40, 24
+
+--- The clamp rect of a window: the client keeps it on the screen. Its left edge is ON_SCREEN px left of the
+--- window's right edge and its right edge ON_SCREEN px right of the window's left edge (the rect is turned
+--- inside out), so the window goes off the left or the right side until ON_SCREEN px are left. The top stays on
+--- the screen, and the window goes down until only its title bar is left. Call it again when the size changes.
+function Widgets.ClampToTitle(f)
+    local w, h = tonumber(f:GetWidth()) or 0, tonumber(f:GetHeight()) or 0
+    local side = math.max(0, math.floor(w - Widgets.ON_SCREEN))
+    f:SetClampRectInsets(side, -side, 0, math.max(0, math.floor(h - Widgets.TITLE_H)))
+end
+
+-- Every movable window, for `/salv windows reset`: { frame, reset = function() puts it at its default place }.
+Widgets.windows = {}
+
+--- Brings every Salvager window back to its default place, fully on the screen (built or not).
+function Widgets.ResetWindows()
+    for _, w in ipairs(Widgets.windows) do w.reset() end
+    -- Windows not built yet open at their default place too. (The "Salvager" button on the auction house is
+    -- not a window: it keeps its place.)
+    for key, saved in pairs(ns.db.windows) do
+        if type(saved) == "table" and key ~= "ahButton" then saved.x, saved.y, saved.dx, saved.dy = nil, nil, nil, nil end
+    end
+    local main = ns.db.window   -- (the main window's place)
+    if type(main) == "table" then main.point, main.rel, main.x, main.y = nil, nil, nil, nil end
+end
+
 --- A window of its own: movable, resizable from the bottom right corner (unless `fixed`), closed with Escape.
 --- Its place and size are kept in SalvagerDB.windows[key]. f.onResize runs when the size changes.
 function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
@@ -474,6 +502,7 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
     f:SetFrameStrata("HIGH")
     f:SetToplevel(true)
     f:SetClampedToScreen(true)
+    Widgets.ClampToTitle(f)
     f:SetMovable(true)
     f:EnableMouse(true)
     if saved.x and saved.y then
@@ -481,6 +510,11 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
     else
         f:SetPoint("CENTER", UIParent, "CENTER", saved.dx or 0, saved.dy or 0)
     end
+    Widgets.windows[#Widgets.windows + 1] = { frame = f, reset = function()
+        saved.x, saved.y, saved.dx, saved.dy = nil, nil, nil, nil
+        f:ClearAllPoints()
+        f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    end }
     -- Pinned by its top left corner, so sizing moves only the bottom right one.
     local function pin()
         local left, top = f:GetLeft(), f:GetTop()
@@ -522,6 +556,8 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
     end
     if fixed then
         f:SetSize(w, h)
+        Widgets.ClampToTitle(f)
+        f:SetScript("OnSizeChanged", function() Widgets.ClampToTitle(f) end)
         f:Hide()
         return f
     end
@@ -564,7 +600,10 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
         pin()
         if f.onResize then f.onResize() end
     end)
-    f:SetScript("OnSizeChanged", function() if f.onResize then f.onResize() end end)
+    f:SetScript("OnSizeChanged", function()
+        Widgets.ClampToTitle(f)
+        if f.onResize then f.onResize() end
+    end)
     f:Hide()
     return f
 end

@@ -101,7 +101,7 @@ end
 local function sessions() return ns.db.sessions end
 
 --- The stock now: its value and cost (Statement.StockValue).
-function Gold.Stock() return Statement.StockValue(ns.db.ledger, ns.PriceOf, ns.Cut()) end
+function Gold.Stock() return Statement.StockValue(ns.db.ledger, ns.PriceOf, ns.ValueOptions()) end
 
 local sessionStart
 local reloading = false   -- the game said this load is a /reload (PLAYER_ENTERING_WORLD)

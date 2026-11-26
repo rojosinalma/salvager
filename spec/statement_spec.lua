@@ -4,7 +4,7 @@ describe("Statement", function()
     local ns, L, J, S, Ledger, Journal, Statement
     local DUST = 11083
     local function priceOf(id) return id == DUST and 433 or nil end
-    local function stock() return Statement.StockValue(L, priceOf, 0.05) end
+    local function stock() return Statement.StockValue(L, priceOf, { cut = 0.05 }) end
     local function compute(from, to, now)
         return Statement.Compute({ ledger = L, journal = J, char = "A", from = from, to = to, now = now or to,
             snaps = S.snaps, stockNow = stock() })
@@ -74,6 +74,17 @@ describe("Statement", function()
         assert.are.same({ 4113, 3000, 800, 500, 4913, 3500 }, { v.mv, v.mc, v.gv, v.gc, v.v, v.c })
         Ledger.SetStock(L, 99999, 2, 50)                                  -- no price: at its cost
         assert.are.same({ 4213, 3100 }, { stock().mv, stock().mc })
+    end)
+
+    it("values a unit of stock as the forecast does: price x sell price ratio, after the cut, less the deposits", function()
+        Ledger.SetStock(L, DUST, 10, 300)
+        local opts = { cut = 0.05, ratio = function() return 0.9 end, deposit = function() return 7 end }
+        -- 433 x 0.9 x 0.95 - 7 = 363.2 each: 3632 for ten (was 433 x 0.95 = 411.35 each, 4113).
+        assert.are.equal(363.2, math.floor(ns.Model.UnitValue(DUST, priceOf, opts) * 10 + 0.5) / 10)
+        assert.are.equal(3632, Statement.StockValue(L, priceOf, opts).mv)
+        assert.are.equal(4113, stock().mv)                                 -- no ratio, no deposit: the cut only
+        assert.are.equal(0, ns.Model.UnitValue(DUST, priceOf, { deposit = function() return 1000 end }))  -- never below 0
+        assert.is_nil(ns.Model.UnitValue(99999, priceOf, opts))
     end)
 
     it("counts the stock change from its first record when the start is not known", function()

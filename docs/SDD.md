@@ -25,7 +25,8 @@ flipping is out of scope for now.
    (`SalvagerDB.posted[].val`, copied to the sale as `val`); older sales take the price history (57) at the
    post of that material at that price each made before the sale, else at the sale. Used in the Expected value of
    gear (`Model.Value`, `ns.ValueOptions`), so in buy limits (`Model.MaxBuy`), the Deals list, Lose %, Odds, the
-   Market's disenchant value, the `planned` value of a disenchant and the value of what is held and listed (Reports, Materials view).
+   Market's disenchant value, the `planned` value of a disenchant and the value of what is held and listed (Reports, Materials view; the
+   statement's stock, 97b).
    Not in the Disenchant value (`vals`, `value` of a disenchant: the market at the disenchant), nor in the cost
    shares (4). Measured 2026-11-26 on the user's data (96 sales): 0.998 for all materials together (1 copper under
    the lowest listing is about the average of the cheapest 20 when posting), 0.963 to 1.000 per material.
@@ -258,8 +259,12 @@ flipping is out of scope for now.
     click frees the row at once; a late "purchase completed" for it is still booked.
 63. **Columns fit their content** (`Widgets.FitColumns`, `Widgets.TextWidth`): in every table (`Widgets.List`,
     `Widgets.CardList`, the main window's list) a column is as wide as its widest title or cell over all rows,
-    plus 10 px; spare room stays at the right. The widths written in the code are the fallback where text
-    cannot be measured, and the width of columns with input boxes. The Log is left out.
+    plus 10 px; spare room stays at the right. The title is measured as it shows: with the sort arrow on the
+    sorted column (0.3.124: the main window's Deals measured "Return" without its arrow, which then ran into "Loss
+    chance"). A column of live values has a `sample`, its widest possible value with every digit the widest one, so
+    it keeps its width while the value changes: the Sales tables' Time ("00:00:00"), the Materials list's Age ("00m",
+    also in the main window's Materials tab), Reports' Sessions Length ("00 h 00 min"). The widths written in the code
+    are the fallback where text cannot be measured, and the width of columns with input boxes. The Log is left out.
 64. **Sales view:** two subtabs. "Open and sold" has two tables: Open auctions (only what is still for sale)
     and Sold (sales whose money is not collected yet, with a countdown). "History" lists the sales whose mail
     was taken. The game keeps a sold auction in its own list until the money is mailed; the addon shows it
@@ -498,7 +503,8 @@ flipping is out of scope for now.
     bounds are set first, then the width. 0.3.110 to 0.3.113 set the width first, while the bounds made at
     build still held it at 860; a client that keeps a frame inside its bounds on `SetWidth` leaves it there,
     and the last columns of By band (then Profit difference, Actual profit) do not fit and are left out. The
-    stand-in did not model the bounds. Not yet measured in the client: the layout dump (94) shows it.
+    stand-in did not model the bounds. Not yet measured in the client: the layout dump (94) shows it. 0.3.124: each width
+    change also makes the window's clamp rect again (98), so a wider Ledger still keeps 40 px on the screen.
 92. **The version in the title bar** (0.3.110, the user): every window made by `Widgets.Window`, and the main
     window, shows `v<version>` (`ns.VERSION`, from the TOC through `C_AddOns.GetAddOnMetadata`) at the left
     end of its title bar (`f.TitleBg`), small and dim (`GameFontDisableSmall`). Where it would come within
@@ -547,8 +553,8 @@ flipping is out of scope for now.
     to `.agents/tmp/layout/` (mode 0600), draws each window that was on show as `<window>.svg` and `.png`
     (`rsvg-convert` with DejaVu in Docker, image `salvager-layout` from `scripts/layout/Dockerfile`; texts at the
     client's measured width, WoW color codes, coins as colored dots, other inline textures as squares) and prints per
-    window: texts cut, texts wider than their box or cell, regions outside the window, the window outside the screen,
-    controls and texts that overlap (a text button counts by its frame, a button without text by its art outside the
+    window: texts cut, texts wider than their box or cell, regions outside the window, the window partly off the
+    screen (allowed, 98) or past its clamp, controls and texts that overlap (a text button counts by its frame, a button without text by its art outside the
     highlight layer), lists narrower than their columns need. `--file <path>` draws a local copy. It is the way to
     see a window: /reload, `make layout`, read the PNG, instead of asking the user for a screenshot.
 95. **Column chooser** (0.3.117, the user): every table with column titles (`Widgets.List`, the Odds cards of
@@ -591,7 +597,9 @@ flipping is out of scope for now.
        Another character's login closes it as well. At most 200 closed sessions.
     - b. Stock snapshots (`sessions.snaps`, at most 1000): `{ t, v, c }` at each session start and at each
        `PLAYER_LOGOUT`. Stock value (`Statement.StockValue`): every unit in the ledger's stock (bags, bank, listed) at
-       the material price now (`ns.PriceOf`, before the cut) × (1 − cut); gear bought and not disenchanted yet at its
+       what one unit is worth to the forecast (0.3.124, `Model.UnitValue`, `ns.UnitValue`: price × sell price ratio ×
+       (1 − cut) − deposits lost per unit sold, never below 0; 3, 96), as the Reports' Materials view values what is held
+       and listed, so every report agrees (0.3.123 counted price × (1 − cut)); gear bought and not disenchanted yet at its
        expected value at purchase (`ev`). Without a price or an expected value, at its cost (no gain, no loss). Cost:
        the stock's known cost plus what the gear cost; units with no recorded cost count at no cost.
     - c. A sale made while you were away (`away = true` on the sale record): a sale first known from its mail when
@@ -625,6 +633,17 @@ flipping is out of scope for now.
     - h. Limits: the ledger is account-wide and the gold journal per character, so another character's sales show
        as Not explained; a sold auction's mail delay is a guess; Clear history removes the records older statements
        are built from (the closed sessions keep their Trading profit and Total once shown).
+98. **Windows can go partly off the screen** (0.3.124, the user, 2026-11-26), to get them out of the way. Every
+    movable window (`Widgets.Window` and the main window) stays clamped to the screen, but its clamp rect
+    (`Widgets.ClampToTitle`, `SetClampRectInsets`) is turned inside out: its left edge 40 px left of the window's
+    right edge, its right edge 40 px right of the window's left edge (`Widgets.ON_SCREEN`), its top the window's top,
+    its bottom 24 px under it (`Widgets.TITLE_H`). So a window goes off the left or the right side until 40 px of its
+    title bar are left, never above the top, and down until only its title bar is left. Made again on every size
+    change (`OnSizeChanged`, the width fit of 91 included). Places are kept as before. `/salv windows reset` puts
+    every window at its default place (`Widgets.ResetWindows`: the center, the main window 200 px right of it where
+    the screen has room), built or not, and says so in the chat; the "Salvager" button on the auction house is not
+    a window and keeps its place. Not yet seen in the client: the client clamping an inside-out rect edge by edge is
+    assumed (the frame API documents the insets, not this case).
 
 ## Data
 
