@@ -2,7 +2,7 @@
 
 ## Scope
 
-Personal-use WoW Forever addon (interface 16001). Buying and selling at the auction house only; vendor
+Public WoW Forever addon (interface 16001), on CurseForge under the MIT license (89). Buying and selling at the auction house only; vendor
 flipping is out of scope for now.
 
 ## Decisions
@@ -411,6 +411,12 @@ flipping is out of scope for now.
     whole ledger is copied into `SalvagerBackup`, a saved variable of its own (the game writes it into the same
     file; an addon cannot write other files), last 3 kept. Restore (`/salv restore`, it asks) puts the last
     copy back and keeps what it replaces as a backup, so it can be undone too.
+89. **Published on CurseForge** (2026-11-26, the user): MIT license (`LICENSE`, also in the zip). `make release`
+    (`scripts/release.py`, Python standard library only) zips the `Salvager` folder, uploads it through the
+    CurseForge upload API for the game version named after the TOC's interface (16001 = 1.60.1, Forever),
+    and tags `v<version>`; the changelog is the commit subjects since the last tag. Each upload is a new
+    version: it refuses a dirty tree or a version already tagged. Local settings (install host, AddOns
+    folder, CurseForge token and project) live in `.env`, never in the repo.
 ## Data
 
 `SalvagerBackup` (account-wide): `list` of ledger copies (88). `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

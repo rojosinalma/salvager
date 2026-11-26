@@ -8,7 +8,10 @@ A WoW Forever addon for disenchant trading. It does three things:
 
 ## Install
 
-Copy the `Salvager` folder into `World of Warcraft/_forever_/Interface/AddOns/`, then `/reload`.
+With the CurseForge app: pick the WoW Forever game version and search for Salvager.
+
+By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_forever_/Interface/AddOns/`, then
+`/reload`.
 
 ## Use
 
@@ -51,5 +54,15 @@ when you can use it, minus the 5% auction house cut. The buy limit is that value
 
 ## Development
 
-`make check` runs the tests and lint in Docker (Lua 5.1, busted, luacheck). `make install` copies the
-addon to the gaming PC.
+`make check` runs the tests and lint in Docker (Lua 5.1, busted, luacheck). The other targets read local
+settings from `.env` (copy `.env.example`):
+
+1. `make install` copies the addon to a Windows PC over SSH (`INSTALL_HOST`, `ADDONS_DIR`).
+2. `make package` builds `dist/Salvager-<version>.zip`.
+3. `make release` uploads that zip to CurseForge as the TOC's version (`CURSEFORGE_TOKEN`,
+   `CURSEFORGE_PROJECT_ID`, `RELEASE_TYPE`), with the commit subjects since the last release as the
+   changelog, and tags `v<version>`. The working tree must be committed.
+
+## License
+
+MIT, see `LICENSE`.
