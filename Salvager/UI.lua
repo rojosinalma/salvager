@@ -102,8 +102,7 @@ local function dealRows()
         else
             local open = UI.expanded[g.name]
             local head = dealCells(first, (first.link or g.name) .. " |cffffd100x" .. #g.deals .. "|r")
-            head[4] = "from " .. head[4]
-            head[6] = "|cff40ff40up to " .. ns.Money(g.best) .. "|r"
+            -- The row's numbers are those of its cheapest auction: the one its Buy button buys.
             out[#out + 1] = { cells = head, link = first.link, itemID = first.itemID, group = g, open = open }
             if open then
                 for _, d in ipairs(g.deals) do
