@@ -319,6 +319,8 @@ flipping is out of scope for now.
     for that auction in the last 30 s (hooked, so other windows count); else your auctions are read again.
     The false records of 0.3.79–0.3.83 are removed once. (b) `GetRealmName` gives nothing on this client:
     the character is its name alone, after a 3 s wait; a change of gold never waits for it.
+76. **The Arcane Salvager camp: 15 minutes, then about 1 hour of cooldown** (the user, 2026-11-26). So it limits
+    the disenchants with the bonus to one batch per hour or so. Bought gear waits in the bags for the next camp.
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),
