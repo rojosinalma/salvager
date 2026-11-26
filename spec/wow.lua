@@ -20,7 +20,8 @@ end
 
 --- A frame/region whose unknown methods do nothing. Scripts and state are kept.
 local function widget(kind)
-    local w = { kind = kind, scripts = {}, shown = true, events = {}, text = "", checked = false }
+    local w = { kind = kind, scripts = {}, shown = true, events = {}, text = "", checked = false,
+        _children = {}, _regions = {} }
     local methods = {
         SetScript = function(self, name, fn) self.scripts[name] = fn end,
         GetScript = function(self, name) return self.scripts[name] end,
@@ -56,8 +57,26 @@ local function widget(kind)
         end,
         ClearAllPoints = function(self) rawset(self, "points", nil) end,
         GetParent = function(self) return self.parent end,
-        CreateFontString = function(self) local fs = widget("FontString") fs.parent = self return fs end,
-        CreateTexture = function(self) local t = widget("Texture") t.parent = self return t end,
+        CreateFontString = function(self)
+            local fs = widget("FontString") fs.parent = self
+            table.insert(self._regions, fs)
+            return fs
+        end,
+        CreateTexture = function(self)
+            local t = widget("Texture") t.parent = self
+            table.insert(self._regions, t)
+            return t
+        end,
+        -- The tree, as the client walks it: child frames, and the regions (texts, textures) of a frame.
+        GetChildren = function(self) return unpack(self._children) end,
+        GetRegions = function(self) return unpack(self._regions) end,
+        GetObjectType = function(self) return self.kind end,
+        GetName = function(self) return rawget(self, "_name") end,
+        IsVisible = function(self)
+            local p = rawget(self, "parent")
+            return self.shown and (type(p) ~= "table" or p == _G.UIParent or p:IsVisible())
+        end,
+        GetRect = function(self) return 0, 0, self:GetWidth(), self:GetHeight() end,
         Click = function(self, button) if self.scripts.OnClick then self.scripts.OnClick(self, button) end end,
         CreateAnimationGroup = function() return widget("AnimationGroup") end,
         CreateAnimation = function() return widget("Animation") end,
@@ -115,8 +134,9 @@ function M.install()
             f.TitleBg.parent, f.TitleText.parent = f, f
         end
         f.parent = parent
+        if type(parent) == "table" and rawget(parent, "_children") then table.insert(parent._children, f) end
         table.insert(env.frames, f)
-        if name then _G[name] = f end
+        if name then _G[name] = f f._name = name end
         return f
     end
     _G.C_Timer = { After = function(s, fn) table.insert(env.timers, { at = env.now + s, fn = fn }) end }

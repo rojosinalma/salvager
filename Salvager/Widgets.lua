@@ -536,15 +536,17 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
         if vertical and f.SetMaxResize then f:SetMaxResize(maxW, maxH) end
     end
     -- A window whose width fits its content: the content sets it (and the player still sizes the height).
+    -- The bounds first: the client keeps a frame inside its resize bounds, SetWidth included (SDD 91).
     function f.FitWidth(width)
-        f:SetWidth(width)
-        if not vertical then return end
-        if f.SetResizeBounds then
-            f:SetResizeBounds(width, minH, width, maxH)
-        elseif f.SetMaxResize then
-            f:SetMinResize(width, minH)
-            f:SetMaxResize(width, maxH)
+        if vertical then
+            if f.SetResizeBounds then
+                f:SetResizeBounds(width, minH, width, maxH)
+            elseif f.SetMaxResize then
+                f:SetMinResize(width, minH)
+                f:SetMaxResize(width, maxH)
+            end
         end
+        f:SetWidth(width)
     end
     local grip = CreateFrame("Button", nil, f)
     grip:SetSize(16, 16)

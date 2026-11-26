@@ -440,7 +440,11 @@ flipping is out of scope for now.
     and squeezed the first column ("Uncom..."). It now has 12, and `SetColumns` refuses more than it has (so
     does `Widgets.CardList`) instead of cutting them. `list.neededWidth` counts the first column at its full
     width even where the list cut it. The Ledger window is as wide as the tables on show need, at least 860
-    (`f.FitWidth` of `Widgets.Window`: width and resize bounds); its height stays the player's.
+    (`f.FitWidth` of `Widgets.Window`: width and resize bounds); its height stays the player's. 0.3.114: the
+    bounds are set first, then the width. 0.3.110 to 0.3.113 set the width first, while the bounds made at
+    build still held it at 860; a client that keeps a frame inside its bounds on `SetWidth` leaves it there,
+    and the last columns of By band (Profit difference, Actual profit) do not fit and are left out. The
+    stand-in did not model the bounds. Not yet measured in the client: the layout dump (94) shows it.
 92. **The version in the title bar** (0.3.110, the user): every window made by `Widgets.Window`, and the main
     window, shows `v<version>` (`ns.VERSION`, from the TOC through `C_AddOns.GetAddOnMetadata`) at the left
     end of its title bar (`f.TitleBg`), small and dim (`GameFontDisableSmall`). Where it would come within
@@ -462,6 +466,16 @@ flipping is out of scope for now.
     while the button is off; the mouse on it shows the item's tooltip. It sits between the button's top and the
     list's bottom (37 to 51 px above the window's bottom, over the footer's first line), so the list keeps its
     place.
+94. **Layout dump for the agent** (0.3.114): on `PLAYER_LOGOUT` (logout and /reload; the game writes the saved
+    variables right after) `Layout.lua` walks every Salvager window that exists into `SalvagerDB.layout`, replaced
+    each time: `{ version, time, entries, size, windows = { [name] = { shown, w, h, x, y, view, regions, lists } } }`.
+    A region is one line: path key (parent key + the field name, the frame name, or `c<i>` / `r<i>`), type,
+    flags (S shown, V visible, T text cut), left,bottom,width,height (0.1 px), text (80 characters). Each
+    `Widgets.List` has its own record (columns as set, cells per row, each title: text, shown, width; the first
+    row's cells) and its rows are not walked. Hidden frames are not opened; depth 8, 2000 regions, windows on
+    show first. Past 300 KB the regions go, from the last window. Each window in `pcall`: a failure is
+    `{ error = msg }`. No chat output, no option. About 15-100 KB for a session with two or three windows open.
+    Read it with SSH from the saved variables after a /reload, instead of asking the user for a screenshot.
 
 ## Data
 

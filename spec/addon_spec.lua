@@ -305,7 +305,10 @@ describe("Salvager in a simulated client", function()
         local frame = _G.SalvagerLedgerFrame
         local frameW = 860
         frame.GetWidth = function() return frameW end
-        frame.SetWidth = function(_, w) frameW = w end
+        -- The client keeps a resizable frame inside its resize bounds, SetWidth included.
+        local minW, maxW = 860, 860
+        frame.SetResizeBounds = function(_, lo, _, hi) minW, maxW = lo, hi or math.huge end
+        frame.SetWidth = function(_, w) frameW = math.max(minW, math.min(maxW, w)) end
         local byBand = ns.LedgerWindow.salesParts[2]
         byBand.GetWidth = function() return frameW - 24 end   -- anchored 12 px in from each side
         byBand.GetHeight = function() return 300 end
@@ -333,8 +336,28 @@ describe("Salvager in a simulated client", function()
         local d = math.floor(total.sold + 0.5) - total.promised   -- Actual profit - Expected profit
         assert.are.equal((d > 0 and "|cff40ff40+" or d < 0 and "|cffff4040" or "|cff40ff40") .. ns.Money(d) .. "|r",
             cell:GetText())
+        -- At logout the layout of every window on show is written for the developer: the main window and the
+        -- Ledger with their regions, and the By band table as the client drew it.
+        _G.SalvagerFrame:Show()
+        wow.fire(ns, "PLAYER_LOGOUT")
+        local layout = _G.SalvagerDB.layout
+        assert.are.equal(ns.VERSION, layout.version)
+        local main, ledger = layout.windows.main, layout.windows.ledger
+        assert.is_true(main.shown and ledger.shown)
+        assert.are.equal("accuracy", ledger.view)
+        assert.is_true(#main.regions > 10 and #ledger.regions > 10)
+        assert.is_truthy(ledger.regions[1]:find("^ledger\tFrame\tSV"))
+        local bandList
+        for _, info in pairs(ledger.lists) do
+            if info.columns[11] == "Actual profit\t70" then bandList = info end
+        end
+        assert.is_table(bandList)
+        assert.are.equal(12, bandList.cells)
+        assert.are.equal("Profit difference\tS", bandList.headers[10]:match("^[^\t]*\t[^\t]*"))
+        assert.is_true(layout.entries <= 2000 and layout.size < 300 * 1024)
         ns.Widgets.TextWidth = realWidth
-        frame.GetWidth, frame.SetWidth = nil, nil
+        assert.is_true(frameW > 860)                          -- wider than its bounds at build
+        frame.GetWidth, frame.SetWidth, frame.SetResizeBounds = nil, nil, nil
         ns.db.windows.ledger = nil
         local short, lines = ns.LedgerWindow.Summary()
         for _, word in ipairs({ "Bought", "Disenchanted", "Sold", "Profit" }) do
