@@ -787,8 +787,10 @@ flipping is out of scope for now.
     for a game item in general and in "item level"; what a disenchant gives is "materials". Window titles are
     "Salvager <Name>", the name capitalized (UI.md Layout 10): Salvager Ledger, Reports, Materials, Market, Log, Odds,
     Options, Breakdown, Limits, Post, Stand, Gear Details. The log keeps "item <ID>" in its lines (the Log window
-    shows the name in its place). Expected profit and Return in the Gear list are grey with their sign, as UI.md
-    Tables 7 asks for forecasts (they were green and red).
+    shows the name in its place). Expected profit and Return in the Gear list: the one the list is sorted by
+    (it drives Buy Top and the order) is green when it gains, red when it loses; the other is grey (0.3.132, the
+    user: 0.3.129 made both grey). The same in the row's and Buy Top's tooltips. A click on the gear above Buy Top
+    opens its Gear Details, as a click on its row does.
 
 ## Data
 

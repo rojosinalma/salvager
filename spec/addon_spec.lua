@@ -3176,12 +3176,22 @@ describe("Salvager gear, Gear details and headings that open and close (0.3.129)
             "Loss chance = ", "Time to sell (its materials) = ", "Return per day = " }) do
             assert.is_truthy(fromTop:find(want, 1, true), want)
         end
-        -- The row's tooltip is the same, with the hint of its click at the end.
-        assert.are.equal(fromTop, (fromRow:gsub("\n[^\n]*$", "")))
+        -- The row's tooltip is the same; each ends with the hint of its click.
+        assert.are.equal((fromTop:gsub("\n[^\n]*$", "")), (fromRow:gsub("\n[^\n]*$", "")))
         assert.is_truthy(fromRow:find("Click: open or close the group", 1, true))
-        -- Expected profit and Return are forecasts: grey with their sign, never green or red (UI.md Tables 7).
-        assert.is_truthy(head.item.cells[6]:find("^|cff808080%+"))
-        assert.is_truthy(head.item.cells[7]:find("^|cff808080%+"))
+        assert.is_truthy(fromTop:find("Click: Gear Details", 1, true))
+        -- Expected profit and Return are forecasts with their sign; the one the list is sorted by drives the buy:
+        -- green when it gains, the other grey (UI.md Tables 7).
+        local byReturn = ns.db.settings.dealSort == "return"
+        assert.is_truthy(head.item.cells[6]:find(byReturn and "^|cff808080%+" or "^|cff40ff40%+"))
+        assert.is_truthy(head.item.cells[7]:find(byReturn and "^|cff40ff40%+" or "^|cff808080%+"))
+        -- A click on the gear above Buy Top opens its Gear Details.
+        local realOpen, opened = ns.GearWindow.Open, nil
+        ns.GearWindow.Open = function(deal) opened = deal end
+        ns.UI.topItem.scripts.OnClick(ns.UI.topItem)
+        ns.GearWindow.Open = realOpen
+        assert.are.equal(ns.UI.topItem.deal, opened)
+        assert.is_table(opened)
     end)
 
     it("opens a group heading with a click and keeps it open; a click on an auction opens its Gear details", function()

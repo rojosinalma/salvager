@@ -77,10 +77,22 @@ local function dealName(d)
     return (d.link and d.link:match("%[(.-)%]")) or (ns.GetItemInfo(d.itemID)) or ("gear " .. d.itemID)
 end
 
--- Expected profit and Return are forecasts: grey with their sign, never green or red (UI.md Tables 7).
-local GREY = "|cff808080"
-local function profitText(d) return GREY .. (d.profit >= 0 and "+" or "-") .. ns.Money(math.abs(d.profit)) .. "|r" end
-local function returnText(d) return string.format("%s%+d%%|r", GREY, math.floor(ns.Scanner.Return(d) * 100 + 0.5)) end
+-- Expected profit and Return are forecasts, with their sign. The one the Gear list is sorted by drives the buy
+-- (Buy Top, the order): it is green when it gains and red when it loses; the other one is grey (UI.md Tables 7).
+local GREY, GREEN, RED = "|cff808080", "|cff40ff40", "|cffff4040"
+local function driverColor(isDriver, gain)
+    if not isDriver then return GREY end
+    return gain and GREEN or RED
+end
+local function byReturn() return ns.db.settings.dealSort == "return" end
+local function profitText(d)
+    return driverColor(not byReturn(), d.profit >= 0) .. (d.profit >= 0 and "+" or "-") .. ns.Money(math.abs(d.profit))
+        .. "|r"
+end
+local function returnText(d)
+    local r = ns.Scanner.Return(d)
+    return string.format("%s%+d%%|r", driverColor(byReturn(), r >= 0), math.floor(r * 100 + 0.5))
+end
 UI.ProfitText, UI.ReturnText = profitText, returnText
 
 local function dealCells(d, label)
@@ -418,8 +430,7 @@ local function buyTopTooltip(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
     GameTooltip:SetText("Buy Top", 1, 1, 1)
     if d then
-        local byReturn = ns.db.settings.dealSort == "return"
-        GameTooltip:AddLine("Buys the auction with the highest " .. (byReturn and "Return" or "Expected profit")
+        GameTooltip:AddLine("Buys the auction with the highest " .. (byReturn() and "Return" or "Expected profit")
             .. " in the Gear tab (the sort), from any row. Each click buys the next best one.", 1, 0.82, 0, true)
         if skipped then
             GameTooltip:AddLine(string.format("The best one, %s (%s), is skipped: not enough gold.", dealName(skipped),
@@ -755,13 +766,18 @@ local function build()
     topItem.icon:SetSize(14, 14)
     topItem.icon:SetPoint("RIGHT", topItem.text, "LEFT", -3, 0)
     topItem:SetWidth(1)   -- set from the text in updateBuyTop (anchoring it to its own icon is a loop the client refuses)
-    -- Its hover: the game's tooltip of the gear, then the same deal lines as its Gear row (UI.AddDealLines).
+    -- Its hover: the game's tooltip of the gear, then the same deal lines as its Gear row (UI.AddDealLines); a
+    -- click opens its Gear Details, as a click on its row does.
     topItem:SetScript("OnEnter", function(self)
         if not self.link then return end
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetHyperlink(self.link)
         if self.deal then UI.AddDealLines(GameTooltip, self.deal) end
+        GameTooltip:AddLine("Click: Gear Details", 0.5, 0.8, 1)
         GameTooltip:Show()
+    end)
+    topItem:SetScript("OnClick", function(self)
+        if self.deal then ns.GearWindow.Open(self.deal) end
     end)
     topItem:SetScript("OnLeave", function() GameTooltip:Hide() end)
     UI.topItem = topItem

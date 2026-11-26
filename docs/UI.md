@@ -60,7 +60,9 @@ reply must say so.
 7. Money has coin icons, right-aligned. Green is gold gained, red is gold lost, and only for real
    gold (a sale, a profit made, a change of your gold). A gap from a forecast or a value at today's
    prices (Accuracy's comparisons, Expected profit, luck, price change, Stock change) is grey with
-   its + or -, never green or red. Color is never the only signal: the sign or a word says it too.
+   its + or -, never green or red. One exception: in the Gear list and its tooltips, the forecast the list is
+   sorted by (Expected profit or Return: the one that drives the buy) is green when it gains and red when it
+   loses; the other one stays grey. Color is never the only signal: the sign or a word says it too.
 8. Text, names and dates left-aligned. Numbers, money, percentages and times right-aligned. A title aligns like its
    column.
 9. The numbers of a column have the same decimals and unit. Silver and copper show two digits after a larger coin,
