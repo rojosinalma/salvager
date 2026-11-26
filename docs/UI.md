@@ -47,9 +47,10 @@ reply must say so.
 
 1. One value per cell. A number and its percentage, or a rate and a quantity, are two columns.
 2. A column is as wide as its widest content, title included (with its sort arrow). No fixed spare width, the button
-   column included. One column of long text may take the spare width; text that does not fit ends with "..." and
-   shows in full on hover. A column of live values is as wide as its widest possible value (`sample`). A statement
-   is the exception (Statements 2).
+   column included. The first column (the row's label) takes the spare width, so the last column ends at the
+   table's right edge, in every table (as in a statement, Statements 2); in a stack of cards, the columns line up
+   at the cards' right edge. Text that does not fit ends with "..." and shows in full on hover. A column of live
+   values is as wide as its widest possible value (`sample`).
 3. A table with sections is one inset per section, or a heading row per section with its own
    totals. A value that is the same for every row of a section goes in the heading, not in the rows.
 4. Rows the player acts on first come first (open before sold, newest before oldest).

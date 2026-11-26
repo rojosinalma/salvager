@@ -188,9 +188,9 @@ end
 ---                                                         column set: the columns hidden with the chooser (the
 ---                                                         button at the right end of the titles) are saved under
 ---                                                         it; a list without one has no chooser.
----   cols.statement = true                                 a statement (label and amounts): the first column takes
----                                                         all the free width, so the amounts end at the table's
----                                                         right edge (UI.md Tables 8)
+---   cols.statement = true                                 a statement (label and amounts): its totals' rules
+---                                                         (every table's first column takes the free width, so
+---                                                         the last column ends at the right edge, UI.md Tables 2)
 ---   list.onColumnsChanged = fn                            runs after a change in the chooser (else list:Refresh)
 ---   list:SetSource(count, getRow)                         getRow(i) -> row, only called for rows on screen
 ---   list:Refresh()
@@ -418,9 +418,8 @@ function Widgets.List(parent, opts)
         -- Column positions. The first column takes what is left of the width and shrinks with the
         -- window; a column that still does not fit is left out, from the right.
         local avail = (self:GetWidth() or 0) - BAR_W - 8 - ACTION_W
-        -- Every column is as wide as its widest text (title or cell), and no wider; the room that is left
-        -- stays empty at the right. Where the client cannot measure text, the widths given are used and
-        -- the first column takes the room that is left.
+        -- Every column but the first is as wide as its widest text (title or cell), and no wider; the first
+        -- takes the room that is left. Where the client cannot measure text, the widths given are used.
         local titles, samples = {}, {}
         for i, col in ipairs(cols) do titles[i], samples[i] = col[1], col.sample end
         local need = opts.fit ~= false and Widgets.FitColumns(titles, self.count, function(r)
@@ -444,8 +443,9 @@ function Widgets.List(parent, opts)
         local fixed = 0
         for i = 2, #cols do if shown[i] then fixed = fixed + (need and need[i] or cols[i][2]) + GAP end end
         local first = math.max(MIN_FIRST, avail - fixed)
-        -- A statement's label column takes all the free width, so its amounts end at the right edge.
-        if need then first = math.max(40, cols.statement and (avail - fixed) or math.min(need[1], first)) end
+        -- The first column (the row's label) takes all the free width, so the other columns end at the right edge
+        -- (UI.md Tables 2): in a statement and in every other table alike.
+        if need then first = math.max(40, avail - fixed) end
         local xs, ws, fits, x = {}, {}, {}, 4
         for i, col in ipairs(cols) do
             xs[i], ws[i] = x, (i == 1 and first or (need and need[i] or col[2]))
@@ -622,17 +622,20 @@ function Widgets.CardList(parent)
     --- Where each column sits: the first from the left (after the icon), the others from the right edge.
     -- Where each column sits: packed from the left, each as wide as stack.widths says (see Refresh); a column
     -- hidden with the chooser takes no room.
-    local function place(region, card, i, forTitle)
+    -- The first column (the row's label) takes the card's spare width (`extra`), so the other columns end at the
+    -- card's right edge and line up over cards of any indent.
+    local function place(region, card, i, forTitle, extra)
         local cols, ws, shown = stack.columns, stack.widths, stack.shown
+        extra = extra or 0
         local x = 30
-        for c = 1, i - 1 do if shown[c] then x = x + ws[c] + 8 end end
+        for c = 1, i - 1 do if shown[c] then x = x + ws[c] + (c == 1 and extra or 0) + 8 end end
         region:ClearAllPoints()
         if i == 1 and forTitle then
             region:SetPoint("LEFT", card, "LEFT", 8, 0)
-            region:SetWidth(ws[1] + 22)
+            region:SetWidth(ws[1] + extra + 22)
         else
             region:SetPoint("LEFT", card, "LEFT", x, 0)
-            region:SetWidth(ws[i])
+            region:SetWidth(ws[i] + (i == 1 and extra or 0))
         end
         region:SetJustifyH(cols[i][3] or "LEFT")
     end
@@ -807,6 +810,11 @@ function Widgets.CardList(parent)
             card.title:SetText(data.title or "")
             card.facts:SetText(data.facts or "")
             card.factsHelp:SetShown(data.factsHelp ~= nil)
+            -- The room the columns leave in this card: the first column takes it.
+            local used = 30 + 8
+            for i = 1, #cols do if self.shown[i] then used = used + self.widths[i] + 8 end end
+            local extra = math.max(0, math.floor(((scroll:GetWidth() or 0) - (data.indent or 0)) - used))
+            if not need then extra = 0 end
             card.heads:SetShown(#rows > 0)
             card.heads:ClearAllPoints()
             card.heads:SetPoint("TOPLEFT", card, "TOPLEFT", 0, -titleH - 1)
@@ -814,7 +822,7 @@ function Widgets.CardList(parent)
             for i = 1, MAX_COLS do
                 local h, col = card.headTexts[i], cols[i]
                 if col and self.shown[i] then
-                    place(h, card.heads, i, i == 1)
+                    place(h, card.heads, i, i == 1, extra)
                     h:SetText(col[1])
                     h:Show()
                 else
@@ -837,7 +845,7 @@ function Widgets.CardList(parent)
                         for i = 1, MAX_COLS do
                             local fs = row.cells[i]
                             if cols[i] and self.shown[i] then
-                                place(fs, row, i)
+                                place(fs, row, i, nil, extra)
                                 fs:SetText(rowData.cells[i] or "")
                                 fs:Show()
                             else

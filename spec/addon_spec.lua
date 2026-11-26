@@ -2776,6 +2776,19 @@ describe("Sessions and the statement in a simulated client", function()
         assert.are.equal(right, list.amountsRight)
         assert.are.equal(x2 - 6 - 4, widths[1])                          -- the labels fill the free width
         assert.is_true(widths[1] > 600)
+        -- A table that is not a statement does the same: its label column takes the free width, so its last
+        -- column ends at the right edge (UI.md Tables 2), here the Gear Bands table of a wide window.
+        ns.Reports.view, ns.Reports.gearTab = "gear", "bands"
+        local bands, bw = ns.Reports.list, {}
+        bands.GetWidth = function() return 1200 end
+        for i = 1, #bands.headers do bands.headers[i].SetWidth = function(_, w) bw[i] = w end end
+        ns.Reports.Refresh()
+        local last
+        for i = #bands.headers, 2, -1 do if bands.headers[i].shown ~= false and bw[i] then last = i break end end
+        assert.is_number(last)
+        assert.are.equal(1200 - 18 - 4, bands.headers[last].points[1][4] + bw[last])
+        ns.Reports.view = "gold"
+        ns.Reports.Refresh()
         -- Every amount cell is right-justified, and a total line draws its rules over the amounts.
         for _, row in ipairs(list.rows) do
             local data = rawget(row, "data")
