@@ -547,6 +547,25 @@ describe("Salvager scan safety", function()
         ns.Scanner.state = "idle"
     end)
 
+    it("holds the next browse page while a purchase is on its way", function()
+        ns.Scanner.Stop()
+        env.ah.fullBrowse = false
+        ns.Scanner.Scan()
+        local deal = { auctionID = 991, buyout = 100, itemID = 2000, value = 200, profit = 100 }
+        ns.Scanner.Buy(deal)
+        local sent = #env.ah.sent
+        wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")       -- a page came: the next one is not asked for yet
+        assert.are.equal(sent, #env.ah.sent)
+        wow.fire(ns, "AUCTION_HOUSE_PURCHASE_COMPLETED", 991)
+        wow.tick(ns, 1.5)                                          -- the purchase is done, and the quiet second is over
+        assert.are.equal("more", env.ah.sent[#env.ah.sent].kind)
+        env.ah.fullBrowse = true
+        ns.Scanner.Stop()
+        ns.Queue.Clear()
+        assert.is_table(ns.Ledger.TakePurchase(ns.db.ledger, 2000))   -- the purchase was recorded; undo it
+        table.remove(ns.db.ledger.bought)
+    end)
+
     it("lets a scan of a few materials in during a gear scan", function()
         ns.Scanner.state = "checking"
         ns.Prices.Scan({ 11083 })

@@ -226,7 +226,7 @@ end
 
 ------------------------------------------------------------------ browsing
 
-local nextPass
+local nextPass, advance
 
 local function finishPass(why)
     local pass = scan.pass
@@ -237,8 +237,17 @@ local function finishPass(why)
 end
 
 --- The next step of the pass: another page, or the next pass.
-local function advance()
+function advance()
     if Scanner.paused then scan.held = true return end
+    -- Buying first: while a purchase is on its way, the next page waits (as the searches do).
+    if Scanner.Buying() then
+        local seq = scan.seq
+        lastBrowseAt = GetTime()
+        C_Timer.After(0.3, function()
+            if scan and scan.seq == seq and Scanner.state == "browsing" then advance() end
+        end)
+        return
+    end
     local pass = scan.pass
     if AH.HasFullBrowseResults() then return finishPass() end
     if pass.pages >= MAX_PAGES then return finishPass("page limit reached") end
