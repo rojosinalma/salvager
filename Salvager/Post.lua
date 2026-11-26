@@ -107,6 +107,10 @@ function Post.MarketRows(market, price, breakEven)
         end
     end
     for _, r in ipairs(market.rows) do
+        -- A listing at exactly your price or your break-even carries that mark itself, on its own line.
+        local tag = ""
+        if price > 0 and r.price == price then didPrice, tag = true, tag .. GOLD .. "  Your price|r" end
+        if breakEven and r.price == breakEven then didEven, tag = true, tag .. GOLD .. "  Your break-even|r" end
         marks(r.price)
         total = total + r.qty
         local ahead = price > 0 and r.price <= price
@@ -115,8 +119,8 @@ function Post.MarketRows(market, price, breakEven)
         if under then c.under, c.underListings = c.under + r.qty, c.underListings + 1 end
         local color = under and RED or (ahead and "" or GREY)
         -- (pick = the price a click on the line sets: exactly the line's price.)
-        rows[#rows + 1] = { pick = r.price, cells = {
-            color .. ns.Money(r.price) .. (color ~= "" and "|r" or ""),
+        rows[#rows + 1] = { pick = r.price, group = tag ~= "", cells = {
+            color .. ns.Money(r.price) .. (color ~= "" and "|r" or "") .. tag,
             color .. r.qty .. (color ~= "" and "|r" or "") .. (r.mine > 0 and (GREY .. " +" .. r.mine .. " yours|r") or ""),
             color .. total .. (color ~= "" and "|r" or "") } }
     end
@@ -388,7 +392,7 @@ local function build()
     end
     d.list = W.List(d, { rowHeight = 20 })
     d.list:SetColumns({
-        { "Price each", 112, help = { "Price each", "The other sellers' listings, cheapest first. The game shows the "
+        { "Price each", 190, help = { "Price each", "The other sellers' listings, cheapest first. The game shows the "
             .. "auctions of one price as one line. Red = under your break-even. Grey = dearer than your price.\n\n"
             .. "Click a line to set your price to exactly that price." } },
         { "Units", 84, "CENTER" },

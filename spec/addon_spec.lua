@@ -1063,14 +1063,16 @@ describe("Salvager posting", function()
         assert.are.equal(50, counts.ahead)                         -- 30 at 400 and 20 at 450 sell before a post at 450
         assert.are.equal(2, counts.aheadListings)
         assert.are.equal(50, counts.under)                         -- and both are under a break-even of 520
-        assert.are.equal(5, #rows)                                 -- three listings, your price, your break-even
-        assert.is_truthy(rows[3].cells[1]:find("Your price", 1, true))
-        assert.is_truthy(rows[4].cells[1]:find("Your break-even", 1, true))
+        assert.are.equal(4, #rows)                                 -- three listings and your break-even
+        assert.is_truthy(rows[2].cells[1]:find("Your price", 1, true))   -- on the line of the listing at that price
+        assert.is_true(rows[2].group)
+        assert.is_truthy(rows[3].cells[1]:find("Your break-even", 1, true))
+        local between = ns.Post.MarketRows(market, 500, nil)       -- no listing at 500: a line of its own, in its place
+        assert.is_truthy(between[3].cells[1]:find("Your price", 1, true))
         assert.is_truthy(rows[2].cells[2]:find("+5 yours", 1, true))
-        assert.is_truthy(rows[5].cells[3]:find("90", 1, true))
+        assert.is_truthy(rows[4].cells[3]:find("90", 1, true))
         assert.are.equal(400, rows[1].pick)                        -- a click on a line: exactly its price
-        assert.are.equal(520, rows[4].pick)                        -- on the break-even line: that price
-        assert.is_nil(rows[3].pick)
+        assert.are.equal(520, rows[3].pick)                        -- on the break-even line: that price
         env.ah.commodities[DUST] = saved
         local o = ns.Post.Outcome(DUST, 10, 429, 2)
         assert.are.equal(4290, o.gross)

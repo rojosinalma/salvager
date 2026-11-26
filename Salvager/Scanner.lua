@@ -55,8 +55,15 @@ local function readAuctions(task)
         local r = AH.GetItemSearchResultInfo(key, i)
         -- The auction's own link has the last word on the quality: an item valued as another quality is
         -- never listed.
-        local real = r and r.itemLink and ns.QualityOf(r.itemLink)
-        if real and real ~= task.quality then
+        -- The same for its gear type and its item level: a deal is only listed when the auction's own item
+        -- gives the band it was valued with.
+        local link = r and r.itemLink
+        local real = link and ns.QualityOf(link)
+        local realClass = link and ns.ClassOf(link)
+        local realLevel = link and ns.ItemLevelOf(link)
+        local realBand = realLevel and outcomes and ns.Model.Outcomes(task.quality, task.classID, realLevel)
+        if (real and real ~= task.quality) or (realClass and realClass ~= task.classID)
+            or (realBand and realBand.band ~= outcomes.band) then
             wrong = wrong + 1
         elseif r and r.buyoutAmount and r.buyoutAmount > 0 and not r.containsOwnerItem and r.buyoutAmount <= maxBuy then
             Scanner.deals[#Scanner.deals + 1] = {
@@ -68,8 +75,9 @@ local function readAuctions(task)
         end
     end
     if wrong > 0 then
-        ns.Log("item %s left out: it is not %s, it was valued with the wrong quality", task.keyString,
-            ns.QUALITY_NAME[task.quality] or tostring(task.quality))
+        ns.Log("item %s: %d auctions left out, their item is not %s %s of item level %s as it was valued",
+            task.keyString, wrong, ns.QUALITY_NAME[task.quality] or tostring(task.quality),
+            CLASS_NAME[task.classID] or tostring(task.classID), tostring(task.ilvl))
     end
     ns.Log("checked item %s: %d auctions, %d under %s", task.keyString, n, #Scanner.deals - before, ns.Money(maxBuy))
     sortDeals()
@@ -161,6 +169,9 @@ local function judge(r, pass, sum)
     -- this pass (measured 2026-11-26: uncommon items came during the rare pass and were valued as rare).
     local quality = ns.QualityOf(key.itemID)
     if quality and quality ~= pass.quality then sum.wrongQuality = sum.wrongQuality + 1 return end
+    -- The same for the gear type: armor that comes in the weapon pass is not valued as a weapon.
+    local classID = ns.ClassOf(key.itemID)
+    if classID and classID ~= pass.classID then sum.wrongQuality = sum.wrongQuality + 1 return end
     local ilvl, source = ns.Items.Level(key)
     if not ilvl then sum.learning = sum.learning + 1 return end
     if not ns.LevelAllowed(ilvl) then sum.levelOut = sum.levelOut + 1 return end
@@ -210,7 +221,7 @@ local function queueChecks()
             ns.Money(sum.best.margin))
     end
     if sum.wrongQuality > 0 then
-        ns.Log("gear scan: %d items left out, they came in the browse of another quality", sum.wrongQuality)
+        ns.Log("gear scan: %d items left out, they came in the browse of another quality or gear type", sum.wrongQuality)
     end
     if sum.levelDiffers > 0 then
         ns.Log("item levels: %d listings differ from the game's data (%s)", sum.levelDiffers, sum.levelExample)

@@ -230,7 +230,10 @@ flipping is out of scope for now.
 66. **An item's own quality decides its value, not the browse it came in.** Measured 2026-11-26 03:15: the
     uncommon browse stalled, the rare pass started, and late uncommon pages were judged as rare (an uncommon
     headband valued at one Large Radiant Shard, 2g 23s instead of 72s). `judge` drops an item whose known
-    quality differs from the pass; `readAuctions` drops an auction whose link has another quality.
+    quality or gear type differs from the pass; `readAuctions` drops an auction whose own link gives another
+    quality, gear type or item level band than the one it was valued with. A search answer is matched to
+    its task by item ID and suffix. Rule: data that arrives later (pages, search answers) is checked
+    against the thing it is used for, never trusted for the context it arrives in.
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

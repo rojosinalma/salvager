@@ -209,7 +209,13 @@ local function commodityAnswer(itemID)
     answered(function(t) return t.commodity == itemID end)
 end
 local function itemAnswer(key)
-    answered(function(t) return t.itemKey and type(key) == "table" and t.itemKey.itemID == key.itemID end)
+    -- The answer must be for this very item key (item, level, suffix): "of the Bear" and "of the Eagle"
+    -- share an item ID, and the answer for one is not the answer for the other. (An answer whose event
+    -- does not match is still found by its results, a moment later.)
+    answered(function(t)
+        return t.itemKey and type(key) == "table" and t.itemKey.itemID == key.itemID
+            and ((key.itemSuffix or 0) == (t.itemKey.itemSuffix or 0))
+    end)
 end
 ns.On("OWNED_AUCTIONS_UPDATED", function() answered(function(t) return t.owned end) end)
 ns.On("COMMODITY_SEARCH_RESULTS_UPDATED", commodityAnswer)
