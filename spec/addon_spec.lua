@@ -920,6 +920,9 @@ describe("Salvager posting", function()
         assert.is_truthy(rows[4].cells[1]:find("Your break-even", 1, true))
         assert.is_truthy(rows[2].cells[2]:find("+5 yours", 1, true))
         assert.is_truthy(rows[5].cells[3]:find("90", 1, true))
+        assert.are.equal(399, rows[1].pick)                        -- a click on a line: 1 copper under it
+        assert.are.equal(520, rows[4].pick)                        -- on the break-even line: that price
+        assert.is_nil(rows[3].pick)
         env.ah.commodities[DUST] = saved
         local o = ns.Post.Outcome(DUST, 10, 429, 2)
         assert.are.equal(4290, o.gross)

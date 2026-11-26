@@ -86,7 +86,8 @@ function Post.MarketRows(market, price, breakEven)
     local function evenMark(nextPrice)
         if breakEven and not didEven and (not nextPrice or nextPrice >= breakEven) then
             didEven = true
-            rows[#rows + 1] = { group = true, cells = { GOLD .. "Your break-even|r", ns.Money(breakEven), "" } }
+            rows[#rows + 1] = { group = true, pick = breakEven,
+                cells = { GOLD .. "Your break-even|r", ns.Money(breakEven), "" } }
         end
     end
     local function priceMark(nextPrice)
@@ -113,7 +114,8 @@ function Post.MarketRows(market, price, breakEven)
         if ahead then c.ahead, c.aheadListings = c.ahead + r.qty, c.aheadListings + 1 end
         if under then c.under, c.underListings = c.under + r.qty, c.underListings + 1 end
         local color = under and RED or (ahead and "" or GREY)
-        rows[#rows + 1] = { cells = {
+        -- (pick = the price a click on the line sets: 1 copper under it, so yours sells before it.)
+        rows[#rows + 1] = { pick = math.max(1, r.price - 1), cells = {
             color .. ns.Money(r.price) .. (color ~= "" and "|r" or ""),
             color .. r.qty .. (color ~= "" and "|r" or "") .. (r.mine > 0 and (GREY .. " +" .. r.mine .. " yours|r") or ""),
             color .. total .. (color ~= "" and "|r" or "") } }
@@ -303,6 +305,16 @@ local function recalc()
     d.marketLines[2]:SetText(string.format("|cffffd100Ahead of your price|r %d units in %d%s", c.ahead, c.aheadListings,
         s.breakEven and string.format("    |cffffd100Under your break-even|r %d units in %d", c.under, c.underListings)
             or ""))
+    -- A click on a line sets the price: 1 copper under a listing, or the break-even itself.
+    for _, row in ipairs(rows) do
+        if row.pick then
+            row.onClick = function()
+                d.price:Set(row.pick)
+                d.confirm = nil
+                recalc()
+            end
+        end
+    end
     d.list:SetSource(#rows, function(i) return rows[i] end)
     d.list:Refresh()
     d.toEven:SetEnabled(s.breakEven ~= nil)
@@ -377,7 +389,8 @@ local function build()
     d.list = W.List(d, { rowHeight = 20 })
     d.list:SetColumns({
         { "Price each", 112, help = { "Price each", "The other sellers' listings, cheapest first. The game shows the "
-            .. "auctions of one price as one line. Red = under your break-even. Grey = dearer than your price." } },
+            .. "auctions of one price as one line. Red = under your break-even. Grey = dearer than your price.\n\n"
+            .. "Click a line to set your price 1 copper under it. Click \"Your break-even\" to set that price." } },
         { "Units", 84, "CENTER" },
         { "Units up to here", 96, "CENTER", help = { "Units up to here", "How many units are listed at this price or "
             .. "cheaper. The number on the last line above \"Your price\" is what must sell before yours does." } },
