@@ -386,6 +386,9 @@ flipping is out of scope for now.
     `opts.collapsed`); Odds cards too, each band on its own (`Widgets.CardList`: `heading`, `open`,
     `onClick`, `indent`). Accuracy has a Profit difference column (Actual profit − Expected profit), on the
     headings too. The odds window is 860 wide for its filter row.
+84. **The Materials window fits its list** (0.3.100): as wide as its columns need, the Post column ending
+    with its button (`list.neededWidth` from `Widgets.List`), at least 620 for the row above the list (help
+    and check box from the right, the status cut before them).
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

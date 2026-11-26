@@ -209,6 +209,9 @@ function Widgets.List(parent, opts)
         -- The buttons' column is a column like the others: right after the last one, as wide as its warning
         -- sign and its button. (Where text cannot be measured, it stays at the right edge.)
         local actionX = need and ACTION_W > 0 and math.min(x, avail + 4) or nil
+        -- The width the columns need, the buttons' column and the scroll bar included (a window that fits
+        -- its list reads it). nil where text cannot be measured.
+        self.neededWidth = need and ((actionX or x) + (actionX and (22 + 64 + 6) or 0) + BAR_W + 8) or nil
         if actionX and rawget(list, "actionTitle") then
             list.actionTitle:ClearAllPoints()
             list.actionTitle:SetPoint("TOPLEFT", self, "TOPLEFT", actionX + 22, 0)

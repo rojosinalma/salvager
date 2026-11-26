@@ -38,6 +38,7 @@ for i, help in pairs(Materials.HELP) do Materials.COLUMNS[i].help = help end
 
 -- The window's own size: it fits its content and has no resize corner.
 local WIDTH, TOP, BOTTOM, ROW_H = 800, 58, 14, 24
+local MIN_W = 620   -- the row of buttons over the list: Scan materials, Scan owned, the check box, help
 
 local function ago(seconds)
     if not seconds then return "-" end
@@ -176,6 +177,16 @@ function Materials.Refresh()
     f:SetHeight(TOP + ROW_H * (fit + 1) + BOTTOM)
     list:SetSource(#rows, function(i) return rows[i] end)
     list:Refresh()
+    -- As wide as its columns need, no wider (the Post column ends with its button), and wide enough for the
+    -- row of buttons above the list.
+    local needed = rawget(list, "neededWidth")
+    if type(needed) == "number" then
+        local w = math.max(MIN_W, math.ceil(needed) + 24)
+        if math.abs((f:GetWidth() or 0) - w) >= 1 then
+            f:SetWidth(w)
+            list:Refresh()
+        end
+    end
     dataOnly:SetChecked(ns.db.settings.materialsDataOnly)
     if ns.Prices.scanning then
         status:SetText(string.format("Scanning %d/%d", ns.Prices.done, ns.Prices.total))
@@ -202,16 +213,22 @@ local function build()
     scan:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -30)
     local owned = Materials.ScanOwnedButton(f)
     owned:SetPoint("LEFT", scan, "RIGHT", 6, 0)
+    -- On the right: the help, and the check box with its label on its left; the status between, cut there.
+    local helpButton = W.HelpButton(f, "Materials", Materials.HelpLines)
+    helpButton:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -30)
+    dataOnly = Materials.DataOnlyCheck(f)
+    dataOnly:SetPoint("RIGHT", helpButton, "LEFT", -8, 0)
+    dataOnly.label:ClearAllPoints()
+    dataOnly.label:SetPoint("RIGHT", dataOnly, "LEFT", -2, 0)
     status = W.Label(f, "", "GameFontHighlightSmall")
     status:SetPoint("LEFT", owned, "RIGHT", 10, 0)
-    dataOnly = Materials.DataOnlyCheck(f)
-    dataOnly:SetPoint("TOPRIGHT", f, "TOPRIGHT", -224, -29)
+    status:SetPoint("RIGHT", dataOnly.label, "LEFT", -10, 0)
+    status:SetJustifyH("LEFT")
+    status:SetWordWrap(false)
     list = W.List(f, { rowHeight = ROW_H, actionWidth = 96, actionTitle = "Post" })
     list:SetColumns(Materials.COLUMNS)
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -TOP)
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, BOTTOM)
-    local helpButton = W.HelpButton(f, "Materials", Materials.HelpLines)
-    helpButton:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -30)
     f:SetScript("OnShow", function()
         Materials.Refresh()
         ns.Fire("SALVAGER_SETTINGS")   -- the main window gives up its Materials tab

@@ -473,6 +473,20 @@ describe("Salvager window and options", function()
         assert.is_nil(ns.Widgets.Chart(_G.UIParent).Nearest({ lines = {} }, 5))
     end)
 
+    it("fits the popped out materials list to its columns: no room to spare after Post", function()
+        local real = ns.Widgets.TextWidth
+        ns.Widgets.TextWidth = function(text) return text and #text * 6 or 0 end
+        ns.Materials.PopOut()
+        local frame = _G.SalvagerMaterialsFrame
+        local width
+        frame.SetWidth = function(_, w) width = w end
+        ns.Materials.Refresh()
+        assert.is_number(width)
+        assert.is_true(width < 800)                               -- narrower than before, as wide as it needs
+        ns.Materials.PutBack()
+        ns.Widgets.TextWidth = real
+    end)
+
     it("draws nothing, and no error, for a table shown before it has columns", function()
         local real = ns.Widgets.TextWidth
         ns.Widgets.TextWidth = function(text) return text and #text * 6 or 0 end
