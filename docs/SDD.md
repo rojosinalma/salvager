@@ -299,6 +299,19 @@ flipping is out of scope for now.
     buyout); a click on Expected profit or Return orders the list (`dealSort`, remembered), and the item
     checks of a scan go in the same order. Reason: with more supply than gold, return on each gold paid is
     what grows the gain (measured 2026-11-26: 82 of 361 Azure Silk Hoods under the limit in one check).
+74. **Measured 2026-11-26, first session with the Arcane Salvager** (36 Uncommon armor, item level 26–30):
+    - a. The bonus is real: Soul Dust came as 1 / 2 / 3 units 11 / 5 / 10 times (never 3 in the 41 dust
+       results before). Mean 1.96 against 1.44 before: +0.52 per dust result, as the 50% model says (2.0).
+       The shape is not "+1 half of the time" (that gives 7 / 13 / 6); more data needed. Essences: 5 results,
+       none above 2, too few to say if they get the bonus.
+    - b. No Salvager effect was found on the player by name, and the snapshots were full (they kept the
+       first 30). Now the newest 30 stay, and a disenchant counts as "with Salvager" when the effect is seen,
+       when a result has more units than the table allows, or when the setting is `on` (`salvagerBy`).
+    - c. `PlaceBid` without a click is blocked by the game (`buyResendBlocked` set at 03:26): a purchase
+       cannot be resent by the addon (65).
+    - d. A "request dropped" event just after a Buy click, with a search just sent, is about the search: 23
+       such drops in 36 purchases, and every purchase went through. The purchase is freed only when no
+       search was sent in the last 2 s.
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),
@@ -306,5 +319,7 @@ flipping is out of scope for now.
 
 ## Open
 
-1. The Salvager aura's spell ID: read it from `/salv auras` during the first session with a Salvager.
+1. The Salvager's effect on the player: not found by name on 2026-11-26 (74b). Read `auraSnapshots` after the
+   next disenchants at the camp; it may be no player aura at all.
+3. The shape of the Salvager bonus, and whether essences get it (74a): check after about 100 more disenchants.
 2. Whether Forever's disenchant results match the Classic table: the Ledger window (Odds) compares observed odds per band.

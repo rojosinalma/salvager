@@ -135,6 +135,36 @@ describe("Buy path safety", function()
         ns.Scanner.deals = {}
     end)
 
+    it("takes a dropped request to be the search when one was just sent, not the purchase", function()
+        ns.db.buyResendBlocked = true
+        local deal = { auctionID = 900, itemID = BOOTS, link = BOOTS_LINK, buyout = 100, value = 500, profit = 400,
+            quality = 2, classID = 4, ilvl = 28 }
+        ns.Scanner.deals = { deal }
+        ns.Scanner.Buy(deal)
+        ns.Queue.current = { sentAt = GetTime(), itemKey = { itemID = BOOTS } }
+        wow.fire(ns, "AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED")
+        assert.is_true(deal.pending)                               -- the purchase stays on its way
+        ns.Queue.current = nil
+        wow.fire(ns, "AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED")
+        assert.is_false(deal.pending)                              -- no search: it was the purchase
+        wow.fire(ns, "AUCTION_HOUSE_PURCHASE_COMPLETED", 900)
+        ns.db.buyResendBlocked = nil
+        ns.Scanner.deals = {}
+    end)
+
+    it("knows a disenchant had the Salvager by its effect, by a result over the table, or by the setting", function()
+        local outcomes = ns.Model.Outcomes(2, 4, 28)
+        local dust = outcomes.results[1]
+        local was = ns.db.settings.salvager
+        ns.db.settings.salvager = "auto"
+        assert.are.same({ true, "aura" }, { ns.Disenchant.HadSalvager(true, outcomes, { [dust.id] = 1 }) })
+        assert.are.same({ true, "result" }, { ns.Disenchant.HadSalvager(false, outcomes, { [dust.id] = dust.max + 1 }) })
+        assert.is_false(ns.Disenchant.HadSalvager(false, outcomes, { [dust.id] = dust.max }))
+        ns.db.settings.salvager = "on"
+        assert.are.same({ true, "setting" }, { ns.Disenchant.HadSalvager(false, outcomes, { [dust.id] = 1 }) })
+        ns.db.settings.salvager = was
+    end)
+
     it("never lets a buy limit set by hand go over the value", function()
         assert.is_false(select(2, ns.BuyLimit(2, 4, 30, 1000)))
         ns.db.settings.limitOverride[ns.BandKey(2, 4, 30)] = 5000

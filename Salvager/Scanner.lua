@@ -704,6 +704,11 @@ function Scanner.SendWaiting(force)
 end
 
 ns.On("AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED", function()
+    -- With a search on its way too, the dropped request is the search, not the purchase (measured
+    -- 2026-11-26 06:10: 23 drops during 36 purchases, each with the recheck search just sent; every
+    -- purchase went through). The search sends itself again when it gets no answer.
+    local task = ns.Queue.current
+    if task and task.sentAt and GetTime() - task.sentAt <= DROP_WINDOW then return end
     for _, d in pairs(pendingBuys) do
         if GetTime() - d.clickedAt < DROP_WINDOW and not d.resend then
             if ns.db.buyResendBlocked or (d.resends or 0) >= MAX_BUY_RESENDS then

@@ -51,7 +51,7 @@ end
 -- What the filter button shows: every line, or only trades and gold, or only errors. Day lines always show.
 local FILTERS = {
     { "all", "All lines" },
-    { "trades", "Trades and gold", { "bought ", "sold ", "posted ", "post sent", "mail:", "gold:", "cancelling", "session:",
+    { "trades", "Trades and gold", { "bought ", "sold ", "posted ", "post sent", "mail:", "gold:", "cancelling", "session:", "disenchant:",
         "could not buy", "purchase of" } },
     { "errors", "Errors", { "ERROR" } },
 }

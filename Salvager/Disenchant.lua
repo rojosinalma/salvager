@@ -43,12 +43,27 @@ function Disenchant.PrintAuras()
     for id, name in pairs(ns.db.auraSeen) do ns.Print("seen during a disenchant: %s (spell %d)", name, id) end
 end
 
+-- The newest snapshots stay (the Salvager came long after the first disenchants).
 local function snapshot()
     local snaps = ns.db.auraSnapshots
-    if #snaps >= SNAPSHOTS then return end
     local names = {}
     for _, a in ipairs(helpfulAuras()) do names[#names + 1] = tostring(a.name) .. ":" .. tostring(a.id) end
     snaps[#snaps + 1] = { t = time(), auras = table.concat(names, ", ") }
+    ns.Util.Cap(snaps, SNAPSHOTS)
+end
+
+--- Did this disenchant have the Salvager bonus? Yes when its effect was seen on the player, when the player
+--- says every disenchant has it (`/salv salvager on`), or when the result proves it: more units of a
+--- material than the table gives without the bonus.
+--- @return boolean, string|nil how it is known ("aura" | "setting" | "result")
+function Disenchant.HadSalvager(seen, outcomes, got)
+    if seen then return true, "aura" end
+    for _, o in ipairs(outcomes and outcomes.results or {}) do
+        local q = o.id and got[o.id]
+        if q and o.bonus and o.max and q > o.max then return true, "result" end
+    end
+    if ns.db.settings.salvager == "on" then return true, "setting" end
+    return false
 end
 
 ------------------------------------------------------------------ the disenchant
@@ -60,16 +75,18 @@ local function book(p, got)
     local ilvl = ns.ItemLevelOf(link)
     local _, _, _, _, reqLevel = ns.GetItemInfo(link)
     local outcomes = quality and classID and ilvl and Model.Outcomes(quality, classID, ilvl)
+    local salvager, how = Disenchant.HadSalvager(p.salvager, outcomes, got)
     local planned
     if outcomes then
         local v = Model.Value(outcomes, ns.PriceOf, {
-            salvager = p.salvager, salvagerChance = ns.db.settings.salvagerChance, cut = ns.Cut(),
+            salvager = salvager, salvagerChance = ns.db.settings.salvagerChance, cut = ns.Cut(),
         })
         planned = v.net
     end
     local rec = {
         t = time(), link = link, itemID = itemID, ilvl = ilvl, req = reqLevel, quality = quality,
-        classID = classID, band = outcomes and outcomes.band, salvager = p.salvager, got = got, planned = planned,
+        classID = classID, band = outcomes and outcomes.band, salvager = salvager, salvagerBy = how, got = got,
+        planned = planned,
     }
     local purchase = itemID and Ledger.TakePurchase(ns.db.ledger, itemID)
     Ledger.Disenchant(ns.db.ledger, rec, purchase, ns.PriceOf, ns.Cut())
@@ -78,6 +95,7 @@ local function book(p, got)
     local msg = string.format("%s gave %s, worth %s", link, table.concat(parts, ", "), ns.Money(rec.value))
     if rec.costKnown then msg = msg .. string.format(" (paid %s)", ns.Money(rec.cost)) end
     ns.Print(msg)
+    ns.Log("disenchant: %s%s", msg, salvager and (" [Salvager: " .. how .. "]") or "")
     ns.Fire("SALVAGER_LEDGER")
 end
 
