@@ -408,6 +408,9 @@ function Market.Refresh()
         facts:SetText("")
         chart:SetData({ empty = "The addon has not seen a price for this yet." })
     end
+    -- The chart starts under the facts, which take as many lines as they need.
+    local lines = math.max(12, math.ceil(tonumber((facts:GetStringHeight())) or 12))
+    chart:SetPoint("TOPLEFT", list, "TOPRIGHT", 10, -(26 + lines + 8))
     chart:Refresh()
 end
 
@@ -469,9 +472,8 @@ local function build()
     facts:SetPoint("TOPLEFT", list, "TOPRIGHT", 12, -26)
     facts:SetPoint("RIGHT", f, "RIGHT", -12, 0)
     facts:SetJustifyH("LEFT")
-    facts:SetWordWrap(false)
+    -- The facts wrap and push the chart down (UI.md Layout 6): see placeChart.
     chart = W.Chart(f)
-    chart:SetPoint("TOPLEFT", list, "TOPRIGHT", 10, -46)
     chart:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
     f.onResize = Market.Refresh
     f:SetScript("OnShow", Market.Refresh)

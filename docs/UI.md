@@ -42,7 +42,9 @@ reply must say so.
 12. Text contrast 4.5:1 or more; control edges 3:1; one color means one thing everywhere.
 13. Buttons that open other windows are one group in the footer, at its left (the main window: Auction house, Ledger,
     Reports, Market, Limits, Log, Options), never where they read as tabs.
-14. Checked by the specs (rows of tabs hold tabs only; filters under the subtabs; every row fits the smallest width)
+14. Checked by the specs (rows of tabs hold tabs only; filters under the subtabs; every row fits the smallest width;
+    `spec/fit_spec.lua`: no cut text, no overlap in a row, nothing outside its window, at the smallest and the
+    default size, SDD 105)
     and by `make layout` (a row of tabs with another control; a statement's amounts not at the panel's right edge; a
     tab, subtab or dropdown with the red button's art).
 

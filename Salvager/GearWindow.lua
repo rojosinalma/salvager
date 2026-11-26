@@ -230,8 +230,11 @@ function Gear.Refresh()
         local part = parts[key]
         part.title:ClearAllPoints()
         part.title:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -y)
+        part.title:SetPoint("RIGHT", f, "RIGHT", -14, 0)
+        part.title:SetJustifyH("LEFT")
         part.title:SetText(GOLD .. SECTIONS[key].title .. "|r" .. (key == "build" and (GREY .. "  " .. from .. "|r") or ""))
-        y = y + 18
+        -- A long title wraps and pushes its table down (UI.md Layout 6).
+        y = y + math.max(18, math.ceil(tonumber((part.title:GetStringHeight())) or 12) + 6)
         part.list:ClearAllPoints()
         part.list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -y)
         if i < #ORDER then

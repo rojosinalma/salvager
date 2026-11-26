@@ -28,7 +28,8 @@ function Widgets.Chart(parent)
     legend:SetPoint("TOPLEFT", chart, "TOPLEFT", LEFT, -5)
     legend:SetPoint("RIGHT", chart, "RIGHT", -12, 0)
     legend:SetJustifyH("LEFT")
-    legend:SetWordWrap(false)
+    -- The legend wraps; the plot starts under its lines (UI.md Layout 6).
+    local plotTop = TOP
     local empty = chart:CreateFontString(nil, "OVERLAY", "GameFontDisable")
     empty:SetPoint("CENTER", plot, "CENTER", 0, 0)
     local scale, times, grid = {}, {}, {}
@@ -314,6 +315,12 @@ function Widgets.Chart(parent)
                 line.label or ""))
         end
         legend:SetText(table.concat(names, "     "))
+        local top = math.max(TOP, math.ceil(tonumber((legend:GetStringHeight())) or 0) + 8)
+        if top ~= plotTop then
+            plotTop = top
+            plot:SetPoint("TOPLEFT", chart, "TOPLEFT", LEFT, -top)
+            return chart:Refresh()   -- (once: drawn again in the plot's new height)
+        end
     end
 
     chart:SetScript("OnSizeChanged", function() chart:Refresh() end)

@@ -1252,11 +1252,13 @@ local function build()
     footer:SetPoint("RIGHT", spinner, "LEFT", -12, 0)
     footer:SetJustifyH("LEFT")
     footer:SetWordWrap(false)
+    footer.canCut = true   -- (one line cut at the next control, UI.md Layout 6; `canCut`: the fit spec allows it)
     footer2 = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     footer2:SetPoint("LEFT", f, "BOTTOMLEFT", 14, 43)
     footer2:SetPoint("RIGHT", topItem, "LEFT", -12, 0)
     footer2:SetJustifyH("LEFT")
     footer2:SetWordWrap(false)
+    footer2.canCut = true
     UI.footerLines = { footer, footer2 }
 
     -- Resize from the bottom right corner.

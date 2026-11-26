@@ -799,6 +799,18 @@ flipping is out of scope for now.
     (it drives Buy Top and the order) is green when it gains, red when it loses; since 0.3.133 the other too (0.3.132, the
     user: 0.3.129 made both grey). The same in the row's and Buy Top's tooltips. A click on the gear above Buy Top
     opens its Gear Details, as a click on its row does.
+105. **Specs that see a cut text** (0.3.135; UI.md Layout 6, Tables 2). The stand-in (`spec/wow.lua`, layout mode:
+    `wow.install({ layout = true })`) models sizes, anchors, rects and text widths: a character is a share of the
+    font size (Friz Quadrata, fitted to texts the client sized to their own text in the layout dump: 12 and 10 pt,
+    within 8 %, each class rounded up about 4 %); color and link codes take no room, an inline texture is as wide as
+    its size. `spec/fit_spec.lua` opens every window, clicks every tab and subtab, at the smallest and the default
+    size with long data (9999g 99s 99c a unit, long gear names, every material, a full log), and fails on a cut text,
+    two controls of a row that overlap, a text or a control outside its window, and a table (or an Odds card) whose
+    last column does not end at its right edge (default size). A text that may be cut says so: `fs.canCut = true`
+    (the first column of a table, "..." and the full text on hover; the main window's two status lines, cut at the
+    next control). A table keeps its first column at least as wide as its text, up to 90 px: a column that would
+    leave it less is left out, from the right (was: the first column down to 40 px, its text unreadable).
+    `FIT_DEBUG=1` lists the columns left out.
 
 105. **Purchases during a scan** (0.3.134, the user, after nine lost clicks on 2026-11-26 23:29–23:30). Measured in
     the log of that day: 1 purchase of 147 went through when clicked after a gear scan had sent its browse and

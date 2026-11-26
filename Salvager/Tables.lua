@@ -241,6 +241,7 @@ function Widgets.List(parent, opts)
     for i = 1, MAX_COLS do
         local h = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         h:SetHeight(ROW_H)
+        h.canCut = i == 1
         headers[i] = h
         -- An invisible area over the title, for its help text.
         local area = CreateFrame("Frame", nil, list)
@@ -321,6 +322,9 @@ function Widgets.List(parent, opts)
             fs:SetWordWrap(false)
             row.cells[i] = fs
         end
+        -- Only the first column may be cut ("...", in full on hover; UI.md Tables 2): the others are as wide as
+        -- their widest text. (`canCut`: the fit spec allows the cut.)
+        row.cells[1].canCut = true
         row:SetScript("OnEnter", function(self)
             local data = self.data
             -- A row's own help: what the line is and how it is computed.
@@ -333,7 +337,16 @@ function Widgets.List(parent, opts)
                 return
             end
             local link = data and (data.link or (data.itemID and ("item:" .. data.itemID)))
-            if not link then return end
+            if not link then
+                -- A cut first cell shows in full on hover (UI.md Tables 2).
+                local first = self.cells[1]
+                if data and first:IsShown() and first:IsTruncated() then
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:SetText(first:GetText() or "", 1, 1, 1, 1, true)
+                    GameTooltip:Show()
+                end
+                return
+            end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetHyperlink(link)
             local hint = ns.RowHint and ns.RowHint(data)
@@ -442,15 +455,27 @@ function Widgets.List(parent, opts)
         end
         local fixed = 0
         for i = 2, #cols do if shown[i] then fixed = fixed + (need and need[i] or cols[i][2]) + GAP end end
+        local allFixed = fixed
+        -- Where text is measured: the first column keeps room for its text (up to MIN_FIRST); a column that would
+        -- leave it less is left out, from the right, and the first column takes its room too.
+        local fits = {}
+        for i = 1, #cols do fits[i] = shown[i] end
+        if need then
+            local least = math.min(need[1], MIN_FIRST)
+            for i = #cols, 2, -1 do
+                if avail - fixed >= least then break end
+                if fits[i] then fits[i], fixed = false, fixed - need[i] - GAP end
+            end
+        end
         local first = math.max(MIN_FIRST, avail - fixed)
         -- The first column (the row's label) takes all the free width, so the other columns end at the right edge
         -- (UI.md Tables 2): in a statement and in every other table alike.
         if need then first = math.max(40, avail - fixed) end
-        local xs, ws, fits, x = {}, {}, {}, 4
+        local xs, ws, x = {}, {}, 4
         for i, col in ipairs(cols) do
             xs[i], ws[i] = x, (i == 1 and first or (need and need[i] or col[2]))
-            fits[i] = shown[i] and (i == 1 or (x + ws[i] <= avail + 4))
-            if shown[i] then x = x + ws[i] + GAP end
+            if not need then fits[i] = shown[i] and (i == 1 or (x + ws[i] <= avail + 4)) end
+            if (need and fits[i]) or (not need and shown[i]) then x = x + ws[i] + GAP end
         end
         -- Where no other column fits (or none shows), the first one takes the width.
         local second
@@ -471,7 +496,7 @@ function Widgets.List(parent, opts)
         -- The width the columns need, the buttons' column and the scroll bar included (a window that fits
         -- its list reads it), with the first column at its full width even where this one cut it. nil where
         -- text cannot be measured.
-        local full = need and (x + need[1] - first) or nil
+        local full = need and (4 + need[1] + GAP + allFixed) or nil
         self.neededWidth = need and (actionX and (full + 22 + 64 + 6) or full) + BAR_W + 8 or nil
         if actionX and rawget(list, "actionTitle") then
             list.actionTitle:ClearAllPoints()

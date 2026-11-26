@@ -58,8 +58,8 @@ local function newMethods()
         end,
         ClearAllPoints = function(self) rawset(self, "points", nil) end,
         GetParent = function(self) return self.parent end,
-        CreateFontString = function(self, _, layer)
-            local fs = widget("FontString") fs.parent = self fs.layer = layer
+        CreateFontString = function(self, _, layer, template)
+            local fs = widget("FontString") fs.parent = self fs.layer = layer fs.template = template
             table.insert(self._regions, fs)
             return fs
         end,
@@ -104,6 +104,323 @@ local function newMethods()
     return setmetatable(methods, { __index = function() return noop end })
 end
 
+------------------------------------------------------------------ layout mode (wow.install({ layout = true }))
+-- Sizes, anchors and text widths, enough to tell where each region is and how wide its text is. Off by default:
+-- the other specs keep the constant sizes they were written against.
+
+-- Font sizes of the game's font objects (the ones Salvager uses).
+local FONT_SIZE = {
+    GameFontNormal = 12, GameFontHighlight = 12, GameFontDisable = 12,
+    GameFontNormalSmall = 10, GameFontHighlightSmall = 10, GameFontDisableSmall = 10,
+    GameFontNormalLarge = 16, GameFontHighlightLarge = 16,
+}
+M.FONT_SIZE = FONT_SIZE
+
+-- A character's width, as a share of the font size: Friz Quadrata (the game's font), fitted to the client's own
+-- measures in the layout dump (FontStrings sized to their text, 12 and 10 pt; SDD 105). Within 8 % on every sample;
+-- each class is rounded up about 4 %, so a text the model fits fits the client too.
+local CHAR_EM = {}
+for c in ("ijlI.,:;!'|"):gmatch(".") do CHAR_EM[c] = 0.31 end
+for c in ("frt -()/[]"):gmatch(".") do CHAR_EM[c] = 0.48 end
+for c in ("mwMW%"):gmatch(".") do CHAR_EM[c] = 0.84 end
+for c in ("ABCDEFGHJKLNOPQRSTUVXYZ"):gmatch(".") do CHAR_EM[c] = 0.85 end
+for c in ("0123456789"):gmatch(".") do CHAR_EM[c] = 0.62 end
+local OTHER_EM = 0.61   -- lower case and the rest
+
+--- How wide `text` is in a font of `size` pt: the widest of its lines; color codes and link codes take no room, an
+--- inline texture (|T path:h:w |t) is as wide as its size (h = 0: the font's size).
+function M.textWidth(text, size)
+    text = tostring(text or "")
+    size = size or 12
+    local most = 0
+    for line in (text .. "\n"):gmatch("([^\n]*)\n") do
+        local w = 0
+        line = line:gsub("|T(.-)|t", function(spec)
+            local h, tw = spec:match("^[^:]*:(%-?%d*):?(%-?%d*)")
+            h, tw = tonumber(h) or 0, tonumber(tw) or 0
+            if h <= 0 then h = size end
+            w = w + (tw > 0 and tw or h)
+            return ""
+        end)
+        line = line:gsub("|A(.-)|a", function() w = w + size return "" end)
+            :gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h", ""):gsub("|h", "")
+        for i = 1, #line do
+            local b = line:byte(i)
+            if b < 0x80 or b >= 0xC0 then   -- (one per character: UTF-8 continuation bytes are left out)
+                w = w + (CHAR_EM[line:sub(i, i)] or OTHER_EM) * size
+            end
+        end
+        if w > most then most = w end
+    end
+    return most
+end
+
+local function fontSizeOf(font)
+    if type(font) == "table" then return rawget(font, "size") or 12 end
+    return FONT_SIZE[font] or 12
+end
+local function sizeOf(fs) return rawget(fs, "fontSize") or fontSizeOf(rawget(fs, "template")) end
+
+-- The anchors of a region, one per point (a later SetPoint on the same point replaces the earlier one), with the
+-- relative region and point filled in as the client does.
+local POINTS = { TOPLEFT = { 0, 1 }, TOP = { 0.5, 1 }, TOPRIGHT = { 1, 1 }, LEFT = { 0, 0.5 }, CENTER = { 0.5, 0.5 },
+    RIGHT = { 1, 0.5 }, BOTTOMLEFT = { 0, 0 }, BOTTOM = { 0.5, 0 }, BOTTOMRIGHT = { 1, 0 } }
+local function anchorsOf(region)
+    local out, order = {}, {}
+    for _, p in ipairs(rawget(region, "points") or {}) do
+        local point, a, b, c, d = p[1], p[2], p[3], p[4], p[5]
+        local rel, relPoint, x, y
+        if type(a) == "table" or type(a) == "string" then
+            rel = type(a) == "string" and _G[a] or a
+            if type(b) == "string" then relPoint, x, y = b, c, d else relPoint, x, y = point, b, c end
+        else
+            rel, relPoint, x, y = nil, point, a, b
+        end
+        if rel == nil then rel = rawget(region, "parent") end
+        if not out[point] then order[#order + 1] = point end
+        out[point] = { point = point, rel = rel, relPoint = relPoint, x = x or 0, y = y or 0 }
+    end
+    local list = {}
+    for _, point in ipairs(order) do list[#list + 1] = out[point] end
+    return list
+end
+
+local generation, rectCache, busy = 0, {}, {}
+local function touch() generation = generation + 1 rectCache = {} end
+M.touch = touch
+
+local stringWidth   -- (below)
+
+-- The region's own width or height where no pair of anchors sets it: the size set, or a text's own size.
+local linesIn, wrapWidth   -- (below)
+local function ownSize(region, axis, width)
+    if axis == 1 then
+        local w = rawget(region, "_w")
+        if w and w > 0 then return w end
+        if region.kind == "FontString" then return stringWidth(region) end
+        return w or 0
+    end
+    local h = rawget(region, "_h")
+    if h and h > 0 then return h end
+    if region.kind == "FontString" then
+        -- A text is as high as its lines: more than one where it wraps in the width it was given.
+        local n = math.max(1, linesIn(region, wrapWidth(region, width)))
+        return n * sizeOf(region) + (n - 1) * (rawget(region, "spacing") or 2)
+    end
+    return h or 0
+end
+
+--- The region's rect in UIParent's space: left, bottom, width, height; nil where it is not placed.
+local function rectOf(region)
+    if region == _G.UIParent then return 0, 0, 1920, 1080 end
+    local c = rectCache[region]
+    if c then return c[1], c[2], c[3], c[4] end
+    if busy[region] then return nil end
+    busy[region] = true
+    local anchors = anchorsOf(region)
+    local result
+    local scrollParent = rawget(region, "_scrollParent")
+    if #anchors == 0 and scrollParent then
+        local l, b, _, h = rectOf(scrollParent)
+        if l then
+            local w, hh = ownSize(region, 1), ownSize(region, 2)
+            result = { l, b + h - hh + (rawget(scrollParent, "_scroll") or 0), w, hh }
+        end
+    elseif #anchors > 0 then
+        local out, ok = {}, true
+        for axis = 1, 2 do
+            local lo, hi   -- the constraints with the smallest and the largest factor
+            for _, a in ipairs(anchors) do
+                local rl, rb, rw, rh = rectOf(a.rel)
+                if not rl then ok = false break end
+                local f = POINTS[a.point] and POINTS[a.point][axis] or 0.5
+                local rf = POINTS[a.relPoint] and POINTS[a.relPoint][axis] or 0.5
+                local at = axis == 1 and (rl + rf * rw + a.x) or (rb + rf * rh + a.y)
+                if not lo or f < lo[1] then lo = { f, at } end
+                if not hi or f > hi[1] then hi = { f, at } end
+            end
+            if not ok then break end
+            local size, start
+            if hi[1] > lo[1] then
+                size = (hi[2] - lo[2]) / (hi[1] - lo[1])
+                start = lo[2] - lo[1] * size
+            else
+                size = ownSize(region, axis, out[3])
+                start = lo[2] - lo[1] * size
+            end
+            out[axis], out[axis + 2] = start, size
+        end
+        if ok then result = { out[1], out[2], out[3], out[4] } end
+    end
+    busy[region] = nil
+    if result then rectCache[region] = result return result[1], result[2], result[3], result[4] end
+    return nil
+end
+M.rectOf = rectOf
+
+function stringWidth(fs)
+    return M.textWidth(rawget(fs, "text") or "", sizeOf(fs))
+end
+
+-- The lines a text takes in `width` (nil: no width of its own, one line per line break). Words wrap; a word wider
+-- than the line takes a line of its own.
+function linesIn(fs, width)
+    local text = rawget(fs, "text") or ""
+    if text == "" then return 0 end
+    local size = sizeOf(fs)
+    local n = 0
+    for line in (text .. "\n"):gmatch("([^\n]*)\n") do
+        local count = 1
+        if width and rawget(fs, "wordWrap") ~= false then
+            local cur = ""
+            for word in line:gmatch("%S+") do
+                local try = cur == "" and word or (cur .. " " .. word)
+                if cur ~= "" and M.textWidth(try, size) > width + 0.5 then count, cur = count + 1, word else cur = try end
+            end
+        end
+        n = n + count
+    end
+    return n
+end
+
+-- The width a text wraps in: its own (set, or given by two anchors), else nil.
+function wrapWidth(fs, w)
+    local own = rawget(fs, "_w")
+    if own and own > 0 then return w or own end
+    local fs1 = {}
+    for _, a in ipairs(anchorsOf(fs)) do fs1[POINTS[a.point] and POINTS[a.point][1] or 0.5] = true end
+    local n = 0
+    for _ in pairs(fs1) do n = n + 1 end
+    return n > 1 and w or nil
+end
+
+-- A button's text: a FontString of its own, centered on it, in its font object.
+local function buttonText(self)
+    local fs = rawget(self, "_fs")
+    if not fs then
+        fs = self:CreateFontString(nil, "OVERLAY", rawget(self, "_font") or "GameFontNormal")
+        fs:SetPoint("CENTER", self, "CENTER", 0, 0)
+        rawset(self, "_fs", fs)
+        fs.buttonText = true
+    end
+    return fs
+end
+
+local function geometry(base)
+    local g = {}
+    local function setSize(self, w, h)
+        if w ~= nil then rawset(self, "_w", w) end
+        if h ~= nil then rawset(self, "_h", h) end
+        if rawget(self, "_firstW") == nil and w and h then rawset(self, "_firstW", w) rawset(self, "_firstH", h) end
+        touch()
+    end
+    g.SetSize = function(self, w, h) setSize(self, w, h) end
+    g.SetWidth = function(self, w) setSize(self, w, nil) end
+    g.SetHeight = function(self, h) setSize(self, nil, h) end
+    g.SetPoint = function(self, ...) base.SetPoint(self, ...) touch() end
+    g.ClearAllPoints = function(self) base.ClearAllPoints(self) touch() end
+    g.SetAllPoints = function(self, rel)
+        rel = rel or rawget(self, "parent")
+        base.ClearAllPoints(self)
+        base.SetPoint(self, "TOPLEFT", rel, "TOPLEFT", 0, 0)
+        base.SetPoint(self, "BOTTOMRIGHT", rel, "BOTTOMRIGHT", 0, 0)
+        touch()
+    end
+    g.GetRect = function(self) return rectOf(self) end
+    g.GetWidth = function(self)
+        local _, _, w = rectOf(self)
+        return w or ownSize(self, 1)
+    end
+    g.GetHeight = function(self)
+        local _, _, _, h = rectOf(self)
+        return h or ownSize(self, 2)
+    end
+    g.GetLeft = function(self) return (rectOf(self)) end
+    g.GetBottom = function(self) local _, b = rectOf(self) return b end
+    g.GetRight = function(self) local l, _, w = rectOf(self) return l and l + w end
+    g.GetTop = function(self) local _, b, _, h = rectOf(self) return b and b + h end
+    g.GetCenter = function(self)
+        local l, b, w, h = rectOf(self)
+        if not l then return nil end
+        return l + w / 2, b + h / 2
+    end
+    g.GetPoint = function(self, i)
+        local a = anchorsOf(self)[i or 1]
+        if not a then return nil end
+        return a.point, a.rel, a.relPoint, a.x, a.y
+    end
+    g.GetNumPoints = function(self) return #anchorsOf(self) end
+    g.SetText = function(self, t)
+        self.text = t
+        if self.kind == "Button" or self.kind == "CheckButton" then
+            if rawget(self, "_fs") or (t ~= nil and t ~= "") then buttonText(self).text = t end
+        end
+        touch()
+    end
+    g.SetFormattedText = function(self, fmt, ...) g.SetText(self, fmt:format(...)) end
+    g.GetFontString = function(self) return buttonText(self) end
+    g.SetNormalFontObject = function(self, font)
+        rawset(self, "_font", font)
+        local fs = rawget(self, "_fs")
+        if fs then fs.fontSize = fontSizeOf(font) touch() end
+    end
+    g.SetFontObject = function(self, font) self.fontSize = fontSizeOf(font) touch() end
+    g.SetFont = function(self, _, size) self.fontSize = size or 12 touch() end
+    g.GetFont = function(self) return "Fonts\\FRIZQT__.TTF", sizeOf(self), "" end
+    g.GetStringWidth = function(self) return stringWidth(self) end
+    g.GetUnboundedStringWidth = g.GetStringWidth
+    g.SetWordWrap = function(self, on) self.wordWrap = on and true or false touch() end
+    g.GetWordWrap = function(self) return rawget(self, "wordWrap") ~= false end
+    g.SetSpacing = function(self, s) self.spacing = s end
+    -- The lines a text takes in its width (words wrap; a word wider than the line takes a line of its own).
+    g.GetNumLines = function(self)
+        local _, _, w = rectOf(self)
+        return linesIn(self, wrapWidth(self, w))
+    end
+    g.GetStringHeight = function(self)
+        local n = g.GetNumLines(self)
+        local size = sizeOf(self)
+        return n * size + math.max(0, n - 1) * (rawget(self, "spacing") or 2)
+    end
+    g.IsTruncated = function(self) return M.isCut(self) end
+    g.SetScrollChild = function(self, child) rawset(child, "_scrollParent", self) touch() end
+    g.SetVerticalScroll = function(self, v) rawset(self, "_scroll", v or 0) touch() end
+    g.GetVerticalScroll = function(self) return rawget(self, "_scroll") or 0 end
+    g.SetClipsChildren = function(self, on) rawset(self, "_clips", on and true or false) end
+    g.DoesClipChildren = function(self) return rawget(self, "_clips") or self.kind == "ScrollFrame" end
+    g.SetFrameStrata = function(self, s) rawset(self, "_strata", s) end
+    g.GetFrameStrata = function(self) return rawget(self, "_strata") or "MEDIUM" end
+    g.SetResizeBounds = function(self, minW, minH, maxW, maxH)
+        rawset(self, "_bounds", { minW, minH, maxW, maxH })
+    end
+    g.SetMinResize = function(self, minW, minH) rawset(self, "_bounds", { minW, minH }) end
+    g.GetResizeBounds = function(self)
+        local b = rawget(self, "_bounds") or {}
+        return b[1], b[2], b[3], b[4]
+    end
+    return g
+end
+
+--- How the text of a FontString is drawn in its box: true when the client cuts it (with "...").
+function M.isCut(fs)
+    local text = rawget(fs, "text") or ""
+    if text == "" or not fs:IsVisible() then return false end
+    local l, _, w, h = rectOf(fs)
+    if not l then return false end
+    local size = sizeOf(fs)
+    local tw = stringWidth(fs)
+    local oneLine = fs:GetWordWrap() == false or h < 2 * size + 1
+    if oneLine then return tw > w + 0.5 end
+    -- Wrapped: cut where its lines do not fit its height (a height set or given by two anchors).
+    local hSet = rawget(fs, "_h")
+    local twoV = false
+    local seen = {}
+    for _, a in ipairs(anchorsOf(fs)) do seen[POINTS[a.point] and POINTS[a.point][2] or 0.5] = true end
+    for f in pairs(seen) do for f2 in pairs(seen) do if f ~= f2 then twoV = true end end end
+    if not ((hSet and hSet > 0) or twoV) then return false end
+    return fs:GetStringHeight() > h + 0.5
+end
+
 local methods = newMethods()
 local meta = { __index = methods }
 
@@ -115,7 +432,9 @@ function widget(kind)
 end
 M.widget = widget
 
-function M.install()
+--- opts.layout: sizes, anchors and text widths are modelled (see "layout mode").
+function M.install(opts)
+    opts = opts or {}
     local env = {
         now = 1000, clock = 1700000000, chat = {}, timers = {}, frames = {}, tooltipCalls = {},
         items = {}, bags = {}, auras = {}, loot = {}, inbox = {}, money = 1000000,
@@ -126,6 +445,12 @@ function M.install()
     _G.SalvagerDB = nil   -- every install starts with fresh saved data
     methods = newMethods()
     meta.__index = methods
+    M.layout = opts.layout and true or false
+    if M.layout then
+        local base = { SetPoint = methods.SetPoint, ClearAllPoints = methods.ClearAllPoints }
+        for k, v in pairs(geometry(base)) do methods[k] = v end
+        touch()
+    end
     _G.GetScreenWidth = function() return 1920 end
     _G.GetScreenHeight = function() return 1080 end
 
@@ -159,11 +484,28 @@ function M.install()
         if template and template:find("BasicFrameTemplate") then
             f.TitleBg, f.TitleText = widget("Texture"), widget("FontString")
             f.TitleBg.parent, f.TitleText.parent = f, f
+            if M.layout then
+                -- Where the template puts them: the title bar along the top, the title centered on it, the close
+                -- button at the top right.
+                f.TitleBg:SetPoint("TOPLEFT", f, "TOPLEFT", 2, -3)
+                f.TitleBg:SetPoint("TOPRIGHT", f, "TOPRIGHT", -25, -3)
+                f.TitleBg:SetHeight(18)
+                f.TitleText.template = "GameFontHighlight"
+                f.TitleText:SetPoint("TOP", f, "TOP", 0, -5)
+                table.insert(f._regions, f.TitleBg)
+                table.insert(f._regions, f.TitleText)
+            end
         end
         f.parent = parent
         if type(parent) == "table" and rawget(parent, "_children") then table.insert(parent._children, f) end
         table.insert(env.frames, f)
         if name then _G[name] = f f._name = name end
+        if M.layout and template and template:find("BasicFrameTemplate") then
+            f.CloseButton = _G.CreateFrame("Button", nil, f)
+            f.CloseButton:SetSize(24, 24)
+            f.CloseButton:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
+            f.CloseButton.uiKind = "close"
+        end
         return f
     end
     _G.C_Timer = { After = function(s, fn) table.insert(env.timers, { at = env.now + s, fn = fn }) end }
