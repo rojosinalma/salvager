@@ -1952,3 +1952,152 @@ describe("Salvager Buy top", function()
         assert.is_truthy(reason():find("Open the auction house first", 1, true))
     end)
 end)
+
+describe("Salvager Buy top, the best single auction", function()
+    local env, ns
+    local A, B, C = 6011, 6012, 6013         -- uncommon armor: A and B item level 28, C item level 33
+    local function link(id, name, ilvl)
+        return "|cff1eff00|Hitem:" .. id .. "::::::::" .. ilvl .. ":::::|h[" .. name .. "]|h|r"
+    end
+    local function click(b) b.scripts.OnClick(b) end
+    local function bid() return env.ah.bids[#env.ah.bids].id end
+    local function label() return ns.UI.topItem and ns.UI.topItem.text:GetText() or "" end
+    local function scan()
+        ns.Scanner.Scan(true)
+        for _ = 1, 200 do
+            if ns.Scanner.state == "browsing" then wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED") end
+            local task = ns.Queue.current
+            if task and task.itemKey then wow.fire(ns, "ITEM_SEARCH_RESULTS_UPDATED", task.itemKey) end
+            wow.tick(ns, 0.2)
+            if ns.Scanner.state == "idle" then break end
+        end
+        ns.UI.Refresh()
+    end
+    local function band(ilvl)
+        for _, r in ipairs(ns.Limits(true)) do
+            if r.quality == 2 and ilvl >= r.lo and ilvl <= r.up then return r.armor.value, r.armor.limit end
+        end
+    end
+    local function auction(id, item, name, ilvl, buyout)
+        return { auctionID = id, buyoutAmount = buyout, itemLink = link(item, name, ilvl) }
+    end
+    local function start(sort)
+        env = wow.install()
+        env.items[A] = { name = "Alpha Boots", quality = 2, ilvl = 28, classID = 4 }
+        env.items[B] = { name = "Beta Boots", quality = 2, ilvl = 28, classID = 4 }
+        env.items[C] = { name = "Gamma Helm", quality = 2, ilvl = 33, classID = 4 }
+        _G.GameTooltip.SetText = function(self, t) rawset(self, "lines", { t }) end
+        _G.GameTooltip.AddLine = function(self, t) table.insert(self.lines, t) end
+        ns = wow.loadAddon()
+        wow.fire(ns, "ADDON_LOADED", "Salvager")
+        wow.fire(ns, "AUCTION_HOUSE_SHOW")
+        for _, m in ipairs(ns.Data.MATERIALS) do ns.db.prices[m.id] = { p = 1000, t = env.clock } end
+        local s = ns.db.settings
+        s.minProfit, s.minReturn, s.gearClasses, s.priceRescan = 0, 0, "armor", 0
+        s.qualities = { [2] = true, [3] = false, [4] = false }
+        s.dealSort = sort
+    end
+
+    it("by Expected profit: the best auction of any row, not the rest of the top row", function()
+        start("profit")
+        local v, limit = band(28)
+        assert.is_true(limit >= 6 and limit <= v)
+        -- A: three auctions, profits v-1 > v-limit/2 > v-limit; B: one auction, profit v-limit/3 in between.
+        local bB, b2 = math.floor(limit / 3), math.floor(limit / 2)
+        env.ah.browse = {
+            { itemKey = { itemID = A, itemLevel = 28, itemSuffix = 0 }, minPrice = 1 },
+            { itemKey = { itemID = B, itemLevel = 28, itemSuffix = 0 }, minPrice = bB },
+        }
+        env.ah.itemResults[A] = { auction(301, A, "Alpha Boots", 28, 1), auction(302, A, "Alpha Boots", 28, b2),
+            auction(303, A, "Alpha Boots", 28, limit) }
+        env.ah.itemResults[B] = { auction(401, B, "Beta Boots", 28, bB) }
+        scan()
+        assert.are.equal(4, #ns.Scanner.deals)
+        assert.are.equal(A, ns.UI.Rows("deals")[1].itemID)
+        assert.is_truthy(label():find("Alpha Boots", 1, true))   -- the label above the button: what it buys
+        local shown
+        _G.GameTooltip.SetHyperlink = function(_, l) shown = l end
+        ns.UI.topItem.scripts.OnEnter(ns.UI.topItem)              -- its hover: the item's own tooltip
+        assert.is_truthy(shown and shown:find("item:" .. A, 1, true))
+        ns.UI.topItem.scripts.OnLeave(ns.UI.topItem)
+        local order = {}
+        for _, want in ipairs({ { 301, "Beta Boots" }, { 401, "Alpha Boots" }, { 302, "Alpha Boots" }, { 303 } }) do
+            click(ns.UI.buyTop)
+            order[#order + 1] = bid()
+            wow.tick(ns, 1)                                       -- the window's own refresh after the click
+            if want[2] then assert.is_truthy(label():find(want[2], 1, true), label()) end
+        end
+        assert.are.same({ 301, 401, 302, 303 }, order)
+        assert.are.equal(A, ns.UI.Rows("deals")[1].itemID)        -- the list does not move
+        ns.UI.Refresh()
+        assert.is_false(ns.UI.buyTop:IsEnabled())
+        assert.are.equal("", label())                             -- no deal: no label
+    end)
+
+    it("by Return: the best auction by Return, which is not the order by Expected profit", function()
+        start("return")
+        local vL, limL = band(28)
+        local vH, limH = band(33)
+        local x = math.floor((vH - vL) / 2)
+        assert.is_true(x >= 2 and x <= limH)
+        local y = math.min(math.floor(vL * 2 / 3), limL - 1)
+        assert.is_true(y >= 2)
+        -- A (item level 28): returns vL-1, then about 0.5. C (item level 33): one auction, return above 1,
+        -- the best Expected profit of all.
+        env.ah.browse = {
+            { itemKey = { itemID = A, itemLevel = 28, itemSuffix = 0 }, minPrice = 1 },
+            { itemKey = { itemID = C, itemLevel = 33, itemSuffix = 0 }, minPrice = x },
+        }
+        env.ah.itemResults[A] = { auction(301, A, "Alpha Boots", 28, 1), auction(302, A, "Alpha Boots", 28, y),
+            auction(303, A, "Alpha Boots", 28, y + 1) }
+        env.ah.itemResults[C] = { auction(501, C, "Gamma Helm", 33, x) }
+        scan()
+        assert.are.equal(4, #ns.Scanner.deals)
+        local byId = {}
+        for _, d in ipairs(ns.Scanner.deals) do byId[d.auctionID] = d end
+        local R = ns.Scanner.Return
+        assert.is_true(R(byId[301]) > R(byId[501]) and R(byId[501]) > R(byId[302]) and R(byId[302]) > R(byId[303]))
+        assert.is_true(byId[501].profit > byId[301].profit)       -- by Expected profit the helm would come first
+        local order = {}
+        for _ = 1, 4 do click(ns.UI.buyTop) order[#order + 1] = bid() end
+        assert.are.same({ 301, 501, 302, 303 }, order)
+    end)
+
+    it("skips the best auction when the gold is short for it, and says so", function()
+        start("profit")
+        local vL = band(28)
+        local vH, limH = band(33)
+        local x = math.floor((vH - vL) / 2)
+        assert.is_true(x >= 2 and x <= limH)
+        env.ah.browse = {
+            { itemKey = { itemID = A, itemLevel = 28, itemSuffix = 0 }, minPrice = 1 },
+            { itemKey = { itemID = C, itemLevel = 33, itemSuffix = 0 }, minPrice = x },
+        }
+        env.ah.itemResults[A] = { auction(301, A, "Alpha Boots", 28, 1) }
+        env.ah.itemResults[C] = { auction(501, C, "Gamma Helm", 33, x) }
+        scan()
+        local function tip()
+            local b = ns.UI.buyTop
+            b.scripts.OnEnter(b)
+            local text = table.concat(_G.GameTooltip.lines, "\n")
+            b.scripts.OnLeave(b)
+            return text
+        end
+        env.money = x - 1                                          -- enough for the boots, not for the helm
+        ns.UI.Refresh()
+        assert.is_true(ns.UI.buyTop:IsEnabled())
+        assert.is_truthy(label():find("Alpha Boots", 1, true))
+        assert.is_truthy(tip():find("Gamma Helm", 1, true))       -- the best one, named as skipped
+        assert.is_truthy(tip():find("not enough gold", 1, true))
+        env.money = 0                                              -- enough for neither
+        ns.UI.Refresh()
+        assert.is_false(ns.UI.buyTop:IsEnabled())
+        assert.is_truthy(tip():find("Not enough gold for Gamma Helm", 1, true))
+        assert.are.equal("", label())
+        env.money = x
+        ns.UI.Refresh()
+        click(ns.UI.buyTop)
+        assert.are.equal(501, bid())
+    end)
+
+end)

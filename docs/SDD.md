@@ -445,16 +445,23 @@ flipping is out of scope for now.
     window, shows `v<version>` (`ns.VERSION`, from the TOC through `C_AddOns.GetAddOnMetadata`) at the left
     end of its title bar (`f.TitleBg`), small and dim (`GameFontDisableSmall`). Where it would come within
     12 px of the centered title at the window's smallest width, it is left out (`Widgets.TitleVersion`).
-93. **Buy top** (0.3.111, the user): a button at the bottom right of the main window, left of the resize grip,
-    on every tab. One click buys the auction the Buy button of the first row of the Deals list buys
-    (`UI.TopDeal`: the list's own rows and order, `dealRows` and `Scanner.Better`, by Expected profit or by
-    Return; for a row of several auctions, the cheapest one not being bought, `Scanner.Cheapest`). A row whose
-    auctions are all on their way is skipped, so each click buys the next one. It goes through `Scanner.Buy`, as
-    a row's Buy: the click is the hardware event, the scan holds, a busy auction house gets it as soon as it is
+93. **Buy top** (0.3.111, the user; 0.3.112): a button at the bottom right of the main window, left of the resize
+    grip, on every tab. One click buys the single best auction of the Deals list by the active sort, from any row
+    (`UI.TopDeal`): of every auction not being bought, the one with the highest Expected profit (profit sort) or
+    Return (return sort), each auction's own (`d.profit`, `Scanner.Return`); ties go to the other number, then the
+    lower buyout, then the auction ID. Not the top row: after the best auction of a row of several is bought, the
+    next click can buy another item's auction before that row's dearer ones (0.3.111 followed the row, a fix of
+    the user's intent in 0.3.112). The list does not move. When the gold is short for the best auction, the click
+    buys the best one the gold covers, and the tooltip names the skipped one. It goes through `Scanner.Buy`, as a
+    row's Buy: the click is the hardware event, the scan holds, a busy auction house gets it as soon as it is
     ready (65). The mouse on it holds the scan (`Scanner.Aim`). Off, with the reason in its tooltip: auction house
-    closed, no gear scan yet, the list empty, every deal being bought, not enough gold for the top one. Its
-    tooltip shows the item, the buyout, the Expected profit and the Return of what the click buys, and follows
-    the list while it shows.
+    closed, no gear scan yet, the list empty, every deal being bought, not enough gold for any (the best one is
+    named). Its tooltip shows the item, the buyout, the Expected profit and the Return of what the click buys, and
+    follows the list while it shows. Above the button, right-aligned to it (0.3.112, the user): the icon and the
+    item link of what the next click buys, one line, at most half the room left of the button, cut there; empty
+    while the button is off; the mouse on it shows the item's tooltip. It sits between the button's top and the
+    list's bottom (37 to 51 px above the window's bottom, over the footer's first line), so the list keeps its
+    place.
 
 ## Data
 

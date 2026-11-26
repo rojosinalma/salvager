@@ -82,7 +82,7 @@ local headerHelp = {}
 local actionHeader
 local REFRESH_GAP, lastRefresh, refreshQueued = 0.25, 0, false
 local spinner, bigSpinner, bigSpinnerText
-local buyTop, footer2
+local buyTop, topItem, footer2
 
 ------------------------------------------------------------------ rows per view
 
@@ -230,25 +230,41 @@ local function footerText()
     return "", ""
 end
 
---- The deal the "Buy top" button buys: the auction the Buy button of the first row of the Deals list buys
---- (that list's order, by Expected profit or by Return), skipping rows whose auctions are all being bought.
---- @return table|nil deal, string|nil why  (why: the reason there is none, for the button's tooltip)
+--- Which of two auctions "Buy top" buys first: the active sort's number (Expected profit or Return), then the
+--- other one, then the lower buyout, then the auction ID (so the pick is stable).
+local function topBetter(a, b)
+    local pa, pb, ra, rb = a.profit, b.profit, ns.Scanner.Return(a), ns.Scanner.Return(b)
+    if ns.db.settings.dealSort == "return" then pa, pb, ra, rb = ra, rb, pa, pb end
+    if pa ~= pb then return pa > pb end
+    if ra ~= rb then return ra > rb end
+    if a.buyout ~= b.buyout then return a.buyout < b.buyout end
+    return (a.auctionID or 0) < (b.auctionID or 0)
+end
+
+--- The auction the "Buy top" button buys: of every auction in the Deals list not being bought already, the
+--- one with the best number of the active sort (`topBetter`), whatever its row. When the gold is short for that
+--- one, the best one the gold covers.
+--- @return table|nil deal, string|nil why, table|nil skipped  (why: the reason there is none, for the button's
+--- tooltip; skipped: the best auction, left out for the gold)
 local function topDeal()
     if not ns.Queue.open then return nil, "Open the auction house first." end
     if #ns.Scanner.deals == 0 then
         if not ns.Scanner.summary then return nil, "No gear scan yet: click Play, or Scan once: Gear." end
         return nil, "The Deals list is empty: the next scan fills it."
     end
-    for _, row in ipairs(dealRows()) do
-        local d = row.deal or (row.group and ns.Scanner.Cheapest(row.group.deals))
-        if d and not d.pending then
-            if (GetMoney() or 0) < d.buyout then
-                return nil, string.format("Not enough gold for %s (%s).", dealName(d), ns.Money(d.buyout))
-            end
-            return d
+    local money = GetMoney() or 0
+    local best, affordable
+    for _, d in ipairs(ns.Scanner.deals) do
+        if not d.pending then
+            if not best or topBetter(d, best) then best = d end
+            if d.buyout <= money and (not affordable or topBetter(d, affordable)) then affordable = d end
         end
     end
-    return nil, "Every deal in the list is being bought already."
+    if not best then return nil, "Every deal in the list is being bought already." end
+    if not affordable then
+        return nil, string.format("Not enough gold for %s (%s).", dealName(best), ns.Money(best.buyout))
+    end
+    return affordable, nil, affordable ~= best and best or nil
 end
 UI.TopDeal = topDeal
 
@@ -427,13 +443,17 @@ end
 
 --- The "Buy top" button's tooltip: what the click buys now, or why it is off.
 local function buyTopTooltip(self)
-    local d, why = topDeal()
+    local d, why, skipped = topDeal()
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
     GameTooltip:SetText("Buy top", 1, 1, 1)
     if d then
         local byReturn = ns.db.settings.dealSort == "return"
-        GameTooltip:AddLine("Buys the first deal of the Deals list (sorted by " .. (byReturn and "Return" or "Expected profit")
-            .. "). Each click buys the next one.", 1, 0.82, 0, true)
+        GameTooltip:AddLine("Buys the auction with the highest " .. (byReturn and "Return" or "Expected profit")
+            .. " in the Deals list (the sort), from any row. Each click buys the next best one.", 1, 0.82, 0, true)
+        if skipped then
+            GameTooltip:AddLine(string.format("The best one, %s (%s), is skipped: not enough gold.", dealName(skipped),
+                ns.Money(skipped.buyout)), 1, 0.3, 0.3, true)
+        end
         GameTooltip:AddLine(d.link or dealName(d), 1, 1, 1)
         GameTooltip:AddDoubleLine("Buyout", ns.Money(d.buyout), 1, 0.82, 0, 1, 1, 1)
         GameTooltip:AddDoubleLine("Expected profit", (d.profit >= 0 and "+" or "") .. ns.Money(d.profit), 1, 0.82, 0,
@@ -450,6 +470,15 @@ end
 local function updateBuyTop()
     local d = topDeal()
     buyTop:SetEnabled(d ~= nil)
+    -- Above the button: the item the next click buys, as wide as its name, at most half the room left of the
+    -- button (cut there, one line). Nothing when the button is off: the reason is in its tooltip.
+    topItem.link = d and (d.link or ("item:" .. d.itemID)) or nil
+    topItem.text:SetText(d and (d.link or dealName(d)) or "")
+    local icon = d and W.IconOf(d.itemID)
+    if icon then topItem.icon:SetTexture(icon) topItem.icon:Show() else topItem.icon:Hide() end
+    local tw = tonumber((topItem.text:GetStringWidth())) or 0
+    topItem.text:SetWidth(math.max(1, math.min(tw + 2, ((f:GetWidth() or 800) - 150) / 2)))
+    topItem:SetShown(d ~= nil)
     if buyTop.hover then buyTopTooltip(buyTop) end
 end
 
@@ -696,7 +725,7 @@ local function build()
     ahButton:HookScript("OnEnter", function(self)
         if self.reason then GameTooltip:AddLine(self.reason, 1, 0.3, 0.3, true) GameTooltip:Show() end
     end)
-    -- At the bottom right, left of the resize grip: "Buy top" buys the first deal of the list (the click is the
+    -- At the bottom right, left of the resize grip: "Buy top" buys the best auction of the list (the click is the
     -- hardware event the purchase needs). Left of it, what the addon is doing now (scanning, searching), the
     -- spinner before it; the footer takes the room on the left.
     buyTop = W.Button(f, "Buy top", 80, function()
@@ -717,6 +746,28 @@ local function build()
         GameTooltip:Hide()
     end)
     UI.buyTop = buyTop
+    -- Above "Buy top", right-aligned to it: the icon and the name of the item the next click buys. It sits
+    -- between the button's top (31 px above the window's bottom) and the list's bottom (54 px): 37 to 51 px,
+    -- over the footer's first line (26 to 36 px), so it touches nothing whatever its width.
+    topItem = CreateFrame("Button", nil, f)
+    topItem:SetHeight(14)
+    topItem:SetPoint("BOTTOMRIGHT", buyTop, "TOPRIGHT", 0, 6)
+    topItem.text = topItem:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    topItem.text:SetPoint("RIGHT", topItem, "RIGHT", 0, 0)
+    topItem.text:SetJustifyH("RIGHT")
+    topItem.text:SetWordWrap(false)
+    topItem.icon = topItem:CreateTexture(nil, "ARTWORK")
+    topItem.icon:SetSize(14, 14)
+    topItem.icon:SetPoint("RIGHT", topItem.text, "LEFT", -3, 0)
+    topItem:SetPoint("LEFT", topItem.icon, "LEFT", 0, 0)
+    topItem:SetScript("OnEnter", function(self)
+        if not self.link then return end
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetHyperlink(self.link)
+        GameTooltip:Show()
+    end)
+    topItem:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    UI.topItem = topItem
     status = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     status:SetPoint("RIGHT", buyTop, "LEFT", -10, 0)
     status:SetJustifyH("RIGHT")
