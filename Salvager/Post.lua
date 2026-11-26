@@ -368,7 +368,8 @@ local function build()
             ns.Print("could not post: %s", tostring(why))
         end
     end)
-    d.post:SetPoint("BOTTOMRIGHT", d, "BOTTOMRIGHT", -14, 12)
+    -- Under the left column; the two price buttons have the right side, under the table.
+    d.post:SetPoint("BOTTOMRIGHT", d, "BOTTOMLEFT", 366, 12)
     local cancel = W.Button(d, "Cancel", 90, function() d:Hide() end)
     cancel:SetPoint("RIGHT", d.post, "LEFT", -6, 0)
     d:Hide()
