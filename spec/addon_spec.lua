@@ -506,6 +506,50 @@ describe("Salvager scan safety", function()
         ns.Scanner.Stop()
     end)
 
+    it("keeps the deals on screen through Play's own rounds, also when the material prices are scanned first", function()
+        ns.Scanner.Stop()
+        env.ah.fullBrowse = true
+        env.ah.browse = { row(1) }
+        env.ah.itemResults[5001] = { { auctionID = 71, buyoutAmount = 1, itemLink = "|Hitem:5001|h[Test Boots]|h" } }
+        local function round()
+            for _ = 1, 400 do
+                if ns.Scanner.state == "browsing" then wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED") end
+                local task = ns.Queue.current
+                if task and task.itemKey then wow.fire(ns, "ITEM_SEARCH_RESULTS_UPDATED", task.itemKey) end
+                if task and task.commodity then wow.fire(ns, "COMMODITY_SEARCH_RESULTS_UPDATED", task.commodity) end
+                wow.tick(ns, 0.2)
+                assert.is_true(#ns.Scanner.deals > 0 or ns.Scanner.round == 1)
+                if ns.Scanner.state == "idle" and not ns.Prices.scanning and not ns.scanBothPending then break end
+            end
+        end
+        ns.db.settings.priceRescan = 10
+        ns.Scanner.round = 1
+        ns.Scanner.Play()
+        round()
+        assert.are.equal(1, #ns.Scanner.deals)
+        ns.Scanner.round = 2
+        for id in pairs(ns.db.prices) do ns.db.prices[id].t = 0 end      -- old prices: the next round scans them first
+        wow.tick(ns, ns.db.settings.autoInterval + 1)
+        assert.is_true(ns.scanBothPending)
+        round()
+        assert.are.equal(1, #ns.Scanner.deals)
+        -- A round whose browse does not load (no page at all): the deals stay as they were.
+        ns.Scanner.round = 3
+        wow.tick(ns, ns.db.settings.autoInterval + 1)
+        assert.are.equal("browsing", ns.Scanner.state)
+        for _ = 1, 400 do
+            wow.tick(ns, 0.5)
+            assert.are.equal(1, #ns.Scanner.deals)
+            if ns.Scanner.state == "idle" then break end
+        end
+        assert.are.equal("idle", ns.Scanner.state)
+        assert.are.equal(0, ns.Scanner.summary.candidates)                 -- the round read nothing
+        assert.are.equal(1, #ns.Scanner.deals)                             -- and the list still has its deal
+        ns.Scanner.round = nil
+        ns.Scanner.Stop()
+        ns.db.settings.priceRescan = 0
+    end)
+
     it("only lists item levels inside the ticked bands and the custom range", function()
         local s = ns.db.settings
         assert.is_true(ns.LevelAllowed(28))

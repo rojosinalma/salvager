@@ -180,6 +180,7 @@ end
 
 local function queueChecks()
     local candidates, sum = scan.candidates, scan.sum
+    sum.passes = scan.passes
     sum.candidates = #candidates
     sum.seconds = GetTime() - scan.startedAt
     Scanner.summary = sum
@@ -204,11 +205,21 @@ local function queueChecks()
     -- Each item search takes about 0.7 s: check the best ones first, at most maxChecks.
     for i = #candidates, ns.db.settings.maxChecks + 1, -1 do candidates[i] = nil end
     -- Rows of items that are no longer under their limit go; the others are replaced as they are checked.
-    local live = {}
+    -- Only what this round has read counts: when the browse of a quality and gear type did not load in
+    -- full (the auction house gave no page, or dropped requests), its rows stay as they are. Without
+    -- this, a round with a failed browse emptied the list, and the next one filled it again.
+    local live, read = {}, {}
     for _, c in ipairs(candidates) do live[c.keyString] = true end
+    for _, pass in ipairs(sum.passes or {}) do read[pass.quality .. ":" .. pass.classID] = pass.full and "full" or "part" end
+    local kept = 0
     for i = #Scanner.deals, 1, -1 do
-        if not live[Scanner.deals[i].keyString] and not Scanner.deals[i].pending then table.remove(Scanner.deals, i) end
+        local d = Scanner.deals[i]
+        local how = read[tostring(d.quality) .. ":" .. tostring(d.classID)]
+        if not live[d.keyString] and not d.pending then
+            if how == "part" then kept = kept + 1 else table.remove(Scanner.deals, i) end
+        end
     end
+    if kept > 0 then ns.Log("gear scan: %d deals kept as they were, their browse did not load in full", kept) end
     Scanner.toCheck = #candidates
     for _, c in ipairs(candidates) do
         ns.Queue.Add({
@@ -249,7 +260,10 @@ function advance()
         return
     end
     local pass = scan.pass
-    if AH.HasFullBrowseResults() then return finishPass() end
+    if AH.HasFullBrowseResults() then
+        pass.full = true
+        return finishPass()
+    end
     if pass.pages >= MAX_PAGES then return finishPass("page limit reached") end
     AH.RequestMoreBrowseResults()
     scan.askedAt = GetTime()
@@ -286,6 +300,14 @@ local function watchBrowse(seq)
             ns.Log("browse %s: no page for %ds after page %d, asking again (%d of %d)", pass.name, BROWSE_STALL,
                 pass.pages, pass.retries, STALL_RETRIES)
             AH.RequestMoreBrowseResults()
+        elseif pass and pass.pages == 0 and (pass.retries or 0) < STALL_RETRIES and pass.query then
+            -- Not even the first page came: send the browse again.
+            pass.retries = (pass.retries or 0) + 1
+            ns.Log("browse %s: no first page for %ds, sending the browse again (%d of %d)", pass.name, BROWSE_STALL,
+                pass.retries, STALL_RETRIES)
+            ourSend = true
+            pcall(AH.SendBrowseQuery, pass.query)
+            ourSend = false
         else
             finishPass(string.format("no page for %ds, given up", BROWSE_STALL))
         end
@@ -299,7 +321,10 @@ function nextPass()
     scan.pass = pass
     pass.startedAt = GetTime()
     Scanner.passName = pass.name
-    if pass.top <= 0 then return finishPass("no buy limit above zero, skipped") end
+    if pass.top <= 0 then
+        pass.full = true   -- nothing of it can be a deal
+        return finishPass("no buy limit above zero, skipped")
+    end
     local s = ns.db.settings
     local query = {
         searchString = "",
@@ -309,6 +334,7 @@ function nextPass()
     }
     if s.minLevel > 0 then query.minLevel = s.minLevel end
     if s.maxLevel > 0 then query.maxLevel = s.maxLevel end
+    pass.query = query
     lastBrowseAt = GetTime()
     ourSend = true
     local ok, err = pcall(AH.SendBrowseQuery, query)

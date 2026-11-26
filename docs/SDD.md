@@ -191,6 +191,10 @@ flipping is out of scope for now.
     listed as bars; ranges 6 hours, 24 hours, 7 days, all.
 58. **Window sizing:** Ledger and popped-out Odds have a fixed width and a free height (`Widgets.Window`,
     `fixed = "vertical"`); Materials fits its content; the main, Log, Breakdown and Market windows are free.
+59. **A round only removes what it has read.** Deals leave the list when their quality and gear type was
+    browsed in full and the item is no longer under its limit. A browse that did not load in full (measured
+    2026-11-26: "0 items in 0 pages, no page for 4s, given up") leaves that pass's deals as they are. A browse
+    with no first page is sent again (twice) before it is given up.
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),
