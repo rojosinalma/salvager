@@ -400,6 +400,9 @@ flipping is out of scope for now.
     it, and what being first again costs (the gap × your units, against the deposit lost and the new one,
     `Listings.RepostCost`), with a hint: under break-even (wait), few units ahead (wait), many ahead (a
     repost sells sooner if the gap pays its deposits).
+87. **Main window status at the bottom** (0.3.105): the spinner and the status text (what the addon is doing
+    now) sit at the bottom right under the list, as wide as the text and at most half the window; the
+    footer takes the room on their left. The top row keeps Play, Stop and the window buttons.
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

@@ -484,6 +484,9 @@ function UI.Refresh()
         if name == UI.view then b:LockHighlight() else b:UnlockHighlight() end
     end
     status:SetText(statusText())
+    -- As wide as its text, at most half the window: the footer keeps the rest.
+    local sw = tonumber(status:GetStringWidth()) or 0
+    status:SetWidth(math.max(1, math.min(sw + 2, ((f:GetWidth() or 800) - 60) / 2)))
     if ns.Busy() then spinner:Start() else spinner:Stop() end
     local dealsBusy = UI.view == "deals" and (ns.Scanner.state ~= "idle" or ns.scanBothPending)
     if dealsBusy and #data == 0 then
@@ -610,8 +613,7 @@ local function build()
     stopButton:SetPoint("LEFT", playButton, "RIGHT", 4, 0)
     stopButton:SetStopGlyph()
     W.Tooltip(stopButton, "Stop", "Ends auto scanning and drops the scan that is running. Deals found so far stay in the list.")
-    spinner = W.Spinner(f, 22)
-    spinner:SetPoint("LEFT", stopButton, "RIGHT", 12, 0)
+    spinner = W.Spinner(f, 22)   -- (placed at the bottom, with the status, under the list)
 
     local options = W.IconButton(f, 22, function() ns.Options.Open() end)
     options:SetIcon("Interface\\Buttons\\UI-OptionsButton", 16, 16)
@@ -638,11 +640,13 @@ local function build()
     ahButton:HookScript("OnEnter", function(self)
         if self.reason then GameTooltip:AddLine(self.reason, 1, 0.3, 0.3, true) GameTooltip:Show() end
     end)
+    -- What the addon is doing now (scanning, searching): at the bottom right, under the list, the spinner
+    -- before it; the footer takes the room on the left.
     status = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    status:SetPoint("LEFT", spinner, "RIGHT", 6, 0)
-    status:SetPoint("RIGHT", ahButton, "LEFT", -10, 0)
-    status:SetJustifyH("LEFT")
+    status:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 13)
+    status:SetJustifyH("RIGHT")
     status:SetWordWrap(false)
+    spinner:SetPoint("RIGHT", status, "LEFT", -6, 0)
 
     ---------------------------------------------------------------- settings box: what to scan, what to pay
     local box = W.Panel(f, 1, 1, 1, 0.04)
@@ -1056,7 +1060,7 @@ local function build()
 
     footer = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     footer:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 14, 10)
-    footer:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 10)
+    footer:SetPoint("RIGHT", spinner, "LEFT", -12, 0)
     footer:SetJustifyH("LEFT")
     footer:SetWordWrap(true)
 
