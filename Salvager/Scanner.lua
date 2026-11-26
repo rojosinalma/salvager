@@ -9,7 +9,8 @@ local _, ns = ...
 local AH = C_AuctionHouse
 local Data = ns.Data
 
-local Scanner = { state = "idle", deals = {}, checked = 0, toCheck = 0, browsed = 0, auto = false, summary = nil }
+local Scanner = { state = "idle", deals = {}, checked = 0, toCheck = 0, browsed = 0, auto = false, summary = nil,
+    browseEpoch = 0 }
 ns.Scanner = Scanner
 
 local MAX_PAGES = 80       -- pages of 500 per pass
@@ -51,11 +52,12 @@ end
 Scanner.Sort = sortDeals
 
 --- Queues the search of one item. `c` = { keyString, net, limit, ilvl, quality, classID }.
-local function checkItem(c, itemKey, onResult, onFail)
+--- `forBuy` = for a Buy click: it goes first, and past the hold that buying puts on every other request.
+local function checkItem(c, itemKey, onResult, onFail, forBuy)
     ns.Queue.Add({
         itemKey = itemKey, keyString = c.keyString, net = c.net, ilvl = c.ilvl, quality = c.quality,
-        classID = c.classID, limit = c.limit, onResult = onResult, onFail = onFail,
-    })
+        classID = c.classID, limit = c.limit, onResult = onResult, onFail = onFail, forBuy = forBuy,
+    }, forBuy)
 end
 
 --- The value and buy limit of a quality, gear type and item level now. nil when the band is blocked.
@@ -72,12 +74,25 @@ local function currentBand(quality, classID, ilvl)
     return nil
 end
 
+--- A row the player is buying: on its way, waiting for the auction house, or showing "Buy now". Scans never
+--- remove or replace it.
+local function inHand(d) return d.pending or d.wait or d.buyNow end
+Scanner.InHand = inHand
+
 local function removeKey(keyString)
     for i = #Scanner.deals, 1, -1 do
         local d = Scanner.deals[i]
-        if d.keyString == keyString and not d.pending then table.remove(Scanner.deals, i) end
+        if d.keyString == keyString and not inHand(d) then table.remove(Scanner.deals, i) end
     end
 end
+
+local function removeDeal(auctionID)
+    for i = #Scanner.deals, 1, -1 do
+        if Scanner.deals[i].auctionID == auctionID then table.remove(Scanner.deals, i) end
+    end
+end
+
+local afterSearch   -- (buying, below: a row that waited for its item's search)
 
 local function readAuctions(task)
     local key = task.itemKey
@@ -87,9 +102,10 @@ local function readAuctions(task)
     local buying = {}
     for i = #Scanner.deals, 1, -1 do
         local d = Scanner.deals[i]
-        if d.pending then buying[d.auctionID] = true
+        if inHand(d) then buying[d.auctionID] = d
         elseif d.keyString == task.keyString then table.remove(Scanner.deals, i) end
     end
+    local listed = {}   -- [auctionID] = true: the auctions this answer lists
     local n = AH.GetNumItemSearchResults(key) or 0
     local before = #Scanner.deals
     local odds = ns.ValueOptions()
@@ -109,6 +125,7 @@ local function readAuctions(task)
         local realClass = link and ns.ClassOf(link)
         local realLevel = link and ns.ItemLevelOf(link)
         local realBand = realLevel and outcomes and ns.Model.Outcomes(task.quality, task.classID, realLevel)
+        if r then listed[r.auctionID] = true end
         if r and buying[r.auctionID] then
             r = nil   -- being bought: its row is there already
         elseif not (real and realClass and realBand) then
@@ -125,7 +142,15 @@ local function readAuctions(task)
                 buyout = r.buyoutAmount, value = task.net, profit = task.net - r.buyoutAmount, task = task,
                 lose = outcomes and ns.Model.LossChance(outcomes, ns.PriceOf, odds, r.buyoutAmount) or nil,
                 days = days, daysFew = daysFew, sellSeconds = sellSeconds,
+                epoch = Scanner.browseEpoch,   -- (the browse count at its search: SDD 105)
             }
+        end
+    end
+    -- Rows the player is buying of this item: this answer makes them current again, or says they are gone.
+    for id, d in pairs(buying) do
+        if d.keyString == task.keyString and not d.pending then
+            if listed[id] then d.epoch = Scanner.browseEpoch end
+            afterSearch(d, listed[id])
         end
     end
     if wrong > 0 then
@@ -309,7 +334,7 @@ local function queueChecks()
     for i = #Scanner.deals, 1, -1 do
         local d = Scanner.deals[i]
         local how = read[tostring(d.quality) .. ":" .. tostring(d.classID)]
-        if not live[d.keyString] and not d.pending then
+        if not live[d.keyString] and not inHand(d) then
             if how == "part" then kept = kept + 1 else table.remove(Scanner.deals, i) end
         end
     end
@@ -381,6 +406,8 @@ end)
 local function watchBrowse(seq)
     C_Timer.After(BROWSE_STALL, function()
         if not scan or Scanner.state ~= "browsing" or scan.seq ~= seq then return end
+        -- (Buying first: no page is asked for again while the player aims at Buy or buys, SDD 105.)
+        if Scanner.Buying() then lastBrowseAt = GetTime() end
         if Scanner.paused or GetTime() - lastBrowseAt < BROWSE_STALL then watchBrowse(seq) return end
         lastBrowseAt = GetTime()
         watchBrowse(seq)
@@ -405,6 +432,16 @@ local function watchBrowse(seq)
 end
 
 function nextPass()
+    -- Buying first: a new pass (its SendBrowseQuery) waits while the player aims at Buy or buys (SDD 105). A browse
+    -- also makes the item searches the Gear list came from stale, so it never starts under the pointer.
+    if Scanner.Buying() then
+        local seq = scan.seq
+        lastBrowseAt = GetTime()
+        C_Timer.After(0.3, function()
+            if scan and scan.seq == seq and Scanner.state == "browsing" then nextPass() end
+        end)
+        return
+    end
     scan.index = scan.index + 1
     local pass = scan.passes[scan.index]
     if not pass then return queueChecks() end
@@ -510,6 +547,10 @@ end)
 -- Another window's browse replaces our results: give up this scan and let Play retry.
 if hooksecurefunc then
     hooksecurefunc(AH, "SendBrowseQuery", function()
+        -- Any browse, ours or another window's, makes the item searches held so far stale: a purchase of an
+        -- auction found before it gets no answer (SDD 105). Counted, so a Buy click knows.
+        Scanner.browseEpoch = Scanner.browseEpoch + 1
+        Scanner.browseAt = GetTime()
         if not ourSend and scan and Scanner.state == "browsing" then
             ns.Log("gear scan dropped: another addon or window started a browse")
             scan = nil
@@ -568,7 +609,9 @@ function Scanner.SetAuto(on)
     if on then Scanner.Play() else Scanner.Stop() end
 end
 
+local waiting   -- (buying, below)
 ns.On("AUCTION_HOUSE_CLOSED", function()
+    wipe(waiting)
     wipe(pendingBuys)
     wipe(dropped)
     Scanner.auto = false
@@ -581,93 +624,230 @@ end)
 ------------------------------------------------------------------ buying
 
 local BUY_QUIET = 1.0      -- seconds after a Buy click in which searches wait (more clicks may follow)
-local BUY_EXPIRES = 10     -- seconds after which a purchase with no answer is given up
+local BUY_EXPIRES = 3      -- seconds after which a purchase with no answer is given up (and said)
 local BUSY_HOLD = 2        -- extra seconds everything is held after the auction house dropped a purchase
 local DROP_WINDOW = 2      -- a "request dropped" this soon after a Buy click is taken to be about the purchase
-local AIM_HOLD = 4         -- seconds the scan stays quiet while the mouse is on a Buy button
+local AIM_HOLD = 2         -- seconds an "aim" holds without being renewed (the window renews it while the mouse is there)
+local AIM_GRACE = 1        -- seconds the scan stays quiet after the mouse left the Gear list, Buy Top or Gear Details
+local WAIT_MAX = 10        -- seconds a click waits for the auction house (or its search) before it is said and dropped
+local BUY_NOW_HOLD = 20    -- seconds a "Buy now" holds the scan for the click it asks for
 local lastBuyAt = 0
 local aimUntil = 0
+local aiming = false
+waiting = {}               -- [auctionID] = deal: clicked, not sent yet (deal.wait = "ready" or "search"), or "Buy now"
 
---- The mouse is on a Buy button (or left it): the scan sends nothing new, so the auction house is free
---- when the click comes. The purchase must never wait for the scan; the scan waits for the purchase.
+--- The mouse is over the Gear list, Buy Top (or the gear above it) or Gear Details, where a click on Buy is likely:
+--- the scan sends nothing new, so the auction house is free when the click comes (SDD 105). `on` = the mouse is
+--- there (the window says it again every tick, so it ends by itself in AIM_HOLD if nobody does); off = it left: the
+--- hold ends AIM_GRACE later. The purchase must never wait for the scan; the scan waits for the purchase.
 function Scanner.Aim(on)
-    aimUntil = on and (GetTime() + AIM_HOLD) or 0
+    if on then
+        aiming = true
+        aimUntil = math.max(aimUntil, GetTime() + AIM_HOLD)
+    elseif aiming then
+        aiming = false
+        aimUntil = GetTime() + AIM_GRACE
+    end
 end
 
---- Is a purchase on its way, or was Buy clicked a moment ago? Then nothing else talks to the
---- auction house: a search sent now would be dropped, or would make it drop the purchase.
+function Scanner.Aiming() return GetTime() < aimUntil end
+
+--- Is a purchase on its way, waiting, offered as "Buy now", or was Buy clicked a moment ago, or is the mouse where
+--- Buy is clicked? Then nothing else talks to the auction house: a request sent now would be dropped, would make it
+--- drop the purchase, or (a browse) would make the purchase's search stale.
 function Scanner.Buying()
     if GetTime() - lastBuyAt < BUY_QUIET then return true end
     if GetTime() < aimUntil then return true end
+    if next(waiting) then return true end
     for id, d in pairs(pendingBuys) do
         if GetTime() - d.clickedAt < BUY_EXPIRES then return true end
-        -- No answer at all: free the row again. (If it went through after all, it is still booked.)
+        -- No answer: free the row again, and say so. (If it went through after all, it is still booked.)
         pendingBuys[id] = nil
         dropped[id] = d
         d.pending = false
         ns.Log("purchase of %s got no answer in %ds", d.link or d.itemID, BUY_EXPIRES)
-        ns.Print("no answer for the purchase of %s: click Buy again if it is still listed", d.link or "the gear")
+        ns.Print("no answer yet for %s: click Buy again if it is still listed", d.link or "the gear")
+        ns.Fire("SALVAGER_DEALS")
     end
     return false
 end
 
---- Buys a deal. Must run from a click (the server needs a hardware event).
-function Scanner.Buy(deal)
-    if deal.pending then return end
-    if GetMoney() < deal.buyout then ns.Print("not enough money for %s", deal.link or "this gear") return end
-    -- A click on Buy always buys. Everything else stops at once, and the purchase is next on the line:
-    --   the auction house is free: it goes out now;
-    --   the auction house is busy with one request (a purchase sent now is lost without any answer,
-    --   measured 2026-11-26): it goes out the moment that one request is answered, ahead of the queue.
+--- What talks to the auction house now, for the log line of a Buy click.
+local function inFlight()
+    local parts = {}
+    local q = ns.Queue.current
+    if q then parts[#parts + 1] = string.format("search of %s sent %.1fs ago", ns.Queue.Describe(q), GetTime() - (q.sentAt or 0)) end
+    if scan and scan.pass then
+        local pass = scan.pass
+        parts[#parts + 1] = string.format("browse %s, %d pages%s", pass.name, pass.pages,
+            scan.askedAt and string.format(", a page asked %.1fs ago", GetTime() - scan.askedAt) or "")
+    end
+    if Scanner.browseAt then parts[#parts + 1] = string.format("last browse sent %.1fs ago", GetTime() - Scanner.browseAt) end
+    local n = 0
+    for _ in pairs(pendingBuys) do n = n + 1 end
+    if n > 0 then parts[#parts + 1] = n .. " purchases on their way" end
+    if ns.Queue.paused then parts[#parts + 1] = "queue paused" end
+    return string.format("scan %s; %s", Scanner.state, #parts > 0 and table.concat(parts, "; ") or "nothing")
+end
+
+local function forget(d)
+    waiting[d.auctionID] = nil
+    d.wait, d.waitAt, d.buyNow, d.readyAt = nil, nil, nil, nil
+end
+
+--- Sends a purchase now, in the click. `later` = put it on its way, but SendWaiting sends it (the game allows a
+--- purchase without a click: `buyResendBlocked` not set).
+local function send(deal, later)
+    forget(deal)
     deal.pending = true
     deal.clickedAt = GetTime()
     ns.Gold.Expect("buy", -deal.buyout, deal.link, 120)
     lastBuyAt = deal.clickedAt
     pendingBuys[deal.auctionID] = deal
-    local busy = AH.IsThrottledMessageSystemReady and not AH.IsThrottledMessageSystemReady()
-    if busy and not ns.db.buyResendBlocked then
+    if later then
         deal.resend, deal.queued = true, true
+        return
+    end
+    ns.NoteRequest("buy")
+    AH.PlaceBid(deal.auctionID, deal.buyout)
+end
+
+--- The auction house is ready for a waiting click: its Buy turns into "Buy now", and the chat says it.
+local function offer(d)
+    d.wait, d.waitAt = nil, nil
+    d.buyNow, d.readyAt = true, GetTime()
+    waiting[d.auctionID] = d
+    ns.Print("auction house ready: click Buy now for %s", d.link or "the gear")
+    ns.Log("purchase of %s: the auction house is ready, Buy now offered", d.link or d.itemID)
+    ns.Fire("SALVAGER_DEALS")
+end
+
+local function isReady() return not AH.IsThrottledMessageSystemReady or AH.IsThrottledMessageSystemReady() end
+
+--- The answer of the search a click waited for (from readAuctions). `listed` = the auction is still there.
+function afterSearch(d, listed)
+    if d.wait ~= "search" then return end
+    if not listed then
+        forget(d)
+        removeDeal(d.auctionID)
+        ns.Print("%s is no longer listed: someone else bought it", d.link or "the gear")
+        ns.Log("purchase of %s: its search no longer lists it, row removed", d.link or d.itemID)
+        return
+    end
+    if not ns.db.buyResendBlocked then
+        -- The game may still allow a purchase without a click: send it the moment the auction house is ready.
+        send(d, true)
+        Scanner.SendWaiting()
+        C_Timer.After(1, function() Scanner.SendWaiting(true) end)   -- in case the "ready" event does not come
+        return
+    end
+    if isReady() then offer(d) else d.wait = "ready" end
+end
+
+--- Buys a deal. Must run from a click (the server needs a hardware event per purchase, and nothing can be sent
+--- again without one: SDD 9, 74c). A click on Buy always buys; everything else holds at once (SDD 105):
+---   its search is current and the auction house is free: the purchase goes out in this click;
+---   a browse came after its search (the purchase would get no answer): its item is searched first, ahead of
+---   everything; then its Buy says "Buy now";
+---   the auction house is busy (a purchase sent now is lost without any answer): its Buy says "Buy now" the moment
+---   the auction house is ready. When the game allows a purchase without a click, it is sent then by itself;
+---   a "Buy now" click sends at once.
+function Scanner.Buy(deal)
+    if deal.pending or deal.wait then return end
+    if GetMoney() < deal.buyout then ns.Print("not enough money for %s", deal.link or "this gear") return end
+    local ready = isReady()
+    local stale = deal.epoch ~= nil and deal.epoch < Scanner.browseEpoch
+    ns.Log("Buy click on %s: auction house %s, %s, %s%s; in flight: %s", deal.link or deal.itemID,
+        ready and "ready" or "busy", Scanner.Aiming() and "aiming" or "not aiming",
+        stale and "a browse came after its search" or "its search is current", deal.buyNow and ", Buy now" or "",
+        inFlight())
+    lastBuyAt = GetTime()
+    if stale and deal.task then
+        forget(deal)
+        deal.wait, deal.waitAt = "search", GetTime()
+        waiting[deal.auctionID] = deal
+        ns.Print("%s: searching it again first (a scan browse came after its search); Buy now comes in a moment",
+            deal.link or "the gear")
+        Scanner.Recheck(deal, true)
+    elseif deal.buyNow or ready then
+        send(deal)
+    elseif not ns.db.buyResendBlocked then
+        send(deal, true)
         ns.Log("purchase of %s: the auction house is busy, it goes out the moment it is ready", deal.link or deal.itemID)
         C_Timer.After(1, function() Scanner.SendWaiting(true) end)   -- in case the "ready" event does not come
+        ns.Fire("SALVAGER_DEALS")
+        return
     else
-        ns.NoteRequest("buy")
-        AH.PlaceBid(deal.auctionID, deal.buyout)
+        deal.wait, deal.waitAt = "ready", GetTime()
+        waiting[deal.auctionID] = deal
+        ns.Print("auction house busy: %s waits, Buy now comes the moment it is ready", deal.link or "the gear")
     end
     ns.Fire("SALVAGER_DEALS")
 end
 
---- Searches a deal's item again, so its rows show what is listed now.
-function Scanner.Recheck(deal)
+-- Waiting clicks: "Buy now" the moment the auction house is ready (its event, or this poll); a wait that lasts is
+-- said and dropped, and an offer nobody clicks lapses, so the scan goes on.
+local function pollWaiting()
+    if next(pendingBuys) then Scanner.Buying() end   -- (says a purchase with no answer on time, BUY_EXPIRES)
+    if not next(waiting) then return end
+    local now = GetTime()
+    for _, d in pairs(waiting) do
+        if d.wait == "ready" and isReady() then
+            offer(d)
+        elseif d.wait and now - d.waitAt >= WAIT_MAX then
+            forget(d)
+            ns.Print("the auction house did not answer for %s in %ds: click Buy again if it is still listed",
+                d.link or "the gear", WAIT_MAX)
+            ns.Log("purchase of %s: waited %ds, given up", d.link or d.itemID, WAIT_MAX)
+            ns.Fire("SALVAGER_DEALS")
+        elseif d.buyNow and now - d.readyAt >= BUY_NOW_HOLD then
+            forget(d)
+            ns.Log("purchase of %s: Buy now not clicked in %ds, the scan goes on", d.link or d.itemID, BUY_NOW_HOLD)
+            ns.Fire("SALVAGER_DEALS")
+        end
+    end
+end
+ns.OnTick(pollWaiting)
+ns.On("AUCTION_HOUSE_THROTTLED_SYSTEM_READY", pollWaiting)
+
+--- Searches a deal's item again, so its rows show what is listed now. `forBuy` = for a Buy click that waits for it
+--- (first in line, past every hold).
+function Scanner.Recheck(deal, forBuy)
     local t = deal and deal.task
     if not t or not ns.Queue.open then return end
-    -- The value and limit of now: prices or settings may have changed since the scan.
-    local band = currentBand(t.quality, t.classID, t.ilvl)
+    -- The value and limit of now: prices or settings may have changed since the scan. (A click keeps the auction it
+    -- clicked whatever they say now: the player decided.)
+    local band = currentBand(t.quality, t.classID, t.ilvl) or (forBuy and { net = t.net, limit = t.limit })
     if not band then
         ns.Log("rechecking item %s: its band has no value or limit now, its rows go", t.keyString)
         removeKey(t.keyString)
         ns.Fire("SALVAGER_DEALS")
         return
     end
-    ns.Log("rechecking item %s after a purchase", t.keyString)
+    ns.Log(forBuy and "searching item %s again for a Buy click" or "rechecking item %s after a purchase", t.keyString)
     local c = { keyString = t.keyString, net = band.net, limit = band.limit, ilvl = t.ilvl, quality = t.quality,
         classID = t.classID }
     checkItem(c, t.itemKey, function(task) readAuctions(task) ns.Fire("SALVAGER_DEALS") end,
-        function() ns.Fire("SALVAGER_DEALS") end)
+        function()
+            if forBuy and deal.wait == "search" then
+                forget(deal)
+                ns.Print("the search of %s got no answer: click Buy again if it is still listed", deal.link or "the gear")
+            end
+            ns.Fire("SALVAGER_DEALS")
+        end, forBuy)
 end
 
---- The cheapest deal of a list that is not being bought already.
+--- The auction a group's Buy buys: one the player clicked that waits or says "Buy now", else the cheapest one not
+--- being bought already.
 function Scanner.Cheapest(deals)
     local best
+    for _, d in ipairs(deals) do
+        if (d.wait or d.buyNow) and not d.pending then return d end
+    end
     for _, d in ipairs(deals) do
         if not d.pending and (not best or d.buyout < best.buyout) then best = d end
     end
     return best
-end
-
-local function removeDeal(auctionID)
-    for i = #Scanner.deals, 1, -1 do
-        if Scanner.deals[i].auctionID == auctionID then table.remove(Scanner.deals, i) end
-    end
 end
 
 -- The auction house says it threw a request away, just after a Buy click: the purchase did not go
@@ -793,8 +973,8 @@ ns.On("SALVAGER_SETTINGS", function()
     local gone = 0
     for i = #Scanner.deals, 1, -1 do
         local d = Scanner.deals[i]
-        local band = not d.pending and currentBand(d.quality, d.classID, d.ilvl)
-        if not d.pending and (not band or d.buyout > band.limit) then
+        local band = not inHand(d) and currentBand(d.quality, d.classID, d.ilvl)
+        if not inHand(d) and (not band or d.buyout > band.limit) then
             table.remove(Scanner.deals, i)
             gone = gone + 1
         end

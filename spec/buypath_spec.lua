@@ -64,7 +64,11 @@ describe("Buy path safety", function()
     it("does not add a second row for an auction that is being bought", function()
         local deal = ns.Scanner.deals[1]
         ns.Scanner.Buy(deal)
-        local deals = scan({ row(BOOTS, 100) }, { [BOOTS] = { { auctionID = 10, buyoutAmount = 100, itemLink = BOOTS_LINK } } })
+        -- Its item is searched again while it is on its way (a search for a Buy click goes past the hold).
+        ns.Scanner.Recheck(deal, true)
+        wow.tick(ns, 0.2)
+        wow.fire(ns, "ITEM_SEARCH_RESULTS_UPDATED", deal.itemKey)
+        local deals = ns.Scanner.deals
         assert.are.equal(1, #deals)
         assert.is_true(deals[1].pending)
     end)

@@ -1101,7 +1101,11 @@ describe("Salvager scan safety", function()
         ns.Scanner.Aim(true)                                       -- the mouse is on a Buy button
         assert.is_true(ns.Scanner.Buying())                        -- the scan sends nothing new
         ns.Scanner.Aim(false)
+        assert.is_true(ns.Scanner.Buying())                        -- for a second more (the mouse may come back)
+        wow.tick(ns, 1.1)
         assert.is_false(ns.Scanner.Buying())
+        ns.Scanner.Stop()                                          -- (what the second started is not part of this)
+        ns.Queue.Clear()
         -- The auction house is busy with one request: the purchase waits for that one answer only, and
         -- goes out the moment the auction house is ready. No second click.
         env.ah.ready = false
@@ -2168,7 +2172,7 @@ describe("Salvager Buy Top, the best single auction", function()
         for _, want in ipairs({ { 301, "Beta Boots" }, { 401, "Alpha Boots" }, { 302, "Alpha Boots" }, { 303 } }) do
             click(ns.UI.buyTop)
             order[#order + 1] = bid()
-            wow.tick(ns, 1)                                       -- the window's own refresh after the click
+            wow.tick(ns, 0.5)                                     -- the window's own refresh (all four within 3 s)
             if want[2] then assert.is_truthy(label():find(want[2], 1, true), label()) end
         end
         assert.are.same({ 301, 401, 302, 303 }, order)

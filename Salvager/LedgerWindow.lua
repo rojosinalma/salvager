@@ -392,6 +392,13 @@ function Window.BagText()
     return string.format("%s %s %d/%d", now, ARROW_ICON, after, total)
 end
 
+--- The widest bag space text (a column of live values keeps the width of its widest one, UI.md Tables 2).
+Window.BAG_SAMPLE = string.format("%s 88/88 %s %s-88/88|r %s", BAG_ICON, ARROW_ICON, RED, ALERT_ICON)
+--- The help on the bag space, wherever it shows (the Purchases view, the main window's footer).
+Window.BAG_HELP = "Free slots / all slots of your backpack and bags, now; after the arrow: the free slots once you take "
+    .. "every purchase still in the mail (one slot each). Below 0, red with the alert sign: that many slots are missing. "
+    .. "Profession bags are left out: they do not hold gear."
+
 --- A countdown: "44:05", or "23:10:42" from one hour up.
 local function countdown(seconds)
     if not seconds then return GREY .. "?|r" end
@@ -1082,9 +1089,7 @@ local function build()
     bagLabel = W.Label(bars.footer, "", "GameFontHighlightSmall")
     bagLabel:SetPoint("RIGHT", bars.footer, "RIGHT", -2, 0)
     bagLabel:SetJustifyH("RIGHT")
-    bagArea = W.HelpArea(bars.footer, bagLabel, "Bag space", "Free slots / all slots of your backpack and bags, now; "
-        .. "after the arrow: the free slots once you take every purchase still in the mail (one slot each). Below 0, red "
-        .. "with the alert sign: that many slots are missing. Profession bags are left out: they do not hold gear.")
+    bagArea = W.HelpArea(bars.footer, bagLabel, "Bag space", Window.BAG_HELP)
     bagLabel:Hide()
     bagArea:Hide()
     -- The Odds view: its filter row under the tabs.

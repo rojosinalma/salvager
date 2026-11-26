@@ -8,8 +8,9 @@ ns.UI = UI
 
 local MAX_ROWS, ROW_H = 40, 24
 local MAX_COLS = 11
-local WIDTH, HEIGHT = 800, 560
-local MIN_W, MIN_H = 800, 470
+-- (880: the footer's row holds the window buttons, the gold, the bag space, Play, Stop and Buy Top, SDD 101a.)
+local WIDTH, HEIGHT = 880, 560
+local MIN_W, MIN_H = 880, 470
 -- Under the title bar: the tabs (24 to 54 px), then the view: the Gear view's settings block, or the Materials
 -- view's filter row; the list under it. The footer: two lines of text and the row of buttons (UI.md Controls 1).
 local TABS_TOP, SETTINGS_TOP, SETTINGS_H, FILTERS_TOP, LIST_BOTTOM = 24, 58, 108, 58, 68
@@ -68,7 +69,7 @@ local columnsButton, columnsView   -- the column chooser, and the view its menu 
 local actionHeader
 local REFRESH_GAP, lastRefresh, refreshQueued = 0.25, 0, false
 local spinner, bigSpinner, bigSpinnerText
-local buyTop, topItem, footer2
+local buyTop, topItem, footer2, bags
 local P = {}   -- the window's rows and panels: footerBar, tabBar, settingsBox, materialsBar, inset
 
 ------------------------------------------------------------------ rows per view
@@ -223,6 +224,10 @@ local function topDeal()
     local money = GetMoney() or 0
     local best, affordable
     for _, d in ipairs(ns.Scanner.deals) do
+        -- A click that waits for the auction house, or its "Buy now", comes first: the next click is for it.
+        if (d.wait or d.buyNow) and not d.pending then return d end
+    end
+    for _, d in ipairs(ns.Scanner.deals) do
         if not d.pending then
             if not best or topBetter(d, best) then best = d end
             if d.buyout <= money and (not affordable or topBetter(d, affordable)) then affordable = d end
@@ -252,6 +257,9 @@ local function helpLines()
         "Click such a row to open or close it (the arrow shows which); it stays as you left it.",
         "Click an auction's row to see its Gear details: how its Expected value is made, your history with it.",
         "Buy needs one click per auction. After a purchase that gear is searched again.",
+        "Buy now (lit): the auction house could not take your click at once (busy, or a scan browse came after the "
+            .. "gear's search). Nothing was sent; click Buy now to buy it.",
+        "While the mouse is over this list, Buy Top or Gear Details, the scan waits, so a Buy click goes through.",
         string.format("Each scan makes %d gear searches, the best candidates first (Gear checks, in the Scan settings).",
             ns.db.settings.maxChecks),
         "Hover a column title for more about that column.",
@@ -400,6 +408,20 @@ function UI.UpdatePlay()
     end
 end
 
+--- What a Buy button (a row's, Buy Top, Gear Details) shows for the auction it buys (SDD 105): "Buy"; "..." and off
+--- while the purchase is on its way or waits for the auction house (the reason in `b.reason`); "Buy now", lit, when
+--- the auction house is ready for the click a waiting purchase needs.
+function UI.BuyLook(b, d, label)
+    local why = not d and "Every auction of this row is being bought." or d.pending and "This auction is being bought."
+        or d.wait == "search" and "Searching this gear again first (a scan browse came after its search): Buy now "
+            .. "comes in a moment."
+        or d.wait and "Waiting for the auction house: Buy now comes the moment it is ready." or nil
+    b:SetEnabled(why == nil)
+    b.reason = why
+    b:SetText((d and d.buyNow) and "Buy now" or why and "..." or label)
+    if d and d.buyNow then b:LockHighlight() else b:UnlockHighlight() end
+end
+
 --- A deal's numbers in a tooltip, one line each: Item level, Buyout, Expected value, Expected profit, Return, Loss
 --- chance, Time to sell, Return per day. One function for a Gear row, the gear above "Buy Top" and the Buy Top button,
 --- so they always match.
@@ -425,7 +447,14 @@ local function buyTopTooltip(self)
     local d, why, skipped = topDeal()
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
     GameTooltip:SetText("Buy Top", 1, 1, 1)
-    if d then
+    if d and d.wait then
+        GameTooltip:AddLine(buyTop.reason or "", 1, 0.3, 0.3, true)
+        GameTooltip:AddLine(d.link or dealName(d), 1, 1, 1)
+    elseif d and d.buyNow then
+        GameTooltip:AddLine("The auction house is ready: this click buys it.", 0.3, 1, 0.3, true)
+        GameTooltip:AddLine(d.link or dealName(d), 1, 1, 1)
+        UI.AddDealLines(GameTooltip, d)
+    elseif d then
         GameTooltip:AddLine("Buys the auction with the highest " .. (byReturn() and "Return" or "Expected profit")
             .. " in the Gear tab (the sort), from any row. Each click buys the next best one.", 1, 0.82, 0, true)
         if skipped then
@@ -442,8 +471,9 @@ end
 
 --- The "Buy Top" button: on while there is a deal to buy; its tooltip follows the list while it shows.
 local function updateBuyTop()
-    local d = topDeal()
-    buyTop:SetEnabled(d ~= nil)
+    local d, why = topDeal()
+    UI.BuyLook(buyTop, d, "Buy Top")
+    if not d then buyTop.reason = why buyTop:SetText("Buy Top") end
     -- Above the button: the gear the next click buys, as wide as its name, at most half the room left of the
     -- button (cut there, one line). Nothing when the button is off: the reason is in its tooltip.
     topItem.link = d and (d.link or ("item:" .. d.itemID)) or nil
@@ -468,6 +498,7 @@ function UI.Refresh()
     tabs.materials:SetAlpha(out and 0.5 or 1)
     if out then popOut:LockHighlight() else popOut:UnlockHighlight() end
     gold:SetText(ns.Money(GetMoney() or 0))
+    bags:SetText(ns.LedgerWindow.BagText())
     -- The view under the tabs: Gear has the settings block, Materials its filter row; the list starts under it.
     local materials = UI.view == "materials"
     P.settingsBox:SetShown(not materials)
@@ -529,11 +560,9 @@ function UI.Refresh()
             row.buy:SetEnabled(ns.Queue.open and item.canPost and not loading)
             row.buy:SetText(loading and "..." or "Post")
         elseif item and (item.deal or item.group) then
-            local pending = item.deal and item.deal.pending
-            if item.group then pending = ns.Scanner.Cheapest(item.group.deals) == nil end
+            local d = item.deal or ns.Scanner.Cheapest(item.group.deals)
             row.buy:Show()
-            row.buy:SetEnabled(not pending)
-            row.buy:SetText(pending and "..." or "Buy")
+            UI.BuyLook(row.buy, d, "Buy")
         else
             row.buy:Hide()
         end
@@ -731,21 +760,41 @@ local function build()
     -- spinner before it; the footer takes the room on the left.
     buyTop = W.Button(P.footerBar, "Buy Top", 80, function()
         local d = topDeal()
-        if d then ns.Scanner.Buy(d) end
+        if d and not d.wait then ns.Scanner.Buy(d) end
     end)
     P.footerBar:AddRight(buyTop, 80)
     P.footerBar:AddRight(stopButton, 24, 12)
     P.footerBar:AddRight(playButton, 24, 4)
+    -- Left of Play: your gold and your bag space, readouts (not buttons, UI.md Controls 7 and 11), as wide as their
+    -- widest value so Play does not move while they change; the bag space as the Ledger's Purchases view shows it.
+    local function readout(sample, fallback)
+        local tw = W.TextWidth(sample)
+        return tw and math.ceil(tw) + 4 or fallback
+    end
+    local bagW = readout(ns.LedgerWindow.BAG_SAMPLE, 120)
+    bags = W.Label(P.footerBar, "", "GameFontHighlightSmall")
+    bags:SetJustifyH("RIGHT")
+    bags:SetWordWrap(false)
+    bags:SetWidth(bagW)
+    bags.uiKind = "readout"
+    P.footerBar:AddRight(bags, bagW, 12)
+    W.HelpArea(P.footerBar, bags, "Bag space", ns.LedgerWindow.BAG_HELP)
+    local goldW = readout(ns.Money(9999 * 10000 + 9999), 100)
+    gold = W.Label(P.footerBar, "", "GameFontHighlightSmall")
+    gold:SetJustifyH("RIGHT")
+    gold:SetWordWrap(false)
+    gold:SetWidth(goldW)
+    gold.uiKind = "readout"
+    P.footerBar:AddRight(gold, goldW, 10)
+    W.HelpArea(P.footerBar, gold, "Gold", "The gold you have now.")
+    UI.gold, UI.bags = gold, bags   -- (the specs read them)
     buyTop:SetMotionScriptsWhileDisabled(true)
     buyTop:SetScript("OnEnter", function(self)
         self.hover = true
         buyTopTooltip(self)
-        -- The mouse on a Buy button holds the scan, so the auction house is free when the click comes.
-        if self:IsEnabled() then ns.Scanner.Aim(true) end
     end)
     buyTop:SetScript("OnLeave", function(self)
         self.hover = false
-        ns.Scanner.Aim(false)
         GameTooltip:Hide()
     end)
     UI.buyTop = buyTop
@@ -777,12 +826,10 @@ local function build()
     end)
     topItem:SetScript("OnLeave", function() GameTooltip:Hide() end)
     UI.topItem = topItem
-    -- The upper line of text, at the right: what the addon is doing now (the spinner before it), then your gold.
-    gold = W.Label(f, "", "GameFontHighlightSmall")
-    gold:SetPoint("RIGHT", f, "BOTTOMRIGHT", -24, 58)
-    gold:SetJustifyH("RIGHT")
+    -- The upper line of text, at the right: what the addon is doing now (the spinner before it). (The gold is in the
+    -- row of buttons, left of Play.)
     status = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    status:SetPoint("RIGHT", gold, "LEFT", -14, 0)
+    status:SetPoint("RIGHT", f, "BOTTOMRIGHT", -24, 58)
     status:SetJustifyH("RIGHT")
     status:SetWordWrap(false)
     spinner:SetPoint("RIGHT", status, "LEFT", -6, 0)
@@ -1034,6 +1081,7 @@ local function build()
     -- (Its top follows the view: under the settings block or the filter row. Its bottom leaves room for the
     -- footer's two lines and its row of buttons.)
     P.inset = W.Panel(f, 0, 0, 0, 0.5)
+    UI.listArea = P.inset   -- (the specs put the mouse on it)
     P.inset:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -(SETTINGS_TOP + SETTINGS_H + 6))
     P.inset:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, LIST_BOTTOM)
     titleBand = P.inset:CreateTexture(nil, "BACKGROUND", nil, 1)
@@ -1145,9 +1193,16 @@ local function build()
             local deal = item.deal or (item.group and ns.Scanner.Cheapest(item.group.deals))
             if deal then ns.Scanner.Buy(deal) end
         end)
-        -- The mouse on a Buy button holds the scan, so the auction house is free when the click comes.
-        row.buy:HookScript("OnEnter", function() if row.item and not row.item.post then ns.Scanner.Aim(true) end end)
-        row.buy:HookScript("OnLeave", function() ns.Scanner.Aim(false) end)
+        -- (The mouse over the Gear list holds the scan: `aimedAt`.) Off, the reason shows on hover.
+        row.buy:SetMotionScriptsWhileDisabled(true)
+        row.buy:HookScript("OnEnter", function(self)
+            if not self.reason then return end
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            GameTooltip:SetText(self:GetText() or "", 1, 1, 1)
+            GameTooltip:AddLine(self.reason, 1, 0.3, 0.3, true)
+            GameTooltip:Show()
+        end)
+        row.buy:HookScript("OnLeave", function() GameTooltip:Hide() end)
         row.warn = CreateFrame("Frame", nil, row)
         row.warn:SetSize(18, 18)
         row.warn:SetPoint("RIGHT", row.buy, "LEFT", -4, 0)
@@ -1363,3 +1418,25 @@ ns.On("AUCTION_HOUSE_CLOSED", function() UI.Refresh() end)
 -- Bag counts (the Bags column, the Post buttons) follow the bags.
 ns.On("BAG_UPDATE_DELAYED", function() UI.RequestRefresh() end)
 ns.On("PLAYER_MONEY", function() UI.RequestRefresh() end)
+
+--- Is the mouse where a Buy click is likely (SDD 105): over the Gear list (any of its rows and their Buy), over
+--- Buy Top or the gear above it, or over Gear Details?
+local function aimedAt()
+    if f and f:IsVisible() and UI.view == "deals" then
+        if P.inset:IsMouseOver() or buyTop:IsMouseOver() or (topItem:IsShown() and topItem:IsMouseOver()) then
+            return true
+        end
+    end
+    local g = ns.GearWindow and ns.GearWindow.Frame()
+    return (g and g:IsVisible() and g:IsMouseOver()) and true or false
+end
+UI.AimedAt = aimedAt
+
+-- While the mouse is there the scan sends nothing new, so the auction house is idle when the click comes; it goes on
+-- a second after the mouse left (`Scanner.Aim`).
+local wasAimed = false
+ns.OnTick(function()
+    local on = aimedAt()
+    if on then ns.Scanner.Aim(true) elseif wasAimed then ns.Scanner.Aim(false) end
+    wasAimed = on
+end)

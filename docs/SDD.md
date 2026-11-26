@@ -128,7 +128,8 @@ flipping is out of scope for now.
 26. **Buying first.** Purchases on their way are kept per auction ID (a fast run of Buy clicks used to
     overwrite the one being tracked, so 2 of 19 purchases were recorded only from their mail, 2026-11-25).
     While a purchase is on its way, or Buy was clicked in the last second, the search queue waits and a
-    reported drop is not answered with a resend: the dropped request may be the purchase.
+    reported drop is not answered with a resend: the dropped request may be the purchase. (Since 0.3.134 also while
+    the mouse is where Buy is clicked and while a click waits: 105.)
 27. **The Post window** is a window of its own (`Widgets.Window`, fixed size), not pinned to the main window.
 28. **Value is an average; Lose % is the chance for one item.** Deals show `Model.LossChance`: the chance that
     one disenchant is worth less than the price (quantities equally likely, Salvager bonus included when on, a
@@ -280,9 +281,10 @@ flipping is out of scope for now.
     wait or click again. With the auction house free the purchase is sent in the click. With it busy
     (`IsThrottledMessageSystemReady` false) a purchase sent now is lost with no answer and no event (measured
     2026-11-26, 03:17: five such clicks, "no answer in 10s"), so it is sent on the next
-    `AUCTION_HOUSE_THROTTLED_SYSTEM_READY`, ahead of the whole queue, one purchase per "ready". To keep
-    the line free, the scan holds while the mouse is on a Buy button (`Scanner.Aim`, 4 s at most) and while a
-    purchase is on its way. A purchase the auction house reports as dropped is sent again by the addon when the
+    `AUCTION_HOUSE_THROTTLED_SYSTEM_READY`, ahead of the whole queue, one purchase per "ready" (only while the game
+    allows a purchase without a click; with `buyResendBlocked`, the click waits and its Buy says "Buy now", 105). To
+    keep the line free, the scan holds while the mouse is over the Gear list, Buy Top or Gear Details (105; until
+    0.3.133 only on a Buy button, 4 s at most) and while a purchase is on its way. A purchase the auction house reports as dropped is sent again by the addon when the
     auction house is ready (`AUCTION_HOUSE_THROTTLED_SYSTEM_READY`), ahead of every search and page, up to 3
     times. `PlaceBid` is documented as restricted, so the game may refuse a purchase that is not from a click:
     on `ADDON_ACTION_BLOCKED`/`FORBIDDEN` for Salvager, `SalvagerDB.buyResendBlocked` is set, resends stop for
@@ -405,7 +407,7 @@ flipping is out of scope for now.
        cancel was asked for (`CancelAuction` hooked, any window) that is gone unsold. The read is asked 1 s
        after the call.
     - b. With resends blocked by the game (`buyResendBlocked`), "request dropped" never frees a purchase:
-       it waits for its answer or for 10 s. (06:31: every purchase was freed with "click Buy again" and
+       it waits for its answer or for 10 s (3 s since 0.3.134, and said in the chat: 105). (06:31: every purchase was freed with "click Buy again" and
        went through; the extra clicks then gave "could not buy".)
     - c. An "open all" takes several mails before the gold is read: one change of gold is matched to the
        first expectations, in order, that add up to it (8g 40s 75c from 5 sales mails at 13:28).
@@ -490,7 +492,8 @@ flipping is out of scope for now.
     and at most half the room left of the button. The footer takes the room on their left, in two lines, each one
     line cut at the spinner: line 1 is what the last scan found (deals, items, limits, max price), line 2 the
     item closest to its buy limit ("Closest: ..."). The list's bottom is one line higher for it. (0.3.128, 101: the
-    two lines sit over the footer's row of buttons; the status and the gold at the right of line 1.)
+    two lines sit over the footer's row of buttons; the status and the gold at the right of line 1. 0.3.134: the gold
+    moved to the row of buttons, left of Play, 101a.)
 88. **Clear history lives in the options, with backups** (0.3.106, the user): Options, Data has Clear history,
     Restore backup (with the date of the last copy; off when there is none) and the size of the saved data
     (`Util.SavedSize`: within 0.3% of the real file, measured 2026-11-26). The confirmation says what is lost
@@ -549,6 +552,8 @@ flipping is out of scope for now.
     closed, no gear scan yet, the list empty, every deal being bought, not enough gold for any (the best one is
     named). Its tooltip shows the gear and the deal's lines of what the click buys (`UI.AddDealLines`, as a Gear
     row's: Item level, Buyout, Expected value, Expected profit, Return, Loss chance, Time to sell, Return per day),
+    (0.3.134, 105: while a click waits for the auction house, Buy Top is for that auction, "..." and off with the
+    reason, then "Buy now", lit; the mouse on it, or on the gear above it, holds the scan),
     and follows the list while it shows. Above the button, right-aligned to it (0.3.112, the user): the icon and the
     link of the gear the next click buys, one line, at most half the room left of the button, cut there; empty
     while the button is off; the mouse on it shows the game's tooltip of the gear and the same deal lines (0.3.129,
@@ -732,9 +737,12 @@ flipping is out of scope for now.
     a. Main: tabs Gear and Materials (Deals until 0.3.129; Limits is a window now). Gear: a "Scan settings" block
        (heading, the Scan, Buy and Levels rows; Scan once: Gear, Materials, Both from 0.3.129), then the list. Materials: a filter row ("Only materials with my data"; Scan owned and
        Pop out at its right end), then the list. Footer: two lines of text (the last scan and the closest item at
-       the left; the status and the gold at the right of line 1, the next item to buy at the right of line 2), and
+       the left; the status (the gold until 0.3.133) at the right of line 1, the next item to buy at the right of line 2), and
        a row of buttons: Auction house, Ledger, Reports, Market, Limits, Log, Options at the left; Play, Stop and
-       Buy Top at the right. Nothing on the tab row but the tabs (the gold, the pop-out and the window buttons left
+       Buy Top at the right. 0.3.134 (the user): left of Play, two readouts (text, not buttons): the gold (coins,
+       moved from the footer's upper line) and the bag space (`LedgerWindow.BagText`, the Purchases view's, with its
+       help), each as wide as its widest value, live on `PLAYER_MONEY` and `BAG_UPDATE_DELAYED`. The smallest width
+       is 880 (was 800) so the row fits (`bar.used`). Nothing on the tab row but the tabs (the gold, the pop-out and the window buttons left
        it).
     b. Limits window (`LimitsWindow.lua`, new): the table of the old Limits tab (columns "Armor: recommended",
        "Armor: limit used", "Weapons: recommended", "Weapons: limit used"; the limit boxes over the "limit used"
@@ -791,6 +799,38 @@ flipping is out of scope for now.
     (it drives Buy Top and the order) is green when it gains, red when it loses; since 0.3.133 the other too (0.3.132, the
     user: 0.3.129 made both grey). The same in the row's and Buy Top's tooltips. A click on the gear above Buy Top
     opens its Gear Details, as a click on its row does.
+
+105. **Purchases during a scan** (0.3.134, the user, after nine lost clicks on 2026-11-26 23:29–23:30). Measured in
+    the log of that day: 1 purchase of 147 went through when clicked after a gear scan had sent its browse and
+    before the item was searched again; the clicks of 23:29:14–23:30:06 (during the Rare Weapons browse, and after
+    it before Azure Silk Hood was searched again) got no answer, and every click after the hood's search at
+    23:30:16 went through. So **a browse makes the item searches held so far stale: a purchase of an auction found
+    before it gets no answer, no event.** (The client keeps a search per item: other items' searches do not.) A
+    purchase sent while the auction house is busy is lost too (65). The game needs a click per purchase
+    (`buyResendBlocked`, 74c), so nothing can be sent again for the player. The rules:
+    - a. Every browse, ours or another window's (`SendBrowseQuery` hooked), adds one to `Scanner.browseEpoch`;
+       each deal keeps the count of its search (`epoch`).
+    - b. The mouse over the Gear list (the whole list area, its rows and their Buy), Buy Top or the gear above it,
+       or Gear Details holds every request: `Scanner.Aim`, from a check of the window each tick, ends 1 s after
+       the mouse left. A new pass (`nextPass`), the next page, the stall watcher's resends, searches (gear,
+       materials, your auctions, undercut checks), cancels and posts all wait for `Scanner.Buying()`.
+    - c. A click with the auction house ready and the search current sends the purchase in the click.
+    - d. A click on a stale deal does not send it: its item is searched first (`Scanner.Recheck(deal, true)`:
+       first in line and past every hold); with the answer, its Buy says "Buy now" (lit) and the chat says
+       "auction house ready: click Buy now for <gear>"; that click sends at once. Gone from the answer: the row
+       goes, and the chat says so.
+    - e. A click with the auction house busy (`IsThrottledMessageSystemReady` false) does not send it: the row
+       says "...", everything holds, and at `AUCTION_HOUSE_THROTTLED_SYSTEM_READY` (or a check each tick) its Buy
+       says "Buy now", as in d. Without `buyResendBlocked` the old automatic send stays (65).
+    - f. The same on the row (a group's Buy is for its waiting auction), Buy Top (it is for the waiting auction
+       first) and Gear Details. A wait is said in the chat when it starts; after 10 s without the auction house
+       it is dropped and said; a "Buy now" nobody clicks lapses after 20 s, so the scan goes on.
+    - g. A purchase sent with no answer in 3 s (was 10 s, without a word for that long) is said: "no answer yet
+       for <gear>: click Buy again if it is still listed"; its row is free again and a late answer is still booked
+       (`dropped`).
+    - h. Every click is logged: ready or busy, aiming or not, search current or stale, and what is in flight (the
+       search sent and its age, the browse pass and its pages, the last browse's age, purchases on their way), so
+       the next failure can be measured. Not yet measured in the game.
 
 ## Data
 

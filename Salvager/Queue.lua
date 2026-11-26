@@ -97,6 +97,8 @@ local function describe(task)
     return task.commodity and ("commodity " .. task.commodity) or ("item " .. ns.KeyString(task.itemKey))
 end
 
+Queue.Describe = describe
+
 local function send(task)
     task.sentAt = GetTime()
     task.refreshed = false
@@ -185,8 +187,9 @@ local function pump()
     -- A search sent while the gear browse loads its pages makes the auction house drop a page:
     -- searches wait for the browse, except one the player just asked for.
     if ns.Scanner and ns.Scanner.state == "browsing" and not Queue.items[1].urgent then return end
-    -- Buying first: while a purchase is on its way, or Buy was clicked a moment ago, searches wait.
-    if ns.Scanner and ns.Scanner.Buying() then return end
+    -- Buying first: while a purchase is on its way, waits or is offered, Buy was clicked a moment ago, or the mouse is
+    -- where Buy is clicked, searches wait. Not the search a Buy click waits for (SDD 105).
+    if ns.Scanner and ns.Scanner.Buying() and not Queue.items[1].forBuy then return end
     if ns.Listings and ns.Listings.Cancelling() then return end
     if not ready() then return end
     Queue.current = table.remove(Queue.items, 1)
