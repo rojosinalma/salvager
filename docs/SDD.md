@@ -416,7 +416,9 @@ flipping is out of scope for now.
     CurseForge upload API for the game version named after the TOC's interface (16001 = 1.60.1, Forever),
     tags `v<version>` and pushes the tag to GitHub (`origin`); the changelog is the commit subjects since the last tag. Each upload is a new
     version: it refuses a dirty tree or a version already tagged. Local settings (install host, AddOns
-    folder, CurseForge token and project) live in `.env`, never in the repo.
+    folder, CurseForge token and project) live in `.env`, never in the repo. Forever only: the file gets one
+    game version, of the Forever type (`CURSEFORGE_GAME_VERSION_TYPE=88568`), and the TOC has only interface
+    16001, so other clients do not load it. Blizzard's own Forever TOCs have no flavor suffix, so neither does ours.
 ## Data
 
 `SalvagerBackup` (account-wide): `list` of ledger copies (88). `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

@@ -8,7 +8,7 @@ release reads from the environment (the Makefile loads .env):
   CURSEFORGE_TOKEN       API token (CurseForge Authors > API Tokens)
   CURSEFORGE_PROJECT_ID  the project's ID (its page, About Project)
   RELEASE_TYPE           alpha, beta or release (default beta)
-  CURSEFORGE_GAME_VERSION_TYPE  only when the game version name matches more than one type
+  CURSEFORGE_GAME_VERSION_TYPE  the game's version type (88568 = Forever): the file goes only to that type
   CURSEFORGE_API         default https://wow.curseforge.com/api
 """
 import json
