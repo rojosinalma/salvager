@@ -138,6 +138,9 @@ flipping is out of scope for now.
     `group = true` (an item with its materials under it, a band with its materials) gets a gold band. A view
     with sections is one table per section: the Ledger's Sales view is "On the auction house" and "Paid", each
     with its own title, columns and scroll bar. The Log stays a plain text list.
+39. **Odds view: one table per band** (`Widgets.CardList`): a scrolling stack of cards, each a sunken panel
+    with a gold title band (the band, then its facts: disenchants, value now, buy below, lose, your average),
+    column titles and one striped row per material. Cards and rows are created as needed and reused.
 15. **UI redraws** from events are limited to four per second; the log panel is not rebuilt during a scan.
 
 ## Data

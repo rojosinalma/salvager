@@ -689,6 +689,219 @@ function Widgets.List(parent, opts)
     return list
 end
 
+--- A scrolling stack of small tables ("cards"), each in its own sunken panel with a title band.
+--- The caller anchors the returned frame.
+---   stack:SetColumns({ { title, width, justify, help = { title, text } }, ... })   the first column takes the spare width
+---   stack:SetCards({ { title = text, facts = text, factsHelp = { title, text }, rows = { { cells, itemID } } }, ... })
+---   stack:Refresh()
+function Widgets.CardList(parent)
+    -- (The title band has two lines: the title, and under it the card's facts.)
+    local TITLE_H, HEAD_H, ROW_H, GAP, BAR_W, STEP, MAX_COLS = 40, 18, 22, 8, 18, 22, 6
+    local stack = CreateFrame("Frame", nil, parent)
+    stack.offset, stack.cards, stack.data, stack.columns = 0, {}, {}, {}
+    local scroll = CreateFrame("ScrollFrame", nil, stack)
+    scroll:SetPoint("TOPLEFT", stack, "TOPLEFT", 0, 0)
+    scroll:SetPoint("BOTTOMRIGHT", stack, "BOTTOMRIGHT", -BAR_W, 0)
+    local content = CreateFrame("Frame", nil, scroll)
+    content:SetSize(10, 10)
+    scroll:SetScrollChild(content)
+    local bar = Widgets.ScrollBar(stack, function(value)
+        if value ~= stack.offset then
+            stack.offset = value
+            stack:Refresh()
+        end
+    end)
+    bar:SetPoint("TOPRIGHT", stack, "TOPRIGHT", 0, 0)
+    bar:SetPoint("BOTTOMRIGHT", stack, "BOTTOMRIGHT", 0, 0)
+    local function wheel(_, delta)
+        stack.offset = math.max(0, stack.offset - delta * 3)
+        stack:Refresh()
+    end
+    stack:EnableMouseWheel(true)
+    stack:SetScript("OnMouseWheel", wheel)
+    bar:EnableMouseWheel(true)
+    bar:SetScript("OnMouseWheel", wheel)
+
+    --- Where each column sits: the first from the left (after the icon), the others from the right edge.
+    local function place(region, card, i, forTitle)
+        local cols = stack.columns
+        region:ClearAllPoints()
+        if i == 1 then
+            local fixed = 12
+            for c = 2, #cols do fixed = fixed + cols[c][2] + 8 end
+            region:SetPoint("LEFT", card, "LEFT", forTitle and 8 or 30, 0)
+            region:SetPoint("RIGHT", card, "RIGHT", -fixed, 0)
+        else
+            local right = 12
+            for c = #cols, i + 1, -1 do right = right + cols[c][2] + 8 end
+            region:SetPoint("RIGHT", card, "RIGHT", -right, 0)
+            region:SetWidth(cols[i][2])
+        end
+        region:SetJustifyH(cols[i][3] or "LEFT")
+    end
+
+    local function newCard()
+        local card = Widgets.Panel(content, 0, 0, 0, 0.5)
+        local band = card:CreateTexture(nil, "BACKGROUND", nil, 1)
+        band:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -1)
+        band:SetPoint("TOPRIGHT", card, "TOPRIGHT", -1, -1)
+        band:SetHeight(TITLE_H)
+        band:SetColorTexture(1, 0.82, 0, 0.09)
+        card.title = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        card.title:SetPoint("TOPLEFT", card, "TOPLEFT", 8, -5)
+        card.facts = card:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        card.facts:SetPoint("TOPLEFT", card, "TOPLEFT", 8, -23)
+        card.facts:SetJustifyH("LEFT")
+        card.factsHelp = CreateFrame("Frame", nil, card)
+        card.factsHelp:SetAllPoints(card.facts)
+        card.factsHelp:EnableMouse(true)
+        card.factsHelp:SetScript("OnEnter", function(self)
+            local help = card.data and card.data.factsHelp
+            if not help then return end
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(help[1], 1, 1, 1)
+            GameTooltip:AddLine(help[2], 1, 0.82, 0, true)
+            GameTooltip:Show()
+        end)
+        card.factsHelp:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        -- The column titles, in a strip under the title band.
+        card.heads = CreateFrame("Frame", nil, card)
+        card.heads:SetPoint("TOPLEFT", card, "TOPLEFT", 0, -TITLE_H - 1)
+        card.heads:SetPoint("TOPRIGHT", card, "TOPRIGHT", 0, -TITLE_H - 1)
+        card.heads:SetHeight(HEAD_H)
+        card.headTexts, card.headHelps = {}, {}
+        for i = 1, MAX_COLS do
+            local h = card.heads:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            h:SetHeight(HEAD_H)
+            card.headTexts[i] = h
+            local area = CreateFrame("Frame", nil, card.heads)
+            area:SetAllPoints(h)
+            area:EnableMouse(true)
+            area:SetScript("OnEnter", function(self)
+                local col = stack.columns[i]
+                if not (col and col.help) then return end
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:SetText(col.help[1], 1, 1, 1)
+                GameTooltip:AddLine(col.help[2], 1, 0.82, 0, true)
+                GameTooltip:Show()
+            end)
+            area:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            card.headHelps[i] = area
+        end
+        card.rows = {}
+        return card
+    end
+
+    local function newRow(card, r)
+        local row = CreateFrame("Button", nil, card)
+        row:SetHeight(ROW_H)
+        row:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -TITLE_H - HEAD_H - 1 - (r - 1) * ROW_H)
+        row:SetPoint("TOPRIGHT", card, "TOPRIGHT", -1, -TITLE_H - HEAD_H - 1 - (r - 1) * ROW_H)
+        local hl = row:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints()
+        hl:SetColorTexture(1, 1, 1, 0.08)
+        if r % 2 == 0 then
+            local stripe = row:CreateTexture(nil, "BACKGROUND")
+            stripe:SetAllPoints()
+            stripe:SetColorTexture(1, 1, 1, 0.035)
+        end
+        row.icon = row:CreateTexture(nil, "ARTWORK")
+        row.icon:SetSize(ROW_H - 4, ROW_H - 4)
+        row.icon:SetPoint("LEFT", row, "LEFT", 6, 0)
+        row.cells = {}
+        for i = 1, MAX_COLS do
+            local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            fs:SetHeight(ROW_H)
+            fs:SetWordWrap(false)
+            row.cells[i] = fs
+        end
+        row:SetScript("OnEnter", function(self)
+            local id = self.data and self.data.itemID
+            if not id then return end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetHyperlink("item:" .. id)
+            GameTooltip:Show()
+        end)
+        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        return row
+    end
+
+    function stack:SetColumns(cols) self.columns = cols end
+    function stack:SetCards(cards) self.data = cards end
+
+    function stack:Refresh()
+        local cols = self.columns
+        content:SetWidth(math.max(10, (scroll:GetWidth() or 0)))
+        local y = 0
+        for n, data in ipairs(self.data) do
+            local card = self.cards[n]
+            if not card then
+                card = newCard()
+                self.cards[n] = card
+            end
+            card.data = data
+            local rows = data.rows or {}
+            local height = TITLE_H + 2 + (#rows > 0 and (HEAD_H + #rows * ROW_H + 2) or 0)
+            card:ClearAllPoints()
+            card:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
+            card:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, -y)
+            card:SetHeight(height)
+            card.title:SetText(data.title or "")
+            card.facts:SetText(data.facts or "")
+            card.factsHelp:SetShown(data.factsHelp ~= nil)
+            card.heads:SetShown(#rows > 0)
+            for i = 1, MAX_COLS do
+                local h, col = card.headTexts[i], cols[i]
+                if col then
+                    place(h, card.heads, i, i == 1)
+                    h:SetText(col[1])
+                    h:Show()
+                else
+                    h:Hide()
+                end
+                card.headHelps[i]:SetShown(col ~= nil and col.help ~= nil)
+            end
+            for r = 1, math.max(#rows, #card.rows) do
+                local row, rowData = card.rows[r], rows[r]
+                if rowData and not row then
+                    row = newRow(card, r)
+                    card.rows[r] = row
+                end
+                if row then
+                    row.data = rowData
+                    row:SetShown(rowData ~= nil)
+                    if rowData then
+                        local icon = rowData.itemID and Widgets.IconOf(rowData.itemID)
+                        if icon then row.icon:SetTexture(icon) row.icon:Show() else row.icon:Hide() end
+                        for i = 1, MAX_COLS do
+                            local fs = row.cells[i]
+                            if cols[i] then
+                                place(fs, row, i)
+                                fs:SetText(rowData.cells[i] or "")
+                                fs:Show()
+                            else
+                                fs:Hide()
+                            end
+                        end
+                    end
+                end
+            end
+            card:Show()
+            y = y + height + GAP
+        end
+        for n = #self.data + 1, #self.cards do self.cards[n]:Hide() end
+        content:SetHeight(math.max(10, y))
+        -- Scrolling goes in steps of one row.
+        local max = math.max(0, math.ceil((y - GAP - (scroll:GetHeight() or 0)) / STEP))
+        self.offset = math.max(0, math.min(self.offset, max))
+        scroll:SetVerticalScroll(self.offset * STEP)
+        bar:Update(self.offset, max)
+    end
+
+    stack:SetScript("OnSizeChanged", function() stack:Refresh() end)
+    return stack
+end
+
 function Widgets.Label(parent, text, template)
     local l = parent:CreateFontString(nil, "OVERLAY", template or "GameFontNormalSmall")
     l:SetText(text)

@@ -160,6 +160,15 @@ describe("Salvager in a simulated client", function()
         end
         des[#des] = nil
         assert.is_table(odd)
+        -- In the window each band is a table of its own: a card with the band's facts and its material rows.
+        local cards = ns.LedgerWindow.OddsCards()
+        assert.is_true(#cards >= 48)
+        local card
+        for _, c in ipairs(cards) do if c.title:find("Green armor, item level 26-30", 1, true) then card = c end end
+        assert.are.equal(3, #card.rows)                            -- dust, essence, shard
+        assert.is_truthy(card.facts:find("Value now", 1, true))
+        assert.is_truthy(card.facts:find("Buy below", 1, true))
+        assert.are.equal(11083, card.rows[1].itemID)
         -- Only the bands with data: the one band, its table rows.
         ns.db.windows.ledger = { oddsDataOnly = true }
         local mine = ns.LedgerWindow.OddsRows()

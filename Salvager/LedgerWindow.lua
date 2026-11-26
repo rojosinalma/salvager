@@ -21,25 +21,12 @@ local COLUMNS = {
         { "You get", 76, "RIGHT" }, { "Cost", 84, "RIGHT" }, { "Profit", 76, "RIGHT" } },
     paid = { { "Material", 170 }, { "Paid on", 132 }, { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
         { "You got", 76, "RIGHT" }, { "Cost", 84, "RIGHT" }, { "Profit", 76, "RIGHT" } },
-    odds = { { "Band / material", 230 }, { "Count", 46, "CENTER" },
-        { "Expected", 84, "CENTER", help = { "Expected", "How often this material comes from one disenchant in this "
-            .. "band, and how many, by the odds table the addon uses (Classic's table; not confirmed for Forever)." } },
-        { "You got", 84, "CENTER", help = { "You got", "How often it came in your own disenchants in this band, and "
-            .. "how many on average." } },
-        { "Value now", 84, "RIGHT", help = { "Value now", "What ONE disenchant in this band is worth on average over "
-            .. "many disenchants, at today's material prices, after the 5% cut. It is not the buy limit." } },
-        { "Buy below", 84, "RIGHT", help = { "Buy below", "The most the addon lets you pay in this band: Value now "
-            .. "minus your minimum profit, or the limit you set by hand in the Limits tab." } },
-        { "Lose %", 50, "CENTER", help = { "Lose %", "The chance that one disenchant is worth less than Buy below, so "
-            .. "the risk when you pay the full limit. Paying less lowers it." } },
-        { "Your average", 84, "RIGHT", help = { "Your average", "What your own disenchants in this band gave on "
-            .. "average, at the material prices of the moment of each disenchant, after the cut. Compare it with "
-            .. "Value now." } } },
 }
 
 local f, list, summary, tabs = nil, nil, nil, {}
 local checkButton, cancelButton, qualityFilter, typeFilter, dataOnly
 local salesParts = {}   -- title, table, title, table of the Sales view
+local oddsStack         -- the Odds view: one table per band
 
 --- Which bands the Odds view shows: { quality = { [2], [3], [4] }, type = { a, w } }, kept with the window.
 local function oddsFilter()
@@ -190,10 +177,11 @@ local function oddsText(chance, min, max)
     return string.format("%d%% · %s", math.floor(chance * 100 + 0.5), min == max and tostring(min) or (min .. "-" .. max))
 end
 
---- Odds: every item level band of every quality and gear type, with the table the addon uses
---- and, where you have disenchanted, what you got.
-function Window.OddsRows()
-    local rows = {}
+--- Odds: every item level band of every quality and gear type that the filters show, with the table
+--- the addon uses and, where you have disenchanted, what you got.
+--- @return table  bands { head = the band's row, rows = its material rows }, in the flat list's cell order
+function Window.OddsBands()
+    local bands = {}
     local by = Ledger.Report(ns.db.ledger)
     local s = ns.db.settings
     local opts = { salvager = ns.SalvagerForBuy(), salvagerChance = s.salvagerChance, cut = s.cut }
@@ -205,54 +193,100 @@ function Window.OddsRows()
                 local outcomes = Model.Outcomes(quality, classID, up)
                 local mine = by[string.format("%d:%s:%d", quality, c[2], up)]
                 local n = mine and mine.n or 0
-                local v = Model.Value(outcomes, ns.PriceOf, opts)
-                local limit = ns.BuyLimit(quality, classID, up, ns.LimitBasis(v))
-                local first = #rows + 1
-                rows[first] = {
-                    group = true,
-                    cells = { GOLD .. QUALITY_NAME[quality] .. c[3] .. ", item level " .. bandRange(quality, up) .. "|r",
-                        n > 0 and tostring(n) or (GREY .. "0|r"), "", "",
-                        ns.Money(v.net) .. (#v.missing > 0 and (GREY .. "?|r") or ""),
-                        ns.Money(limit),
-                        limit > 0 and ns.LoseText(Model.LossChance(outcomes, ns.PriceOf, opts, limit)) or (GREY .. "-|r"),
-                        n > 0 and ns.Money(mine.value / n) or (GREY .. "-|r") },
-                }
-                local inTable = {}
-                for _, r in ipairs(outcomes.results) do
-                    inTable[r.id] = true
-                    local m = mine and mine.mats[r.id]
-                    local price = ns.PriceOf(r.id)
-                    rows[#rows + 1] = {
-                        itemID = r.id, indent = INDENT,
-                        cells = { ns.MaterialName(r.id), m and tostring(m.hits) or (GREY .. "0|r"), oddsText(r.chance, r.min, r.max),
-                            n > 0 and string.format("%d%%%s", math.floor((m and m.hits or 0) / n * 100 + 0.5),
-                                m and string.format(" · %.2f", m.qty / m.hits) or "") or (GREY .. "-|r"),
-                            price and (ns.Money(price) .. " each") or (GREY .. "no price|r"), "", "", "" },
-                    }
-                end
-                -- "Only bands with my data": take the band out again when it has none.
-                if saved.oddsDataOnly and n == 0 then
-                    for i = #rows, first, -1 do rows[i] = nil end
-                end
-                -- What came that the table does not have for this band.
-                for id, m in pairs(mine and mine.mats or {}) do
-                    if not inTable[id] then
-                        rows[#rows + 1] = {
-                            itemID = id, indent = INDENT,
-                            cells = { ns.MaterialName(id), tostring(m.hits), RED .. "not expected|r",
-                                string.format("%d%% · %.2f", math.floor(m.hits / n * 100 + 0.5), m.qty / m.hits),
-                                "", "", "", "" },
+                if n > 0 or not saved.oddsDataOnly then
+                    local v = Model.Value(outcomes, ns.PriceOf, opts)
+                    local limit = ns.BuyLimit(quality, classID, up, ns.LimitBasis(v))
+                    local entry = { rows = {}, head = {
+                        group = true,
+                        cells = { GOLD .. QUALITY_NAME[quality] .. c[3] .. ", item level " .. bandRange(quality, up) .. "|r",
+                            n > 0 and tostring(n) or (GREY .. "0|r"), "", "",
+                            ns.Money(v.net) .. (#v.missing > 0 and (GREY .. "?|r") or ""),
+                            ns.Money(limit),
+                            limit > 0 and ns.LoseText(Model.LossChance(outcomes, ns.PriceOf, opts, limit)) or (GREY .. "-|r"),
+                            n > 0 and ns.Money(mine.value / n) or (GREY .. "-|r") },
+                    } }
+                    local inTable = {}
+                    for _, r in ipairs(outcomes.results) do
+                        inTable[r.id] = true
+                        local m = mine and mine.mats[r.id]
+                        local price = ns.PriceOf(r.id)
+                        entry.rows[#entry.rows + 1] = {
+                            itemID = r.id, indent = INDENT,
+                            cells = { ns.MaterialName(r.id), m and tostring(m.hits) or (GREY .. "0|r"),
+                                oddsText(r.chance, r.min, r.max),
+                                n > 0 and string.format("%d%%%s", math.floor((m and m.hits or 0) / n * 100 + 0.5),
+                                    m and string.format(" · %.2f", m.qty / m.hits) or "") or (GREY .. "-|r"),
+                                price and (ns.Money(price) .. " each") or (GREY .. "no price|r"), "", "", "" },
                         }
                     end
+                    -- What came that the table does not have for this band.
+                    for id, m in pairs(mine and mine.mats or {}) do
+                        if not inTable[id] then
+                            entry.rows[#entry.rows + 1] = {
+                                itemID = id, indent = INDENT,
+                                cells = { ns.MaterialName(id), tostring(m.hits), RED .. "not expected|r",
+                                    string.format("%d%% · %.2f", math.floor(m.hits / n * 100 + 0.5), m.qty / m.hits),
+                                    "", "", "", "" },
+                            }
+                        end
+                    end
+                    bands[#bands + 1] = entry
                 end
             end
         end
     end
-    if #rows == 0 then
-        rows[1] = note(saved.oddsDataOnly and "No disenchants yet in the selected bands. Untick \"Only bands with my data\" "
-            .. "to see the tables." or "Nothing selected: pick a quality and a gear type above.")
+    return bands
+end
+
+local function oddsNote()
+    local _, _, saved = oddsFilter()
+    return saved.oddsDataOnly and "No disenchants yet in the selected bands. Untick \"Only bands with my data\" "
+        .. "to see the tables." or "Nothing selected: pick a quality and a gear type above."
+end
+
+--- The same as one flat list: each band's row, then its material rows.
+function Window.OddsRows()
+    local rows = {}
+    for _, band in ipairs(Window.OddsBands()) do
+        rows[#rows + 1] = band.head
+        for _, r in ipairs(band.rows) do rows[#rows + 1] = r end
     end
+    if #rows == 0 then rows[1] = note(oddsNote()) end
     return rows
+end
+
+-- The Odds view shows each band as a table of its own.
+local ODDS_COLUMNS = {
+    { "Material", 150 }, { "Came", 50, "CENTER" },
+    { "Expected", 90, "CENTER", help = { "Expected", "How often this material comes from one disenchant in this band, "
+        .. "and how many, by the odds table the addon uses (Classic's table; not confirmed for Forever)." } },
+    { "You got", 96, "CENTER", help = { "You got", "How often it came in your own disenchants in this band, and how "
+        .. "many on average." } },
+    { "Price", 110, "RIGHT" },
+}
+local BAND_HELP = { "This band", "Disenchants: how many of yours are in this band.\n\n"
+    .. "Value now: what ONE disenchant is worth on average over many, at today's material prices, after the 5% cut. "
+    .. "It is not the buy limit.\n\n"
+    .. "Buy below: the most the addon lets you pay: Value now minus your minimum profit, or the limit you set in the "
+    .. "Limits tab.\n\n"
+    .. "Lose: the chance that one disenchant is worth less than Buy below, so the risk when you pay the full limit.\n\n"
+    .. "Your average: what your own disenchants gave on average, at the prices of the moment. Compare it with Value now." }
+
+--- One card per band for the Odds view.
+function Window.OddsCards()
+    local cards = {}
+    local function fact(label, value) return GREY .. label .. "|r " .. value end
+    for _, band in ipairs(Window.OddsBands()) do
+        local c = band.head.cells
+        cards[#cards + 1] = {
+            title = c[1],
+            facts = table.concat({ fact("Disenchants", c[2]), fact("Value now", c[5]), fact("Buy below", c[6]),
+                fact("Lose", c[7]), fact("Your average", c[8]) }, "     "),
+            factsHelp = BAND_HELP, rows = band.rows,
+        }
+    end
+    if #cards == 0 then cards[1] = { title = GREY .. oddsNote() .. "|r", rows = {} } end
+    return cards
 end
 
 --- The two lines above the list.
@@ -285,7 +319,9 @@ function Window.Refresh()
     if not f or not f:IsShown() then return end
     -- Sales is two tables, each in its own panel; the other views are one.
     local split = Window.view == "sales"
-    list:SetShown(not split)
+    local odds = Window.view == "odds"
+    list:SetShown(not split and not odds)
+    oddsStack:SetShown(odds)
     for _, part in ipairs(salesParts) do part:SetShown(split) end
     if split then
         local l = ns.db.listings
@@ -299,6 +335,9 @@ function Window.Refresh()
         salesParts[2]:Refresh()
         salesParts[4]:SetSource(#paid, function(i) return paid[i] end)
         salesParts[4]:Refresh()
+    elseif odds then
+        oddsStack:SetCards(Window.OddsCards())
+        oddsStack:Refresh()
     else
         local rows = SOURCES[Window.view]()
         list:SetColumns(COLUMNS[Window.view])
@@ -312,7 +351,6 @@ function Window.Refresh()
         if name == Window.view then button:LockHighlight() else button:UnlockHighlight() end
     end
     -- The two filters belong to the Odds view.
-    local odds = Window.view == "odds"
     qualityFilter:SetShown(odds)
     typeFilter:SetShown(odds)
     dataOnly:SetShown(odds)
@@ -351,6 +389,7 @@ local function build()
             Window.view = t[1]
             f.saved.view = t[1]
             list.offset = 0
+            oddsStack.offset = 0
             Window.Refresh()
         end)
         b:SetPoint("TOPLEFT", f, "TOPLEFT", x, -68)
@@ -381,7 +420,7 @@ local function build()
         function(k) return select(2, oddsFilter())[k] end,
         function(k, on)
             select(2, oddsFilter())[k] = on
-            list.offset = 0
+            oddsStack.offset = 0
             Window.Refresh()
         end, "Which gear types the Odds view lists.", "Gear type")
     typeFilter:SetPoint("RIGHT", clear, "LEFT", -6, 0)
@@ -389,7 +428,7 @@ local function build()
         { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" }, { 4, "|cffa335eeEpic|r" },
     }, function(q) return (oddsFilter())[q] end, function(q, on)
         (oddsFilter())[q] = on
-        list.offset = 0
+        oddsStack.offset = 0
         Window.Refresh()
     end, "Which qualities the Odds view lists.", "Quality")
     qualityFilter:SetPoint("RIGHT", typeFilter, "LEFT", -6, 0)
@@ -397,13 +436,18 @@ local function build()
         "Lists only the item level bands you have disenchanted in. Untick it to see the table of every band.",
         function(on)
             select(3, oddsFilter()).oddsDataOnly = on
-            list.offset = 0
+            oddsStack.offset = 0
             Window.Refresh()
         end)
     dataOnly:SetPoint("TOPRIGHT", f, "TOPRIGHT", -190, -38)
     list = W.List(f, { rowHeight = 22 })
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98)
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
+    -- The Odds view: every band is a table of its own, stacked in a scrolling column.
+    oddsStack = W.CardList(f)
+    oddsStack:SetColumns(ODDS_COLUMNS)
+    oddsStack:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98)
+    oddsStack:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
     -- The Sales view: a title and a table for your auctions, a title and a table for the paid sales.
     local titleA = W.Label(f, "", "GameFontNormal")
     titleA:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -100)
