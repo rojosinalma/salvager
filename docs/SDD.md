@@ -13,9 +13,22 @@ flipping is out of scope for now.
    results. Source: a community spreadsheet with 7000+ disenchants. Configurable (`salvagerChance`).
    Applied to buy prices only when the player can use it (recipe spell 1263056 or item 279985), or by
    `/salv salvager on|off`.
-3. **Material price** = average unit price of the cheapest 20 units, own listings excluded. When a scan
-   finds none, the last price stays in use (marked `*`) for one day at most (67). A missing essence price is filled from the other
-   form (3 lesser = 1 greater, marked `~`).
+3. **Material price and what a unit sells for** (rewritten 0.3.122, the user, 2026-11-26). The material's price
+   (its value) = average unit price of the cheapest 20 units, own listings excluded. When a scan finds none, the
+   last price stays in use (marked `*`) for one day at most (67). A missing essence price is filled from the other
+   form (3 lesser = 1 greater, marked `~`). The price itself stays the market's; what the forecast counts a unit at
+   is price × the material's **sell price ratio** (`ns.SellRatio`, `Ledger.SellRatios`): what one unit of it
+   really sold for (the sale price each, before the cut) against its price when that auction was posted. Per
+   material, the median of its sales of the last 30 days, weighted by units (`Model.WeightedMedian`); under 5 sales
+   it is pulled toward the median of all materials, (n × own + (5 − n) × all) ÷ 5 (`Model.Blend`), and the median
+   of all toward 1 the same way; no sales at all = 1. The price at the post is recorded from 0.3.122 on
+   (`SalvagerDB.posted[].val`, copied to the sale as `val`); older sales take the price history (57) at the
+   post of that material at that price each made before the sale, else at the sale. Used in the Expected value of
+   gear (`Model.Value`, `ns.ValueOptions`), so in buy limits (`Model.MaxBuy`), the Deals list, Lose %, Odds, the
+   Market's disenchant value, the `planned` value of a disenchant and the value of what is held and listed (Reports, Materials view).
+   Not in the Disenchant value (`vals`, `value` of a disenchant: the market at the disenchant), nor in the cost
+   shares (4). Measured 2026-11-26 on the user's data (96 sales): 0.998 for all materials together (1 copper under
+   the lowest listing is about the average of the cheapest 20 when posting), 0.963 to 1.000 per material.
 4. **Cost of disenchanted gear, shared per band** (0.3.120, the user, 2026-11-26; replaces the split of each
    item's price over what that one disenchant gave, which put the whole price on a lone dust and almost none on
    a shard). A band is quality, gear type and item level band (`Ledger.BandKey`). Each band has a pool
@@ -43,8 +56,8 @@ flipping is out of scope for now.
    from any addon). A mail that matches a purchase already recorded is not counted again. Matched to
    disenchants first in, first out per item ID. A disenchant with no recorded purchase adds its materials as
    units of unknown cost; they stay out of the average cost and break-even.
-7. **Sales** are recorded from the "Auction successful" invoice: net = sale − cut. Deposits lost on expired
-   auctions are not tracked.
+7. **Sales** are recorded from the "Auction successful" invoice: net = sale − cut. Deposits lost on expired or
+   cancelled auctions are tracked (70d) and counted in the forecast (96).
 8. **Opening stock** is entered by hand (`/salv stock`).
 9. **Buying** needs one click per auction (`PlaceBid` needs a hardware event). Nothing buys on its own.
 10. **Search pacing:** one search at a time, gated by `IsThrottledMessageSystemReady`; an item the client
@@ -144,7 +157,8 @@ flipping is out of scope for now.
 34. **Main window layout:** top bar (Play, Stop, status; Ledger, Log, Options), a settings box with a "Scan" row
     (gear, quality, one-off scans) and a "Buy" row (min profit, max price), the tabs, then the list in its own
     dark bordered panel with a title band and striped rows (`Widgets.Panel`, no game template needed).
-35. **Materials list columns:** Material, Price, Age, Bags, Listed, Sold, Avg cost, Break-even. "Units" is gone
+35. **Materials list columns:** Material, Price, Age, Bags, Listed, Sold, Avg cost, Break-even, Profit, Sell price
+    ratio (0.3.122, 3: in percent, grey with "(few sales)" under 5 sales). "Units" is gone
     (the user found it useless). "Stock" (the ledger's count) is gone too: it confused, because it still
     counted what was posted or sold but not paid. Listed and Sold come from the last read of the player's
     auctions. Every material has a Post button, switched off when none is in the bags; the button column
@@ -233,7 +247,10 @@ flipping is out of scope for now.
     all in percent, "+" and green on a gain, red on a loss. SV - DV is in coins, with a plain hyphen: the game
     font's minus sign (U+2212) is not confirmed. The help on each comparison names both values in full. Purchases
     (Expected value, Disenchant value, Profit) has no comparison column, so it keeps its titles without
-    abbreviations; so does the Deals list.
+    abbreviations; so does the Deals list. From 0.3.122 the Expected value of a purchase counts each unit at its price
+    × sell price ratio, less the deposits lost per unit sold (3, 96); purchases from before keep the value they were
+    shown with. Disenchant value stays at the market price, so SV/DV % still shows the sell price ratio and the
+    price moves between the disenchant and the sale.
 62. **(Replaced 2026-11-26 by 65.) A Buy click while the auction house is busy is not sent** (`IsThrottledMessageSystemReady` false): it
     would be thrown away without an answer (measured 2026-11-26: four clicks during a browse, none answered).
     Everything else is held for 3 s and the player clicks again. A "request dropped" within 2 s of a Buy
@@ -326,6 +343,7 @@ flipping is out of scope for now.
     every change of gold, newest first.
 73. **Min return** (`minReturn`, percent, 0 = off) next to the min profit: the recommended limit is the lower
     of value − min profit and value ÷ (1 + min return) (`Model.MaxBuy`, which also says which rule set it; the
+    value is the forecast's: price × sell price ratio after the cut, less deposits lost, 3 and 96; the
     Limits tab marks a limit set by the return with "%"). Deals have a Return column (expected profit ÷
     buyout); a click on Expected profit or Return orders the list (`dealSort`, remembered), and the item
     checks of a scan go in the same order. Reason: with more supply than gold, return on each gold paid is
@@ -542,6 +560,20 @@ flipping is out of scope for now.
     not shown. Not covered: Limits (its columns go in pairs under Armor and Weapons, two hold input boxes) and the
     Log (no titles). The layout dump (94) has per list `set` and `hidden`, and `hidden[set]` as saved for every set.
     No option and no slash command: Show all is the reset.
+96. **Deposits lost in the forecast** (0.3.122, the user, 2026-11-26). The Expected value of gear is net of the
+    deposits the auction house keeps on expired and cancelled auctions (70d): per material, deposits lost ÷ units
+    sold over the last 30 days, as a share `k` of the deposit of one unit in one post (`Ledger.DepositRates`;
+    one unit's deposit = your posts of it, deposit ÷ units, else `CalculateCommodityDeposit` for one unit at your
+    post duration, `ns.UnitDeposit`). Under 5 sales `k` is pulled toward all materials together, and that toward 1,
+    as the sell price ratio is (3); with no data `k` = 1: one post's deposit lost per unit sold. Each result
+    costs chance × units × `k` × the unit deposit (`Model.Value` `deposit`, `ns.DepositPerUnit`); Lose % uses the
+    same. The material's tooltip shows its sell price ratio with its sales count ("few sales" under 5) and the
+    deposits lost per unit sold. Measured 2026-11-26 on the user's data: 16 copper lost over 94 sales (Soul Dust
+    0.016 c, Greater Astral Essence 0.125 c per unit sold). With the sell price ratio, it lowers the Expected
+    profit of the 377 disenchants in Accuracy by 1.2% (165 236 to 163 187 copper) against an Actual profit of
+    123 128: the forecast's gap to Actual profit (−25.5%) is mostly Disenchant value against Expected value
+    (EV 719 040, DV 687 939) and price moves between the disenchant and the sale (SV 676 932), not the undercut
+    or the deposits.
 
 ## Data
 

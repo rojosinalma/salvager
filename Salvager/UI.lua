@@ -24,7 +24,9 @@ local VIEWS = {
         -- Shown when the mouse is over a column's title.
         help = {
             [5] = { "Expected value", "What one disenchant of this item is worth on average over many disenchants, at the "
-                .. "scanned material prices, after the 5% auction house cut. One disenchant gives less or more than this." },
+                .. "scanned material prices times each material's sell price ratio (what your sales really got against the price), "
+                .. "after the 5% auction house cut, less the deposits you lose per unit sold. One disenchant gives less or "
+                .. "more than this." },
             [6] = { "Expected profit", "Expected value minus the buyout: the average profit per item over many disenchants. "
                 .. "It is not what one item will give.\n\nClick to list the deals by Expected profit." },
             [7] = { "Return", "Expected profit as a share of the buyout: what each gold you pay brings back on top. "
@@ -44,9 +46,10 @@ local VIEWS = {
         id = "materials",   -- (the same set as the Materials window's list: one choice for both)
         icon = true,
         actionTitle = "Post",
-        header = { "Material", "Price", "Age", "Bags", "Listed", "Sold", "Avg cost", "Break-even", "Profit" },
+        header = { "Material", "Price", "Age", "Bags", "Listed", "Sold", "Avg cost", "Break-even", "Profit",
+            "Sell price ratio" },
         cols = { { 160, "LEFT" }, { 80, "RIGHT" }, { 36, "CENTER" }, { 40, "CENTER" }, { 46, "CENTER" }, { 46, "CENTER" },
-            { 85, "RIGHT" }, { 85, "RIGHT" }, { 85, "RIGHT" } },   -- (the same as Materials.COLUMNS)
+            { 85, "RIGHT" }, { 85, "RIGHT" }, { 85, "RIGHT" }, { 90, "RIGHT" } },   -- (the same as Materials.COLUMNS)
         help = "materials",                        -- (the titles' help is Materials.HELP)
     },
     limits = {

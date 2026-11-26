@@ -18,7 +18,7 @@
 local _, ns = ...
 ns = ns or {}
 
-local Util, Data = ns.Util, ns.Data
+local Util, Data, Model = ns.Util, ns.Data, ns.Model
 local Ledger = {}
 ns.Ledger = Ledger
 
@@ -651,6 +651,97 @@ function Ledger.DepositLost(state, matID, qty, amount, why, t)
     state.sales[#state.sales + 1] = rec
     Util.Cap(state.sales, Ledger.MAX_RECORDS)
     return rec
+end
+
+-- The forecast learns from your own sales of the last FORECAST_DAYS; a material with fewer than
+-- FORECAST_MIN_SALES sales leans on all materials together, and with none at all on the default (SDD 3, 96).
+Ledger.FORECAST_DAYS = 30
+Ledger.FORECAST_MIN_SALES = 5
+
+local function recentSales(state, now, days)
+    local since = (now or 0) - (days or Ledger.FORECAST_DAYS) * 86400
+    local out = {}
+    for _, s in ipairs(state.sales) do
+        if (s.t or 0) >= since then out[#out + 1] = s end
+    end
+    return out
+end
+
+--- The sell price ratio per material: what one unit really sold for (the sale price, before the cut) against
+--- the material's value (SDD 3) when it was posted. The median of your recent sales, by units; a material with
+--- few sales is pulled toward the median of all materials, and that one toward 1 while it has few sales.
+--- @param valueAt function(sale) -> the material's value when that sale was posted (or at the sale), or nil;
+---   used when the sale has no `val` of its own
+--- @param opts table|nil { days, minSales }
+--- @return table { [id] = { ratio, n (sales), units, measured (its own median), few }, all = { ratio, n } }
+function Ledger.SellRatios(state, valueAt, now, opts)
+    opts = opts or {}
+    local floor = opts.minSales or Ledger.FORECAST_MIN_SALES
+    local per, all = {}, {}
+    for _, s in ipairs(recentSales(state, now, opts.days)) do
+        if not s.lost and (s.count or 0) > 0 and (s.gross or 0) > 0 then
+            local v = s.val or (valueAt and valueAt(s))
+            if v and v > 0 then
+                local each = s.each or (s.gross / s.count)
+                local x = { r = each / v, w = s.count }
+                per[s.id] = per[s.id] or {}
+                table.insert(per[s.id], x)
+                all[#all + 1] = x
+            end
+        end
+    end
+    local prior = Model.Blend(Model.WeightedMedian(all), #all, 1, floor)
+    local out = { all = { ratio = prior, n = #all } }
+    for id, list in pairs(per) do
+        local units = 0
+        for _, x in ipairs(list) do units = units + x.w end
+        local measured = Model.WeightedMedian(list)
+        out[id] = { ratio = Model.Blend(measured, #list, prior, floor), n = #list, units = units, measured = measured,
+            few = #list < floor }
+    end
+    return out
+end
+
+--- Deposits lost per unit sold, per material, as a share of the deposit of one post (`k`): k = lost deposits ÷
+--- (units sold × deposit of one unit). A material with few sales is pulled toward all materials together, and that
+--- toward 1 (one post's deposit lost per unit sold) while it has few sales.
+--- @param unitDeposit function(id) -> the deposit of one unit in one post, copper, or nil when not known
+--- @param opts table|nil { days, minSales }
+--- @return table { [id] = { k, perUnit (copper per unit sold), lost, sold, n, few }, all = { k, n } }
+function Ledger.DepositRates(state, unitDeposit, now, opts)
+    opts = opts or {}
+    local floor = opts.minSales or Ledger.FORECAST_MIN_SALES
+    local per, nAll, lostAll, expAll = {}, 0, 0, 0
+    local function mat(id)
+        local m = per[id] or { lost = 0, sold = 0, n = 0 }
+        per[id] = m
+        return m
+    end
+    for _, s in ipairs(recentSales(state, now, opts.days)) do
+        if s.lost then
+            local m = mat(s.id)
+            m.lost = m.lost - (s.net or 0)
+        elseif (s.count or 0) > 0 then
+            local m = mat(s.id)
+            m.sold, m.n = m.sold + s.count, m.n + 1
+        end
+    end
+    for id, m in pairs(per) do
+        m.d = unitDeposit(id)
+        if m.d and m.d > 0 then
+            lostAll = lostAll + m.lost
+            expAll = expAll + m.sold * m.d
+            nAll = nAll + m.n
+        end
+    end
+    local prior = Model.Blend(expAll > 0 and lostAll / expAll or nil, nAll, 1, floor)
+    local out = { all = { k = prior, n = nAll } }
+    for id, m in pairs(per) do
+        local own = (m.d and m.d > 0 and m.sold > 0) and m.lost / (m.sold * m.d) or nil
+        local k = Model.Blend(own, m.n, prior, floor)
+        out[id] = { k = k, perUnit = k * (m.d or 0), lost = m.lost, sold = m.sold, n = m.n, few = m.n < floor }
+    end
+    return out
 end
 
 --- What the trading made from `from` on (nil = all of it), to report it by quality and gear type, by band,

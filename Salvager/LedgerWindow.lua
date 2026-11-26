@@ -616,8 +616,7 @@ function Window.OddsBands()
         local f0 = oddsFilter()
         return filterPasses(f0, nil, nil, nil, r.salvager and true or false)
     end)
-    local s = ns.db.settings
-    local opts = { salvager = ns.SalvagerForBuy(), salvagerChance = s.salvagerChance, cut = s.cut }
+    local opts = ns.ValueOptions()
     local x = oddsFilter()
     for _, q in ipairs({ { 2, Data.GREEN }, { 3, Data.BLUE }, { 4, Data.PURPLE } }) do
         for _, c in ipairs({ { Data.CLASS_ARMOR }, { Data.CLASS_WEAPON } }) do

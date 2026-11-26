@@ -226,8 +226,7 @@ describe("Salvager in a simulated client", function()
         assert.are.equal("1-2", dust.cells[4])                     -- one value per cell: the quantity apart
         assert.is_truthy(dust.cells[5]:find("100%", 1, true))      -- your result rate
         -- The band row: its buy limit and the chance one disenchant is worth less than it.
-        local v = ns.Model.Value(ns.Model.Outcomes(2, ns.Data.CLASS_ARMOR, 30), ns.PriceOf,
-            { cut = ns.db.settings.cut })
+        local v = ns.Model.Value(ns.Model.Outcomes(2, ns.Data.CLASS_ARMOR, 30), ns.PriceOf, ns.ValueOptions())
         local limit = ns.BuyLimit(2, ns.Data.CLASS_ARMOR, 30, v.net)
         assert.is_true(limit > 0)
         assert.are.equal(ns.Money(limit), band.cells[6])
@@ -655,9 +654,18 @@ describe("Salvager window and options", function()
         local frame = _G.SalvagerMaterialsFrame
         local width
         frame.SetWidth = function(_, w) width = w end
+        ns.db.columns = ns.db.columns or {}
+        ns.db.columns.materials = { ["Sell price ratio"] = false }
         ns.Materials.Refresh()
         assert.is_number(width)
         assert.is_true(width < 800)                               -- narrower than before, as wide as it needs
+        local without = width
+        ns.db.columns.materials = nil                             -- the sell price ratio shown: wider by its column
+        ns.Materials.PutBack()
+        ns.Materials.PopOut()
+        frame.SetWidth = function(_, w) width = w end
+        ns.Materials.Refresh()
+        assert.is_true(width > without)
         ns.Materials.PutBack()
         ns.Widgets.TextWidth = real
     end)
@@ -2476,6 +2484,70 @@ describe("The cost of disenchanted gear in a simulated client", function()
         for _, r in ipairs(ns.Materials.Rows()) do if r.itemID == DUST then found = r end end
         assert.is_table(found)
         assert.are.equal(ns.Money(even), found.cells[8])
+        for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
+    end)
+end)
+
+describe("The forecast learns from your own sales in a simulated client", function()
+    local env, ns
+    local DUST = 11083
+    local function answer()
+        for _ = 1, 40 do
+            wow.tick(ns, 0.2)
+            local c = ns.Queue.current
+            if c and c.commodity then wow.fire(ns, "COMMODITY_SEARCH_RESULTS_UPDATED", c.commodity) end
+        end
+    end
+    local function dustBandLimit()
+        for _, row in ipairs(ns.Limits(true)) do
+            if row.quality == 2 and row.up == 30 then return row.armor.limit, row.armor.value end
+        end
+    end
+
+    setup(function()
+        env = wow.install()
+        env.items[DUST] = { name = "Soul Dust", quality = 1, ilvl = 1, classID = 7 }
+        env.ah.commodities[DUST] = { { unitPrice = 430, quantity = 50, numOwnerItems = 0 } }
+        env.bags[DUST] = 10
+        env.bagSlots = { [2] = DUST }
+        ns = wow.loadAddon()
+        wow.fire(ns, "ADDON_LOADED", "Salvager")
+        wow.fire(ns, "AUCTION_HOUSE_SHOW")
+        ns.Prices.Scan({ DUST })
+        answer()
+    end)
+
+    it("sells below the value, so the sell price ratio and the buy limit go down", function()
+        assert.are.equal(430, ns.PriceOf(DUST))
+        ns.db.settings.minProfit, ns.db.settings.minReturn = 100, 0
+        local r = ns.SellRatio(DUST)
+        assert.are.same({ 1, 0, true }, { r.ratio, r.n, r.few })        -- no sales: 1, and it says few sales
+        assert.are.equal(3, ns.DepositPerUnit(DUST))                     -- no data: one post's deposit per unit
+        local limit0, value0 = dustBandLimit()
+        -- Five posts of 2 at 80% of the value, each sold.
+        for i = 1, 5 do
+            assert.is_true(ns.Post.Send(DUST, 2, 344, 2))
+            wow.fire(ns, "AUCTION_HOUSE_AUCTION_CREATED", 100 + i)
+            assert.are.equal(430, ns.db.posted[#ns.db.posted].val)       -- the value when it was posted
+        end
+        env.ah.owned = {}
+        for i = 1, 5 do
+            env.ah.owned[i] = { auctionID = 100 + i, itemKey = { itemID = DUST }, status = 1, quantity = 2,
+                timeLeftSeconds = 3000, buyoutAmount = 344 }
+        end
+        wow.fire(ns, "OWNED_AUCTIONS_UPDATED")
+        assert.are.equal(5, #ns.db.ledger.sales)
+        assert.are.equal(430, ns.db.ledger.sales[1].val)
+        r = ns.SellRatio(DUST)
+        assert.are.same({ 0.8, 5, false }, { r.ratio, r.n, r.few })
+        assert.are.equal(0, ns.DepositPerUnit(DUST))                     -- five sales, no deposit lost
+        local limit1, value1 = dustBandLimit()
+        assert.is_true(value1 < value0, value1 .. " " .. value0)
+        assert.is_true(limit1 < limit0, limit1 .. " " .. limit0)
+        -- The Materials list and the tooltip show it.
+        local row
+        for _, m in ipairs(ns.Materials.Rows()) do if m.itemID == DUST then row = m end end
+        assert.are.equal("80.0%", row.cells[10])
         for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
     end)
 end)

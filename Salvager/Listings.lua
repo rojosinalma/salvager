@@ -36,9 +36,11 @@ end
 --- A post made through Salvager: its price each is known for sure, and so is its deposit.
 function Listings.NotePost(auctionID, itemID, quantity, each, deposit)
     local posted = ns.db.posted
+    -- `val` = the material's value now: a sale of this post is measured against it (sell price ratio, SDD 3).
     posted[#posted + 1] = { auctionID = auctionID, itemID = itemID, qty = quantity, each = each, t = time(),
-        deposit = deposit }
+        deposit = deposit, val = ns.PriceOf(itemID) }
     ns.Util.Cap(posted, MAX_POSTED)
+    ns.ForecastChanged()
 end
 
 local function postedEntry(auctionID)
@@ -128,6 +130,8 @@ function Listings.Read()
     for _, r in ipairs(ns.Ledger.NewSold(ns.db.ledger, sold, l.t)) do
         local rec = ns.Ledger.SaleSeen(ns.db.ledger, r.itemID, r.qty, r.each, ns.Cut(), l.t)
         rec.due = r.due   -- when its money arrives, for the countdown in the Ledger
+        local post = postedEntry(r.auctionID)
+        rec.val = post and post.val or nil   -- the value when it was posted (sell price ratio, SDD 3)
         booked = true
         ns.Log("sold %dx %s at %s each: %s after cut, profit %s (money in %d min)", r.qty, ns.MaterialName(r.itemID),
             ns.Money(r.each), ns.Money(rec.net), ns.Money(rec.profit), math.floor((r.left or 0) / 60 + 0.5))

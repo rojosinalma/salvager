@@ -27,12 +27,16 @@ Materials.HELP = {
         .. "auction house cut added." },
     [9] = { "Profit", "What one unit brings if you sell it at the price now: the price after the 5% cut, minus its "
         .. "average cost. Red = a sale at this price loses money." },
+    [10] = { "Sell price ratio", "What one unit really sold for (before the cut) against the price when you posted it: "
+        .. "the median of your sales of the last 30 days. Deal values and buy limits use the price times this ratio. "
+        .. "\"few sales\" = under 5 sales: it leans on all your sales together, and with none at all on 100%. "
+        .. "The material's tooltip has the number of sales and the deposits lost per unit sold." },
 }
 
 Materials.COLUMNS = {
     { "Material", 160 }, { "Price", 80, "RIGHT" }, { "Age", 36, "CENTER" }, { "Bags", 40, "CENTER" },
     { "Listed", 46, "CENTER" }, { "Sold", 46, "CENTER" }, { "Avg cost", 85, "RIGHT" }, { "Break-even", 85, "RIGHT" },
-    { "Profit", 85, "RIGHT" },
+    { "Profit", 85, "RIGHT" }, { "Sell price ratio", 90, "RIGHT" },
 }
 for i, help in pairs(Materials.HELP) do Materials.COLUMNS[i].help = help end
 
@@ -87,6 +91,7 @@ function Materials.Rows()
         local ageText = ago(age)
         if age and age > maxAge then ageText = "|cffff8040" .. ageText .. "|r" end
         local gain = (price and avg) and (math.floor(price * (1 - ns.Cut()) + 0.5) - math.floor(avg + 0.5)) or 0
+        local ratio = ns.SellRatioText(m.id)
         local mine = bags > 0 or listed[m.id] or waiting[m.id] or (s and s.qty > 0) or seen[m.id]
         if not only or mine then out[#out + 1] = {
             cells = { ns.MaterialName(m.id), priceText, ageText, bags > 0 and tostring(bags) or "-",
@@ -95,7 +100,8 @@ function Materials.Rows()
                 avg and (ns.Money(avg) .. (unknown > 0 and " |cff808080+" .. unknown .. "?|r" or ""))
                     or (unknown > 0 and "|cff808080unknown|r" or "-"),
                 be and ns.Money(be) or "-",
-                (price and avg) and ((gain >= 0 and "|cff40ff40" or "|cffff4040") .. ns.Money(gain) .. "|r") or "-" },
+                (price and avg) and ((gain >= 0 and "|cff40ff40" or "|cffff4040") .. ns.Money(gain) .. "|r") or "-",
+                ratio },
             itemID = m.id, post = true, canPost = bags > 0, suggest = suggest,
         } end
     end

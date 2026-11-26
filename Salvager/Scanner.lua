@@ -89,8 +89,7 @@ local function readAuctions(task)
     local n = AH.GetNumItemSearchResults(key) or 0
     local before = #Scanner.deals
     local outcomes = ns.Model.Outcomes(task.quality, task.classID, task.ilvl)
-    local s = ns.db.settings
-    local odds = { salvager = ns.SalvagerForBuy(), salvagerChance = s.salvagerChance, cut = s.cut }
+    local odds = ns.ValueOptions()
     local wrong, unknown = 0, 0
     for i = 1, n do
         local r = AH.GetItemSearchResultInfo(key, i)

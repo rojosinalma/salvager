@@ -82,9 +82,7 @@ local function book(p, got)
     local salvager, how = Disenchant.HadSalvager(p.salvager, outcomes, got)
     local planned
     if outcomes then
-        local v = Model.Value(outcomes, ns.PriceOf, {
-            salvager = salvager, salvagerChance = ns.db.settings.salvagerChance, cut = ns.Cut(),
-        })
+        local v = Model.Value(outcomes, ns.PriceOf, ns.ValueOptions(salvager))
         planned = v.net
     end
     local rec = {

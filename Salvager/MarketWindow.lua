@@ -111,8 +111,7 @@ local Value = { title = "Disenchant value", columns = { { "Band", 190 }, { "Valu
     { "Change", 54, "RIGHT", help = { "Change", "How much the value of one disenchant moved over the time picked." } } } }
 
 local function valueOptions()
-    local s = ns.db.settings
-    return { salvager = ns.SalvagerForBuy(), salvagerChance = s.salvagerChance, cut = s.cut }
+    return ns.ValueOptions()
 end
 
 --- What one disenchant of a band was worth at each moment a price of one of its materials was seen.

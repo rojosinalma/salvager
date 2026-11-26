@@ -15,6 +15,13 @@ local function addLines(tooltip, link)
         local age = e and e.t and math.floor((time() - e.t) / 60)
         tooltip:AddDoubleLine(COLOR .. "Salvager price|r",
             price and string.format("%s (%s min ago)", ns.Money(price), age or "?") or "not scanned", 1, 1, 1, 1, 1, 1)
+        local r = ns.SellRatio(id)
+        tooltip:AddDoubleLine(COLOR .. "Salvager sell price ratio|r", string.format("%s, %d %s in 30 days%s",
+            string.format("%.1f%%", r.ratio * 100), r.n, r.n == 1 and "sale" or "sales",
+            r.few and " (few sales)" or ""), 1, 1, 1, 1, 1, 1)
+        local perUnit = ns.DepositPerUnit(id)
+        tooltip:AddDoubleLine(COLOR .. "Salvager deposits lost per unit sold|r",
+            string.format("%.2f copper", perUnit), 1, 1, 1, 1, 1, 1)
         local s = ns.db.ledger.stock[id]
         if s and s.qty > 0 then
             local avg = Ledger.AvgCost(ns.db.ledger, id)

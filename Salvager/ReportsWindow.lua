@@ -202,7 +202,7 @@ function Reports.MaterialRows()
     local total = { got = 0, sold = 0, net = 0, cost = 0, profit = 0, depositsLost = 0, held = 0, listed = 0, value = 0 }
     for _, m in ipairs(list) do
         local held, listed = heldAndListed(m.id)
-        local value = math.floor((ns.PriceOf(m.id) or 0) * (held + listed) * keep)
+        local value = math.floor((ns.SellValue(m.id) or 0) * (held + listed) * keep)
         for k, v in pairs({ got = m.got, sold = m.sold, net = m.net, cost = m.cost, profit = m.profit,
             depositsLost = m.depositsLost, held = held, listed = listed, value = value }) do total[k] = total[k] + v end
         rows[#rows + 1] = { itemID = m.id, cells = { ns.MaterialName(m.id) or tostring(m.id), tostring(m.got),

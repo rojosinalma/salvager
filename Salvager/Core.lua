@@ -230,6 +230,113 @@ function ns.PriceEntry(id) return ns.db.prices[id] end
 
 function ns.Cut() return ns.db.settings.cut end
 
+------------------------------------------------------------------ forecast (SDD 3, 96)
+
+-- The sell price ratios and deposit rates, worked out when first asked for after the ledger or the prices changed.
+local forecast
+
+local function priceAt(id, t)
+    return (Model.PairPrice(id, function(x) return ns.History.At(ns.db.history, x, t) end))
+end
+
+-- The material's value when a sale was posted: the post of that material at that price each made before the
+-- sale (SalvagerDB.posted: its own `val`, else the price history then), else the value at the sale. Kept on the
+-- sale (`val`), so it is looked up once.
+local function valueAtPost(s)
+    local each = s.each or (s.gross / s.count)
+    local t = s.t or 0
+    local posted = ns.db.posted or {}
+    local v
+    for i = #posted, 1, -1 do
+        local p = posted[i]
+        if p.itemID == s.id and p.each and math.abs(p.each - each) < 1 and (p.t or 0) <= t then
+            v, t = p.val, p.t
+            break
+        end
+    end
+    v = v or priceAt(s.id, t)
+    s.val = v
+    return v
+end
+
+--- The deposit of one unit in one post: from your posts of it, else from the game (the post duration you use).
+--- @return number|nil copper (may be a fraction)
+function ns.UnitDeposit(id)
+    local c, q = 0, 0
+    for _, p in ipairs(ns.db.posted or {}) do
+        if p.itemID == id and p.deposit and (p.qty or 0) > 0 then c, q = c + p.deposit, q + p.qty end
+    end
+    if q > 0 then return c / q end
+    local AH = C_AuctionHouse
+    if AH and AH.CalculateCommodityDeposit then
+        local ok, d = pcall(AH.CalculateCommodityDeposit, id, ns.db.settings.postDuration, 1)
+        if ok and tonumber(d) then return tonumber(d) end
+    end
+    return nil
+end
+
+local function forecastData()
+    if not forecast then
+        local deposits = {}
+        local function unit(id)
+            if deposits[id] == nil then deposits[id] = ns.UnitDeposit(id) or false end
+            return deposits[id] or nil
+        end
+        forecast = {
+            ratios = Ledger.SellRatios(ns.db.ledger, valueAtPost, time()),
+            deposits = Ledger.DepositRates(ns.db.ledger, unit, time()),
+            unit = unit,
+        }
+    end
+    return forecast
+end
+
+function ns.ForecastChanged() forecast = nil end
+for _, event in ipairs({ "SALVAGER_LEDGER", "SALVAGER_PRICES_DONE", "SALVAGER_SETTINGS" }) do
+    ns.On(event, ns.ForecastChanged)
+end
+
+--- The sell price ratio of a material: what one unit sells for against its value (SDD 3).
+--- @return table { ratio, n (your sales of it in the last 30 days), few (fewer than Ledger.FORECAST_MIN_SALES) }
+function ns.SellRatio(id)
+    local r = forecastData().ratios
+    return r[id] or { ratio = r.all.ratio, n = 0, few = true }
+end
+
+--- Deposits lost per unit sold of a material, copper.
+--- @return number copper, table|nil its rate (Ledger.DepositRates), number share of one post's deposit
+function ns.DepositPerUnit(id)
+    local f = forecastData()
+    local rate = f.deposits[id]
+    local k = rate and rate.k or f.deposits.all.k
+    return k * (f.unit(id) or 0), rate, k
+end
+
+--- What one unit of a material is expected to sell for, before the cut: its value × its sell price ratio.
+function ns.SellValue(id)
+    local p = ns.PriceOf(id)
+    return p and p * ns.SellRatio(id).ratio or nil
+end
+
+--- The sell price ratio as text: "99.8%", grey with "(few sales)" when it rests on few sales (UI.md Data 2).
+function ns.SellRatioText(id)
+    local r = ns.SellRatio(id)
+    local text = string.format("%.1f%%", r.ratio * 100)
+    if r.few then return "|cff808080" .. text .. " (few sales)|r" end
+    return text
+end
+
+local function ratioOf(id) return ns.SellRatio(id).ratio end
+local function depositOf(id) return (ns.DepositPerUnit(id)) end
+
+--- The options of the forecast (Model.Value, Model.LossChance): the Salvager bonus, the cut, the sell price
+--- ratio and the deposits lost. `salvager` nil = as for buying.
+function ns.ValueOptions(salvager)
+    local s = ns.db.settings
+    if salvager == nil then salvager = ns.SalvagerForBuy() end
+    return { salvager = salvager, salvagerChance = s.salvagerChance, cut = s.cut, ratio = ratioOf, deposit = depositOf }
+end
+
 --- Can the player use the Arcane Salvager now (recipe known or one in the bags)?
 function ns.HasSalvager()
     if IsPlayerSpell then
@@ -258,9 +365,7 @@ function ns.ItemValue(linkOrID, ilvl, quality, classID, salvager)
     if not (classID and quality and ilvl) then return nil end
     local outcomes = Model.Outcomes(quality, classID, ilvl)
     if not outcomes then return nil end
-    if salvager == nil then salvager = ns.SalvagerForBuy() end
-    local s = ns.db.settings
-    local v = Model.Value(outcomes, ns.PriceOf, { salvager = salvager, salvagerChance = s.salvagerChance, cut = s.cut })
+    local v = Model.Value(outcomes, ns.PriceOf, ns.ValueOptions(salvager))
     return v, outcomes
 end
 
@@ -487,11 +592,11 @@ end
 --- `all` = every quality, whatever the scan looks at (the Limits tab).
 function ns.Limits(all)
     local rows, s = {}, ns.db.settings
-    local salv = ns.SalvagerForBuy()
+    local opts = ns.ValueOptions()
     local function one(quality, classID, ilvl)
         local o = Model.Outcomes(quality, classID, ilvl)
         if not o then return nil end
-        local v = Model.Value(o, ns.PriceOf, { salvager = salv, salvagerChance = s.salvagerChance, cut = s.cut })
+        local v = Model.Value(o, ns.PriceOf, opts)
         local basis = ns.LimitBasis(v)
         local limit, manual = ns.BuyLimit(quality, classID, o.band, basis)
         local recommended, rule = ns.RecommendedLimit(basis)
