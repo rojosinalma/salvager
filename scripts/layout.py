@@ -460,7 +460,7 @@ def draw(name, win, dump):
         else:
             old_list(cv, info, lr, level)
     svg = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{cv.ww + 2 * PAD:.0f}" '
-           f'height="{cv.wh + 2 * PAD + FOOT:.0f}" font-family="DejaVu Sans Condensed, DejaVu Sans, sans-serif">',
+           f'height="{cv.wh + 2 * PAD + FOOT:.0f}" font-family="DejaVu Sans Condensed, DejaVu Sans, sans-serif" xml:space="preserve">',
            f'<defs>{"".join(cv.clips)}</defs>',
            '<rect width="100%" height="100%" fill="#3a3f44"/>',
            f'<rect x="{PAD}" y="{PAD}" width="{cv.ww:.1f}" height="{cv.wh:.1f}" fill="#000000" fill-opacity="0.35"/>']
