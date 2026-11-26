@@ -429,6 +429,19 @@ function newOddsView(parent)
     return view
 end
 
+-- The Sales view's two tables share the height under the tabs; the bar between them moves the border.
+local SPLIT_DEFAULT, SPLIT_MIN, SPLIT_MAX, TABLE_MIN = 0.45, 0.1, 0.9, 66
+local function salesRoom()
+    return (f:GetHeight() or 0) - 98 - 14 - 2 * 20
+end
+
+--- Sets how much of the room the upper Sales table takes (0.1 to 0.9), and remembers it.
+function Window.SetSalesSplit(share)
+    if not f then return end
+    f.saved.salesSplit = math.max(SPLIT_MIN, math.min(SPLIT_MAX, share))
+    Window.Refresh()
+end
+
 function Window.Refresh()
     if oddsFrame and oddsFrame:IsShown() then oddsOut:Refresh() end
     if not f or not f:IsShown() then return end
@@ -444,9 +457,10 @@ function Window.Refresh()
         local l = ns.db.listings
         salesParts[1]:SetText(GOLD .. "On the auction house|r" .. (l.t and (GREY .. "  as of " .. date("%H:%M", l.t) .. "|r") or ""))
         salesParts[3]:SetText(GOLD .. "Sold|r" .. GREY .. "  every sale, newest first; \"money due\" = its mail is not taken yet|r")
-        -- The upper table takes a little under half of the room.
-        local room = (f:GetHeight() or 0) - 98 - 14 - 2 * 20
-        salesParts[2]:SetHeight(math.max(66, math.floor(room * 0.45)))
+        -- The upper table takes the share of the room that the bar between the tables was dragged to.
+        local room = salesRoom()
+        local share = f.saved.salesSplit or SPLIT_DEFAULT
+        salesParts[2]:SetHeight(math.max(TABLE_MIN, math.min(room - TABLE_MIN, math.floor(room * share))))
         local listed, paid = Window.ListingRows(), Window.PaidRows()
         salesParts[2]:SetSource(#listed, function(i) return listed[i] end)
         salesParts[2]:Refresh()
@@ -571,7 +585,38 @@ local function build()
     listB:SetColumns(COLUMNS.paid)
     listB:SetPoint("TOPLEFT", listA, "BOTTOMLEFT", 0, -24)
     listB:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
-    salesParts = { titleA, listA, titleB, listB }
+    -- The bar between the two tables: drag it up or down to make one table taller and the other shorter.
+    local bar = CreateFrame("Button", nil, f)
+    bar:SetPoint("TOPLEFT", listA, "BOTTOMLEFT", 0, -1)
+    bar:SetPoint("TOPRIGHT", listA, "BOTTOMRIGHT", 0, -1)
+    bar:SetHeight(22)
+    local handle = bar:CreateTexture(nil, "ARTWORK")
+    handle:SetSize(60, 3)
+    handle:SetPoint("TOP", bar, "TOP", 0, -2)
+    handle:SetColorTexture(1, 0.82, 0, 0.45)
+    local glow = bar:CreateTexture(nil, "HIGHLIGHT")
+    glow:SetAllPoints()
+    glow:SetColorTexture(1, 1, 1, 0.08)
+    W.Tooltip(bar, "Resize", "Drag up or down to make one table taller and the other shorter. Right-click: back to "
+        .. "the default.")
+    bar:RegisterForClicks("RightButtonUp")
+    bar:SetScript("OnClick", function()
+        f.saved.salesSplit = nil
+        Window.Refresh()
+    end)
+    bar:SetScript("OnMouseDown", function(self, button)
+        if button ~= "LeftButton" then return end
+        self:SetScript("OnUpdate", function()
+            local top, room = listA:GetTop(), salesRoom()
+            local _, y = GetCursorPosition()
+            if type(top) ~= "number" or type(y) ~= "number" or room <= 0 then return end
+            y = y / (f:GetEffectiveScale() or 1)
+            Window.SetSalesSplit((top - y - 4) / room)
+        end)
+    end)
+    bar:SetScript("OnMouseUp", function(self) self:SetScript("OnUpdate", nil) end)
+    bar:SetScript("OnHide", function(self) self:SetScript("OnUpdate", nil) end)
+    salesParts = { titleA, listA, titleB, listB, bar }
     if VIEWS[f.saved.view] then Window.view = f.saved.view end
     f.onResize = Window.Refresh
     f:SetScript("OnShow", Window.Refresh)

@@ -170,6 +170,8 @@ flipping is out of scope for now.
     filter. Band names are written "Uncommon Armor", "Rare Weapons".
 51. **Odds band filter:** the scan's item level bands as ranges (`windows.ledger.oddsBandsOff`); a rare or
     epic band shows when it overlaps a ticked range.
+52. **Sales tables share their height by a draggable bar** (`windows.ledger.salesSplit`, 0.1 to 0.9, default
+    0.45; right-click resets).
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

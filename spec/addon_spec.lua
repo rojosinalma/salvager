@@ -1082,6 +1082,12 @@ describe("Salvager listings", function()
         ns.LedgerWindow.Show()
         ns.LedgerWindow.view = "sales"
         ns.LedgerWindow.Refresh()
+        -- The border between the two tables can be moved, within limits, and is remembered.
+        ns.LedgerWindow.SetSalesSplit(0.7)
+        assert.are.equal(0.7, ns.db.windows.ledger.salesSplit)
+        ns.LedgerWindow.SetSalesSplit(5)
+        assert.are.equal(0.9, ns.db.windows.ledger.salesSplit)
+        ns.db.windows.ledger.salesSplit = nil
         ns.LedgerWindow.view = "purchases"
         ns.LedgerWindow.Refresh()
     end)
