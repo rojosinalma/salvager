@@ -49,17 +49,27 @@ local VIEWS = {
     },
     limits = {
         icon = false,
-        -- Grouped the one way (ns.GroupedRows): gear type, quality, then each band by its range.
-        header = { "Band", "Recommended", "Buy below" },
+        -- Two halves, Armor and Weapons, each with its title over its two columns; the rows are the bands,
+        -- every quality (whatever the scan looks at), by quality, then the range.
+        header = { "Item level", "Recommended price threshold", "Override price threshold",
+            "Recommended price threshold", "Override price threshold" },
+        groupHeader = { { 2, 3, "Armor" }, { 4, 5, "Weapons" } },
+        -- The long titles wrap to two lines: the columns are measured by their longest word.
+        measure = { "Item level", "Recommended", "Override", "Recommended", "Override" },
+        dividers = { 1, 3 },   -- vertical lines after these columns
         help = {
-            [2] = { "Recommended", "The value after the cut, less the min profit, or less the min return when that "
-                .. "asks for more. A % after the amount: the min return sets it." },
-            [3] = { "Buy below", "The most the scan pays for one item of this band. Type your own; the X button next "
-                .. "to it goes back to the recommended one. Grey: the scan does not look at this gear type." },
+            [2] = { "Recommended price threshold", "The most to pay for one armor item of this band: its value after "
+                .. "the cut, less the min profit, or less the min return when that asks for more. A % after the "
+                .. "amount: the min return sets it." },
+            [3] = { "Override price threshold", "The most the scan pays for one armor item of this band. Type your "
+                .. "own (yellow); the X button next to it goes back to the recommended one. Grey: the scan does not "
+                .. "look at armor, or at this quality." },
+            [4] = { "Recommended price threshold", "The same for weapons." },
+            [5] = { "Override price threshold", "The same for weapons." },
         },
-        -- (The "buy below" column is as wide as its gold, silver and copper boxes, title centered.)
-        cols = { { 140, "LEFT" }, { 100, "RIGHT" }, { 184, "CENTER" } },
-        edit = { [3] = "limit" },
+        -- (The override columns are as wide as their gold, silver and copper boxes, title centered.)
+        cols = { { 64, "LEFT" }, { 100, "RIGHT" }, { 184, "CENTER" }, { 100, "RIGHT" }, { 184, "CENTER" } },
+        edit = { [3] = "armor", [5] = "weapon" },
     },
 }
 
@@ -136,23 +146,23 @@ local function recommendedText(x, dim)
 end
 
 local function limitRows()
-    local entries = {}
-    local classes = ns.GearClasses()
-    for _, r in ipairs(ns.Limits()) do
-        for _, c in ipairs({ { Data.CLASS_ARMOR, r.armor }, { Data.CLASS_WEAPON, r.weapon } }) do
-            if c[2] then
-                entries[#entries + 1] = { quality = r.quality, classID = c[1], band = r.up, x = c[2],
-                    dim = not classes[c[1]] }
-            end
+    local out = {}
+    local classes, qualities = ns.GearClasses(), ns.db.settings.qualities
+    local last
+    for _, r in ipairs(ns.Limits(true)) do
+        if r.quality ~= last then
+            last = r.quality
+            out[#out + 1] = { cells = { ns.QualityText(r.quality), "", "", "", "" }, head = true }
         end
-    end
-    local pad = { [22] = "   ", [44] = "      " }
-    local out = ns.GroupedRows(entries, function(e)
-        return { cells = { "", recommendedText(e.x, e.dim), "" }, limits = { limit = e.x }, dim = { limit = e.dim } }
-    end, function(_, label) return { cells = { label, "", "" } } end)
-    -- This list has no indent of its own: the levels show as leading spaces.
-    for _, r in ipairs(out) do
-        if r.indent and pad[r.indent] then r.cells[1] = pad[r.indent] .. r.cells[1] end
+        -- Grey where the scan does not look: that gear type, or that quality.
+        local off = not qualities[r.quality]
+        local dimA, dimW = off or not classes[Data.CLASS_ARMOR], off or not classes[Data.CLASS_WEAPON]
+        out[#out + 1] = {
+            cells = { "   " .. ns.BandRange(r.quality, r.up), recommendedText(r.armor, dimA), "",
+                recommendedText(r.weapon, dimW), "" },
+            limits = { armor = r.armor, weapon = r.weapon },
+            dim = { armor = dimA, weapon = dimW },
+        }
     end
     return out
 end
@@ -250,7 +260,7 @@ end
 --- boxes keep the width of their boxes. Where the client cannot measure text, the widths given are used
 --- and the first column takes the room the window has over its default width.
 local function widths(view, data)
-    local need = data and W.FitColumns(view.header, #data, function(r) return data[r].cells end)
+    local need = data and W.FitColumns(view.measure or view.header, #data, function(r) return data[r].cells end)
     local w = {}
     if need then
         for i, col in ipairs(view.cols) do w[i] = (view.edit and view.edit[i]) and col[1] or need[i] end
@@ -261,13 +271,27 @@ local function widths(view, data)
     return w
 end
 
+local groupTitles, dividers, titleBand = {}, {}, nil
+
+--- The room a view takes over its column titles: one more row for titles over groups of columns.
+local function topOf(view) return view.groupHeader and ROW_H or 0 end
+
 local function layout(view, data)
     local x = view.indent or (view.icon and 30 or 4)
     local w = widths(view, data)
+    local top = topOf(view)
+    local xs = {}
+    if titleBand then titleBand:SetHeight(ROW_H + top) end
+    for r, row in ipairs(rows) do
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", UI.list, "TOPLEFT", 0, -r * ROW_H - top)
+        row:SetPoint("RIGHT", UI.list, "RIGHT", 0, 0)
+    end
     for i = 1, MAX_COLS do
         local col = view.cols[i]
+        xs[i] = x
         headers[i]:ClearAllPoints()
-        headers[i]:SetPoint("TOPLEFT", headers[i]:GetParent(), "TOPLEFT", x, 0)
+        headers[i]:SetPoint("TOPLEFT", headers[i]:GetParent(), "TOPLEFT", x, -top)
         for _, row in ipairs(rows) do
             row.cells[i]:ClearAllPoints()
             row.cells[i]:SetPoint("LEFT", row, "LEFT", x, 0)
@@ -280,6 +304,37 @@ local function layout(view, data)
         end
         if col then x = x + w[i] + 6 end
     end
+    xs[#view.cols + 1] = x
+    -- Titles over groups of columns (Limits: Armor, Weapons), and vertical lines between groups.
+    for i, gh in ipairs(view.groupHeader or {}) do
+        local t = groupTitles[i]
+        if not t then
+            t = UI.list:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            t:SetHeight(ROW_H)
+            t:SetJustifyH("CENTER")
+            groupTitles[i] = t
+        end
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", UI.list, "TOPLEFT", xs[gh[1]], 0)
+        t:SetWidth(math.max(10, xs[gh[2] + 1] - xs[gh[1]] - 6))
+        t:SetText(gh[3])
+        t:Show()
+    end
+    for i = #(view.groupHeader or {}) + 1, #groupTitles do groupTitles[i]:Hide() end
+    for i, after in ipairs(view.dividers or {}) do
+        local d = dividers[i]
+        if not d then
+            d = UI.list:CreateTexture(nil, "ARTWORK")
+            d:SetColorTexture(1, 1, 1, 0.18)
+            d:SetWidth(1)
+            dividers[i] = d
+        end
+        d:ClearAllPoints()
+        d:SetPoint("TOPLEFT", UI.list, "TOPLEFT", xs[after + 1] - 4, 0)
+        d:SetPoint("BOTTOMLEFT", UI.list, "BOTTOMLEFT", xs[after + 1] - 4, 0)
+        d:Show()
+    end
+    for i = #(view.dividers or {}) + 1, #dividers do dividers[i]:Hide() end
     -- The buttons' column (Buy, Post) is a column like the others: right after the last one, as wide as its
     -- warning sign and its button. (Where text cannot be measured, it stays at the right edge.)
     if view.actionTitle and W.TextWidth("x") then
@@ -309,7 +364,7 @@ end
 
 --- Rows that fit in the list now.
 local function fitRows()
-    local h = UI.list and UI.list:GetHeight() or 0
+    local h = (UI.list and UI.list:GetHeight() or 0) - topOf(VIEWS[UI.view] or {})
     return math.max(1, math.min(MAX_ROWS, math.floor(h / ROW_H) - 1))
 end
 
@@ -828,7 +883,7 @@ local function build()
     local inset = W.Panel(f, 0, 0, 0, 0.5)
     inset:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -184)
     inset:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, 40)
-    local titleBand = inset:CreateTexture(nil, "BACKGROUND", nil, 1)
+    titleBand = inset:CreateTexture(nil, "BACKGROUND", nil, 1)
     titleBand:SetPoint("TOPLEFT", inset, "TOPLEFT", 1, -1)
     titleBand:SetPoint("TOPRIGHT", inset, "TOPRIGHT", -1, -1)
     titleBand:SetHeight(ROW_H)
@@ -866,6 +921,7 @@ local function build()
     for i = 1, MAX_COLS do
         local h = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         h:SetHeight(ROW_H)
+        h:SetWordWrap(true)   -- (a long title takes two lines)
         headers[i] = h
         -- An invisible area over the title, for its help text.
         local area = CreateFrame("Frame", nil, list)
@@ -915,7 +971,7 @@ local function build()
             row.cells[i] = fs
         end
         row.edits = {}
-        for _, which in ipairs({ "limit" }) do
+        for _, which in ipairs({ "armor", "weapon" }) do
             local e
             e = W.Money(row, function(copper)
                 local lim = e.limit

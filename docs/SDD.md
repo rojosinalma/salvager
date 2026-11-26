@@ -362,9 +362,12 @@ flipping is out of scope for now.
     under it, then each band by its range only ("26-30", never "item level 26-30"). `ns.GroupedRows` builds
     it, with totals on the headings where the table has totals: Market's Disenchant value, Ledger's
     Accuracy, Reports' Profit, Breakdown's bands. Odds cards sit under the Armor/Weapons subtab and are titled
-    "Uncommon 26-30". A sorted grouped list sorts inside each group (`section`, `head`). The main window's
-    Limits tab too (0.3.96: one Recommended and one Buy below per band, grouped, no longer an Armor and a
-    Weapons column), and `/salv report` (Armor, Uncommon 26-30: ...).
+    "Uncommon 26-30". A sorted grouped list sorts inside each group (`section`, `head`). `/salv report` too
+    (Armor, Uncommon 26-30: ...). The main window's Limits tab is a table of two halves instead (the user,
+    0.3.97): an Armor title over its Recommended and Override price threshold columns, a Weapons title over
+    its two; the rows are the bands of every quality (whatever the scan looks at; grey where it does not),
+    under a heading per quality, the range only. Vertical lines after the Item level column and between the
+    halves (`groupHeader`, `dividers` of a main window view).
 82. **Ledger Purchases** (0.3.96): one row per item (newest first) with its count and totals; a click opens it
     to show each purchase with what it gave (`purchaseFilter().open`). A search box (any part of the name,
     any case) and filters by gear type, quality and item level band sit on the row under the tabs; all kept

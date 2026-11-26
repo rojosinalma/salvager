@@ -361,13 +361,17 @@ describe("Salvager window and options", function()
         end
         ns.UI.view = "limits"
         ns.UI.Refresh()
-        -- The Limits tab is grouped the one way: gear type, quality, then the range; one box per band.
+        -- The Limits tab: an Armor half and a Weapons half; the rows are the bands of every quality, whatever
+        -- the scan looks at, under a heading per quality.
         local limitRows = ns.UI.Rows("limits")
-        assert.is_truthy(limitRows[1].cells[1]:find("Armor", 1, true))
-        assert.is_truthy(limitRows[2].cells[1]:find("Uncommon", 1, true))
-        assert.is_truthy(limitRows[3].cells[1]:find("^%s+1%-"))
-        assert.is_table(limitRows[3].limits.limit)
+        assert.is_truthy(limitRows[1].cells[1]:find("Uncommon", 1, true))
         assert.is_nil(limitRows[1].limits)
+        assert.is_truthy(limitRows[2].cells[1]:find("^%s+1%-"))
+        assert.is_table(limitRows[2].limits.armor)
+        assert.is_table(limitRows[2].limits.weapon)
+        local qualities = {}
+        for _, r in ipairs(limitRows) do if r.head then qualities[#qualities + 1] = r.cells[1] end end
+        assert.are.equal(3, #qualities)                       -- Uncommon, Rare, Epic, even with only Uncommon scanned
         ns.LedgerWindow.Toggle()
         assert.is_true(#ns.LedgerWindow.AccuracyBandRows() >= 1)
         assert.is_true(#ns.LedgerWindow.AccuracyMaterialRows() >= 1)

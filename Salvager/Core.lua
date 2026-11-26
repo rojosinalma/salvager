@@ -468,7 +468,8 @@ end
 
 --- Buy limits per disenchant band, for the Limits tab.
 --- @return table  rows { quality, lo, up, armor = {value, recommended, limit, manual, missing}, weapon = {...} }
-function ns.Limits()
+--- `all` = every quality, whatever the scan looks at (the Limits tab).
+function ns.Limits(all)
     local rows, s = {}, ns.db.settings
     local salv = ns.SalvagerForBuy()
     local function one(quality, classID, ilvl)
@@ -483,7 +484,7 @@ function ns.Limits()
             band = o.band }
     end
     for _, q in ipairs({ { 2, Data.GREEN }, { 3, Data.BLUE }, { 4, Data.PURPLE } }) do
-        if s.qualities[q[1]] then
+        if all or s.qualities[q[1]] then
             local lo = 1
             for _, row in ipairs(q[2]) do
                 local ilvl = math.min(row.up, 70)
