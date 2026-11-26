@@ -132,6 +132,7 @@ function Listings.Read()
         rec.due = r.due   -- when its money arrives, for the countdown in the Ledger
         local post = postedEntry(r.auctionID)
         rec.val = post and post.val or nil   -- the value when it was posted (sell price ratio, SDD 3)
+        rec.postedAt = post and post.t or nil   -- when it was posted (time to sell, SDD 100)
         -- Sold before this session started (not seen since then, its money due an hour after the sale): a sale
         -- made while you were away.
         local start = ns.Gold.SessionStart()

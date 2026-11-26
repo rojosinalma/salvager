@@ -31,13 +31,16 @@ Materials.HELP = {
         .. "the median of your sales of the last 30 days. Deal values and buy limits use the price times this ratio. "
         .. "\"few sales\" = under 5 sales: it leans on all your sales together, and with none at all on 100%. "
         .. "The material's tooltip has the number of sales and the deposits lost per unit sold." },
+    [11] = { "Time to sell", "How long your posts of it took to sell: from the post to the sale, the median of your "
+        .. "sales of the last 30 days (posts made with Salvager). \"few sales\" = under 5 sales: it leans on all your "
+        .. "materials together. Return per day in the Deals tooltips uses it." },
 }
 
 -- (Age grows while it shows: its column is as wide as "00m" with the widest digit, so it does not change width.)
 Materials.COLUMNS = {
     { "Material", 160 }, { "Price", 80, "RIGHT" }, { "Age", 36, "CENTER", sample = "00m" }, { "Bags", 40, "CENTER" },
     { "Listed", 46, "CENTER" }, { "Sold", 46, "CENTER" }, { "Avg cost", 85, "RIGHT" }, { "Break-even", 85, "RIGHT" },
-    { "Profit", 85, "RIGHT" }, { "Sell price ratio", 90, "RIGHT" },
+    { "Profit", 85, "RIGHT" }, { "Sell price ratio", 90, "RIGHT" }, { "Time to sell", 80, "RIGHT" },
 }
 for i, help in pairs(Materials.HELP) do Materials.COLUMNS[i].help = help end
 
@@ -102,7 +105,7 @@ function Materials.Rows()
                     or (unknown > 0 and "|cff808080unknown|r" or "-"),
                 be and ns.Money(be) or "-",
                 (price and avg) and ((gain >= 0 and "|cff40ff40" or "|cffff4040") .. ns.Money(gain) .. "|r") or "-",
-                ratio },
+                ratio, ns.TimeToSellText(m.id) },
             itemID = m.id, post = true, canPost = bags > 0, suggest = suggest,
         } end
     end

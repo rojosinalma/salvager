@@ -528,7 +528,7 @@ end
 ---   stack:Refresh()
 function Widgets.CardList(parent)
     -- (The title band has two lines: the title, and under it the card's facts.)
-    local TITLE_H, HEAD_H, ROW_H, GAP, BAR_W, STEP, MAX_COLS = 40, 18, 22, 8, 18, 22, 8
+    local TITLE_H, HEAD_H, ROW_H, GAP, BAR_W, STEP, MAX_COLS = 40, 18, 22, 8, 18, 22, 10
     local HEADING_H, TOGGLE = 26, 18   -- a heading card (title only); the open / close sign
     -- A card may be a heading (data.heading: its title only), may open and close (data.open ~= nil: the sign
     -- before its title, a click on its title band calls data.onClick), and may sit in (data.indent).

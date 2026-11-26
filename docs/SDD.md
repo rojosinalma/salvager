@@ -24,7 +24,7 @@ flipping is out of scope for now.
    of all toward 1 the same way; no sales at all = 1. The price at the post is recorded from 0.3.122 on
    (`SalvagerDB.posted[].val`, copied to the sale as `val`); older sales take the price history (57) at the
    post of that material at that price each made before the sale, else at the sale. Used in the Expected value of
-   gear (`Model.Value`, `ns.ValueOptions`), so in buy limits (`Model.MaxBuy`), the Deals list, Lose %, Odds, the
+   gear (`Model.Value`, `ns.ValueOptions`; with the result rates of 99), so in buy limits (`Model.MaxBuy`), the Deals list, Lose %, Odds, the
    Market's disenchant value, the `planned` value of a disenchant and the value of what is held and listed (Reports, Materials view; the
    statement's stock, 97b).
    Not in the Disenchant value (`vals`, `value` of a disenchant: the market at the disenchant), nor in the cost
@@ -148,6 +148,10 @@ flipping is out of scope for now.
     minimum profit) and Lose % at that limit (`Model.LossChance` with the limit as the price: the risk when you
     pay the full limit; "-" when the limit is 0). Titles: Expected (the table), You got, Value now, Buy below,
     Lose %, Your average. `Widgets.List` columns take `help = { title, text }`, shown over the column title.
+    0.3.125: each material row also has Rate used and Quantity used (the blend of 99, grey with "(few results)" under
+    50 of yours), and the card's facts end with "Rates used from" (your disenchants the blend rests on, with or
+    without the Salvager as buying counts it; the filters do not change it). Buy below and Loss chance use the
+    blend. `Widgets.CardList` makes 10 cells a row (was 8).
     The lose colors are in one place (`ns.LoseText`), shared with the Deals list.
 32. **The Deals list empties only for a scan started by a click** (Play, Scan gear, Scan both), and is then
     filled again. A round that Play starts by itself keeps the list: when the round has read the gear, rows of
@@ -159,7 +163,8 @@ flipping is out of scope for now.
     (gear, quality, one-off scans) and a "Buy" row (min profit, max price), the tabs, then the list in its own
     dark bordered panel with a title band and striped rows (`Widgets.Panel`, no game template needed).
 35. **Materials list columns:** Material, Price, Age, Bags, Listed, Sold, Avg cost, Break-even, Profit, Sell price
-    ratio (0.3.122, 3: in percent, grey with "(few sales)" under 5 sales). "Units" is gone
+    ratio (0.3.122, 3: in percent, grey with "(few sales)" under 5 sales), Time to sell (0.3.125, 100: grey with
+    "(few sales)" under 5 sales; the main window makes 11 cells a row, was 10). "Units" is gone
     (the user found it useless). "Stock" (the ledger's count) is gone too: it confused, because it still
     counted what was posted or sold but not paid. Listed and Sold come from the last read of the player's
     auctions. Every material has a Post button, switched off when none is in the bags; the button column
@@ -355,7 +360,7 @@ flipping is out of scope for now.
     of value − min profit and value ÷ (1 + min return) (`Model.MaxBuy`, which also says which rule set it; the
     value is the forecast's: price × sell price ratio after the cut, less deposits lost, 3 and 96; the
     Limits tab marks a limit set by the return with "%"). Deals have a Return column (expected profit ÷
-    buyout); a click on Expected profit or Return orders the list (`dealSort`, remembered), and the item
+    buyout; Return per day is in the row's tooltip, 100); a click on Expected profit or Return orders the list (`dealSort`, remembered), and the item
     checks of a scan go in the same order. Reason: with more supply than gold, return on each gold paid is
     what grows the gain (measured 2026-11-26: 82 of 361 Azure Silk Hoods under the limit in one check).
 74. **Measured 2026-11-26, first session with the Arcane Salvager** (36 Uncommon armor, item level 26–30):
@@ -363,6 +368,13 @@ flipping is out of scope for now.
        results before). Mean 1.96 against 1.44 before: +0.52 per dust result, as the 50% model says (2.0).
        The shape is not "+1 half of the time" (that gives 7 / 13 / 6); more data needed. Essences: 5 results,
        none above 2, too few to say if they get the bonus.
+       0.3.125, on the saved data of 2026-11-26 (378 disenchants, 266 with the Salvager: 200 by the effect, 36 by
+       the player, 20 by the setting, 10 by a result above the table): **essences get the bonus, but less than
+       dust.** With the Salvager, 54 essence results came as 1 / 2 / 3 units 24 / 18 / 12 times (mean 1.78; 12 above
+       the table's 2); without it, 14 came as 7 / 7 / 0 (mean 1.50, the table's). So about +0.28 per essence result
+       (± 0.11), against +0.5 in the model and +0.60 for Soul Dust (2.04 with, 1.44 without). Neither material has the
+       shape of "+1 half of the time". The blend (99) answers it per band: Greater Astral Essence in Uncommon Armor
+       26-30 with the Salvager (51 results) is counted at 1.82 each (table with the bonus: 2.00), Soul Dust at 2.04.
     - b. No Salvager effect was found on the player by name, and the snapshots were full (they kept the
        first 30). The buff is **Boosted Disenchanting, spell 1283701** (wowhead.com/forever/spell=1283701):
        "Disenchanting boosted from time spent near Arcane Salvager. While near Arcane Salvager, chance of
@@ -645,6 +657,37 @@ flipping is out of scope for now.
     a window and keeps its place. Not yet seen in the client: the client clamping an inside-out rect edge by edge is
     assumed (the frame API documents the insets, not this case).
 
+99. **Result rates from your own disenchants** (0.3.125, the user, 2026-11-26). Per band (quality, gear type, item
+    level band) and Salvager state (`salvager` of the disenchant record), the forecast blends your results with the
+    table as a prior (`Model.Blended`, `Ledger.Results`, `ns.Outcomes`): the table counts as `Model.RESULT_PRIOR` = 50
+    disenchants. Each (material, quantity) gets the weight K × the table's chance of the material × the table's chance
+    of that quantity (min..max equally likely; with the Salvager, dust and essence one more with `salvagerChance`),
+    plus the times you got it. A material's rate = (K × table rate + your hits) ÷ (K + your disenchants); its
+    quantities follow the same counts (a Dirichlet with the table as its mean); a material the table does not have
+    comes in with your hits only. With no results the blend is the table, to the copper. Expected value
+    (`Model.Value`: chance × mean quantity × unit value), buy limits, Deals, Loss chance (`Model.LossChance`: each
+    quantity's own chance), the Odds, the Market's disenchant value and a disenchant's `planned` value use it, with
+    your results with the Salvager when buying counts its bonus and without it otherwise. Cautious pricing still
+    takes the table's lowest amount. "few results" under `Model.FEW_RESULTS` = 50 of yours (the table still weighs
+    more). Measured 2026-11-26 on the user's data, at the saved prices, Expected value table → blend: Uncommon Armor
+    26-30 with the Salvager (251) 1631 → 1634 c; without (50) 1292 → 1233 c (−4.6%: essence 10% of the time, table
+    20%); 31-35 without (31) 1437 → 1459 c; the other bands under 15 disenchants move 0.3% to 2.5%. Loss chance at
+    the buy limit moves at most 3 points. Limits: results are not judged for their Salvager state beyond the record
+    (a result above the table marks it "with Salvager", 74b, which leans that side up a little: 10 of 266).
+100. **Time to sell and Return per day** (0.3.125, the user, 2026-11-26). Time to sell of a material
+    (`Ledger.TimesToSell`, `ns.TimeToSell`): from the post to the sale, the median by units of its sales of the last
+    30 days, pulled toward all materials under 5 sales (as the sell price ratio, 3). The post is the sale's
+    `postedAt` (kept from 0.3.125 when a sale is seen sold, from `SalvagerDB.posted`), else the last post of that
+    material at that price each before the sale; sales of posts not made through Salvager do not count. The sale is
+    at its money's due time less `Ledger.MAIL_DELAY` (1 h) when known, else when it was booked (a sale known from its
+    mail only counts late). Unsold posts do not count, so it is the time of what sold. Shown in the Materials list
+    (35) and the material's tooltip. Return per day of a deal (`Model.DaysToSell`, `Model.ReturnPerDay`,
+    `Scanner.ReturnPerDay`): Return ÷ days, days = the time to sell of the band's materials weighted by their part of
+    the Expected value, at least 1 day. In the deal's tooltip with that time, not a column: on the user's data
+    (2026-11-26, 91 of 98 sales matched to a post) materials sell in minutes (median 1.4 min over all, Soul Dust 1.4 min
+    over 36 sales, Large Glimmering Shard 3.3 min over 7; the slowest sales took 1 to 4 h), so every deal counts 1 day and
+    Return per day equals Return; a column would repeat Return (UI.md Tables 1). The deal sort stays as it is (73).
+
 ## Data
 
 `SalvagerBackup` (account-wide): `list` of ledger copies (88). `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `pools`, `disenchants`, `sales`),
@@ -654,5 +697,7 @@ flipping is out of scope for now.
 
 1. Whether Boosted Disenchanting (1283701) stacks with the time spent near the Salvager, and whether the
    bonus grows with it: read `salvagerStacks` and the results after the next batches (74b).
-3. The shape of the Salvager bonus, and whether essences get it (74a): check after about 100 more disenchants.
+3. The shape of the Salvager bonus (74a): neither dust nor essence looks like "+1 half of the time"; essences get
+   about half the dust's bonus (0.3.125). The blend (99) follows the data per band; check the shape after about 100
+   more disenchants with the Salvager outside Uncommon Armor 26-30.
 2. Whether Forever's disenchant results match the Classic table: the Ledger window (Odds) compares observed odds per band.

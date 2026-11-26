@@ -35,6 +35,10 @@ end
 --- A deal's return: its expected profit as a share of its price.
 function Scanner.Return(d) return d.buyout > 0 and d.profit / d.buyout or 0 end
 
+--- A deal's Return per day (SDD 100): its Return ÷ the days until its materials sell (at least 1). nil when no
+--- material has a time to sell yet.
+function Scanner.ReturnPerDay(d) return ns.Model.ReturnPerDay(d.profit, d.buyout, d.days) end
+
 --- Which deal comes first, by the order the player picked (Expected profit or Return).
 function Scanner.Better(a, b)
     if ns.db.settings.dealSort == "return" then return Scanner.Return(a) > Scanner.Return(b) end
@@ -88,8 +92,11 @@ local function readAuctions(task)
     end
     local n = AH.GetNumItemSearchResults(key) or 0
     local before = #Scanner.deals
-    local outcomes = ns.Model.Outcomes(task.quality, task.classID, task.ilvl)
     local odds = ns.ValueOptions()
+    local outcomes = ns.Outcomes(task.quality, task.classID, task.ilvl, odds.salvager)
+    -- Days until the materials sell, by their part of the value (Return per day, SDD 100).
+    local days, daysFew, sellSeconds
+    if outcomes then days, daysFew, sellSeconds = ns.DaysToSell(ns.Model.Value(outcomes, ns.PriceOf, odds).parts) end
     local wrong, unknown = 0, 0
     for i = 1, n do
         local r = AH.GetItemSearchResultInfo(key, i)
@@ -117,6 +124,7 @@ local function readAuctions(task)
                 link = r.itemLink, itemID = key.itemID, ilvl = task.ilvl, quality = task.quality, classID = task.classID,
                 buyout = r.buyoutAmount, value = task.net, profit = task.net - r.buyoutAmount, task = task,
                 lose = outcomes and ns.Model.LossChance(outcomes, ns.PriceOf, odds, r.buyoutAmount) or nil,
+                days = days, daysFew = daysFew, sellSeconds = sellSeconds,
             }
         end
     end

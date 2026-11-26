@@ -135,7 +135,7 @@ function Gold.Session()
 end
 
 -- The money of a sold auction comes about an hour after the sale (the addon's guess, SDD 97).
-Gold.MAIL_DELAY = 3600
+Gold.MAIL_DELAY = ns.Ledger.MAIL_DELAY
 
 --- The statement of this character from `from` to `to` (nil = now), Statement.Compute.
 function Gold.Statement(from, to)

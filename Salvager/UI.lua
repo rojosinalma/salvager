@@ -7,7 +7,7 @@ local UI = { view = "deals", offset = 0, expanded = {} }
 ns.UI = UI
 
 local MAX_ROWS, ROW_H = 40, 24
-local MAX_COLS = 10
+local MAX_COLS = 11
 local WIDTH, HEIGHT = 800, 560
 local MIN_W, MIN_H = 800, 470
 local ROWS = 15          -- rows that fit now (set from the list height)
@@ -47,9 +47,9 @@ local VIEWS = {
         icon = true,
         actionTitle = "Post",
         header = { "Material", "Price", "Age", "Bags", "Listed", "Sold", "Avg cost", "Break-even", "Profit",
-            "Sell price ratio" },
+            "Sell price ratio", "Time to sell" },
         cols = { { 160, "LEFT" }, { 80, "RIGHT" }, { 36, "CENTER" }, { 40, "CENTER" }, { 46, "CENTER" }, { 46, "CENTER" },
-            { 85, "RIGHT" }, { 85, "RIGHT" }, { 85, "RIGHT" }, { 90, "RIGHT" } },   -- (the same as Materials.COLUMNS)
+            { 85, "RIGHT" }, { 85, "RIGHT" }, { 85, "RIGHT" }, { 90, "RIGHT" }, { 80, "RIGHT" } },   -- (as Materials.COLUMNS)
         help = "materials",                        -- (the titles' help is Materials.HELP)
     },
     limits = {
@@ -664,6 +664,18 @@ local function rowTooltip(self)
     GameTooltip:SetHyperlink(link)
     local hint = UI.view == "materials" and ns.RowHint(item)
     if hint then GameTooltip:AddLine(hint, 0.5, 0.8, 1) end
+    local d = UI.view == "deals" and (item.deal or (item.group and ns.Scanner.Cheapest(item.group.deals)))
+    if d then
+        -- Return per day (SDD 100): in the tooltip, not a column, while it equals Return for nearly every deal.
+        local perDay = ns.Scanner.ReturnPerDay(d)
+        local few = d.daysFew and " (few sales)" or ""
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddDoubleLine("Time to sell (its materials)", d.days and (ns.DurationText(d.sellSeconds)
+            .. string.format(", counted as %.1f %s", d.days, d.days == 1 and "day" or "days") .. few) or "not known yet",
+            1, 0.82, 0, 1, 1, 1)
+        GameTooltip:AddDoubleLine("Return per day", perDay and (string.format("%+.1f%%", perDay * 100) .. few)
+            or "not known yet", 1, 0.82, 0, 1, 1, 1)
+    end
     GameTooltip:Show()
 end
 

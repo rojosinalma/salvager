@@ -38,8 +38,10 @@ reply must say so.
 1. The game's own words: Uncommon, Rare, Epic; Armor, Weapons; disenchant; buyout; auction.
    Never the color names for qualities.
 2. Trading terms, the same everywhere: Expected value, Disenchant value, Sold value, Expected
-   profit, Profit, Loss chance, Break-even, Result rate, Sell price ratio (what a unit really sold for against
-   its price when posted). One thing has one name in every window.
+   profit, Profit, Loss chance, Break-even, Result rate, Rate used (the result rate the forecast uses: the table
+   blended with your results), Sell price ratio (what a unit really sold for against its price when posted), Time to
+   sell (from the post to the sale), Return per day (Return ÷ the days until the materials sell, at least 1). One
+   thing has one name in every window.
    What a disenchant gives is a result, never a "drop".
    Their abbreviations: EV (Expected value), DV (Disenchant value), SV (Sold value), EP (Expected profit),
    AP (Actual profit). A column that compares two values is named for them, with the abbreviations:

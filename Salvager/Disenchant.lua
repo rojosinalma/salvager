@@ -82,7 +82,9 @@ local function book(p, got)
     local salvager, how = Disenchant.HadSalvager(p.salvager, outcomes, got)
     local planned
     if outcomes then
-        local v = Model.Value(outcomes, ns.PriceOf, ns.ValueOptions(salvager))
+        -- (The forecast's outcomes: the table blended with your results, SDD 99.)
+        local v = Model.Value(ns.Outcomes(quality, classID, ilvl, salvager) or outcomes, ns.PriceOf,
+            ns.ValueOptions(salvager))
         planned = v.net
     end
     local rec = {

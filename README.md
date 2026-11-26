@@ -45,7 +45,13 @@ By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_foreve
 For an item: the chance of each material × its average quantity × its price, plus the Arcane Salvager bonus
 when you can use it, minus the 5% auction house cut. The buy limit is that value minus your minimum profit.
 
-- The table is Classic's disenchant table by item level (`Salvager/Data.lua`).
+- The table is Classic's disenchant table by item level (`Salvager/Data.lua`). Your own disenchants move it: per
+  band, the table counts as 50 disenchants and yours are added to it, so a band with few of yours stays near the
+  table and a band with hundreds follows your results (Ledger, Odds: Rate used).
+- Each material counts at its price × what your sales of it really got against the price, less the deposits you
+  lose per unit sold.
+- Time to sell (Materials list): how long your posts of a material took to sell. A deal's tooltip shows its Return
+  per day (Return ÷ the days until its materials sell, at least one day).
 - Arcane Salvager: a 50% chance of one extra dust or essence (community data, not official). It is
   included only when you know the recipe or have the item, or when you set `/salv salvager on`.
 - Material price: the average of the cheapest 20 units listed (your own listings left out).
@@ -53,7 +59,8 @@ when you can use it, minus the 5% auction house cut. The buy limit is that value
 ## Cost tracking
 
 - Purchases come from the "Auction won" mail (any addon or window), oldest first per item.
-- On disenchant, the item's cost is split across the materials by their value at that moment.
+- On disenchant, the item's cost goes into its band: each band's cost is shared over its unsold materials by
+  their value at the disenchants.
 - Each material keeps an average cost. Break-even = average cost ÷ 0.95.
 - Sales come from the "Auction successful" mail.
 - Materials you had before: `/salv stock <item> <quantity> <cost each>`.

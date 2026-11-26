@@ -635,7 +635,9 @@ function Window.OddsBands()
                 local quality, classID, up = q[1], c[1], band.up
                 local inRange = levelShown(lo, up, x.bandsOff)
                 lo = up + 1
-                local outcomes = Model.Outcomes(quality, classID, up)
+                -- The rates used (SDD 99): the table blended with your results of the band, with or without the
+                -- Salvager as buying counts it (not the filter's).
+                local outcomes = ns.Outcomes(quality, classID, up, opts.salvager)
                 local mine = by[Ledger.BandKey(quality, classID, up)]
                 local n = mine and mine.n or 0
                 if inRange and (n > 0 or not x.dataOnly) then
@@ -649,9 +651,15 @@ function Window.OddsBands()
                             ns.Money(v.net) .. (#v.missing > 0 and (GREY .. "?|r") or ""),
                             ns.Money(limit),
                             limit > 0 and ns.LoseText(Model.LossChance(outcomes, ns.PriceOf, opts, limit)) or (GREY .. "-|r"),
-                            n > 0 and ns.Money(mine.value / n) or (GREY .. "-|r") },
+                            n > 0 and ns.Money(mine.value / n) or (GREY .. "-|r"),
+                            outcomes.n .. (outcomes.salvager and " with Salvager" or " without Salvager") },
                     } }
                     local inTable = {}
+                    -- Rate used and Quantity used rest on few results while the band has fewer than FEW_RESULTS.
+                    local few = outcomes.few
+                    local function used(text)
+                        return few and (GREY .. text .. "|r") or text
+                    end
                     for _, r in ipairs(outcomes.results) do
                         inTable[r.id] = true
                         local m = mine and mine.mats[r.id]
@@ -659,10 +667,12 @@ function Window.OddsBands()
                         entry.rows[#entry.rows + 1] = {
                             itemID = r.id, indent = INDENT,
                             cells = { ns.MaterialName(r.id), m and tostring(m.hits) or (GREY .. "0|r"),
-                                math.floor(r.chance * 100 + 0.5) .. "%",
-                                r.min == r.max and tostring(r.min) or (r.min .. "-" .. r.max),
+                                r.unexpected and (RED .. "not expected|r") or (math.floor(r.tableChance * 100 + 0.5) .. "%"),
+                                r.unexpected and "" or (r.min == r.max and tostring(r.min) or (r.min .. "-" .. r.max)),
                                 n > 0 and (math.floor((m and m.hits or 0) / n * 100 + 0.5) .. "%") or (GREY .. "-|r"),
                                 m and string.format("%.2f", m.qty / m.hits) or (GREY .. "-|r"),
+                                used(string.format("%d%%", math.floor(r.chance * 100 + 0.5)) .. (few and " (few results)" or "")),
+                                used(string.format("%.2f", r.mean)),
                                 price and ns.Money(price) or (GREY .. "no price|r") },
                         }
                     end
@@ -673,7 +683,7 @@ function Window.OddsBands()
                                 itemID = id, indent = INDENT,
                                 cells = { ns.MaterialName(id), tostring(m.hits), RED .. "not expected|r", "",
                                     math.floor(m.hits / n * 100 + 0.5) .. "%", string.format("%.2f", m.qty / m.hits),
-                                    "" },
+                                    "", "", "" },
                             }
                         end
                     end
@@ -711,6 +721,13 @@ local ODDS_COLUMNS = {
     { "Your result rate", 96, "CENTER", help = { "Your result rate", "How often it came in your own disenchants in "
         .. "this band." } },
     { "Your quantity", 84, "CENTER", help = { "Your quantity", "How many came on average when a disenchant of yours gave it." } },
+    { "Rate used", 70, "CENTER", help = { "Rate used", "The result rate Expected value, Buy below and Loss chance use: the "
+        .. "table's rate counted as " .. Model.RESULT_PRIOR .. " disenchants, plus your own results of this band (with the "
+        .. "Salvager when buying counts its bonus, else without). A band with few of yours stays near the table; one with "
+        .. "hundreds follows your results. Grey with \"few results\": under " .. Model.FEW_RESULTS .. " of yours, the table "
+        .. "still weighs more. The card's \"Rates used from\" says how many." } },
+    { "Quantity used", 84, "CENTER", help = { "Quantity used", "How many come on average when a disenchant gives it, by "
+        .. "the same blend of the table and your results (the Salvager bonus in it when buying counts it)." } },
     { "Price now", 90, "RIGHT", help = { "Price now", "What one of this material costs on the auction house now, "
         .. "from your last material scan. Value now is worked out from these prices." } },
 }
@@ -720,7 +737,9 @@ local BAND_HELP = { "This band", "Disenchants: how many of yours are in this ban
     .. "Buy below: the most the addon lets you pay: Value now minus your minimum profit, or the limit you set in the "
     .. "Limits tab.\n\n"
     .. "Loss chance: the chance that one disenchant is worth less than Buy below, so the risk when you pay the full limit.\n\n"
-    .. "Your average: what your own disenchants gave on average, at the prices of the moment. Compare it with Value now." }
+    .. "Your average: what your own disenchants gave on average, at the prices of the moment. Compare it with Value now.\n\n"
+    .. "Rates used from: how many of your disenchants of this band the rates used rest on, with or without the Salvager "
+    .. "as buying counts it (the filters above do not change it)." }
 
 --- One card per band for the Odds view.
 function Window.OddsCards()
@@ -749,7 +768,7 @@ function Window.OddsCards()
                     Window.Refresh()
                 end,
                 facts = table.concat({ fact("Disenchants", c[2]), fact("Value now", c[5]), fact("Buy below", c[6]),
-                    fact("Loss chance", c[7]), fact("Your average", c[8]) }, "     "),
+                    fact("Loss chance", c[7]), fact("Your average", c[8]), fact("Rates used from", c[9]) }, "     "),
                 factsHelp = BAND_HELP, rows = open and band.rows or {},
             }
         end

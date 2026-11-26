@@ -754,6 +754,77 @@ function Ledger.DepositRates(state, unitDeposit, now, opts)
     return out
 end
 
+--- Your results per band and Salvager state, for the blend with the table (SDD 99, Model.Blended).
+--- @return table { [bandKey] = { on = seen, off = seen } }, seen = { n, mats = { [id] = { hits, qty = { [q] = times } } } }
+function Ledger.Results(state)
+    local out = {}
+    for _, r in ipairs(state.disenchants) do
+        if r.got and next(r.got) and r.quality and r.classID and r.band then
+            local key = Ledger.BandKey(r.quality, r.classID, r.band)
+            local b = out[key] or { on = { n = 0, mats = {} }, off = { n = 0, mats = {} } }
+            out[key] = b
+            local seen = r.salvager and b.on or b.off
+            seen.n = seen.n + 1
+            for id, qty in pairs(r.got) do
+                local m = seen.mats[id] or { hits = 0, qty = {} }
+                seen.mats[id] = m
+                m.hits = m.hits + 1
+                m.qty[qty] = (m.qty[qty] or 0) + 1
+            end
+        end
+    end
+    return out
+end
+
+Ledger.MAIL_DELAY = 3600   -- a sold auction's money comes about this long after the sale (SDD 97c)
+
+--- The post a sale came from: its `postedAt`, else the last post of that material at that price each made at or
+--- before the sale. @return number|nil the time of the post
+local function postTime(s, posted, soldAt)
+    if s.postedAt then return s.postedAt end
+    local each = s.each or (s.gross / s.count)
+    for i = #posted, 1, -1 do
+        local p = posted[i]
+        if p.itemID == s.id and p.each and math.abs(p.each - each) < 1 and (p.t or 0) <= soldAt then return p.t end
+    end
+    return nil
+end
+
+--- Time to sell per material (SDD 100): from the post to the sale, the median of your sales of the last 30 days
+--- by units. The sale is at its money's due time less the mail delay when that is known, else when it was booked.
+--- A material with few sales is pulled toward all materials together (as the sell price ratio, SDD 3).
+--- Only sales of posts made through Salvager count (`SalvagerDB.posted`).
+--- @param opts table|nil { days, minSales, mailDelay }
+--- @return table { [id] = { seconds, n (sales), measured (its own median), few }, all = { seconds, n } (seconds nil
+---   without a sale) }
+function Ledger.TimesToSell(state, posted, now, opts)
+    opts = opts or {}
+    local floor = opts.minSales or Ledger.FORECAST_MIN_SALES
+    local delay = opts.mailDelay or Ledger.MAIL_DELAY
+    local per, all = {}, {}
+    for _, s in ipairs(recentSales(state, now, opts.days)) do
+        if not s.lost and (s.count or 0) > 0 and (s.gross or 0) > 0 then
+            local soldAt = s.t or 0
+            if s.due then soldAt = math.min(soldAt, s.due - delay) end
+            local at = postTime(s, posted or {}, soldAt)
+            if at then
+                local x = { r = math.max(0, soldAt - at), w = s.count }
+                per[s.id] = per[s.id] or {}
+                table.insert(per[s.id], x)
+                all[#all + 1] = x
+            end
+        end
+    end
+    local allMedian = Model.WeightedMedian(all)
+    local out = { all = { seconds = allMedian, n = #all, few = #all < floor } }
+    for id, list in pairs(per) do
+        local measured = Model.WeightedMedian(list)
+        out[id] = { seconds = Model.Blend(measured, #list, allMedian or measured, floor), n = #list, measured = measured,
+            few = #list < floor }
+    end
+    return out
+end
+
 --- What the trading made from `from` on (nil = all of it), to report it by quality and gear type, by band,
 --- by item and by material. Only disenchants with a known cost count in the first three.
 ---   sold value of a disenchant = its materials at what one unit really sold for on average (after the cut),

@@ -60,6 +60,90 @@ function Model.PairPrice(id, rawGet)
     return math.floor(other * pair.factor + 0.5), true
 end
 
+-- Your own results move the table's rates (SDD 99): the table counts as RESULT_PRIOR disenchants of its own. A
+-- band with fewer of yours than that still leans more on the table ("few results", UI.md Data 2).
+Model.RESULT_PRIOR = 50
+Model.FEW_RESULTS = 50
+
+--- The table's quantities of one result: min..max equally likely; a result the Salvager adds to (`bonus`) gets one
+--- more with chance `bonusChance`.
+--- @return table { [quantity] = chance (0-1) }
+function Model.TableDist(r, bonusChance)
+    local b = r.bonus and (bonusChance or 0) or 0
+    local each, dist = 1 / (r.max - r.min + 1), {}
+    for q = r.min, r.max do
+        dist[q] = (dist[q] or 0) + each * (1 - b)
+        if b > 0 then dist[q + 1] = (dist[q + 1] or 0) + each * b end
+    end
+    return dist
+end
+
+local function sortedKeys(t)
+    local keys = {}
+    for k in pairs(t) do keys[#keys + 1] = k end
+    table.sort(keys)
+    return keys
+end
+
+--- The table's outcomes blended with your results of the same band and Salvager state (SDD 99). Each (material,
+--- quantity) has a weight: prior × table chance × the table's chance of that quantity, plus the times you got it.
+--- So a result's chance = (prior × table chance + your hits) ÷ (prior + your disenchants), and its quantities
+--- follow the same counts (a Dirichlet with the table as its mean). A material the table does not have for the
+--- band comes in with your hits only (`unexpected`).
+--- @param seen table|nil  { n = disenchants, mats = { [id] = { hits, qty = { [quantity] = times } } } }
+--- @param opts table|nil  { salvager, salvagerChance = 0.5, prior = Model.RESULT_PRIOR }
+--- @return table  outcomes with `n` (your disenchants), `few`, `salvager`, and per result: chance (blended), `dist`
+---   ({ [quantity] = chance }, the Salvager bonus in it), `mean`, `tableChance`, `hits`; min and max stay the table's
+function Model.Blended(outcomes, seen, opts)
+    opts = opts or {}
+    local K = opts.prior or Model.RESULT_PRIOR
+    local bonusChance = opts.salvager and (opts.salvagerChance or 0.5) or 0
+    local n = seen and seen.n or 0
+    local mats = seen and seen.mats or {}
+    local out = { band = outcomes.band, results = {}, n = n, few = n < Model.FEW_RESULTS, salvager = opts.salvager and true
+        or false }
+    local function add(base, mine)
+        local w, total = {}, 0
+        if base then
+            for q, p in pairs(Model.TableDist(base, bonusChance)) do w[q] = K * base.chance * p end
+        end
+        for q, c in pairs(mine and mine.qty or {}) do w[q] = (w[q] or 0) + c end
+        for _, x in pairs(w) do total = total + x end
+        if total <= 0 then return end
+        local dist, mean, lo, hi = {}, 0, math.huge, -math.huge
+        for _, q in ipairs(sortedKeys(w)) do
+            dist[q] = w[q] / total
+            mean = mean + q * dist[q]
+            lo, hi = math.min(lo, q), math.max(hi, q)
+        end
+        out.results[#out.results + 1] = {
+            id = base and base.id or mine.id, chance = total / (K + n), dist = dist, mean = mean,
+            min = base and base.min or lo, max = base and base.max or hi, bonus = base and base.bonus or false,
+            tableChance = base and base.chance or 0, hits = mine and mine.hits or 0, unexpected = base == nil,
+        }
+    end
+    local inTable = {}
+    for _, r in ipairs(outcomes.results) do
+        inTable[r.id] = true
+        add(r, mats[r.id])
+    end
+    for _, id in ipairs(sortedKeys(mats)) do
+        if not inTable[id] then
+            local m = mats[id]
+            add(nil, { id = id, hits = m.hits, qty = m.qty })
+        end
+    end
+    return out
+end
+
+--- How many of a result come on average: its blended mean, else the table's middle (+ the bonus).
+local function meanQty(r, bonusChance)
+    if r.dist then return r.mean end
+    local qty = (r.min + r.max) / 2
+    if r.bonus then qty = qty + bonusChance end
+    return qty
+end
+
 local function one() return 1 end
 local function none() return 0 end
 
@@ -80,6 +164,7 @@ end
 ---   ratio = function(id) -> what one unit sells for against its value (sell price ratio, 1 when nil),
 ---   deposit = function(id) -> deposits lost per unit sold, copper (0 when nil) }
 --- A unit is worth price × ratio after the cut, less the deposit: net = gross × (1 − cut) − deposits.
+--- Blended outcomes (Model.Blended) bring their own mean quantity, the Salvager bonus in it.
 --- @return table  { gross (before the cut, with the ratio), net, low, deposits, missing = {ids}, parts = { {id, value} } }
 function Model.Value(outcomes, priceOf, opts)
     opts = opts or {}
@@ -92,8 +177,7 @@ function Model.Value(outcomes, priceOf, opts)
         if not price then
             missing[#missing + 1] = r.id
         else
-            local qty = (r.min + r.max) / 2
-            if r.bonus then qty = qty + bonusChance end
+            local qty = meanQty(r, bonusChance)
             local each, d = price * ratioOf(r.id), depositOf(r.id)
             local v = r.chance * qty * each
             gross = gross + v
@@ -111,7 +195,8 @@ end
 
 --- The chance that one disenchant is worth less than `paid`, after the cut (opts as Model.Value).
 --- Each result's quantities are equally likely; with the Salvager, dust and essence get one more
---- with the given chance. A material with no price counts as worth nothing.
+--- with the given chance. Blended outcomes (Model.Blended) bring each quantity's chance. A material with no
+--- price counts as worth nothing.
 --- @return number  0 to 1
 function Model.LossChance(outcomes, priceOf, opts, paid)
     opts = opts or {}
@@ -122,11 +207,18 @@ function Model.LossChance(outcomes, priceOf, opts, paid)
         local price = priceOf(r.id)
         -- What one unit brings: its value × the sell price ratio, after the cut, less the deposits lost.
         local unit = price and (price * ratioOf(r.id) * keep - depositOf(r.id)) or 0
-        local each = r.chance / (r.max - r.min + 1)
-        local bonus = (opts.salvager and r.bonus) and (opts.salvagerChance or 0.5) or 0
-        for qty = r.min, r.max do
-            if qty * unit < paid then lose = lose + each * (1 - bonus) end
-            if bonus > 0 and (qty + 1) * unit < paid then lose = lose + each * bonus end
+        if r.dist then
+            -- Blended outcomes (Model.Blended): each quantity has its own chance, the Salvager bonus in it.
+            for qty, p in pairs(r.dist) do
+                if qty * unit < paid then lose = lose + r.chance * p end
+            end
+        else
+            local each = r.chance / (r.max - r.min + 1)
+            local bonus = (opts.salvager and r.bonus) and (opts.salvagerChance or 0.5) or 0
+            for qty = r.min, r.max do
+                if qty * unit < paid then lose = lose + each * (1 - bonus) end
+                if bonus > 0 and (qty + 1) * unit < paid then lose = lose + each * bonus end
+            end
         end
     end
     return lose
@@ -154,6 +246,33 @@ function Model.MaxBuy(net, minProfit, minReturn)
     local byReturn = math.max(0, math.floor(net / (1 + minReturn / 100)))
     if byReturn < byProfit then return byReturn, "return" end
     return byProfit, "profit"
+end
+
+Model.DAY = 86400
+
+--- How long the materials of one disenchant take to sell (SDD 100): each material's time to sell weighted by its
+--- part of the value, in days, at least 1 day. Materials with no time to sell are left out.
+--- @param parts table  { { id, value }, ... } (Model.Value parts)
+--- @param timeOf function(id) -> seconds or nil, boolean few
+--- @return number|nil days (nil: no material has a time), boolean few (a material of it rests on few sales),
+---   number|nil seconds (the weighted time itself, before the 1 day floor)
+function Model.DaysToSell(parts, timeOf)
+    local sum, weight, few = 0, 0, false
+    for _, p in ipairs(parts or {}) do
+        local secs, f = timeOf(p.id)
+        if secs and (p.value or 0) > 0 then
+            sum, weight = sum + secs * p.value, weight + p.value
+            few = few or f and true or false
+        end
+    end
+    if weight <= 0 then return nil, false, nil end
+    return math.max(1, sum / weight / Model.DAY), few, sum / weight
+end
+
+--- Expected profit ÷ buyout ÷ days until the materials sell (SDD 100). nil without days or a buyout.
+function Model.ReturnPerDay(profit, buyout, days)
+    if not days or not buyout or buyout <= 0 then return nil end
+    return profit / buyout / days
 end
 
 --- The median of weighted samples: the value at which half the weight lies below.

@@ -19,6 +19,10 @@ local function addLines(tooltip, link)
         tooltip:AddDoubleLine(COLOR .. "Salvager sell price ratio|r", string.format("%s, %d %s in 30 days%s",
             string.format("%.1f%%", r.ratio * 100), r.n, r.n == 1 and "sale" or "sales",
             r.few and " (few sales)" or ""), 1, 1, 1, 1, 1, 1)
+        local tts = ns.TimeToSell(id)
+        tooltip:AddDoubleLine(COLOR .. "Salvager time to sell|r", tts.seconds and string.format("%s, %d %s in 30 days%s",
+            ns.DurationText(tts.seconds), tts.n, tts.n == 1 and "sale" or "sales", tts.few and " (few sales)" or "")
+            or "no sale yet", 1, 1, 1, 1, 1, 1)
         local perUnit = ns.DepositPerUnit(id)
         tooltip:AddDoubleLine(COLOR .. "Salvager deposits lost per unit sold|r",
             string.format("%.2f copper", perUnit), 1, 1, 1, 1, 1, 1)

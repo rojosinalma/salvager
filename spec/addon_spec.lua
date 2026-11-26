@@ -73,6 +73,7 @@ describe("Salvager in a simulated client", function()
         assert.is_true(deal.lose >= 0 and deal.lose <= 1)
         assert.are.equal(77, deal.auctionID)
         assert.is_true(deal.profit > 0)
+        assert.is_nil(ns.Scanner.ReturnPerDay(deal))         -- no sale yet: no time to sell, no Return per day
         ns.UI.view = "deals"
         ns.UI.Refresh()
         ns.Scanner.Buy(deal)
@@ -231,7 +232,10 @@ describe("Salvager in a simulated client", function()
         assert.is_true(limit > 0)
         assert.are.equal(ns.Money(limit), band.cells[6])
         assert.is_truthy(band.cells[7]:find("%d+%%"))
-        assert.are.equal(8, #ns.LedgerWindow.OddsRows()[1].cells)
+        assert.are.equal(9, #ns.LedgerWindow.OddsRows()[1].cells)
+        -- What the rates used rest on: buying counts no Salvager here, and the one disenchant was with it.
+        assert.are.equal("0 without Salvager", band.cells[9])
+        assert.is_truthy(dust.cells[7]:find("75%% %(few results%)"))   -- the table's rate, marked
         -- A material the table does not have for the band.
         local des = ns.db.ledger.disenchants
         des[#des + 1] = { quality = 2, classID = ns.Data.CLASS_ARMOR, band = 30, value = 0, got = { [10940] = 1 } }
@@ -655,12 +659,12 @@ describe("Salvager window and options", function()
         local width
         frame.SetWidth = function(_, w) width = w end
         ns.db.columns = ns.db.columns or {}
-        ns.db.columns.materials = { ["Sell price ratio"] = false }
+        ns.db.columns.materials = { ["Sell price ratio"] = false, ["Time to sell"] = false }
         ns.Materials.Refresh()
         assert.is_number(width)
         assert.is_true(width < 800)                               -- narrower than before, as wide as it needs
         local without = width
-        ns.db.columns.materials = nil                             -- the sell price ratio shown: wider by its column
+        ns.db.columns.materials = nil                             -- both shown: wider by their columns
         ns.Materials.PutBack()
         ns.Materials.PopOut()
         frame.SetWidth = function(_, w) width = w end
@@ -2623,6 +2627,15 @@ describe("The forecast learns from your own sales in a simulated client", functi
         local row
         for _, m in ipairs(ns.Materials.Rows()) do if m.itemID == DUST then row = m end end
         assert.are.equal("80.0%", row.cells[10])
+        -- Time to sell: each sale knows its post (postedAt); sold as soon as posted here.
+        assert.is_number(ns.db.ledger.sales[1].postedAt)
+        assert.are.same({ 5, false }, { ns.TimeToSell(DUST).n, ns.TimeToSell(DUST).few })
+        assert.are.equal("< 1 min", row.cells[11])
+        assert.are.equal("3 h 05 min", ns.DurationText(3 * 3600 + 5 * 60))
+        assert.are.equal("2 d 4 h", ns.DurationText(52 * 3600))
+        -- Return per day: minutes to sell count as a day, so it is the Return.
+        local days, few, secs = ns.DaysToSell({ { id = DUST, value = 100 } })
+        assert.are.same({ 1, false, 0 }, { days, few, secs })
         for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
     end)
 end)

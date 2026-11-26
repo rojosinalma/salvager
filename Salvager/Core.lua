@@ -287,6 +287,9 @@ local function forecastData()
             ratios = Ledger.SellRatios(ns.db.ledger, valueAtPost, time()),
             deposits = Ledger.DepositRates(ns.db.ledger, unit, time()),
             unit = unit,
+            times = Ledger.TimesToSell(ns.db.ledger, ns.db.posted, time()),
+            results = Ledger.Results(ns.db.ledger),
+            blended = {},
         }
     end
     return forecast
@@ -302,6 +305,60 @@ end
 function ns.SellRatio(id)
     local r = forecastData().ratios
     return r[id] or { ratio = r.all.ratio, n = 0, few = true }
+end
+
+--- Time to sell of a material (SDD 100): post to sale, the median of your sales of the last 30 days.
+--- @return table { seconds (nil: no sale of any material), n (its sales), few }
+function ns.TimeToSell(id)
+    local t = forecastData().times
+    return t[id] or { seconds = t.all.seconds, n = 0, few = true }
+end
+
+local function timeOf(id)
+    local x = ns.TimeToSell(id)
+    return x.seconds, x.few
+end
+
+--- A time in seconds as text: "< 1 min", "12 min", "3 h 05 min", "2 d 4 h".
+function ns.DurationText(seconds)
+    if not seconds then return "-" end
+    if seconds < 60 then return "< 1 min" end
+    local m = math.floor(seconds / 60 + 0.5)
+    if m < 60 then return m .. " min" end
+    if m < 48 * 60 then return string.format("%d h %02d min", math.floor(m / 60), m % 60) end
+    local h = math.floor(m / 60 + 0.5)
+    return string.format("%d d %d h", math.floor(h / 24), h % 24)
+end
+
+--- Time to sell as text, grey with "(few sales)" when it rests on few sales (UI.md Data 2).
+function ns.TimeToSellText(id)
+    local x = ns.TimeToSell(id)
+    if not x.seconds then return "|cff808080-|r" end
+    local text = ns.DurationText(x.seconds)
+    if x.few then return "|cff808080" .. text .. " (few sales)|r" end
+    return text
+end
+
+--- Days until the materials of one disenchant sell (Model.DaysToSell over its value parts), at least 1.
+--- @return number|nil days, boolean few, number|nil seconds (before the 1 day floor)
+function ns.DaysToSell(parts) return Model.DaysToSell(parts, timeOf) end
+
+--- What one disenchant of this band gives, as the forecast counts it (SDD 99): the table blended with your own
+--- results of the band with the same Salvager state. `salvager` nil = as for buying.
+--- @return table|nil outcomes (Model.Blended)
+function ns.Outcomes(quality, classID, ilvl, salvager)
+    local o = Model.Outcomes(quality, classID, ilvl)
+    if not o then return nil end
+    if salvager == nil then salvager = ns.SalvagerForBuy() end
+    local f = forecastData()
+    local key = Ledger.BandKey(quality, classID, o.band)
+    local cacheKey = key .. (salvager and ":s" or "")
+    if not f.blended[cacheKey] then
+        local seen = f.results[key]
+        f.blended[cacheKey] = Model.Blended(o, seen and seen[salvager and "on" or "off"],
+            { salvager = salvager, salvagerChance = ns.db.settings.salvagerChance })
+    end
+    return f.blended[cacheKey]
 end
 
 --- Deposits lost per unit sold of a material, copper.
@@ -362,9 +419,10 @@ function ns.ItemValue(linkOrID, ilvl, quality, classID, salvager)
     quality = quality or ns.QualityOf(linkOrID)
     ilvl = ilvl or ns.ItemLevelOf(linkOrID)
     if not (classID and quality and ilvl) then return nil end
-    local outcomes = Model.Outcomes(quality, classID, ilvl)
+    local opts = ns.ValueOptions(salvager)
+    local outcomes = ns.Outcomes(quality, classID, ilvl, opts.salvager)
     if not outcomes then return nil end
-    local v = Model.Value(outcomes, ns.PriceOf, ns.ValueOptions(salvager))
+    local v = Model.Value(outcomes, ns.PriceOf, opts)
     return v, outcomes
 end
 
@@ -593,7 +651,7 @@ function ns.Limits(all)
     local rows, s = {}, ns.db.settings
     local opts = ns.ValueOptions()
     local function one(quality, classID, ilvl)
-        local o = Model.Outcomes(quality, classID, ilvl)
+        local o = ns.Outcomes(quality, classID, ilvl, opts.salvager)
         if not o then return nil end
         local v = Model.Value(o, ns.PriceOf, opts)
         local basis = ns.LimitBasis(v)

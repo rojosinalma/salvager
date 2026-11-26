@@ -117,11 +117,11 @@ end
 --- What one disenchant of a band was worth at each moment a price of one of its materials was seen.
 --- @return table  { { t = time, p = value }, ... }  (the shape of price points)
 function Market.ValueSeries(quality, classID, up, from)
-    local outcomes = Model.Outcomes(quality, classID, up)
+    local opts, out = valueOptions(), {}
+    local outcomes = ns.Outcomes(quality, classID, up, opts.salvager)
     if not outcomes then return {} end
     local ids = {}
     for _, r in ipairs(outcomes.results) do ids[#ids + 1] = r.id end
-    local opts, out = valueOptions(), {}
     for _, t in ipairs(History.Times(ns.db.history, ids, from)) do
         local v = Model.Value(outcomes, function(id) return History.At(ns.db.history, id, t) end, opts)
         if #v.missing == 0 then out[#out + 1] = { t = t, p = v.net } end
@@ -138,7 +138,7 @@ function Value.Rows()
             for _, band in ipairs(q[2]) do
                 local series = Market.ValueSeries(q[1], classID, band.up, from)
                 if #series > 0 then
-                    local v = Model.Value(Model.Outcomes(q[1], classID, band.up), ns.PriceOf, opts)
+                    local v = Model.Value(ns.Outcomes(q[1], classID, band.up, opts.salvager), ns.PriceOf, opts)
                     entries[#entries + 1] = { quality = q[1], classID = classID, band = band.up, net = v.net,
                         change = (History.Change(series)) }
                 end
@@ -160,7 +160,8 @@ function Value.Chart(key)
     local series = Market.ValueSeries(quality, classID, up, from)
     local line = {}
     for _, pt in ipairs(series) do line[#line + 1] = { pt.t, pt.p } end
-    local v = Model.Value(Model.Outcomes(quality, classID, up), ns.PriceOf, valueOptions())
+    local opts = valueOptions()
+    local v = Model.Value(ns.Outcomes(quality, classID, up, opts.salvager), ns.PriceOf, opts)
     local limit = ns.BuyLimit(quality, classID, up, ns.LimitBasis(v))
     return widen({
         from = series[1] and series[1].t, to = time(),
