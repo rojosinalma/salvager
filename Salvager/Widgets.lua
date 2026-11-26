@@ -892,6 +892,16 @@ function Widgets.Label(parent, text, template)
     return l
 end
 
+--- The arrow of a group heading that opens and closes (UI.md Tables 15), one look in every table: the game's gold
+--- arrow, pointing right while the heading is closed and down while it is open. `t` = a texture; t.open keeps it.
+local GROUP_ARROW = "Interface\\ChatFrame\\ChatFrameExpandArrow"
+function Widgets.GroupArrow(t, open)
+    t:SetTexture(GROUP_ARROW)
+    -- Down: the right arrow turned a quarter clockwise (the corners' texture points: UL, LL, UR, LR).
+    if open then t:SetTexCoord(0, 1, 1, 1, 0, 0, 1, 0) else t:SetTexCoord(0, 1, 0, 1) end
+    t.open = open and true or false
+end
+
 --- How wide a text is on screen (small font), in pixels; nil where the client cannot tell.
 --- Tables use it so a column is as wide as its widest text, and no wider.
 local meter, widthOf, cached = nil, {}, 0

@@ -98,7 +98,7 @@ describe("Salvager in a simulated client", function()
         local rows = W.NotPickedUpRows()
         assert.are.equal(2, #rows)                            -- the heading with the totals, then the purchase
         assert.is_true(rows[1].group)
-        assert.is_truthy(rows[1].cells[1]:find("1 item in the mail", 1, true))
+        assert.is_truthy(rows[1].cells[1]:find("1 piece of gear in the mail", 1, true))
         assert.are.equal(ns.Money(500), rows[1].cells[4])
         assert.are.equal(BOOTS, rows[2].itemID)
         assert.are.equal("28", rows[2].cells[2])              -- the item level it was judged by
@@ -352,7 +352,7 @@ describe("Salvager in a simulated client", function()
         local titles = {}
         for i, h in ipairs(byBand.headers) do if h:IsShown() then titles[#titles + 1] = h:GetText() end
             if h:IsShown() and h:GetText() == "AP/EP %" then at = i end end
-        assert.are.same({ "Band", "Items", "Paid", "Expected value (EV)", "Disenchant value (DV)", "DV/EV %", "Sold value (SV)",
+        assert.are.same({ "Band", "Disenchanted", "Paid", "Expected value (EV)", "Disenchant value (DV)", "DV/EV %", "Sold value (SV)",
             "SV/DV %", "Expected profit (EP)", "Actual profit (AP)", "AP/EP %" }, titles)
         -- The help of a comparison names both values in full.
         assert.is_truthy(byBand.columns[8].help[2]:find("Sold value (SV) and Disenchant value (DV)", 1, true))
@@ -599,7 +599,8 @@ describe("Salvager window and options", function()
         local limitRows = ns.UI.Rows("limits")
         assert.is_truthy(limitRows[1].cells[1]:find("Uncommon", 1, true))
         assert.is_nil(limitRows[1].limits)
-        assert.is_truthy(limitRows[2].cells[1]:find("^%s+1%-"))
+        assert.is_truthy(limitRows[2].cells[1]:find("^1%-"))
+        assert.are.equal(22, limitRows[2].indent)
         assert.is_table(limitRows[2].limits.armor)
         assert.is_table(limitRows[2].limits.weapon)
         local qualities = {}
@@ -1969,7 +1970,7 @@ describe("Salvager log window", function()
     end)
 end)
 
-describe("Salvager Buy top", function()
+describe("Salvager Buy Top", function()
     local env, ns
     local LOW, HIGH = 6001, 6002             -- uncommon armor: item level 28 (26-30) and 33 (31-35)
     local function link(id, name, ilvl)
@@ -2089,14 +2090,14 @@ describe("Salvager Buy top", function()
         assert.are.equal(0, #ns.Scanner.deals)
         ns.UI.Refresh()
         assert.is_false(ns.UI.buyTop:IsEnabled())
-        assert.is_truthy(reason():find("Deals list is empty", 1, true))
+        assert.is_truthy(reason():find("Gear list is empty", 1, true))
         wow.fire(ns, "AUCTION_HOUSE_CLOSED")
         assert.is_false(ns.UI.buyTop:IsEnabled())
         assert.is_truthy(reason():find("Open the auction house first", 1, true))
     end)
 end)
 
-describe("Salvager Buy top, the best single auction", function()
+describe("Salvager Buy Top, the best single auction", function()
     local env, ns
     local A, B, C = 6011, 6012, 6013         -- uncommon armor: A and B item level 28, C item level 33
     local function link(id, name, ilvl)
@@ -2324,7 +2325,7 @@ describe("Salvager column chooser", function()
         local n = 0
         for _, c in ipairs(b.checks) do if c:IsShown() then n = n + 1 end end
         assert.are.equal(8 + 1, n)                                 -- every title, and Buy
-        assert.are.same({ "Item", true, false }, { b.checks[1].key, b.checks[1]:GetChecked(), b.checks[1]:IsEnabled() })
+        assert.are.same({ "Gear", true, false }, { b.checks[1].key, b.checks[1]:GetChecked(), b.checks[1]:IsEnabled() })
         assert.are.same({ "Buy", false }, { b.checks[9].key, b.checks[9]:IsEnabled() })
         assert.is_truthy(b.checks[9].reason:find("buttons", 1, true))
         toggle(check(b, "Type"))                                    -- hidden at once, the menu stays open
@@ -2373,7 +2374,7 @@ describe("Salvager column chooser", function()
         function()
         load(nil)
         local byBand, byMat = openAccuracy()
-        assert.are.same({ "Band", "Items", "Paid", "Expected value (EV)", "Disenchant value (DV)", "DV/EV %",
+        assert.are.same({ "Band", "Disenchanted", "Paid", "Expected value (EV)", "Disenchant value (DV)", "DV/EV %",
             "Sold value (SV)", "SV/DV %", "Expected profit (EP)", "Actual profit (AP)", "AP/EP %" }, shownTitles(byBand))
         local wide = byBand.neededWidth
         assert.is_number(wide)
@@ -2862,11 +2863,19 @@ describe("Sessions and the statement in a simulated client", function()
         assert.are.equal(86, bars.filters.top)                            -- under the tabs (24-54) and the subtabs
         assert.are.equal(58, bars.gold.top)
         assert.are.equal(-116, ns.Reports.list.points[1][5])
-        ns.Reports.view = "profit"
+        ns.Reports.view = "materials"
         ns.Reports.Refresh()
         assert.are.equal(58, bars.filters.top)                            -- no subtabs: right under the tabs
         assert.is_false(bars.gold:IsShown())
+        assert.is_false(bars.gear:IsShown())
         assert.are.equal(-88, ns.Reports.list.points[1][5])
+        -- Gear: its subtabs Bands and History, then the filter row (Period, then the gear's filters).
+        ns.Reports.view = "gear"
+        ns.Reports.Refresh()
+        assert.is_true(bars.gear:IsShown())
+        assert.are.equal(58, bars.gear.top)
+        assert.are.equal(86, bars.filters.top)
+        assert.are.equal(-116, ns.Reports.list.points[1][5])
         ns.Reports.view = "gold"
         for _, tab in ipairs({ "changes", "statement" }) do
             ns.Reports.goldTab = tab
@@ -2922,10 +2931,13 @@ describe("Salvager control hierarchy (UI.md Controls)", function()
         ns.Materials.PopOut()
         ns.Market.Toggle()
         ns.Reports.Show()
+        for _, v in ipairs({ "gear", "materials", "gold" }) do ns.Reports.view = v ns.Reports.Refresh() end
         ns.LogWindow.Show()
         ns.LimitsWindow.Show()
         ns.Options.Open()
         pcall(ns.Post.Open, 11083)
+        ns.GearWindow.Open({ auctionID = 1, itemID = 5001, quality = 2, classID = 4, ilvl = 28, buyout = 100,
+            value = 500, profit = 400 })
     end)
 
     local function windowOf(frame)
@@ -3036,8 +3048,295 @@ describe("Salvager control hierarchy (UI.md Controls)", function()
         for _, n in ipairs(_G.UISpecialFrames) do names[n] = true end
         for _, n in ipairs({ "SalvagerFrame", "SalvagerLedgerFrame", "SalvagerOddsFrame", "SalvagerMaterialsFrame",
             "SalvagerMarketFrame", "SalvagerReportsFrame", "SalvagerLogFrame", "SalvagerLimitsFrame",
-            "SalvagerOptionsFrame" }) do
+            "SalvagerOptionsFrame", "SalvagerGearFrame" }) do
             assert.is_true(names[n] or false, n)
         end
+    end)
+end)
+
+describe("Salvager gear, Gear details and headings that open and close (0.3.129)", function()
+    local env, ns
+    local A, B = 6021, 6022                  -- uncommon armor, item level 28 (band 26-30)
+    local function link(id, name) return "|cff1eff00|Hitem:" .. id .. "::::::::28:::::|h[" .. name .. "]|h|r" end
+    local function auction(id, item, name, buyout) return { auctionID = id, buyoutAmount = buyout, itemLink = link(item, name) } end
+    local function tip() return table.concat(_G.GameTooltip.lines or {}, "\n") end
+    local function rowFrames()
+        local out = {}
+        for _, fr in ipairs(env.frames) do if rawget(fr, "buy") and fr:IsShown() then out[#out + 1] = fr end end
+        return out
+    end
+    local function scan()
+        ns.Scanner.Scan(true)
+        for _ = 1, 200 do
+            if ns.Scanner.state == "browsing" then wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED") end
+            local task = ns.Queue.current
+            if task and task.itemKey then wow.fire(ns, "ITEM_SEARCH_RESULTS_UPDATED", task.itemKey) end
+            wow.tick(ns, 0.2)
+            if ns.Scanner.state == "idle" then break end
+        end
+        ns.UI.Refresh()
+    end
+
+    setup(function()
+        env = wow.install()
+        env.items[A] = { name = "Alpha Boots", quality = 2, ilvl = 28, classID = 4 }
+        env.items[B] = { name = "Beta Gloves", quality = 2, ilvl = 28, classID = 4 }
+        env.items[11083] = { name = "Soul Dust", quality = 1, ilvl = 1, classID = 7 }
+        -- The tooltip keeps what it shows.
+        _G.GameTooltip.SetText = function(self, t) rawset(self, "lines", { t }) end
+        _G.GameTooltip.SetHyperlink = function(self, l) rawset(self, "lines", { l }) end
+        _G.GameTooltip.AddLine = function(self, t) table.insert(self.lines, t) end
+        _G.GameTooltip.AddDoubleLine = function(self, a, b) table.insert(self.lines, a .. " = " .. b) end
+        ns = wow.loadAddon()
+        wow.fire(ns, "ADDON_LOADED", "Salvager")
+        wow.fire(ns, "AUCTION_HOUSE_SHOW")
+        for _, m in ipairs(ns.Data.MATERIALS) do
+            ns.db.prices[m.id] = { p = 1000, t = env.clock }
+            ns.History.Add(ns.db.history, m.id, env.clock - 3600, 900, 900, 10)
+            ns.History.Add(ns.db.history, m.id, env.clock - 60, 1000, 1000, 10)
+        end
+        local s = ns.db.settings
+        s.minProfit, s.minReturn, s.gearClasses, s.priceRescan = 0, 0, "armor", 0
+        s.qualities = { [2] = true, [3] = false, [4] = false }
+        s.dealSort = "profit"
+        env.ah.browse = {
+            { itemKey = { itemID = A, itemLevel = 28, itemSuffix = 0 }, minPrice = 1 },
+            { itemKey = { itemID = B, itemLevel = 28, itemSuffix = 0 }, minPrice = 2 },
+        }
+        env.ah.itemResults[A] = { auction(301, A, "Alpha Boots", 1), auction(302, A, "Alpha Boots", 3) }
+        env.ah.itemResults[B] = { auction(401, B, "Beta Gloves", 2) }
+        ns.UI.Show()
+        ns.UI.view = "deals"
+        scan()
+        assert.are.equal(3, #ns.Scanner.deals)
+    end)
+
+    it("names the main window's tabs Gear and Materials, the scans Gear, Materials, Both, and Buy Top", function()
+        local names = {}
+        for _, t in ipairs(ns.UI.tabBar.items) do names[#names + 1] = t:GetText() end
+        assert.are.same({ "Gear", "Materials" }, names)
+        assert.are.equal("Gear", ns.UI.headers[1]:GetText())                  -- the first column: the gear
+        local b = ns.UI.scanButtons
+        assert.are.same({ "Gear", "Materials", "Both" }, { b[1]:GetText(), b[2]:GetText(), b[3]:GetText() })
+        -- Each one hangs at the left of the next: Gear, Materials, Both from left to right.
+        assert.are.equal(b[2], b[1].points[1][2])
+        assert.are.equal(b[3], b[2].points[1][2])
+        assert.are.equal("Buy Top", ns.UI.buyTop:GetText())
+        ns.UI.buyTop.scripts.OnEnter(ns.UI.buyTop)
+        assert.are.equal("Buy Top", _G.GameTooltip.lines[1])
+        ns.UI.buyTop.scripts.OnLeave(ns.UI.buyTop)
+        -- The help in chat says gear, not items.
+        local before = #env.chat
+        SlashCmdList.SALVAGER("help")
+        local out = table.concat(env.chat, "\n", before + 1)
+        assert.is_truthy(out:find("which gear types the scan looks at", 1, true))
+        assert.is_nil(out:find("items", 1, true))
+    end)
+
+    it("titles every window \"Salvager <Name>\", the name capitalized", function()
+        local titles = {}
+        for line in io.lines("Salvager/Salvager.toc") do
+            if line:match("%.lua$") then
+                local text = io.open("Salvager/" .. line):read("*a")
+                for title in text:gmatch('W%.Window%("Salvager%w+Frame", "([^"]+)"') do titles[#titles + 1] = title end
+            end
+        end
+        assert.is_true(#titles >= 12)
+        for _, t in ipairs(titles) do
+            assert.is_truthy(t:match("^Salvager %u%l+$") or t:match("^Salvager %u%l+ %u%l+$"), t)
+        end
+    end)
+
+    it("shows the same deal lines on a Gear row and on the gear above Buy Top", function()
+        local d = ns.UI.TopDeal()
+        assert.are.equal(301, d.auctionID)
+        local top = ns.UI.topItem
+        top.scripts.OnEnter(top)
+        local fromTop = tip()
+        top.scripts.OnLeave(top)
+        local head = rowFrames()[1]                                          -- Alpha Boots x2: its numbers are 301's
+        assert.are.equal(A, head.item.itemID)
+        head.scripts.OnEnter(head)
+        local fromRow = tip()
+        head.scripts.OnLeave(head)
+        for _, want in ipairs({ "Item level = 28", "Buyout = ", "Expected value = ", "Expected profit = ", "Return = ",
+            "Loss chance = ", "Time to sell (its materials) = ", "Return per day = " }) do
+            assert.is_truthy(fromTop:find(want, 1, true), want)
+        end
+        -- The row's tooltip is the same, with the hint of its click at the end.
+        assert.are.equal(fromTop, (fromRow:gsub("\n[^\n]*$", "")))
+        assert.is_truthy(fromRow:find("Click: open or close the group", 1, true))
+        -- Expected profit and Return are forecasts: grey with their sign, never green or red (UI.md Tables 7).
+        assert.is_truthy(head.item.cells[6]:find("^|cff808080%+"))
+        assert.is_truthy(head.item.cells[7]:find("^|cff808080%+"))
+    end)
+
+    it("opens a group heading with a click and keeps it open; a click on an auction opens its Gear details", function()
+        local head = rowFrames()[1]
+        assert.is_false(head.item.open)
+        assert.is_false(head.toggle.open)                                    -- the arrow points right: closed
+        head.scripts.OnClick(head)
+        assert.is_nil(ns.GearWindow.Frame())                                 -- a heading never opens the details
+        assert.is_true(ns.db.groups["main.gear"]["Alpha Boots"])             -- remembered in the saved data
+        local rows = rowFrames()
+        assert.is_true(rows[1].item.open)
+        assert.is_true(rows[1].toggle.open)                                  -- the arrow points down: open
+        assert.is_true(rows[2].item.child)
+        rows[2].scripts.OnEnter(rows[2])
+        assert.is_truthy(tip():find("Click: Gear details of this auction", 1, true))
+        rows[2].scripts.OnClick(rows[2])                                     -- Alpha Boots, 1c
+        local g = ns.GearWindow
+        local frame = _G.SalvagerGearFrame
+        assert.is_true(frame:IsShown())
+        assert.are.equal("Salvager Gear Details", frame.TitleText:GetText())
+        assert.are.equal(301, g.deal.auctionID)
+        -- A click on another row replaces the content.
+        local beta
+        for _, r in ipairs(rowFrames()) do if r.item.deal and r.item.deal.auctionID == 401 then beta = r end end
+        beta.scripts.OnClick(beta)
+        assert.are.equal(401, g.deal.auctionID)
+        rows[2].scripts.OnClick(rows[2])
+        assert.are.equal(301, g.deal.auctionID)
+    end)
+
+    it("shows the deal as a statement, how its Expected value is built, your history and the other auctions", function()
+        local g, d = ns.GearWindow, ns.GearWindow.deal
+        local deal = g.DealRows(d)
+        assert.are.same({ "Expected value of one disenchant", "Buyout", "Expected profit" },
+            { deal[1].cells[1], deal[2].cells[1], deal[3].cells[1] })
+        assert.are.equal("|cff808080+" .. ns.MoneyColumn(d.value) .. "|r", deal[1].cells[2])  -- a forecast: grey, +
+        assert.are.equal("-" .. ns.MoneyColumn(d.buyout), deal[2].cells[2])                    -- goes out: -
+        assert.are.same({ "final", true }, { deal[3].rule, deal[3].bold })
+        assert.are.equal(14, deal[1].indent)                                                    -- lines one step in
+        local m = g.MeasureRows(d)[1].cells
+        assert.are.equal(6, #m)
+        assert.is_truthy(m[4] == "Min profit" or m[4] == "Min return")                         -- which rule set it
+        -- One row per possible result, the totals row last: the parts add up to the Expected value.
+        local build, from = g.BuildRows(d)
+        local total = build[#build]
+        assert.are.same({ "total", true }, { total.rule, total.bold })
+        assert.are.equal(ns.MoneyColumn(d.value), total.cells[5])
+        assert.is_true(#build >= 3)
+        assert.is_truthy(from:find("0 of your disenchants of this band (few results)", 1, true))
+        local hist = g.HistoryRows(d)
+        assert.are.equal("Alpha Boots", hist[1].cells[1])
+        assert.is_truthy(hist[2].cells[1]:find("Its band: ", 1, true))
+        local others = g.OtherRows(d)
+        assert.are.equal(1, #others)                                         -- the other Alpha Boots, 3c
+        assert.are.equal(ns.MoneyColumn(3), others[1].cells[1])
+        -- The window draws every part, with its tables under their titles.
+        for _, key in ipairs({ "deal", "measures", "build", "history", "others" }) do
+            assert.is_true(g.parts[key].list:IsShown(), key)
+        end
+        for _, msg in ipairs(env.chat) do assert.is_nil(msg:find("error", 1, true), msg) end
+    end)
+
+    it("buys from its footer (Buy, then Close last), says why Buy is off, and keeps the auction on show", function()
+        local g = ns.GearWindow
+        local close = g.footer.items[1]
+        assert.are.equal("Close", close:GetText())
+        assert.are.equal(close, g.buyButton.points[1][2])                    -- Buy sits left of Close
+        assert.is_true(g.buyButton:IsEnabled())
+        g.buyButton.scripts.OnClick(g.buyButton)
+        assert.are.same({ id = 301, amount = 1 }, env.ah.bids[#env.ah.bids])
+        g.Refresh()
+        assert.is_false(g.buyButton:IsEnabled())
+        g.buyButton.scripts.OnEnter(g.buyButton)
+        assert.is_truthy(tip():find("being bought", 1, true))
+        g.buyButton.scripts.OnLeave(g.buyButton)
+        -- The auction leaves the list: the window still shows it; Buy says why it is off.
+        wow.fire(ns, "AUCTION_HOUSE_PURCHASE_COMPLETED", 301)
+        g.Refresh()
+        assert.are.equal(301, g.deal.auctionID)
+        assert.is_truthy(g.BuyReason(nil):find("no longer in the Gear list", 1, true))
+        assert.is_false(g.buyButton:IsEnabled())
+        local names = {}
+        for _, n in ipairs(_G.UISpecialFrames) do names[n] = true end
+        assert.is_true(names.SalvagerGearFrame)                              -- Escape closes it
+        close.scripts.OnClick(close)
+        assert.is_false(_G.SalvagerGearFrame:IsShown())
+        ns.Queue.Clear()
+    end)
+
+    it("has the Reports tabs Gold, Gear, Materials; Gear has Bands then History; an old Items view moves over", function()
+        ns.db.windows.reports = { view = "items" }                           -- saved by 0.3.128: the Items tab
+        ns.Reports.Show()
+        assert.are.same({ "gear", "history" }, { ns.Reports.view, ns.Reports.gearTab })
+        local names = {}
+        for _, t in ipairs(ns.Reports.bars.tabs.items) do names[#names + 1] = t:GetText() end
+        assert.are.same({ "Gold", "Gear", "Materials" }, names)
+        names = {}
+        for _, t in ipairs(ns.Reports.bars.gear.items) do names[#names + 1] = t:GetText() end
+        assert.are.same({ "Bands", "History" }, names)
+        assert.is_true(ns.Reports.gearTabs.history.selected)
+        assert.are.equal("reports.items", rawget(ns.Reports.list, "columnSet"))
+        ns.Reports.gearTabs.bands:Click()
+        assert.are.equal("reports.profit", rawget(ns.Reports.list, "columnSet"))
+        assert.are.equal("bands", ns.db.windows.reports.gearTab)             -- remembered with the window
+        assert.is_true(ns.Reports.bars.filters.top > ns.Reports.bars.gear.top)   -- filters under the subtabs
+        ns.Reports.Toggle()
+    end)
+
+    it("opens and closes the headings of the Limits, the Market's Disenchant value and the Breakdown", function()
+        -- The Limits: a heading per quality.
+        local rows = ns.LimitsWindow.Rows()
+        local n = #rows
+        assert.is_true(rows[1].head and rows[1].open)
+        rows[1].onClick()
+        assert.is_true(ns.db.groups.limits["2"])
+        rows = ns.LimitsWindow.Rows()
+        assert.is_false(rows[1].open)
+        assert.is_true(rows[2].head)                                         -- Uncommon's bands are gone
+        assert.is_true(#rows < n)
+        ns.LimitsWindow.Show()
+        ns.LimitsWindow.Refresh()
+        assert.is_false(ns.LimitsWindow.list.rows[1].toggle.open)            -- the arrow points right
+        rows[1].onClick()
+        assert.are.equal(n, #ns.LimitsWindow.Rows())
+        -- The Market's Disenchant value: gear type and quality headings.
+        ns.Market.Toggle()
+        ns.Market.view = "value"
+        local value = ns.Market.Rows()
+        assert.is_true(value[1].head and value[1].open)
+        local before = #value
+        value[1].onClick()
+        assert.is_true(ns.db.groups["market.value"]["4"])
+        local after = ns.Market.Rows()
+        assert.is_false(after[1].open)                                       -- Armor closed: its bands are gone,
+        assert.is_true(after[2].head)                                        -- the Weapons heading comes next
+        assert.is_true(#after < before)
+        ns.Market.Rows()[1].onClick()
+        assert.are.equal(before, #ns.Market.Rows())
+        ns.Market.view = "material"
+        ns.Market.Toggle()
+        -- The Breakdown's bands.
+        ns.db.ledger.disenchants[#ns.db.ledger.disenchants + 1] = { link = link(A, "Alpha Boots"), itemID = A,
+            costKnown = true, cost = 100, value = 900, quality = 2, classID = 4, band = 30, got = { [11083] = 2 },
+            vals = { [11083] = 900 }, t = time() }
+        local bands = ns.Breakdown.BandRows(11083)
+        assert.is_true(bands[1].head and bands[1].open)
+        before = #bands
+        bands[2].onClick()
+        assert.is_true(ns.db.groups["breakdown.bands"]["4:2"])
+        assert.are.equal(before - 1, #ns.Breakdown.BandRows(11083))
+        ns.Breakdown.BandRows(11083)[2].onClick()
+        assert.are.equal(before, #ns.Breakdown.BandRows(11083))
+    end)
+
+    it("draws a heading's arrow one way in every table, and a heading card's whole title band is its click", function()
+        local list = ns.Widgets.List(_G.UIParent, {})
+        list:SetColumns({ { "Band", 100 } })
+        local data = { { cells = { "Armor" }, open = true }, { cells = { "Weapons" }, open = false } }
+        list:SetSource(2, function(i) return data[i] end)
+        list.GetWidth = function() return 400 end
+        list:Refresh()
+        assert.are.same({ true, false }, { list.rows[1].toggle.open, list.rows[2].toggle.open })
+        local stack = ns.Widgets.CardList(_G.UIParent)
+        stack:SetColumns({ { "Material", 100 } })
+        stack:SetCards({ { heading = true, title = "Armor", open = false, onClick = function() end } })
+        stack:Refresh()
+        local card = stack.cards[1]
+        assert.is_false(card.toggle.open)
+        assert.are.equal(0, card.click.points[2][4])                         -- to the right edge: the whole band
     end)
 end)

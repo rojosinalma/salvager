@@ -1,5 +1,5 @@
 -- Salvager: the Breakdown window. Click a material anywhere in the addon to see where it came
--- from: which items and which item level bands gave it, what it cost from each, and whether
+-- from: which gear and which item level bands gave it, what it cost from each, and whether
 -- that source pays. A window of its own.
 local _, ns = ...
 
@@ -23,7 +23,7 @@ local SHARED = {
         .. "costs you more than it sells for now.") },
     { "Source profit", 120, "RIGHT", help = help("Source profit", "The source with everything it gave, not only this material: "
         .. "the value of all its materials at the time of each disenchant, after the cut, minus what you paid. "
-        .. "Red = this item or band has not paid so far. In brackets: how many disenchants it rests on.") },
+        .. "Red = this gear or band has not paid so far. In brackets: how many disenchants it rests on.") },
 }
 local function columns(first)
     local cols = { { first, 190 } }
@@ -78,7 +78,7 @@ function Breakdown.Rows(sources, matID, label)
 end
 
 local function itemLabel(s)
-    local text = s.link or (s.itemID and (ns.GetItemInfo(s.itemID))) or ("item " .. tostring(s.itemID))
+    local text = s.link or (s.itemID and (ns.GetItemInfo(s.itemID))) or ("gear " .. tostring(s.itemID))
     return text, s.itemID, s.link
 end
 
@@ -108,6 +108,21 @@ function Breakdown.Summary(matID)
     return line1, line2
 end
 
+--- The band table's rows: grouped the one way (gear type, quality, then each band by its range), with headings that
+--- open and close (remembered).
+function Breakdown.BandRows(matID)
+    local b = Ledger.Breakdown(ns.db.ledger, matID)
+    local byBand = {}
+    for _, s in ipairs(b.bands) do
+        local r = Breakdown.Rows({ s }, matID, bandLabel)[1]
+        byBand[#byBand + 1] = { quality = s.quality, classID = s.classID, band = s.band, row = r }
+    end
+    return #byBand > 0 and ns.GroupedRows(byBand, function(e) return e.row end,
+        function(_, label) return { group = true, cells = { label } } end, nil,
+        { collapsed = ns.GroupState("breakdown.bands"), changed = function() Breakdown.Refresh() end })
+        or Breakdown.Rows(b.bands, matID, bandLabel)
+end
+
 function Breakdown.Refresh()
     if not f or not f:IsShown() or not Breakdown.matID then return end
     local matID = Breakdown.matID
@@ -117,7 +132,7 @@ function Breakdown.Refresh()
     local a, c = Breakdown.Summary(matID)
     summary[1]:SetText(a)
     summary[2]:SetText(c)
-    parts[1]:SetText(GOLD .. "By item|r" .. GREY .. "  the worst first|r")
+    parts[1]:SetText(GOLD .. "By gear|r" .. GREY .. "  the worst first|r")
     parts[3]:SetText(GOLD .. "By item level band|r")
     -- The upper table takes a little over half of the room.
     local room = (f:GetHeight() or 0) - 104 - 14 - 2 * 20
@@ -125,21 +140,13 @@ function Breakdown.Refresh()
     local items = Breakdown.Rows(b.items, matID, itemLabel)
     parts[2]:SetSource(#items, function(i) return items[i] end)
     parts[2]:Refresh()
-    -- Grouped the one way: gear type, quality, then each band by its range.
-    local byBand = {}
-    for _, s in ipairs(b.bands) do
-        local r = Breakdown.Rows({ s }, matID, bandLabel)[1]
-        byBand[#byBand + 1] = { quality = s.quality, classID = s.classID, band = s.band, row = r }
-    end
-    local bands = #byBand > 0 and ns.GroupedRows(byBand, function(e) return e.row end,
-        function(_, label) return { group = true, cells = { label } } end)
-        or Breakdown.Rows(b.bands, matID, bandLabel)
+    local bands = Breakdown.BandRows(matID)
     parts[4]:SetSource(#bands, function(i) return bands[i] end)
     parts[4]:Refresh()
 end
 
 local function build()
-    f = W.Window("SalvagerBreakdownFrame", "Salvager breakdown", "breakdown", 800, 480, 720, 320)
+    f = W.Window("SalvagerBreakdownFrame", "Salvager Breakdown", "breakdown", 800, 480, 720, 320)
     icon = f:CreateTexture(nil, "ARTWORK")
     icon:SetSize(26, 26)
     icon:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -30)
@@ -156,7 +163,7 @@ local function build()
     local titleA = W.Label(f, "", "GameFontNormal")
     titleA:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -104)
     local listA = W.List(f, { rowHeight = 22 })
-    listA:SetColumns(columns("Item"), "breakdown.item")
+    listA:SetColumns(columns("Gear"), "breakdown.item")
     listA:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -122)
     listA:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -122)
     listA:SetHeight(140)

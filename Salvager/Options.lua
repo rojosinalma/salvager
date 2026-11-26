@@ -166,7 +166,7 @@ end
 --- Opens the addon's own options window. Nothing else closes.
 function Options.Open()
     if not ownWindow then
-        ownWindow = W.Window("SalvagerOptionsFrame", "Salvager options", "options", 560, 680, 560, 680, true)
+        ownWindow = W.Window("SalvagerOptionsFrame", "Salvager Options", "options", 560, 680, 560, 680, true)
         populate(ownWindow, true)
         ownWindow:SetHeight(ownWindow.contentHeight + 44)   -- as tall as its content, plus the version line
     end

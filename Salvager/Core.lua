@@ -10,7 +10,7 @@ local DEFAULTS = {
     settings = {
         minProfit = 1000,          -- copper; deals below this profit are hidden
         minReturn = 0,             -- percent of the price a deal must make as well (0 = off)
-        dealSort = "profit",       -- Deals list order: "profit" | "return"
+        dealSort = "profit",       -- Gear tab order: "profit" | "return"
         maxPrice = 0,              -- copper; the most to pay for one item, whatever it is worth (0 = no limit)
         levelBandsOff = {},        -- item level bands NOT scanned: { [upper item level of the band] = true }
         ilvlMin = 0,               -- item level range for the scan (0 = no limit)
@@ -49,6 +49,7 @@ local DEFAULTS = {
     posted = {},                   -- posts made through Salvager: { auctionID, itemID, qty, each, t }
     money = {},                    -- the gold journal, every change of gold with its cause (Journal.lua)
     sessions = {},                 -- sessions from login to logout, and the stock's value at each (Statement.lua)
+    groups = {},                   -- [table] = { [heading] = true }: group headings not in their first state (ns.GroupState)
 }
 
 ------------------------------------------------------------------ output
@@ -480,6 +481,29 @@ function ns.BandRange(quality, band)
     return ns.BandName(quality, nil, band):match("item level (.-)|r$") or tostring(band)
 end
 
+--- Group headings that open and close (UI.md Tables 15), the one way for every table: the state of one table's
+--- headings, kept in the saved data. SalvagerDB.groups[id] = { [key] = true } for each heading that is not in the
+--- table's first state (closed where headings start open, open where they start closed).
+function ns.GroupState(id)
+    local all = ns.db.groups
+    all[id] = all[id] or {}
+    return all[id]
+end
+
+--- Makes `row` a heading that opens and closes: `row.open` (its arrow: Widgets.GroupArrow) and `row.onClick` (a click
+--- anywhere on the row flips it in `state`, then `changed()`). `closedFirst`: the heading starts closed.
+--- @return boolean open
+function ns.HeadingToggle(row, state, key, changed, closedFirst)
+    local flipped = state[key] and true or false
+    local open = (closedFirst and flipped) or (not closedFirst and not flipped)
+    row.open = open
+    row.onClick = function()
+        state[key] = (not state[key]) or nil
+        if changed then changed() end
+    end
+    return open
+end
+
 --- Lists of several gear types, qualities and bands are grouped one way everywhere (the user, 2026-11-26):
 --- gear type (Armor, then Weapons), quality under it (Uncommon, Rare, Epic), then each band by its range only.
 --- `entries` = { { quality, classID, band, ... } }. `row(e)` = the row of one entry (its first cell is set to
@@ -487,19 +511,14 @@ end
 --- or nil for a plain heading. Headings have `head = true`; every row has `section` (its quality group).
 --- @return table rows
 --- `opts.collapsed` = { [key] = true } closes a heading (key "<classID>" or "<classID>:<quality>"): its rows
---- are left out; with it the headings get `open` (the open / close sign) and `onClick` (it flips, then
---- `opts.changed()`).
+--- are left out; with it the headings open and close (ns.HeadingToggle: `open`, `onClick`, then `opts.changed()`).
+--- Pass ns.GroupState(<table>) so the state is remembered.
 function ns.GroupedRows(entries, row, head, indent, opts)
     indent = indent or 22
     opts = opts or {}
     local collapsed = opts.collapsed
     local function toggle(h, key)
-        if not collapsed then return end
-        h.open = not collapsed[key]
-        h.onClick = function()
-            collapsed[key] = (not collapsed[key]) or nil
-            if opts.changed then opts.changed() end
-        end
+        if collapsed then ns.HeadingToggle(h, collapsed, key, opts.changed) end
     end
     local rows, section = {}, 0
     for _, classID in ipairs({ Data.CLASS_ARMOR, Data.CLASS_WEAPON }) do
@@ -564,7 +583,7 @@ function ns.Busy()
     return (ns.Prices and ns.Prices.scanning) or (ns.Scanner and ns.Scanner.state ~= "idle") or ns.scanBothPending or false
 end
 
---- Material prices first, then the gear scan. `clear` = asked for by a click: the Deals list starts empty.
+--- Material prices first, then the gear scan. `clear` = asked for by a click: the Gear list starts empty.
 function ns.ScanBoth(clear)
     if not ns.Queue.open then ns.Print("open the auction house first") return end
     if ns.Busy() then return end
@@ -713,15 +732,15 @@ local HELP = {
     "/salv minreturn 15 - lowest return a deal must make as well, in percent of its price (0 = off)",
     "/salv salvager auto|on|off - Arcane Salvager bonus in buy prices",
     "/salv quality uncommon|rare|epic|both|all - which gear the scan looks at",
-    "/salv gear weapons|armor|both - which item types the scan looks at",
+    "/salv gear weapons|armor|both - which gear types the scan looks at",
     "/salv config - the options panel",
     "/salv levels 20 60 - required level range for the gear scan (0 0 = all)",
     "/salv interval 20 - seconds between gear scans while Play runs",
     "/salv rescan 10 - minutes after which Play scans the material prices again (0 = never)",
-    "/salv stock <item> <quantity> <cost each> - opening stock, e.g. /salv stock 11137 40 6s",
+    "/salv stock <material> <quantity> <cost each> - opening stock, e.g. /salv stock 11137 40 6s",
     "/salv report - disenchant results by band",
     "/salv gold 24 - what happened to your gold in the last 24 hours (or any number of hours)",
-    "/salv reports - the reports window (gold, profit by quality and band, materials, items)",
+    "/salv reports - the reports window (gold; gear by band and piece by piece; materials)",
     "/salv auras - list your buffs (to find the Salvager's)",
     "/salv materials - the materials list in its own window (again: put it back)",
     "/salv ledger - the ledger window (purchases, sales, odds)",

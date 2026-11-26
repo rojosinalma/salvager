@@ -1056,7 +1056,7 @@ function Ledger.Breakdown(state, matID)
     return out
 end
 
---- How well the promise held, in three steps: what the Deals list promised at the purchase, what the
+--- How well the promise held, in three steps: what the Gear list promised at the purchase, what the
 --- materials were worth at the disenchant, and what materials really sold for.
 --- Only disenchants with a recorded purchase count.
 --- @return table {

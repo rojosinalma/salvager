@@ -15,7 +15,7 @@ local WINDOWS = {
     main = "SalvagerFrame", ledger = "SalvagerLedgerFrame", odds = "SalvagerOddsFrame", log = "SalvagerLogFrame",
     materials = "SalvagerMaterialsFrame", reports = "SalvagerReportsFrame", market = "SalvagerMarketFrame",
     stand = "SalvagerStandFrame", breakdown = "SalvagerBreakdownFrame", post = "SalvagerPostFrame",
-    options = "SalvagerOptionsFrame", limits = "SalvagerLimitsFrame",
+    options = "SalvagerOptionsFrame", limits = "SalvagerLimitsFrame", gear = "SalvagerGearFrame",
 }
 local LAYERS = { BACKGROUND = "BG", BORDER = "BD", ARTWORK = "A", OVERLAY = "O", HIGHLIGHT = "H" }
 local CONTROLS = { Button = true, CheckButton = true, EditBox = true, Slider = true }

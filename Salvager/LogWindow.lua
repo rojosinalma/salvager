@@ -93,7 +93,7 @@ function Window.Refresh()
 end
 
 local function build()
-    f = W.Window("SalvagerLogFrame", "Salvager log", "log", 640, 360, 360, 160)
+    f = W.Window("SalvagerLogFrame", "Salvager Log", "log", 640, 360, 360, 160)
     -- The filter row under the title bar; the footer: the count at the left, Clear at the right (UI.md Controls 1).
     local filters = W.Bar(f, "filters"):Place(28, 12, 12)
     local options = {}

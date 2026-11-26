@@ -123,15 +123,34 @@ describe("The gold journal in a simulated client", function()
             assert.is_truthy(text:find(want, 1, true), want)
         end
         for _, tab in ipairs({ "changes", "statement" }) do ns.Reports.goldTab = tab ns.Reports.Refresh() end
-        for _, view in ipairs({ "profit", "materials", "items" }) do   -- every view draws, with data and the time picked
-            ns.Reports.view = view
+        -- Every view draws, with data and the time picked: Gear (its subtabs Bands and History), Materials.
+        for _, v in ipairs({ { "gear", "bands" }, { "gear", "history" }, { "materials" } }) do
+            ns.Reports.view, ns.Reports.gearTab = v[1], v[2] or ns.Reports.gearTab
             for _, range in ipairs({ "24h", "all" }) do ns.Reports.range = range ns.Reports.Refresh() end
+            local set = rawget(ns.Reports.list, "columnSet")
+            assert.are.equal(v[2] == "history" and "reports.items" or v[2] == "bands" and "reports.profit"
+                or "reports.materials", set)
         end
         local rows = ns.Reports.ProfitRows()
         assert.are.same({ "Total", "total" }, { rows[#rows].cells[1], rows[#rows].rule })   -- the totals row last
         assert.is_truthy(rows[1].cells[1]:find("Armor", 1, true))                -- gear type first
         assert.is_truthy(rows[2].cells[1]:find("Uncommon", 1, true))             -- quality under it
         assert.are.equal("26-30", rows[3].cells[1])                              -- the range only
+        -- Each heading opens and closes (its arrow says which); a closed one keeps its totals; the state is kept.
+        assert.is_true(rows[1].open and rows[2].open)
+        local n = #rows
+        rows[2].onClick()
+        rows = ns.Reports.ProfitRows()
+        assert.are.equal(n - 1, #rows)                                           -- the band under Uncommon is gone
+        assert.is_false(rows[2].open)
+        assert.are.equal(rows[1].cells[4], rows[2].cells[4])                     -- its Paid stays on the heading
+        assert.is_true(ns.db.groups["reports.bands"]["4:2"])
+        rows[1].onClick()
+        assert.are.equal(2, #ns.Reports.ProfitRows())                            -- Armor closed: the heading, the total
+        ns.Reports.ProfitRows()[1].onClick()
+        ns.Reports.ProfitRows()[2].onClick()
+        assert.are.equal(n, #ns.Reports.ProfitRows())
+        assert.is_nil(next(ns.db.groups["reports.bands"]))
         assert.are.equal(1, #ns.Reports.ItemRows())
         ns.Reports.filter.classes[4] = nil                                       -- weapons only: nothing
         assert.are.equal(1, #ns.Reports.ProfitRows())

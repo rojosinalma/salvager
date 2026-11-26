@@ -24,7 +24,7 @@ flipping is out of scope for now.
    of all toward 1 the same way; no sales at all = 1. The price at the post is recorded from 0.3.122 on
    (`SalvagerDB.posted[].val`, copied to the sale as `val`); older sales take the price history (57) at the
    post of that material at that price each made before the sale, else at the sale. Used in the Expected value of
-   gear (`Model.Value`, `ns.ValueOptions`; with the result rates of 99), so in buy limits (`Model.MaxBuy`), the Deals list, Lose %, Odds, the
+   gear (`Model.Value`, `ns.ValueOptions`; with the result rates of 99), so in buy limits (`Model.MaxBuy`), the Gear list, Lose %, Odds, the
    Market's disenchant value, the `planned` value of a disenchant and the value of what is held and listed (Reports, Materials view; the
    statement's stock, 97b).
    Not in the Disenchant value (`vals`, `value` of a disenchant: the market at the disenchant), nor in the cost
@@ -152,14 +152,15 @@ flipping is out of scope for now.
     50 of yours), and the card's facts end with "Rates used from" (your disenchants the blend rests on, with or
     without the Salvager as buying counts it; the filters do not change it). Buy below and Loss chance use the
     blend. `Widgets.CardList` makes 10 cells a row (was 8).
-    The lose colors are in one place (`ns.LoseText`), shared with the Deals list.
-32. **The Deals list empties only for a scan started by a click** (Play, Scan gear, Scan both), and is then
+    The lose colors are in one place (`ns.LoseText`), shared with the Gear list.
+32. **The Gear list empties only for a scan started by a click** (Play, Scan gear, Scan both), and is then
     filled again. A round that Play starts by itself keeps the list: when the round has read the gear, rows of
     items no longer under their limit go, and the others are replaced as they are checked. (0.3.16 cleared at
     every round; the user meant clicks only, 2026-11-26.)
 33. **Max price** (`maxPrice`, 0 = no limit): the most to pay for one item, whatever it is worth. The scan uses
     min(buy limit, max price) per band. It also keeps expensive items from taking the candidate checks.
-34. **Main window layout** (rewritten 0.3.128, 101): the tabs (Deals, Materials); the Deals view's "Scan settings"
+34. **Main window layout** (rewritten 0.3.128, 101; the tab Deals is named Gear since 0.3.129): the tabs (Gear,
+    Materials); the Gear view's "Scan settings"
     block (Scan, Buy, Levels rows) or the Materials view's filter row; the list in its own dark bordered panel with
     a title band and striped rows (`Widgets.Panel`); the footer.
 35. **Materials list columns:** Material, Price, Age, Bags, Listed, Sold, Avg cost, Break-even, Profit, Sell price
@@ -245,7 +246,7 @@ flipping is out of scope for now.
     materials at the average price each really sold for; at the disenchant's price where none sold yet), and
     the planned and real profit. A second table per material: valued each against sold each. Sales are not
     tied to items (pooled stock), so "Sold for" per band is an estimate. Column names (0.3.117, the user: the
-    window was too wide; abbreviations, UI.md Words 2): By band `Band | Items | Paid | Expected value (EV) |
+    window was too wide; abbreviations, UI.md Words 2): By band `Band | Disenchanted | Paid | Expected value (EV) |
     Disenchant value (DV) | DV/EV % | Sold value (SV) | SV/DV % | Expected profit (EP) | Actual profit (AP) | AP/EP %`;
     By material `Material | Units | Disenchant value each (DV) | Sold value each (SV) | SV - DV | SV/DV % | Units sold`.
     DV/EV % = Disenchant value against Expected value, SV/DV % = Sold value against Disenchant value (the same name
@@ -254,7 +255,7 @@ flipping is out of scope for now.
     Expected profit and SV - DV too; Actual profit stays green or red). SV - DV is in coins, with a plain hyphen: the game
     font's minus sign (U+2212) is not confirmed. The help on each comparison names both values in full. Purchases
     (Expected value, Disenchant value, Profit) has no comparison column, so it keeps its titles without
-    abbreviations; so does the Deals list. From 0.3.122 the Expected value of a purchase counts each unit at its price
+    abbreviations; so does the Gear list. From 0.3.122 the Expected value of a purchase counts each unit at its price
     × sell price ratio, less the deposits lost per unit sold (3, 96); purchases from before keep the value they were
     shown with. Disenchant value stays at the market price, so SV/DV % still shows the sell price ratio and the
     price moves between the disenchant and the sale.
@@ -427,16 +428,19 @@ flipping is out of scope for now.
     ("11-26 18:49, 1 h 10 min", newest first, the newest 15 (`Reports.MENU_SESSIONS`); older ones are picked from the
     Sessions part of All time, 72), Last 24 hours, Last 7 days, Last 30 days, All time (`range = "s:<start>"` for a
     session; that time has an end too: `Ledger.Profits(state, from, keep, to)`). The rows from the top: the view tabs,
-    the Gold subtabs (Gold only), the filter row (Period, then Gear, Quality, Bands, Salvager on Gear and Items), the
+    the Gold or Gear subtabs, the filter row (Period, then Gear, Quality, Bands, Salvager on Gear), the
     table. The line that repeated the period and the view's help left: the period shows in its filter and in the
     statement's first line, the help is on the tab. Width at least 890 (was 760), so the longest filter row fits.
-    Views: Gold (72, 97);
-    Gear (tab named Profit until 0.3.127, the user): profit by quality and gear type with its bands under it (`Ledger.Profits`: disenchants with a known
+    Views (tabs, 0.3.129: Gold, Gear, Materials): Gold (72, 97);
+    Gear (tab named Profit until 0.3.127, the user), with two subtabs (0.3.129, the user; the Items tab is gone):
+    Bands first, the profit by quality and gear type with its bands under it (`Ledger.Profits`: disenchants with a known
     cost; Sold value = the materials at what one unit really sold for, at their disenchant value while that
-    material has not sold; Profit = Sold value − Paid; grey under 20 disenchants); Materials (got, sold,
-    sold for, cost of sold, deposits lost, profit, held and listed now and their value); Items (best first).
-    Gear groups by gear type, then quality, then band (the range only, "26-30"). Gear and Items have
-    filters on their filter row after the period (gear type, quality, item level band, with or without the Salvager;
+    material has not sold; Profit = Sold value − Paid; grey under 20 disenchants; its headings open and close, 103),
+    then History, every piece of gear, best first (the old Items view); a saved view "profit" or "items" moves to
+    Gear with that subtab, the column sets keep their names (`reports.profit`, `reports.items`). Materials (got,
+    sold, sold for, cost of sold, deposits lost, profit, held and listed now and their value).
+    Bands groups by gear type, then quality, then band (the range only, "26-30"). Both Gear subtabs have
+    filters on their filter row (under the subtabs) after the period (gear type, quality, item level band, with or without the Salvager;
     remembered; at least one ticked). Materials: Held = bags and bank (`GetItemCount(id, true)`), Listed = your
     unsold auctions as last read; the ledger's stock counts both and is not shown as "in stock".
 80. **One grouping for every list of bands** (the user, 2026-11-26): gear type (Armor, then Weapons), quality
@@ -464,16 +468,16 @@ flipping is out of scope for now.
     Purchases, Accuracy and Odds; each view keeps its own (`purchaseFilter`, `accuracyFilter`,
     `oddsFilter` in `SalvagerDB.windows.ledger`). Odds lost its Armor/Weapons subtabs (the Gear filter does
     it; old settings move over once). Every heading of a grouped list opens and closes (`ns.GroupedRows`
-    `opts.collapsed`); Odds cards too, each band on its own (`Widgets.CardList`: `heading`, `open`,
+    `opts.collapsed`; one implementation and look since 0.3.129, 103); Odds cards too, each band on its own (`Widgets.CardList`: `heading`, `open`,
     `onClick`, `indent`). Accuracy has an AP/EP % column in percent (SDD 61), on the headings
     too, after Actual profit (0.3.115, the user; it replaces the gold Profit difference of 0.3.99/0.3.110). The odds window is 740 wide (0.3.101): "Only bands with my data" on a row of its own under
     the filter row; the Odds cards sit in 12 px per level (22 in the other tables).
 84. **The Materials window fits its list** (0.3.100): as wide as its columns need, the Post column ending
     with its button (`list.neededWidth` from `Widgets.List`), at least 620 for the row above the list (help
     and check box from the right, the status cut before them).
-85. **Main window list** (0.3.102): the column the Deals list is sorted by has the arrow icon (as in the
+85. **Main window list** (0.3.102): the column the Gear list is sorted by has the arrow icon (as in the
     Market and the Ledger), not "v"; the "?" help is the first thing on the row of column titles, and its
-    first line says what the list is sorted by and how to change it. Limits' and Deals' help say the column
+    first line says what the list is sorted by and how to change it. Limits' and the Gear tab's help say the column
     names in use (Recommended / Override price threshold; Expected value, Expected profit, Return).
 86. **Where a listing stands** (`StandWindow.lua`, 0.3.104): a click on an auction of yours for sale (Ledger,
     Sales, Open auctions) searches its material and shows the other sellers' price lines (`Post.MarketRows`,
@@ -482,7 +486,7 @@ flipping is out of scope for now.
     `Listings.RepostCost`), with a hint: under break-even (wait), few units ahead (wait), many ahead (a
     repost sells sooner if the gap pays its deposits).
 87. **Main window status at the bottom** (0.3.105; moved 0.3.111, 93): the spinner and the status text (what the
-    addon is doing now) sit at the bottom right under the list, left of the "Buy top" button, as wide as the text
+    addon is doing now) sit at the bottom right under the list, left of the "Buy Top" button, as wide as the text
     and at most half the room left of the button. The footer takes the room on their left, in two lines, each one
     line cut at the spinner: line 1 is what the last scan found (deals, items, limits, max price), line 2 the
     item closest to its buy limit ("Closest: ..."). The list's bottom is one line higher for it. (0.3.128, 101: the
@@ -531,8 +535,9 @@ flipping is out of scope for now.
     window, shows `v<version>` (`ns.VERSION`, from the TOC through `C_AddOns.GetAddOnMetadata`) at the left
     end of its title bar (`f.TitleBg`), small and dim (`GameFontDisableSmall`). Where it would come within
     12 px of the centered title at the window's smallest width, it is left out (`Widgets.TitleVersion`).
-93. **Buy top** (0.3.111, the user; 0.3.112): a button at the bottom right of the main window, left of the resize
-    grip, on every tab. One click buys the single best auction of the Deals list by the active sort, from any row
+93. **Buy Top** (0.3.111, the user; 0.3.112; "Buy Top" since 0.3.129): a button at the bottom right of the main
+    window, left of the resize grip, on every tab. One click buys the single best auction of the Gear list by the
+    active sort, from any row
     (`UI.TopDeal`): of every auction not being bought, the one with the highest Expected profit (profit sort) or
     Return (return sort), each auction's own (`d.profit`, `Scanner.Return`); ties go to the other number, then the
     lower buyout, then the auction ID. Not the top row: after the best auction of a row of several is bought, the
@@ -542,10 +547,12 @@ flipping is out of scope for now.
     row's Buy: the click is the hardware event, the scan holds, a busy auction house gets it as soon as it is
     ready (65). The mouse on it holds the scan (`Scanner.Aim`). Off, with the reason in its tooltip: auction house
     closed, no gear scan yet, the list empty, every deal being bought, not enough gold for any (the best one is
-    named). Its tooltip shows the item, the buyout, the Expected profit and the Return of what the click buys, and
-    follows the list while it shows. Above the button, right-aligned to it (0.3.112, the user): the icon and the
-    item link of what the next click buys, one line, at most half the room left of the button, cut there; empty
-    while the button is off; the mouse on it shows the item's tooltip. It sits between the button's top and the
+    named). Its tooltip shows the gear and the deal's lines of what the click buys (`UI.AddDealLines`, as a Gear
+    row's: Item level, Buyout, Expected value, Expected profit, Return, Loss chance, Time to sell, Return per day),
+    and follows the list while it shows. Above the button, right-aligned to it (0.3.112, the user): the icon and the
+    link of the gear the next click buys, one line, at most half the room left of the button, cut there; empty
+    while the button is off; the mouse on it shows the game's tooltip of the gear and the same deal lines (0.3.129,
+    the user: one function for the row and for this, so both always match). It sits between the button's top and the
     list's bottom (37 to 51 px above the window's bottom, over the footer's first line), so the list keeps its
     place.
 94. **Layout dump for the agent** (0.3.114; complete enough to draw in 0.3.119): on `PLAYER_LOGOUT` (logout and
@@ -580,7 +587,7 @@ flipping is out of scope for now.
     highlight layer), lists narrower than their columns need. `--file <path>` draws a local copy. It is the way to
     see a window: /reload, `make layout`, read the PNG, instead of asking the user for a screenshot.
 95. **Column chooser** (0.3.117, the user): every table with column titles (`Widgets.List`, the Odds cards of
-    `Widgets.CardList`, the main window's Deals and Materials tabs) has a small button at the right end of its title
+    `Widgets.CardList`, the main window's Gear and Materials tabs) has a small button at the right end of its title
     band, over the scroll bar, where the titles end (`Widgets.ColumnChooser`): three gold squares stacked (the game
     fonts have no vertical ellipsis). Tooltip "Columns". A click opens a menu under it in the drop-down look: one
     check row per column (its title, without the sort arrow, `col.key`), ticked = shown; a click shows or hides the
@@ -722,12 +729,12 @@ flipping is out of scope for now.
     with the game's dropdown arrow; each with its label at its left); the content; the footer (status left,
     actions right, Cancel last). Rows are `Widgets.Bar`s; every control carries `uiKind`, which the layout dump
     writes (`k=`) and `make layout` checks (UI.md Controls 14). Per window:
-    a. Main: tabs Deals and Materials (Limits is a window now). Deals: a "Scan settings" block (heading, the Scan,
-       Buy and Levels rows), then the list. Materials: a filter row ("Only materials with my data"; Scan owned and
+    a. Main: tabs Gear and Materials (Deals until 0.3.129; Limits is a window now). Gear: a "Scan settings" block
+       (heading, the Scan, Buy and Levels rows; Scan once: Gear, Materials, Both from 0.3.129), then the list. Materials: a filter row ("Only materials with my data"; Scan owned and
        Pop out at its right end), then the list. Footer: two lines of text (the last scan and the closest item at
        the left; the status and the gold at the right of line 1, the next item to buy at the right of line 2), and
        a row of buttons: Auction house, Ledger, Reports, Market, Limits, Log, Options at the left; Play, Stop and
-       Buy top at the right. Nothing on the tab row but the tabs (the gold, the pop-out and the window buttons left
+       Buy Top at the right. Nothing on the tab row but the tabs (the gold, the pop-out and the window buttons left
        it).
     b. Limits window (`LimitsWindow.lua`, new): the table of the old Limits tab (columns "Armor: recommended",
        "Armor: limit used", "Weapons: recommended", "Weapons: limit used"; the limit boxes over the "limit used"
@@ -748,6 +755,39 @@ flipping is out of scope for now.
     i. Post: footer: Undercut lowest and Break-even at the left (under the price), Post then Cancel at the right end.
     j. Breakdown, Stand, Options: no tabs or filters; unchanged. Every window closes with Escape (`UISpecialFrames`)
        and has the close button at its top right.
+102. **Gear details window** (0.3.129, the user; `GearWindow.lua`, "Salvager Gear Details"): a click on an auction's
+    row in the main window's Gear tab (a single auction, or a row inside an opened group; a group heading still
+    opens and closes) shows that auction; a click on another row replaces it. Fixed width (620), the height is the
+    player's, its place remembered, Escape closes it, it closes with the main window. Content, a report from the top:
+    the heading (icon, the link with the game's tooltip on hover; quality, gear type, item level, band; "this
+    auction, as of the last scan"); "The deal" as a statement (Expected value of one disenchant +, Buyout -, Expected
+    profit as the bold total, grey: forecasts); "Return and risk", one row (Return, Loss chance, Buy limit, Limit set
+    by: Min profit, Min return, You (Limits) or Max price; Time to sell, Return per day); "How the Expected value is
+    built" (`Model.ValueBuild`: one row per result with Rate used, Quantity used, Value each = price × sell price
+    ratio after the cut less the deposits lost per unit sold, Part of the value = their product; the total "Expected
+    value, now" last; the title says how many of your disenchants of the band the rates rest on, "few results", with
+    or without the Salvager, and when prices moved since the scan); "Your history with this gear and its band"
+    (`Ledger.Profits`, all time: Disenchanted, Paid, Sold value, Profit, Return); "Other auctions of this gear in
+    the list" (Buyout, Expected profit, Under the limit by, State). Footer: Buy (the row's path, `Scanner.Buy`, the
+    mouse on it holds the scan; off with the reason: being bought, gone from the list, auction house closed, not
+    enough gold) at the right, Close last. When a scan replaces the auction's row, the window follows it by auction
+    ID; when the auction leaves the list, the window keeps showing it (UI.md Actions 4) and Buy says why it is off.
+103. **Headings that open and close, one way** (0.3.129, the user; UI.md Tables 15): every table with groupings:
+    the main window's gear groups (they start closed), Reports' Gear Bands, Market's Disenchant value, Breakdown's
+    bands, the Limits window's qualities, Ledger Purchases (start closed), Accuracy and the Odds cards. An arrow at
+    the left of the heading (`Widgets.GroupArrow`: the game's gold arrow, right = closed, down = open; it was a plus
+    or minus sign), the whole heading row is the click target with the hover highlight (a heading card's whole
+    title band), a closed heading keeps its totals. `ns.HeadingToggle(row, state, key, changed, closedFirst)` sets
+    the row's `open` and `onClick`; `ns.GroupedRows` uses it; the state is saved per table in
+    `SalvagerDB.groups[<table>]` (`ns.GroupState`: "main.gear", "reports.bands", "market.value", "breakdown.bands",
+    "limits"; Accuracy, Odds and Purchases keep theirs in their filters, as before).
+104. **Gear and materials** (0.3.129, the user; UI.md Words 1): what the player buys and disenchants is "gear"
+    everywhere he reads it (window titles, tabs, columns, help, tooltips, chat, slash help, README); "item" stays
+    for a game item in general and in "item level"; what a disenchant gives is "materials". Window titles are
+    "Salvager <Name>", the name capitalized (UI.md Layout 10): Salvager Ledger, Reports, Materials, Market, Log, Odds,
+    Options, Breakdown, Limits, Post, Stand, Gear Details. The log keeps "item <ID>" in its lines (the Log window
+    shows the name in its place). Expected profit and Return in the Gear list are grey with their sign, as UI.md
+    Tables 7 asks for forecasts (they were green and red).
 
 ## Data
 

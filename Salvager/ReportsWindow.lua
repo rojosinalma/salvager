@@ -2,15 +2,15 @@
 -- hours or days, or all time):
 --   Gold       Statement: the trading profit, the stock change, the total, gold not from trading, the check against
 --              your gold, and the sessions of a longer period; All gold changes: every change, newest first
---   Profit     by quality and gear type, and by item level band under each
+--   Gear       Bands: the profit by gear type, quality and item level band; History: every piece of gear you bought
+--              and disenchanted, best first
 --   Materials  what each material gave, sold for and cost, and what is left
---   Items      by item: which ones paid
 local _, ns = ...
 
 local Ledger, W = ns.Ledger, ns.Widgets
 
-local Reports = { view = "gold", range = "24h", goldTab = "statement",
-    -- The Gear and Items views' filters (kept in the window's saved data).
+local Reports = { view = "gold", range = "24h", goldTab = "statement", gearTab = "bands",
+    -- The Gear view's filters (kept in the window's saved data).
     filter = { classes = { [4] = true, [2] = true }, qualities = { [2] = true, [3] = true, [4] = true }, bandsOff = {},
         salvager = "all" } }
 ns.Reports = Reports
@@ -27,14 +27,15 @@ local RANGES = {
     { "all", "All time", nil },
 }
 Reports.MENU_SESSIONS = 15   -- past sessions in the Period menu (older ones: the Sessions part of All time)
-local ORDER = { "gold", "profit", "materials", "items" }
-local TITLES = { gold = "Gold", profit = "Gear", materials = "Materials", items = "Items" }
+local ORDER = { "gold", "gear", "materials" }
+local TITLES = { gold = "Gold", gear = "Gear", materials = "Materials" }
 local HELP = {
     gold = "What the trading made and how much richer you are, checked against your gold; every change of your gold.",
-    profit = "What your disenchants made, by quality and gear type, and by item level band under each.",
+    gear = "What the gear you bought and disenchanted made: by band, and piece by piece.",
     materials = "Each material: how many you got and sold, what they sold for and cost, and what is left.",
-    items = "Each item you bought and disenchanted: which ones paid, best first.",
 }
+-- The views before 0.3.129: the Gear tab ("profit") and the Items tab are the Gear view's two subtabs now.
+local OLD_VIEW = { profit = { "gear", "bands" }, items = { "gear", "history" } }
 
 -- Money in a column: every coin under the largest one with two digits, so the coins line up (UI.md Tables 9).
 local function money(c) return c and ns.MoneyColumn(c) or "-" end
@@ -113,8 +114,8 @@ local COLUMNS = {
         { "Kind", 140, "LEFT", help = { "Kind", "What the change was: told by what the addon did (a purchase, a "
             .. "deposit, a mail taken), else by the window open then (vendor, mailbox, trade)." } },
         { "Gold after", 90, "RIGHT" } },
-    profit = { { "Band", 190 }, { "Items", 44, "RIGHT", help = { "Items", "Disenchants of items whose price is "
-            .. "known. Grey: fewer than 20, too few to trust." } },
+    profit = { { "Band", 190 }, { "Disenchanted", 70, "RIGHT", help = { "Disenchanted", "Disenchants of gear whose "
+            .. "price is known. Grey: fewer than 20, too few to trust." } },
         { "With Salvager", 60, "RIGHT", help = { "With Salvager", "How many of them had the Arcane Salvager's bonus." } },
         { "Paid", 80, "RIGHT" },
         { "Disenchant value", 90, "RIGHT", help = { "Disenchant value", "What the materials were worth when you "
@@ -138,8 +139,10 @@ local COLUMNS = {
             .. "time the addon read your auctions)." } },
         { "Value", 80, "RIGHT", help = { "Value", "Held and listed units at what one unit is worth now: the price times "
             .. "its sell price ratio, after the cut, less the deposits lost per unit sold (as in the statement's stock)." } } },
-    items = { { "Item", 220 }, { "Items", 44, "RIGHT" }, { "Paid each", 70, "RIGHT" },
-        { "Sold value each", 80, "RIGHT" }, { "Profit", 80, "RIGHT" }, { "Return", 50, "RIGHT" } },
+    items = { { "Gear", 220 }, { "Disenchanted", 70, "RIGHT", help = { "Disenchanted", "Pieces of this gear you "
+            .. "bought and disenchanted, with a known price. Grey: fewer than 20, too few to trust." } },
+        { "Paid each", 70, "RIGHT" }, { "Sold value each", 80, "RIGHT" }, { "Profit", 80, "RIGHT" },
+        { "Return", 50, "RIGHT" } },
 }
 
 --- Does a disenchant pass the filters? (Gear type, quality, item level band, with or without the Salvager.)
@@ -383,8 +386,8 @@ function Reports.ProfitRows()
     local from, _, to = Reports.From()
     local p = Ledger.Profits(ns.db.ledger, from, Reports.Keep, to)
     if p.total.n == 0 then
-        return { note("No disenchant of an item with a known price in this time and these filters. Buy from the "
-            .. "Deals tab, then disenchant.") }
+        return { note("No disenchant of gear with a known price in this time and these filters. Buy from the "
+            .. "main window's Gear tab, then disenchant.") }
     end
     local rows = {}
     local bands = {}
@@ -395,7 +398,8 @@ function Reports.ProfitRows()
         return t
     end
     for _, r in ipairs(ns.GroupedRows(bands, function(b) return { cells = profitCells(b, "") } end,
-        function(of, label) return { group = true, cells = profitCells(sum(of), label) } end, INDENT)) do
+        function(of, label) return { group = true, cells = profitCells(sum(of), label) } end, INDENT,
+        { collapsed = ns.GroupState("reports.bands"), changed = function() Reports.Refresh() end })) do
         rows[#rows + 1] = r
     end
     -- The totals row is the last one, with a line over it (UI.md Tables 13).
@@ -445,11 +449,11 @@ function Reports.MaterialRows()
     return rows
 end
 
---- Each item, the best first.
+--- Each piece of gear, the best first (the Gear view's History).
 function Reports.ItemRows()
     local from, _, to = Reports.From()
     local p = Ledger.Profits(ns.db.ledger, from, Reports.Keep, to)
-    if #p.items == 0 then return { note("No disenchant of an item with a known price in this time and these filters.") } end
+    if #p.items == 0 then return { note("No disenchant of gear with a known price in this time and these filters.") } end
     local rows = {}
     for _, it in ipairs(p.items) do
         local profit = math.floor(it.sold + 0.5) - it.paid
@@ -462,20 +466,25 @@ end
 ------------------------------------------------------------------ window
 
 local f, list, filterRow, rangeDrop
-local tabs, filters, goldTabs = {}, {}, {}
+local tabs, filters, goldTabs, gearTabs = {}, {}, {}, {}
 local GOLD_TABS = {
     { "statement", "Statement", "What the trading made and how much richer you are, then the check against your gold." },
     { "changes", "All gold changes", "Every change of your gold, newest first, with its kind." },
 }
--- The rows from the top (UI.md Controls 1): the tabs, the subtabs (Gold only), the filter row, the content.
+-- The Gear view's subtabs: Bands first (the main one), then History.
+local GEAR_TABS = {
+    { "bands", "Bands", "The profit by gear type, quality and item level band. A heading opens and closes." },
+    { "history", "History", "Every piece of gear you bought and disenchanted, the best first." },
+}
+-- The rows from the top (UI.md Controls 1): the tabs, the subtabs (Gold and Gear), the filter row, the content.
 local TABS_TOP = 24
-local bars = {}   -- tabs, gold (the Gold view's subtabs), filters
+local bars = {}   -- tabs, gold and gear (the views' subtabs), filters
 
---- Keeps the time and the Gold subtab with the window.
+--- Keeps the time and the subtabs with the window.
 function Reports.Save()
-    if f then f.saved.range, f.saved.goldTab = Reports.range, Reports.goldTab end
+    if f then f.saved.range, f.saved.goldTab, f.saved.gearTab = Reports.range, Reports.goldTab, Reports.gearTab end
 end
-local FILTERED = { profit = true, items = true }   -- the views the filters apply to
+local FILTERED = { gear = true }   -- the views the filters apply to
 
 local function show(l, cols, rows, setId)
     l:SetColumns(cols, setId)
@@ -485,11 +494,12 @@ end
 
 function Reports.Refresh()
     if not f or not f:IsShown() then return end
-    local gold = Reports.view == "gold"
-    -- The filter row: under the Gold view's subtabs, else right under the tabs; the content under it.
+    local gold, gear = Reports.view == "gold", Reports.view == "gear"
+    -- The filter row: under the view's subtabs (Gold, Gear), else right under the tabs; the content under it.
     local top = TABS_TOP + W.BAR_H.tabs + 4
     bars.gold:SetShown(gold)
-    if gold then top = top + W.BAR_H.subtabs + 4 end
+    bars.gear:SetShown(gear)
+    if gold or gear then top = top + W.BAR_H.subtabs + 4 end
     filterRow:Place(top, 12, 12)
     list:ClearAllPoints()
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -(top + W.BAR_H.filters + 4))
@@ -501,18 +511,22 @@ function Reports.Refresh()
         if x.Update then x:Update() end
     end
     for key, b in pairs(goldTabs) do b:SetSelected(key == Reports.goldTab) end
+    for key, b in pairs(gearTabs) do b:SetSelected(key == Reports.gearTab) end
     if gold then
         if Reports.goldTab == "changes" then
             show(list, COLUMNS.goldLog, Reports.ChangeRows(), "reports.goldLog")
         else
             show(list, COLUMNS.statement, Reports.StatementRows(), "reports.statement")
         end
-    elseif Reports.view == "profit" then
-        show(list, COLUMNS.profit, Reports.ProfitRows(), "reports.profit")
-    elseif Reports.view == "materials" then
-        show(list, COLUMNS.materials, Reports.MaterialRows(), "reports.materials")
+    elseif gear then
+        -- (The column sets keep their names from before 0.3.129: the columns hidden with the chooser stay hidden.)
+        if Reports.gearTab == "history" then
+            show(list, COLUMNS.items, Reports.ItemRows(), "reports.items")
+        else
+            show(list, COLUMNS.profit, Reports.ProfitRows(), "reports.profit")
+        end
     else
-        show(list, COLUMNS.items, Reports.ItemRows(), "reports.items")
+        show(list, COLUMNS.materials, Reports.MaterialRows(), "reports.materials")
     end
     for key, b in pairs(tabs) do b:SetSelected(key == Reports.view) end
     rangeDrop:SetOptions(Reports.PeriodOptions(), 190)
@@ -520,8 +534,11 @@ function Reports.Refresh()
 end
 
 local function build()
-    f = W.Window("SalvagerReportsFrame", "Salvager reports", "reports", 900, 480, 890, 300)
+    f = W.Window("SalvagerReportsFrame", "Salvager Reports", "reports", 900, 480, 890, 300)
+    local old = OLD_VIEW[f.saved.view]
+    if old then f.saved.view, f.saved.gearTab = old[1], old[2] end
     if TITLES[f.saved.view] then Reports.view = f.saved.view end
+    for _, t in ipairs(GEAR_TABS) do if t[1] == f.saved.gearTab then Reports.gearTab = t[1] end end
     for _, r in ipairs(RANGES) do if r[1] == f.saved.range then Reports.range = r[1] end end
     if tostring(f.saved.range):match("^s:%d+$") then Reports.range = f.saved.range end
     for _, t in ipairs(GOLD_TABS) do if t[1] == f.saved.goldTab then Reports.goldTab = t[1] end end
@@ -536,7 +553,7 @@ local function build()
         bars.tabs:Add(b, 90)
         tabs[key] = b
     end
-    -- The filter row: the period for every view, then the Profit and Items views' own filters.
+    -- The filter row: the period for every view, then the Gear view's own filters.
     filterRow = W.Bar(f, "filters")
     bars.filters = filterRow
     rangeDrop = W.Dropdown(filterRow, 170, Reports.PeriodOptions(), function(key) return key == Reports.range end,
@@ -628,7 +645,19 @@ local function build()
         bars.gold:Add(b, t[1] == "changes" and 110 or 70)
         goldTabs[t[1]] = b
     end
-    Reports.bars = bars   -- (the specs read them)
+    -- The Gear view's subtabs: Bands, then History.
+    bars.gear = W.Bar(f, "subtabs"):Place(TABS_TOP + W.BAR_H.tabs + 4, 12, 12)
+    for _, t in ipairs(GEAR_TABS) do
+        local b = W.Subtab(bars.gear, t[2], function()
+            Reports.gearTab = t[1]
+            Reports.Save()
+            list.offset = 0
+            Reports.Refresh()
+        end, t[3])
+        bars.gear:Add(b, 70)
+        gearTabs[t[1]] = b
+    end
+    Reports.bars, Reports.tabs, Reports.gearTabs = bars, tabs, gearTabs   -- (the specs read them)
     list = W.List(f, { rowHeight = 22 })
     Reports.list = list
     f.onResize = Reports.Refresh

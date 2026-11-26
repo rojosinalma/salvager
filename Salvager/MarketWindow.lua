@@ -151,7 +151,8 @@ function Value.Rows()
         r.key = key
         r.sort = { e.band, e.net, e.change or -math.huge }
         return r
-    end, function(_, label) return { cells = { label, "", "" } } end)
+    end, function(_, label) return { cells = { label, "", "" } } end, nil,
+        { collapsed = ns.GroupState("market.value"), changed = function() Market.Refresh() end })
 end
 
 function Value.Chart(key)
@@ -411,7 +412,7 @@ function Market.Refresh()
 end
 
 local function build()
-    f = W.Window("SalvagerMarketFrame", "Salvager market", "market", 900, 480, 900, 320)
+    f = W.Window("SalvagerMarketFrame", "Salvager Market", "market", 900, 480, 900, 320)
     if VIEWS[f.saved.view] then Market.view = f.saved.view end
     for key, value in pairs(f.saved.pick or {}) do Market.pick[key] = value end
     for _, r in ipairs(RANGES) do if r[1] == f.saved.range then Market.range = r[1] end end

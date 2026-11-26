@@ -2,7 +2,7 @@
 ## Title: Salvager
 ## Notes: Disenchant trading: material prices, gear deals with expected profit, and cost tracking from purchase to sale.
 ## Author: rojo
-## Version: 0.3.128
+## Version: 0.3.129
 ## X-License: MIT
 ## SavedVariables: SalvagerDB, SalvagerBackup
 ## IconTexture: Interface\Icons\inv_enchant_disenchant
@@ -38,6 +38,7 @@ UI.lua
 LedgerWindow.lua
 StandWindow.lua
 BreakdownWindow.lua
+GearWindow.lua
 MarketWindow.lua
 ReportsWindow.lua
 LogWindow.lua

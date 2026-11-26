@@ -290,7 +290,7 @@ function Gold.Report(hours)
     end
     if #s.losses > 0 then
         ns.Print("  buys that lost: %d, %s in all%s", #s.losses, ns.Money(s.lost),
-            s.lostWrong < 0 and string.format(", %s of it on items valued as something they were not",
+            s.lostWrong < 0 and string.format(", %s of it on gear valued as something it was not",
                 ns.Money(s.lostWrong)) or "")
         for i = 1, math.min(3, #s.losses) do
             local l = s.losses[i]

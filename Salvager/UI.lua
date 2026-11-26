@@ -1,16 +1,16 @@
--- Salvager: the main window: the Deals and Materials tabs, the scan settings, and the footer with the other windows.
+-- Salvager: the main window: the Gear and Materials tabs, the scan settings, and the footer with the other windows.
 local _, ns = ...
 
 local W = ns.Widgets
 
-local UI = { view = "deals", offset = 0, expanded = {} }
+local UI = { view = "deals", offset = 0 }   -- (view "deals": the Gear tab)
 ns.UI = UI
 
 local MAX_ROWS, ROW_H = 40, 24
 local MAX_COLS = 11
 local WIDTH, HEIGHT = 800, 560
 local MIN_W, MIN_H = 800, 470
--- Under the title bar: the tabs (24 to 54 px), then the view: the Deals view's settings block, or the Materials
+-- Under the title bar: the tabs (24 to 54 px), then the view: the Gear view's settings block, or the Materials
 -- view's filter row; the list under it. The footer: two lines of text and the row of buttons (UI.md Controls 1).
 local TABS_TOP, SETTINGS_TOP, SETTINGS_H, FILTERS_TOP, LIST_BOTTOM = 24, 58, 108, 58, 68
 local ROWS = 15          -- rows that fit now (set from the list height)
@@ -22,25 +22,27 @@ local VIEWS = {
         icon = true,
         indent = 46,
         actionTitle = "Buy",
-        header = { "Item", "Type", "Item level", "Buyout", "Expected value", "Expected profit", "Return", "Loss chance" },
+        header = { "Gear", "Type", "Item level", "Buyout", "Expected value", "Expected profit", "Return", "Loss chance" },
         sortable = { [6] = "profit", [7] = "return" },
         -- Shown when the mouse is over a column's title.
         help = {
-            [5] = { "Expected value", "What one disenchant of this item is worth on average over many disenchants, at the "
+            [5] = { "Expected value", "What one disenchant of this gear is worth on average over many disenchants, at the "
                 .. "scanned material prices times each material's sell price ratio (what your sales really got against the price), "
                 .. "after the 5% auction house cut, less the deposits you lose per unit sold. One disenchant gives less or "
                 .. "more than this." },
-            [6] = { "Expected profit", "Expected value minus the buyout: the average profit per item over many disenchants. "
-                .. "It is not what one item will give.\n\nClick to list the deals by Expected profit." },
+            [6] = { "Expected profit", "Expected value minus the buyout: the average profit per piece of gear over many "
+                .. "disenchants. It is not what one piece will give. Grey: a forecast, not gold you made.\n\n"
+                .. "Click to list the deals by Expected profit." },
             [7] = { "Return", "Expected profit as a share of the buyout: what each gold you pay brings back on top. "
-                .. "When your gold is what limits you, buy the highest Return first.\n\nClick to list the deals by Return." },
-            [8] = { "Loss chance", "The chance that ONE disenchant of this item is worth less than its buyout, after the cut.\n\n"
-                .. "Example: you pay 10s for an item. 3 times out of 4 it gives dust worth 5s: you lose 5s. 1 time "
-                .. "out of 4 it gives an essence worth 30s: you gain 20s. Loss chance is 75%. Over many items you still "
-                .. "gain: the average is 11s 25c per item, so 1s 25c of profit each.\n\n"
+                .. "When your gold is what limits you, buy the highest Return first. Grey: a forecast.\n\n"
+                .. "Click to list the deals by Return." },
+            [8] = { "Loss chance", "The chance that ONE disenchant of this gear is worth less than its buyout, after the cut.\n\n"
+                .. "Example: you pay 10s for a piece of gear. 3 times out of 4 it gives dust worth 5s: you lose 5s. 1 time "
+                .. "out of 4 it gives an essence worth 30s: you gain 20s. Loss chance is 75%. Over many pieces you still "
+                .. "gain: the average is 11s 25c per piece, so 1s 25c of profit each.\n\n"
                 .. "Green: under 30%. Yellow: 30% or more. Red: 60% or more.\n\n"
-                .. "A high Loss chance with a good Profit needs many items before the average shows. A low Loss chance is safe "
-                .. "even for a few items." },
+                .. "A high Loss chance with a good Profit needs many pieces before the average shows. A low Loss chance is safe "
+                .. "even for a few pieces." },
         },
         cols = { { 205, "LEFT" }, { 46, "CENTER" }, { 34, "CENTER" }, { 80, "RIGHT" }, { 80, "RIGHT" }, { 80, "RIGHT" },
             { 44, "RIGHT" }, { 54, "CENTER" } },
@@ -72,18 +74,23 @@ local P = {}   -- the window's rows and panels: footerBar, tabBar, settingsBox, 
 ------------------------------------------------------------------ rows per view
 
 local function dealName(d)
-    return (d.link and d.link:match("%[(.-)%]")) or (ns.GetItemInfo(d.itemID)) or ("item " .. d.itemID)
+    return (d.link and d.link:match("%[(.-)%]")) or (ns.GetItemInfo(d.itemID)) or ("gear " .. d.itemID)
 end
+
+-- Expected profit and Return are forecasts: grey with their sign, never green or red (UI.md Tables 7).
+local GREY = "|cff808080"
+local function profitText(d) return GREY .. (d.profit >= 0 and "+" or "-") .. ns.Money(math.abs(d.profit)) .. "|r" end
+local function returnText(d) return string.format("%s%+d%%|r", GREY, math.floor(ns.Scanner.Return(d) * 100 + 0.5)) end
+UI.ProfitText, UI.ReturnText = profitText, returnText
 
 local function dealCells(d, label)
     return { label, CLASS_NAME[d.classID or ns.ClassOf(d.itemID)] or "", tostring(d.ilvl or ""), ns.Money(d.buyout),
-        ns.Money(d.value), (d.profit >= 0 and "|cff40ff40+" or "|cffff4040") .. ns.Money(d.profit) .. "|r",
-        string.format("%s%d%%|r", d.profit >= 0 and "|cff40ff40+" or "|cffff4040",
-            math.floor(ns.Scanner.Return(d) * 100 + 0.5)), ns.LoseText(d.lose) }
+        ns.Money(d.value), profitText(d), returnText(d), ns.LoseText(d.lose) }
 end
 
---- Deals grouped by item name, best profit first. A group with more than one
---- auction is one row (cheapest first) that opens to show each auction.
+--- The Gear tab's rows: auctions grouped by the gear's name, best profit first. A group with more than one auction
+--- is a heading row (its numbers: the cheapest one) that opens and closes (ns.HeadingToggle, remembered; it starts
+--- closed) to show each auction.
 local function dealRows()
     local groups, order = {}, {}
     for _, d in ipairs(ns.Scanner.deals) do
@@ -109,10 +116,10 @@ local function dealRows()
             out[#out + 1] = { cells = dealCells(first, first.link or g.name), link = first.link, itemID = first.itemID,
                 deal = first }
         else
-            local open = UI.expanded[g.name]
-            local head = dealCells(first, (first.link or g.name) .. " |cffffd100x" .. #g.deals .. "|r")
-            out[#out + 1] = { cells = head, link = first.link, itemID = first.itemID, group = g, open = open }
-            if open then
+            local head = { cells = dealCells(first, (first.link or g.name) .. " |cffffd100x" .. #g.deals .. "|r"),
+                link = first.link, itemID = first.itemID, group = g }
+            out[#out + 1] = head
+            if ns.HeadingToggle(head, ns.GroupState("main.gear"), g.name, function() UI.Refresh() end, true) then
                 for _, d in ipairs(g.deals) do
                     out[#out + 1] = { cells = dealCells(d, "   " .. (d.link or g.name)), link = d.link, itemID = d.itemID,
                         deal = d, child = true }
@@ -136,7 +143,7 @@ local function statusText()
     if ns.Prices.scanning then parts[#parts + 1] = string.format("Materials %d/%d", ns.Prices.done, ns.Prices.total) end
     local s = ns.Scanner
     if s.state == "browsing" then
-        parts[#parts + 1] = string.format("Browsing %s (%d items)", s.passName or "", s.browsed)
+        parts[#parts + 1] = string.format("Browsing %s (%d gear listings)", s.passName or "", s.browsed)
     elseif s.state == "checking" then parts[#parts + 1] = string.format("Checking %d/%d", s.checked, s.toCheck)
     elseif ns.scanBothPending and not ns.Prices.scanning then parts[#parts + 1] = "Starting gear scan"
     end
@@ -147,14 +154,14 @@ local function statusText()
     return table.concat(parts, "  ·  ")
 end
 
---- The two lines under the list: what the last scan found, then the item closest to its limit.
+--- The two lines under the list: what the last scan found, then the gear closest to its limit.
 --- (What the columns mean is behind the "?" button.)
 local function footerText()
     if UI.view == "deals" then
         local sum = ns.Scanner.summary
         local text, closest = string.format("%d deals.", #ns.Scanner.deals), ""
         if sum then
-            text = text .. string.format(" Last scan: %d items in %.0fs, %d under their limit.", sum.browsed,
+            text = text .. string.format(" Last scan: %d gear listings in %.0fs, %d under their limit.", sum.browsed,
                 sum.seconds or 0, sum.candidates)
             if (sum.levelOut or 0) > 0 then
                 text = text .. string.format(" %d outside your level filter.", sum.levelOut)
@@ -166,24 +173,24 @@ local function footerText()
                 local b = sum.best
                 local room = b.room or (b.margin or 0)
                 closest = string.format("Closest: %s at %s, buy limit %s (%s).",
-                    (ns.GetItemInfo(b.itemID)) or ("item " .. b.itemID), ns.Money(b.price),
+                    (ns.GetItemInfo(b.itemID)) or ("gear " .. b.itemID), ns.Money(b.price),
                     ns.Money(b.limit or b.value), room >= 0 and (ns.Money(room) .. " under it")
                         or (ns.Money(-room) .. " over it"))
             end
         else
             text = text .. " No gear scan yet: click Play, or Scan once: Both."
         end
-        -- A limit that hides items says so, most of all when the list is empty.
+        -- A limit that hides gear says so, most of all when the list is empty.
         local cap = ns.db.settings.maxPrice
         if cap > 0 then
-            text = text .. string.format(" |cffff8040Max price %s is on: dearer items are never listed.|r", ns.Money(cap))
+            text = text .. string.format(" |cffff8040Max price %s is on: dearer gear is never listed.|r", ns.Money(cap))
         end
         return text, closest
     end
     return "", ""
 end
 
---- Which of two auctions "Buy top" buys first: the active sort's number (Expected profit or Return), then the
+--- Which of two auctions "Buy Top" buys first: the active sort's number (Expected profit or Return), then the
 --- other one, then the lower buyout, then the auction ID (so the pick is stable).
 local function topBetter(a, b)
     local pa, pb, ra, rb = a.profit, b.profit, ns.Scanner.Return(a), ns.Scanner.Return(b)
@@ -194,7 +201,7 @@ local function topBetter(a, b)
     return (a.auctionID or 0) < (b.auctionID or 0)
 end
 
---- The auction the "Buy top" button buys: of every auction in the Deals list not being bought already, the
+--- The auction the "Buy Top" button buys: of every auction in the Gear tab not being bought already, the
 --- one with the best number of the active sort (`topBetter`), whatever its row. When the gold is short for that
 --- one, the best one the gold covers.
 --- @return table|nil deal, string|nil why, table|nil skipped  (why: the reason there is none, for the button's
@@ -203,7 +210,7 @@ local function topDeal()
     if not ns.Queue.open then return nil, "Open the auction house first." end
     if #ns.Scanner.deals == 0 then
         if not ns.Scanner.summary then return nil, "No gear scan yet: click Play, or Scan once: Gear." end
-        return nil, "The Deals list is empty: the next scan fills it."
+        return nil, "The Gear list is empty: the next scan fills it."
     end
     local money = GetMoney() or 0
     local best, affordable
@@ -213,7 +220,7 @@ local function topDeal()
             if d.buyout <= money and (not affordable or topBetter(d, affordable)) then affordable = d end
         end
     end
-    if not best then return nil, "Every deal in the list is being bought already." end
+    if not best then return nil, "Every auction in the list is being bought already." end
     if not affordable then
         return nil, string.format("Not enough gold for %s (%s).", dealName(best), ns.Money(best.buyout))
     end
@@ -228,15 +235,17 @@ local function helpLines()
     local by = ns.db.settings.dealSort == "return" and "Return" or "Expected profit"
     return {
         "Sorted by: " .. by .. ", highest first (the title with the arrow). Click the Return or the Expected profit "
-            .. "title to sort by it. Each scan checks the items in this order too.",
-        "Expected value: what one disenchant of the item is worth on average over many, after the " .. cut .. " cut.",
-        "Expected profit: Expected value minus the buyout. An average, not what one item gives.",
+            .. "title to sort by it. Each scan checks the gear in this order too.",
+        "Expected value: what one disenchant of the gear is worth on average over many, after the " .. cut .. " cut.",
+        "Expected profit: Expected value minus the buyout. An average, not what one piece gives. Grey: a forecast.",
         "Return: Expected profit as a share of the buyout.",
         "Loss chance: the chance that one disenchant is worth less than its buyout.",
-        "A name with x3 stands for three auctions of one item. Its numbers and its Buy are for the cheapest one.",
-        "Click such a row to open it and see each auction.",
-        "Buy needs one click per item. After a purchase the item is searched again.",
-        string.format("Each scan checks the %d best items (Item checks, in the Settings).", ns.db.settings.maxChecks),
+        "A name with x3 stands for three auctions of the same gear. Its numbers and its Buy are for the cheapest one.",
+        "Click such a row to open or close it (the arrow shows which); it stays as you left it.",
+        "Click an auction's row to see its Gear details: how its Expected value is made, your history with it.",
+        "Buy needs one click per auction. After a purchase that gear is searched again.",
+        string.format("Each scan makes %d gear searches, the best candidates first (Gear checks, in the Scan settings).",
+            ns.db.settings.maxChecks),
         "Hover a column title for more about that column.",
     }
 end
@@ -383,38 +392,55 @@ function UI.UpdatePlay()
     end
 end
 
---- The "Buy top" button's tooltip: what the click buys now, or why it is off.
+--- A deal's numbers in a tooltip, one line each: Item level, Buyout, Expected value, Expected profit, Return, Loss
+--- chance, Time to sell, Return per day. One function for a Gear row, the gear above "Buy Top" and the Buy Top button,
+--- so they always match.
+function UI.AddDealLines(tip, d)
+    local function line(label, value) tip:AddDoubleLine(label, value, 1, 0.82, 0, 1, 1, 1) end
+    tip:AddLine(" ")
+    line("Item level", tostring(d.ilvl or "-"))
+    line("Buyout", ns.Money(d.buyout))
+    line("Expected value", ns.Money(d.value))
+    line("Expected profit", profitText(d))
+    line("Return", returnText(d))
+    line("Loss chance", ns.LoseText(d.lose))
+    -- Return per day (SDD 100): in the tooltip, not a column, while it equals Return for nearly every deal.
+    local perDay = ns.Scanner.ReturnPerDay(d)
+    local few = d.daysFew and " (few sales)" or ""
+    line("Time to sell (its materials)", d.days and (ns.DurationText(d.sellSeconds)
+        .. string.format(", counted as %.1f %s", d.days, d.days == 1 and "day" or "days") .. few) or "not known yet")
+    line("Return per day", perDay and (string.format("%s%+.1f%%|r", GREY, perDay * 100) .. few) or "not known yet")
+end
+
+--- The "Buy Top" button's tooltip: what the click buys now, or why it is off.
 local function buyTopTooltip(self)
     local d, why, skipped = topDeal()
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
-    GameTooltip:SetText("Buy top", 1, 1, 1)
+    GameTooltip:SetText("Buy Top", 1, 1, 1)
     if d then
         local byReturn = ns.db.settings.dealSort == "return"
         GameTooltip:AddLine("Buys the auction with the highest " .. (byReturn and "Return" or "Expected profit")
-            .. " in the Deals list (the sort), from any row. Each click buys the next best one.", 1, 0.82, 0, true)
+            .. " in the Gear tab (the sort), from any row. Each click buys the next best one.", 1, 0.82, 0, true)
         if skipped then
             GameTooltip:AddLine(string.format("The best one, %s (%s), is skipped: not enough gold.", dealName(skipped),
                 ns.Money(skipped.buyout)), 1, 0.3, 0.3, true)
         end
         GameTooltip:AddLine(d.link or dealName(d), 1, 1, 1)
-        GameTooltip:AddDoubleLine("Buyout", ns.Money(d.buyout), 1, 0.82, 0, 1, 1, 1)
-        GameTooltip:AddDoubleLine("Expected profit", (d.profit >= 0 and "+" or "") .. ns.Money(d.profit), 1, 0.82, 0,
-            d.profit >= 0 and 0.25 or 1, d.profit >= 0 and 1 or 0.25, 0.25)
-        GameTooltip:AddDoubleLine("Return", string.format("%+d%%", math.floor(ns.Scanner.Return(d) * 100 + 0.5)),
-            1, 0.82, 0, d.profit >= 0 and 0.25 or 1, d.profit >= 0 and 1 or 0.25, 0.25)
+        UI.AddDealLines(GameTooltip, d)
     else
         GameTooltip:AddLine(why, 1, 0.3, 0.3, true)
     end
     GameTooltip:Show()
 end
 
---- The "Buy top" button: on while there is a deal to buy; its tooltip follows the list while it shows.
+--- The "Buy Top" button: on while there is a deal to buy; its tooltip follows the list while it shows.
 local function updateBuyTop()
     local d = topDeal()
     buyTop:SetEnabled(d ~= nil)
-    -- Above the button: the item the next click buys, as wide as its name, at most half the room left of the
+    -- Above the button: the gear the next click buys, as wide as its name, at most half the room left of the
     -- button (cut there, one line). Nothing when the button is off: the reason is in its tooltip.
     topItem.link = d and (d.link or ("item:" .. d.itemID)) or nil
+    topItem.deal = d
     topItem.text:SetText(d and (d.link or dealName(d)) or "")
     local icon = d and W.IconOf(d.itemID)
     if icon then topItem.icon:SetTexture(icon) topItem.icon:Show() else topItem.icon:Hide() end
@@ -435,7 +461,7 @@ function UI.Refresh()
     tabs.materials:SetAlpha(out and 0.5 or 1)
     if out then popOut:LockHighlight() else popOut:UnlockHighlight() end
     gold:SetText(ns.Money(GetMoney() or 0))
-    -- The view under the tabs: Deals has the settings block, Materials its filter row; the list starts under it.
+    -- The view under the tabs: Gear has the settings block, Materials its filter row; the list starts under it.
     local materials = UI.view == "materials"
     P.settingsBox:SetShown(not materials)
     P.materialsBar:SetShown(materials)
@@ -483,7 +509,7 @@ function UI.Refresh()
         row.icon:SetPoint("LEFT", row, "LEFT", (view.indent and 22 or 4) + (item and item.child and 10 or 0), 0)
         if icon then row.icon:SetTexture(icon) row.icon:Show() else row.icon:Hide() end
         if item and item.group then
-            row.toggle:SetTexture(item.open and "Interface\\Buttons\\UI-MinusButton-Up" or "Interface\\Buttons\\UI-PlusButton-Up")
+            W.GroupArrow(row.toggle, item.open)
             row.toggle:Show()
         else
             row.toggle:Hide()
@@ -510,7 +536,7 @@ function UI.Refresh()
         b:SetSelected(name == UI.view)
     end
     status:SetText(statusText())
-    -- As wide as its text, at most half the room left of "Buy top": the footer keeps the rest.
+    -- As wide as its text, at most half the room left of "Buy Top": the footer keeps the rest.
     local sw = tonumber((status:GetStringWidth())) or 0
     status:SetWidth(math.max(1, math.min(sw + 2, ((f:GetWidth() or 800) - 150) / 2)))
     if ns.Busy() then spinner:Start() else spinner:Stop() end
@@ -584,15 +610,9 @@ local function rowTooltip(self)
     if hint then GameTooltip:AddLine(hint, 0.5, 0.8, 1) end
     local d = UI.view == "deals" and (item.deal or (item.group and ns.Scanner.Cheapest(item.group.deals)))
     if d then
-        -- Return per day (SDD 100): in the tooltip, not a column, while it equals Return for nearly every deal.
-        local perDay = ns.Scanner.ReturnPerDay(d)
-        local few = d.daysFew and " (few sales)" or ""
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddDoubleLine("Time to sell (its materials)", d.days and (ns.DurationText(d.sellSeconds)
-            .. string.format(", counted as %.1f %s", d.days, d.days == 1 and "day" or "days") .. few) or "not known yet",
-            1, 0.82, 0, 1, 1, 1)
-        GameTooltip:AddDoubleLine("Return per day", perDay and (string.format("%+.1f%%", perDay * 100) .. few)
-            or "not known yet", 1, 0.82, 0, 1, 1, 1)
+        UI.AddDealLines(GameTooltip, d)
+        GameTooltip:AddLine(item.group and "Click: open or close the group" or "Click: Gear details of this auction",
+            0.5, 0.8, 1)
     end
     GameTooltip:Show()
 end
@@ -642,7 +662,7 @@ local function build()
 
     ---------------------------------------------------------------- footer: the other windows; run and buy
     -- (UI.md Controls 1 and 7: nothing but the tabs under the title bar. The buttons that open the other windows are
-    -- one group at the left of the footer, away from the tabs; the run buttons and "Buy top", the main action, at
+    -- one group at the left of the footer, away from the tabs; the run buttons and "Buy Top", the main action, at
     -- its right end, left of the resize grip.)
     P.footerBar = W.Bar(f, "footer"):PlaceBottom(6, 10, 24)
     UI.footerBar = P.footerBar
@@ -670,7 +690,7 @@ local function build()
     playButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
     stopButton = W.IconButton(P.footerBar, 24, function() ns.Scanner.Stop() end)
     stopButton:SetStopGlyph()
-    W.Tooltip(stopButton, "Stop", "Ends auto scanning and cancels the scan that is running. Deals found so far stay in the list.")
+    W.Tooltip(stopButton, "Stop", "Ends auto scanning and cancels the scan that is running. The gear found so far stays in the list.")
     spinner = W.Spinner(f, 18)   -- (with the status, under the list)
 
     -- Left to right: Auction house, Ledger, Reports, Market, Limits, Log, Options (the user's order, 0.3.113).
@@ -683,10 +703,11 @@ local function build()
     end)
     P.footerBar:Add(ahButton, 104)
     P.footerBar:Add(W.Button(P.footerBar, "Ledger", 64, function() ns.LedgerWindow.Toggle() end,
-        "Opens the ledger in its own window: what you bought, what each item was disenchanted into, "
+        "Opens the ledger in its own window: what you bought, what each piece of gear was disenchanted into, "
         .. "your sales and their profit."), 64, 4)
     P.footerBar:Add(W.Button(P.footerBar, "Reports", 70, function() ns.Reports.Toggle() end,
-        "Opens the reports in their own window: your gold, and the profit by quality, band, material and item."), 70, 4)
+        "Opens the reports in their own window: your gold, the profit of your gear by band and piece by piece, and "
+        .. "your materials."), 70, 4)
     P.footerBar:Add(W.Button(P.footerBar, "Market", 64, function() ns.Market.Toggle() end,
         "Opens the market charts in their own window: the price of each material over time, from your scans."), 64, 4)
     P.footerBar:Add(W.Button(P.footerBar, "Limits", 60, function() ns.LimitsWindow.Toggle() end,
@@ -698,10 +719,10 @@ local function build()
     options:SetIcon("Interface\\Buttons\\UI-OptionsButton", 16, 16)
     W.Tooltip(options, "Options", "Opens the addon's options.")
     P.footerBar:Add(options, 22, 4)
-    -- At the bottom right, left of the resize grip: "Buy top" buys the best auction of the list (the click is the
+    -- At the bottom right, left of the resize grip: "Buy Top" buys the best auction of the list (the click is the
     -- hardware event the purchase needs). Left of it, what the addon is doing now (scanning, searching), the
     -- spinner before it; the footer takes the room on the left.
-    buyTop = W.Button(P.footerBar, "Buy top", 80, function()
+    buyTop = W.Button(P.footerBar, "Buy Top", 80, function()
         local d = topDeal()
         if d then ns.Scanner.Buy(d) end
     end)
@@ -721,7 +742,7 @@ local function build()
         GameTooltip:Hide()
     end)
     UI.buyTop = buyTop
-    -- Above "Buy top", right-aligned to it: the icon and the name of the item the next click buys, on the
+    -- Above "Buy Top", right-aligned to it: the icon and the name of the gear the next click buys, on the
     -- footer's lower line of text (36 to 50 px above the window's bottom, over the buttons' top at 34).
     topItem = CreateFrame("Button", nil, f)
     topItem:SetHeight(14)
@@ -734,10 +755,12 @@ local function build()
     topItem.icon:SetSize(14, 14)
     topItem.icon:SetPoint("RIGHT", topItem.text, "LEFT", -3, 0)
     topItem:SetWidth(1)   -- set from the text in updateBuyTop (anchoring it to its own icon is a loop the client refuses)
+    -- Its hover: the game's tooltip of the gear, then the same deal lines as its Gear row (UI.AddDealLines).
     topItem:SetScript("OnEnter", function(self)
         if not self.link then return end
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetHyperlink(self.link)
+        if self.deal then UI.AddDealLines(GameTooltip, self.deal) end
         GameTooltip:Show()
     end)
     topItem:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -754,7 +777,7 @@ local function build()
 
     ---------------------------------------------------------------- settings box: what to scan, what to pay
     -- One bounded block with its heading (UI.md Controls 10): settings, not filters of the list. It belongs to the
-    -- Deals view (what the scan looks for and what a deal is), under the tabs; the Materials view has none.
+    -- Gear view (what the scan looks for and what a deal is), under the tabs; the Materials view has none.
     local box = W.Panel(f, 1, 1, 1, 0.05)
     box.uiKind = "settings"
     box:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -(SETTINGS_TOP))
@@ -800,24 +823,26 @@ local function build()
         .. "or Nexus Crystals.", "Quality")
     qualityDrop:SetPoint("LEFT", qLabel, "RIGHT", 6, 0)
 
+    -- Left to right: Gear, Materials, Both (the user's order, 0.3.129).
     local scanBoth = W.Button(box, "Both", 58, function() ns.ScanBoth(true) end,
         "Once: scans the material prices first, then the gear.")
     scanBoth:SetPoint("TOPRIGHT", box, "TOPRIGHT", -8, -22)
-    local scanGear = W.Button(box, "Gear", 58, function() ns.Scanner.Scan(true) end,
-        "Once: lists the gear on the auction house and checks each item that is below its buy limit.")
-    scanGear:SetPoint("RIGHT", scanBoth, "LEFT", -4, 0)
     local scanMats = W.Button(box, "Materials", 84, function() ns.Prices.Scan() end,
         "Once: searches each disenchanting material (about 20 seconds) and stores its price.")
-    scanMats:SetPoint("RIGHT", scanGear, "LEFT", -4, 0)
+    scanMats:SetPoint("RIGHT", scanBoth, "LEFT", -4, 0)
+    local scanGear = W.Button(box, "Gear", 58, function() ns.Scanner.Scan(true) end,
+        "Once: lists the gear on the auction house and checks each one that is below its buy limit.")
+    scanGear:SetPoint("RIGHT", scanMats, "LEFT", -4, 0)
+    UI.scanButtons = { scanGear, scanMats, scanBoth }   -- (the specs read them)
     local onceLabel = W.Label(box, "Scan once", "GameFontHighlightSmall")
-    onceLabel:SetPoint("RIGHT", scanMats, "LEFT", -8, 0)
+    onceLabel:SetPoint("RIGHT", scanGear, "LEFT", -8, 0)
     W.HelpArea(box, onceLabel, "Scan once", "A single scan by hand. Play does all of this by itself, again and again.")
 
     -- Row "Buy": the least profit, the most to pay.
     local buyCaption = caption("Buy", -54)
     local mpLabel = W.Label(box, "Min profit", "GameFontHighlightSmall")
     mpLabel:SetPoint("LEFT", buyCaption, "RIGHT", 6, 0)
-    W.HelpArea(box, mpLabel, "Min profit", "The least profit an item must make on average: an item is a deal when it "
+    W.HelpArea(box, mpLabel, "Min profit", "The least profit a piece of gear must make on average: it is a deal when it "
         .. "costs no more than its disenchant value minus this.")
     minProfit = W.Money(box, function(copper)
         ns.db.settings.minProfit = copper
@@ -827,9 +852,9 @@ local function build()
     minProfit:SetPoint("LEFT", mpLabel, "RIGHT", 4, 0)
     local mrLabel = W.Label(box, "Min return", "GameFontHighlightSmall")
     mrLabel:SetPoint("LEFT", minProfit:Right(), "RIGHT", 16, 0)
-    W.HelpArea(box, mrLabel, "Min return", "The least return an item must make as well, in percent of its price: "
-        .. "15 = each 1g you pay must bring 1g 15s back on average. Both rules hold: a cheap item needs the return, "
-        .. "an expensive one the profit. 0 = off.")
+    W.HelpArea(box, mrLabel, "Min return", "The least return a piece of gear must make as well, in percent of its price: "
+        .. "15 = each 1g you pay must bring 1g 15s back on average. Both rules hold: cheap gear needs the return, "
+        .. "expensive gear the profit. 0 = off.")
     minReturn = W.Edit(box, 30, true)
     minReturn:SetMaxLetters(3)
     minReturn:SetJustifyH("RIGHT")
@@ -848,8 +873,8 @@ local function build()
     pctLabel:SetPoint("LEFT", minReturn, "RIGHT", 3, 0)
     local capLabel = W.Label(box, "Max price", "GameFontHighlightSmall")
     capLabel:SetPoint("LEFT", pctLabel, "RIGHT", 16, 0)
-    W.HelpArea(box, capLabel, "Max price", "The most you pay for one item, whatever it is worth. An item above this "
-        .. "is never listed. All zeroes = no limit.")
+    W.HelpArea(box, capLabel, "Max price", "The most you pay for one piece of gear, whatever it is worth. Gear above "
+        .. "this is never listed. All zeroes = no limit.")
     maxPrice = W.Money(box, function(copper)
         ns.db.settings.maxPrice = copper
         ns.Log("max price set to %s", copper > 0 and ns.Money(copper) or "none")
@@ -914,14 +939,14 @@ local function build()
     local rangeLabel = W.Label(box, "or item level from", "GameFontHighlightSmall")
     rangeLabel:SetPoint("LEFT", bandDrop, "RIGHT", 18, 0)
     W.HelpArea(box, rangeLabel, "Item level range", "A range of your own, on top of the bands: the scan only lists "
-        .. "items whose item level is inside it. 0 = no limit on that side. An item must pass both the bands and the range.")
+        .. "gear whose item level is inside it. 0 = no limit on that side. Gear must pass both the bands and the range.")
     ilvlMin = levelBox("ilvlMin")
     ilvlMin:SetPoint("LEFT", rangeLabel, "RIGHT", 10, 0)
     local toLabel = W.Label(box, "to", "GameFontHighlightSmall")
     toLabel:SetPoint("LEFT", ilvlMin, "RIGHT", 8, 0)
     ilvlMax = levelBox("ilvlMax")
     ilvlMax:SetPoint("LEFT", toLabel, "RIGHT", 10, 0)
-    -- At the right end of the row: how many items one scan checks.
+    -- At the right end of the row: how many gear searches one scan makes.
     maxChecks = W.Edit(box, 34, true)
     maxChecks:SetMaxLetters(3)
     maxChecks:SetJustifyH("RIGHT")
@@ -936,10 +961,10 @@ local function build()
         end
         ns.Fire("SALVAGER_SETTINGS")
     end)
-    local checksLabel = W.Label(box, "Item checks", "GameFontHighlightSmall")
+    local checksLabel = W.Label(box, "Gear checks", "GameFontHighlightSmall")
     checksLabel:SetPoint("RIGHT", maxChecks, "LEFT", -8, 0)
-    W.HelpArea(box, checksLabel, "Item checks per scan", "How many items one scan checks, the best candidates first. "
-        .. "Each check is one auction house search (about 0.7 s), and the Deals list holds at most this many items.")
+    W.HelpArea(box, checksLabel, "Gear checks per scan", "How many gear searches one scan makes, the best candidates first. "
+        .. "Each check is one auction house search (about 0.7 s), and the Gear list holds at most this many.")
     levelHint = W.Label(box, "", "GameFontDisableSmall")
     levelHint:SetPoint("LEFT", ilvlMax, "RIGHT", 8, 0)
     levelHint:SetPoint("RIGHT", checksLabel, "LEFT", -8, 0)
@@ -951,7 +976,7 @@ local function build()
     -- Materials view's filter row, the gold in the footer.
     P.tabBar = W.Bar(f, "tabs"):Place(TABS_TOP)
     UI.tabBar = P.tabBar
-    for _, t in ipairs({ { "deals", "Deals" }, { "materials", "Materials" } }) do
+    for _, t in ipairs({ { "deals", "Gear" }, { "materials", "Materials" } }) do
         local b = W.Tab(P.tabBar, t[2], function()
             -- The Materials tab, while its list is in its own window: put it back here.
             if t[1] == "materials" then ns.Materials.PutBack() end
@@ -963,8 +988,8 @@ local function build()
         tabs[t[1]] = b
         P.tabBar:Add(b, 90)
     end
-    W.Tooltip(tabs.deals, "Deals", "The auctions that cost no more than their buy limit, best profit first, with the "
-        .. "scan settings.")
+    W.Tooltip(tabs.deals, "Gear", "The gear on the auction house that costs no more than its buy limit, best profit "
+        .. "first, with the scan settings. Click a row for its Gear details.")
     W.Tooltip(tabs.materials, "Materials", "Prices, stock and break-even of the disenchanting materials. "
         .. "While the list is in its own window (Pop out), a click here puts it back.")
 
@@ -983,7 +1008,7 @@ local function build()
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(out and "Put the materials list back" or "Pop out the materials list", 1, 1, 1)
         GameTooltip:AddLine(out and "Closes its window and shows the list in the Materials tab again."
-            or "Moves the materials list to a window of its own, so you can watch it next to the deals. "
+            or "Moves the materials list to a window of its own, so you can watch it next to the gear. "
                 .. "Scans keep running. Click again, or close that window, to put it back.", 1, 0.82, 0, true)
         GameTooltip:Show()
     end)
@@ -1017,7 +1042,7 @@ local function build()
     if list.SetClipsChildren then list:SetClipsChildren(true) end
     -- What the list's columns and marks mean: the first thing on the row of column titles.
     helpButton = W.HelpButton(list, function()
-        return UI.view == "materials" and "Materials" or "Deals"
+        return UI.view == "materials" and "Materials" or "Gear"
     end, helpLines, { left = true })
     helpButton:SetSize(20, 20)
 
@@ -1132,11 +1157,13 @@ local function build()
         row.toggle:SetSize(14, 14)
         row.toggle:SetPoint("LEFT", row, "LEFT", 4, 0)
         row.toggle:Hide()
+        -- A group heading opens and closes; an auction's row shows its Gear details; a material its breakdown.
         row:SetScript("OnClick", function(self)
             local item = self.item
-            if item and item.group then
-                UI.expanded[item.group.name] = not UI.expanded[item.group.name] or nil
-                UI.Refresh()
+            if item and item.onClick then
+                item.onClick()
+            elseif item and item.deal then
+                ns.GearWindow.Open(item.deal)
             elseif item and UI.view == "materials" then
                 ns.RowClick(item)
             end
@@ -1152,7 +1179,7 @@ local function build()
     bigSpinnerText:SetPoint("TOP", bigSpinner, "BOTTOM", 0, -6)
 
     -- Two lines of text under the list, over the footer's buttons: what the last scan found (cut at the spinner and
-    -- the status), then the item closest to its limit (cut at the item "Buy top" buys).
+    -- the status), then the gear closest to its limit (cut at the gear "Buy Top" buys).
     footer = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     footer:SetPoint("LEFT", f, "BOTTOMLEFT", 14, 58)
     footer:SetPoint("RIGHT", spinner, "LEFT", -12, 0)
@@ -1209,7 +1236,7 @@ end
 -- Every window of the addon besides the main one.
 local OTHERS = { "SalvagerLedgerFrame", "SalvagerLogFrame", "SalvagerMaterialsFrame", "SalvagerMarketFrame",
     "SalvagerReportsFrame", "SalvagerStandFrame", "SalvagerLimitsFrame",
-    "SalvagerBreakdownFrame", "SalvagerOddsFrame", "SalvagerPostFrame", "SalvagerOptionsFrame" }
+    "SalvagerBreakdownFrame", "SalvagerOddsFrame", "SalvagerPostFrame", "SalvagerOptionsFrame", "SalvagerGearFrame" }
 
 --- Hides the other windows, without changing what is remembered as open.
 function UI.HideOthers()

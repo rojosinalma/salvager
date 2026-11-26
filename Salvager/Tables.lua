@@ -525,8 +525,7 @@ function Widgets.List(parent, opts)
             else
                 local indent = data.indent or 0
                 if data.open ~= nil then
-                    row.toggle:SetTexture(data.open and "Interface\\Buttons\\UI-MinusButton-Up"
-                        or "Interface\\Buttons\\UI-PlusButton-Up")
+                    Widgets.GroupArrow(row.toggle, data.open)
                     row.toggle:ClearAllPoints()
                     row.toggle:SetPoint("LEFT", row, "LEFT", 4 + indent, 0)
                     row.toggle:Show()
@@ -652,6 +651,9 @@ function Widgets.CardList(parent)
         card.click = CreateFrame("Button", nil, card)
         card.click:SetPoint("TOPLEFT", card, "TOPLEFT", 0, 0)
         card.click:SetPoint("TOPRIGHT", card, "TOPRIGHT", -200, 0)   -- (the facts' help stays reachable on the right)
+        local clickHl = card.click:CreateTexture(nil, "HIGHLIGHT")   -- (a heading that opens and closes lights up)
+        clickHl:SetAllPoints()
+        clickHl:SetColorTexture(1, 1, 1, 0.08)
         card.click:SetScript("OnClick", function()
             if card.data and card.data.onClick then card.data.onClick(card.data) end
         end)
@@ -783,11 +785,14 @@ function Widgets.CardList(parent)
             card:SetHeight(height)
             card.band:SetHeight(titleH)
             card.click:SetHeight(titleH)
+            -- A heading card has no facts: the whole title band is the click target.
+            card.click:ClearAllPoints()
+            card.click:SetPoint("TOPLEFT", card, "TOPLEFT", 0, 0)
+            card.click:SetPoint("TOPRIGHT", card, "TOPRIGHT", data.heading and 0 or -200, 0)
             card.click:SetShown(data.onClick ~= nil)
             local tx = 8
             if data.open ~= nil then
-                card.toggle:SetTexture(data.open and "Interface\\Buttons\\UI-MinusButton-Up"
-                    or "Interface\\Buttons\\UI-PlusButton-Up")
+                Widgets.GroupArrow(card.toggle, data.open)
                 card.toggle:ClearAllPoints()
                 card.toggle:SetPoint("TOPLEFT", card, "TOPLEFT", 6, -(data.heading and 4 or 3))
                 card.toggle:Show()

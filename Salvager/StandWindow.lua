@@ -84,7 +84,7 @@ function Stand.Refresh()
 end
 
 local function build()
-    f = W.Window("SalvagerStandFrame", "Where your listing stands", "stand", 460, 440, 460, 260, "vertical")
+    f = W.Window("SalvagerStandFrame", "Salvager Stand", "stand", 460, 440, 460, 260, "vertical")
     title = W.Label(f, "", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -32)
     lines = {}

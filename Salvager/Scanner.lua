@@ -172,7 +172,7 @@ local function checkDone()
     Scanner.checked = Scanner.checked + 1
     ns.Fire("SALVAGER_DEALS")
     if Scanner.checked >= Scanner.toCheck then
-        ns.Log("gear checks done: %d items in %.0fs; %d searches got no answer and were sent again, %d used the game's "
+        ns.Log("gear checks done: %d gear searches in %.0fs; %d searches got no answer and were sent again, %d used the game's "
             .. "held results", Scanner.toCheck, GetTime() - (Scanner.checksAt or GetTime()), ns.Queue.lost, ns.Queue.late)
         setState("idle")
         scheduleNext()
@@ -271,7 +271,7 @@ local function queueChecks()
     sum.seconds = GetTime() - scan.startedAt
     Scanner.summary = sum
     scan = nil
-    ns.Log("gear scan: %d items in %.0fs, %d under their limit, %d over, %d not disenchantable, %d level not known yet, "
+    ns.Log("gear scan: %d gear listings in %.0fs, %d under their limit, %d over, %d not disenchantable, %d level not known yet, "
         .. "%d outside the level filter, %d without a value, %d without a buyout (min profit %s)", sum.browsed, sum.seconds,
         sum.candidates, sum.overLimit, sum.noDisenchant, sum.learning, sum.levelOut, sum.noValue, sum.noPrice,
         ns.Money(ns.db.settings.minProfit))
@@ -281,7 +281,7 @@ local function queueChecks()
             ns.Money(sum.best.margin))
     end
     if sum.wrongQuality > 0 then
-        ns.Log("gear scan: %d items left out, they came in the browse of another quality or gear type", sum.wrongQuality)
+        ns.Log("gear scan: %d gear listings left out, they came in the browse of another quality or gear type", sum.wrongQuality)
     end
     if sum.levelDiffers > 0 then
         ns.Log("item levels: %d listings differ from the game's data (%s)", sum.levelDiffers, sum.levelExample)
@@ -290,7 +290,7 @@ local function queueChecks()
     Scanner.toCheck, Scanner.checked = 0, 0
     Scanner.checksAt = GetTime()
     ns.Queue.lost, ns.Queue.late = 0, 0
-    -- (In the order of the Deals list: by margin, or by return on the price.)
+    -- (In the order of the Gear list: by margin, or by return on the price.)
     local byReturn = ns.db.settings.dealSort == "return"
     table.sort(candidates, function(a, b)
         if byReturn then return a.margin / math.max(1, a.price) > b.margin / math.max(1, b.price) end
@@ -330,7 +330,7 @@ local nextPass, advance
 
 local function finishPass(why)
     local pass = scan.pass
-    ns.Log("browse %s: %d items in %d pages, %.1fs%s%s", pass.name, pass.got, pass.pages, GetTime() - pass.startedAt,
+    ns.Log("browse %s: %d gear listings in %d pages, %.1fs%s%s", pass.name, pass.got, pass.pages, GetTime() - pass.startedAt,
         pass.breaks > 0 and string.format(", not in price order (%d breaks)", pass.breaks) or ", in price order",
         why and (", " .. why) or "")
     nextPass()
@@ -440,14 +440,14 @@ function nextPass()
     ns.Fire("SALVAGER_SCAN")
 end
 
---- Empties the Deals list.
+--- Empties the Gear list.
 function Scanner.ClearDeals()
     wipe(Scanner.deals)
     ns.Fire("SALVAGER_DEALS")
 end
 
 --- Starts a gear scan. Needs the auction house open and material prices.
---- `clear` = asked for by a click: the Deals list starts empty and is filled again. A round that
+--- `clear` = asked for by a click: the Gear list starts empty and is filled again. A round that
 --- Play starts by itself keeps the list and only updates it.
 function Scanner.Scan(clear)
     if not ns.Queue.open then ns.Print("open the auction house first") return end
@@ -606,7 +606,7 @@ function Scanner.Buying()
         dropped[id] = d
         d.pending = false
         ns.Log("purchase of %s got no answer in %ds", d.link or d.itemID, BUY_EXPIRES)
-        ns.Print("no answer for the purchase of %s: click Buy again if it is still listed", d.link or "the item")
+        ns.Print("no answer for the purchase of %s: click Buy again if it is still listed", d.link or "the gear")
     end
     return false
 end
@@ -614,7 +614,7 @@ end
 --- Buys a deal. Must run from a click (the server needs a hardware event).
 function Scanner.Buy(deal)
     if deal.pending then return end
-    if GetMoney() < deal.buyout then ns.Print("not enough money for %s", deal.link or "this item") return end
+    if GetMoney() < deal.buyout then ns.Print("not enough money for %s", deal.link or "this gear") return end
     -- A click on Buy always buys. Everything else stops at once, and the purchase is next on the line:
     --   the auction house is free: it goes out now;
     --   the auction house is busy with one request (a purchase sent now is lost without any answer,
@@ -681,7 +681,7 @@ local function free(d, why)
     dropped[d.auctionID] = d
     d.pending, d.resend = false, nil
     lastBuyAt = GetTime() + BUSY_HOLD
-    ns.Print("purchase of %s was dropped by the auction house: click Buy again", d.link or "the item")
+    ns.Print("purchase of %s was dropped by the auction house: click Buy again", d.link or "the gear")
     ns.Log("purchase of %s dropped by the auction house, row freed (%s)", d.link or d.itemID, why)
     ns.Fire("SALVAGER_DEALS")
 end
@@ -758,7 +758,7 @@ ns.On("AUCTION_HOUSE_PURCHASE_COMPLETED", function(auctionID)
     pendingBuys[auctionID], dropped[auctionID] = nil, nil
     removeDeal(auctionID)
     if d then
-        ns.Print("bought %s for %s (expected profit %s)", d.link or "item", ns.Money(d.buyout), ns.Money(d.profit))
+        ns.Print("bought %s for %s (expected profit %s)", d.link or "gear", ns.Money(d.buyout), ns.Money(d.profit))
         local o = ns.Model.Outcomes(d.quality, d.classID, d.ilvl)
         ns.Ledger.AuctionPurchase(ns.db.ledger, d.itemID, d.buyout, d.value, time(), d.link,
             { q = d.quality, cls = d.classID, band = o and o.band, ilvl = d.ilvl, v = ns.VERSION })
@@ -782,7 +782,7 @@ ns.On("AUCTION_HOUSE_SHOW_ERROR", function()
     dropped[d.auctionID] = d
     d.pending = false
     removeDeal(d.auctionID)
-    ns.Print("could not buy %s (sold or changed)", d.link or "item")
+    ns.Print("could not buy %s (sold or changed)", d.link or "the gear")
     ns.Log("could not buy %s for %s", d.link or d.itemID, ns.Money(d.buyout))
     Scanner.Recheck(d)
     ns.Fire("SALVAGER_DEALS")

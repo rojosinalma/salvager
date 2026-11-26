@@ -69,6 +69,10 @@ reply must say so.
 12. The titles stay in view when the table scrolls. Titles and rows have one height in every table.
 13. A totals row is the last row, with a line above it; it does not sort.
 14. A column computed from others is at their right. While a table loads it says so, not "nothing".
+15. A group heading opens and closes; its arrow shows the state; the state is remembered. The arrow is at the left
+    of the heading and points right while closed, down while open (`Widgets.GroupArrow`); the whole heading row is
+    the click target, with the hover highlight; a closed heading keeps its totals. One implementation for every table
+    with groupings: `ns.HeadingToggle`, `ns.GroupedRows` with `ns.GroupState(<table>)` (saved data).
 
 ## Statements
 
@@ -84,8 +88,11 @@ reply must say so.
 
 ## Words
 
-1. The game's own words: Uncommon, Rare, Epic; Armor, Weapons; disenchant; buyout; auction.
+1. The game's own words: Uncommon, Rare, Epic; Armor, Weapons; disenchant; buyout; auction; item level.
    Never the color names for qualities.
+   Gear = what you buy and disenchant (armor, weapons): "gear", "a piece of gear", "the Gear tab". Materials = what a
+   disenchant gives (dust, essence, shard). Never "item" for gear ("All gear you bought", not "Every item you
+   bought"), never "mats" or "resources" for materials. "Item" stays for a game item in general (a tooltip, a link).
 2. Trading terms, the same everywhere: Expected value, Disenchant value, Sold value, Expected
    profit, Profit, Loss chance, Break-even, Result rate, Rate used (the result rate the forecast uses: the table
    blended with your results), Sell price ratio (what a unit really sold for against its price when posted), Time to
@@ -120,6 +127,8 @@ reply must say so.
    dragged back. `/salv windows reset` brings every window back on the screen.
 8. Only a question about a destructive action blocks the game. Every other window leaves the game usable.
 9. Every window has the close button at its top right. Escape closes the windows (`UISpecialFrames`).
+10. A window's title is "Salvager <Name>", the name capitalized like a name, every word: "Salvager Ledger",
+    "Salvager Gear Details". The main window is "Salvager".
 
 ## Data
 

@@ -101,4 +101,30 @@ describe("Model", function()
         assert.are.equal(700, p)
         assert.is_true(derived)
     end)
+    it("builds the Expected value from one part per result, the parts adding up to it", function()
+        local opts = { salvager = true, salvagerChance = 0.5, cut = 0.05, ratio = function() return 0.9 end,
+            deposit = function() return 7 end }
+        for _, o in ipairs({ Model.Outcomes(2, Data.CLASS_ARMOR, 28), Model.Outcomes(2, Data.CLASS_WEAPON, 48),
+            Model.Blended(Model.Outcomes(2, Data.CLASS_ARMOR, 28), { n = 10, mats = {
+                [Data.DUST.strange] = { hits = 8, qty = { [2] = 5, [3] = 3 } } } }, opts) }) do
+            local b = Model.ValueBuild(o, price, opts)
+            assert.are.equal(#o.results, #b.rows)
+            local sum = 0
+            for i, r in ipairs(b.rows) do
+                assert.are.equal(o.results[i].id, r.id)
+                if r.part then
+                    assert.is_true(math.abs(r.part - r.chance * r.qty * r.unit) < 1e-6)
+                    sum = sum + r.part
+                end
+            end
+            assert.is_true(math.abs(sum - b.total) < 1e-6)
+            assert.are.equal(Model.Value(o, price, opts).net, math.floor(b.total + 0.5))
+        end
+        -- A result without a price has no unit value and no part.
+        local o = Model.Outcomes(2, Data.CLASS_ARMOR, 33)
+        local b = Model.ValueBuild(o, price, {})
+        local missing = 0
+        for _, r in ipairs(b.rows) do if not r.unit then missing = missing + 1 assert.is_nil(r.part) end end
+        assert.are.equal(1, missing)
+    end)
 end)

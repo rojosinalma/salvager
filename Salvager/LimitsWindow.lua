@@ -12,10 +12,10 @@ local EDIT = { [3] = "armor", [5] = "weapon" }   -- the columns with the gold, s
 
 local COLUMNS = {
     { "Item level", 90 },
-    { "Armor: recommended", 120, "RIGHT", help = { "Armor: recommended", "The most to pay for one armor item of this "
+    { "Armor: recommended", 120, "RIGHT", help = { "Armor: recommended", "The most to pay for one piece of armor of this "
         .. "band: its value after the cut, less the min profit, or less the min return when that asks for more. A % "
         .. "after the amount: the min return sets it. ?: a material of the band has no price yet." } },
-    { "Armor: limit used", 184, "CENTER", help = { "Armor: limit used", "The most the scan pays for one armor item "
+    { "Armor: limit used", 184, "CENTER", help = { "Armor: limit used", "The most the scan pays for one piece of armor "
         .. "of this band. Type your own (yellow); the x next to it goes back to the recommended one. Grey: the scan "
         .. "does not look at armor, or at this quality." } },
     { "Weapons: recommended", 120, "RIGHT", help = { "Weapons: recommended", "The same for weapons." } },
@@ -31,25 +31,32 @@ local function recommendedText(x, dim)
     return t
 end
 
---- The rows: a heading per quality, then its bands (every quality, whatever the scan looks at).
+--- The rows: a heading per quality, then its bands (every quality, whatever the scan looks at). A heading opens
+--- and closes (ns.HeadingToggle).
 function Limits.Rows()
     local out = {}
     local classes, qualities = ns.GearClasses(), ns.db.settings.qualities
-    local last
+    local state = ns.GroupState("limits")
+    local last, open
     for _, r in ipairs(ns.Limits(true)) do
         if r.quality ~= last then
             last = r.quality
-            out[#out + 1] = { cells = { ns.QualityText(r.quality), "", "", "", "" }, head = true }
+            local head = { cells = { ns.QualityText(r.quality), "", "", "", "" }, head = true, group = true }
+            open = ns.HeadingToggle(head, state, tostring(r.quality), function() Limits.Refresh() end)
+            out[#out + 1] = head
         end
-        -- Grey where the scan does not look: that gear type, or that quality.
-        local off = not qualities[r.quality]
-        local dimA, dimW = off or not classes[Data.CLASS_ARMOR], off or not classes[Data.CLASS_WEAPON]
-        out[#out + 1] = {
-            cells = { "   " .. ns.BandRange(r.quality, r.up), recommendedText(r.armor, dimA), "",
-                recommendedText(r.weapon, dimW), "" },
-            limits = { armor = r.armor, weapon = r.weapon },
-            dim = { armor = dimA, weapon = dimW },
-        }
+        if open then
+            -- Grey where the scan does not look: that gear type, or that quality.
+            local off = not qualities[r.quality]
+            local dimA, dimW = off or not classes[Data.CLASS_ARMOR], off or not classes[Data.CLASS_WEAPON]
+            out[#out + 1] = {
+                cells = { ns.BandRange(r.quality, r.up), recommendedText(r.armor, dimA), "",
+                    recommendedText(r.weapon, dimW), "" },
+                indent = 22,
+                limits = { armor = r.armor, weapon = r.weapon },
+                dim = { armor = dimA, weapon = dimW },
+            }
+        end
     end
     return out
 end
@@ -138,7 +145,7 @@ end
 
 local function build()
     -- As wide as its columns; the height is the player's.
-    f = W.Window("SalvagerLimitsFrame", "Salvager limits", "limits", WIDTH, 560, WIDTH, 220, "vertical")
+    f = W.Window("SalvagerLimitsFrame", "Salvager Limits", "limits", WIDTH, 560, WIDTH, 220, "vertical")
     local footer = W.Bar(f, "footer"):PlaceBottom(8, 12, 24)
     local help = W.HelpButton(footer, "Limits", Limits.HelpLines)
     footer:AddRight(help, 22)

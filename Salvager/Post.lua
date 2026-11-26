@@ -405,7 +405,7 @@ end
 
 local function build()
     -- A window of its own: drag it where you want it, and it opens there the next time.
-    d = W.Window("SalvagerPostFrame", "Post on the auction house", "post", 730, 400, 730, 400, true)
+    d = W.Window("SalvagerPostFrame", "Salvager Post", "post", 730, 400, 730, 400, true)
     d:SetFrameStrata("DIALOG")
 
     d.icon = d:CreateTexture(nil, "ARTWORK")

@@ -193,6 +193,28 @@ function Model.Value(outcomes, priceOf, opts)
         low = math.floor(low * (1 - cut) - lowDep + 0.5), deposits = dep, missing = missing, parts = parts }
 end
 
+--- How the Expected value of one disenchant is built (the Gear details window): one row per result with its rate,
+--- its mean quantity (the Salvager bonus in it), the value of one unit (price × sell price ratio, after the cut, less
+--- the deposits lost per unit sold) and its part (rate × quantity × unit value). The parts add up to Model.Value's
+--- net (before its rounding). A result without a price has no unit value and no part. (opts as Model.Value)
+--- @return table  { rows = { { id, chance, qty, unit, part } }, total }
+function Model.ValueBuild(outcomes, priceOf, opts)
+    opts = opts or {}
+    local keep = 1 - (opts.cut or Model.DEFAULT_CUT)
+    local ratioOf, depositOf = opts.ratio or one, opts.deposit or none
+    local bonusChance = opts.salvager and (opts.salvagerChance or 0.5) or 0
+    local rows, total = {}, 0
+    for _, r in ipairs(outcomes.results) do
+        local price = priceOf(r.id)
+        local qty = meanQty(r, bonusChance)
+        local unit = price and (price * ratioOf(r.id) * keep - depositOf(r.id)) or nil
+        local part = unit and r.chance * qty * unit or nil
+        total = total + (part or 0)
+        rows[#rows + 1] = { id = r.id, chance = r.chance, qty = qty, unit = unit, part = part }
+    end
+    return { rows = rows, total = total }
+end
+
 --- The chance that one disenchant is worth less than `paid`, after the cut (opts as Model.Value).
 --- Each result's quantities are equally likely; with the Salvager, dust and essence get one more
 --- with the given chance. Blended outcomes (Model.Blended) bring each quantity's chance. A material with no

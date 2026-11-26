@@ -20,7 +20,7 @@ Materials.HELP = {
         .. "read your auctions (the Ledger's Sales view shows when)." },
     [6] = { "Sold", "How many are sold and waiting for their money. The game pays about an hour after the sale. "
         .. "The sale is booked, and these leave the list, when you take that mail." },
-    [7] = { "Avg cost", "What one cost you on average: the price of the items you disenchanted, shared out over the "
+    [7] = { "Avg cost", "What one cost you on average: the price of the gear you disenchanted, shared out over the "
         .. "materials they gave. It covers what you carry, what is listed and what is sold but not paid yet. "
         .. "+2? = 2 more units with no recorded purchase." },
     [8] = { "Break-even", "The lowest price each at which a sale does not lose money: average cost with the 5% "
@@ -33,7 +33,7 @@ Materials.HELP = {
         .. "The material's tooltip has the number of sales and the deposits lost per unit sold." },
     [11] = { "Time to sell", "How long your posts of it took to sell: from the post to the sale, the median of your "
         .. "sales of the last 30 days (posts made with Salvager). \"few sales\" = under 5 sales: it leans on all your "
-        .. "materials together. Return per day in the Deals tooltips uses it." },
+        .. "materials together. Return per day in the Gear tab's tooltips uses it." },
 }
 
 -- (Age grows while it shows: its column is as wide as "00m" with the widest digit, so it does not change width.)
@@ -145,7 +145,7 @@ function Materials.HelpLines()
         "Avg cost: what one cost you. \"unknown\" or \"+2?\": units with no recorded purchase (/salv stock sets them).",
         "Break-even: the lowest price each at which a sale does not lose money.",
         "Post: sells what is in your bags. The warning sign means the price is below your break-even.",
-        "Click a material to see which items and bands it came from, and what pays.",
+        "Click a material to see which gear and bands it came from, and what pays.",
         "Hover a column title for more about that column.",
     }
 end
@@ -217,7 +217,7 @@ local function requestRefresh()
 end
 
 local function build()
-    f = W.Window("SalvagerMaterialsFrame", "Salvager materials", "materials", WIDTH, 520, WIDTH, 120, true)
+    f = W.Window("SalvagerMaterialsFrame", "Salvager Materials", "materials", WIDTH, 520, WIDTH, 120, true)
     -- No tabs: the filter row is right under the title bar (the filter at the left, the help at its right end);
     -- the footer has the status at the left and the scans at the right (UI.md Controls 1).
     local filters = W.Bar(f, "filters"):Place(28, 12, 12)
