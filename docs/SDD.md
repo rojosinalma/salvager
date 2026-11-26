@@ -371,7 +371,10 @@ flipping is out of scope for now.
 82. **Ledger Purchases** (0.3.96): one row per item (newest first) with its count and totals; a click opens it
     to show each purchase with what it gave (`purchaseFilter().open`). A search box (any part of the name,
     any case) and filters by gear type, quality and item level band sit on the row under the tabs; all kept
-    in `SalvagerDB.windows.ledger.purchaseFilter`.
+    in `SalvagerDB.windows.ledger.purchaseFilter`. (0.3.98) The open / close sign comes first on the row,
+    18 px, before the item's icon (`data.open` of a `Widgets.List` row); a "Not disenchanted" check box shows
+    or hides what is bought and not disenchanted yet; a click on a column title orders the items by it (again
+    turns the order round), by Profit, the best first, until then.
 81. **Charts:** the mouse over a chart shows the values at the nearest moment that has one (a mark, a dot per
     line, a tooltip with the time, each line, the units listed and each level; `chart.Nearest`). Market's
     "By hour" is now "Time of day", with a mark at every hour and a label every 3 hours (`xTicks`).

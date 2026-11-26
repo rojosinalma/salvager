@@ -116,6 +116,14 @@ local function purchaseFilter()
 end
 Window.PurchaseFilter = purchaseFilter
 
+--- The Purchases view's order: { col, desc }, by Profit (the 6th column), the highest first, until a title
+--- is clicked.
+function Window.PurchaseSort()
+    local x = purchaseFilter()
+    if type(x.sort) ~= "table" or not tonumber(x.sort.col) then x.sort = { col = 6, desc = true } end
+    return x.sort
+end
+
 --- An entry's gear type, quality and item level: from its record, else from its link.
 local function describeEntry(e)
     local classID = e.classID or (e.itemID and ns.ClassOf(e.itemID))
@@ -125,6 +133,7 @@ local function describeEntry(e)
 end
 
 local function passes(e, x, search)
+    if x.hideWaiting and not e.done then return false end
     local classID, quality, ilvl = describeEntry(e)
     if classID and not x.classes[classID] then return false end
     if quality and not x.qualities[quality] then return false end
@@ -167,18 +176,37 @@ function Window.PurchaseRows()
             if e.salvager then g.salvager = g.salvager + 1 end
         end
     end
+    -- Items in the order of the column picked (a click on its title), the best profit first by default.
+    -- The purchases under an item keep their own order (newest first).
+    local sort = Window.PurchaseSort()
+    local keyOf = {
+        function(g) return (itemName(g.itemID, g.link):match("%[(.-)%]") or itemName(g.itemID, g.link)):lower() end,
+        function(g) return g.last or 0 end,
+        function(g) return g.known > 0 and g.paid or -math.huge end,
+        function(g) return g.expected end,
+        function(g) return g.done > 0 and g.got or -math.huge end,
+        function(g) return g.known > 0 and g.result or -math.huge end,
+    }
+    local key = keyOf[sort.col] or keyOf[6]
+    for i, g in ipairs(order) do g.index = i end
+    table.sort(order, function(a, b)
+        local ka, kb = key(a), key(b)
+        if ka == kb then return a.index < b.index end
+        if sort.desc then return ka > kb end
+        return ka < kb
+    end)
     local rows = {}
     for _, g in ipairs(order) do
         local open = x.open[g.itemID] and true or false
         local n = #g.list
         rows[#rows + 1] = {
-            itemID = g.itemID, link = g.link, group = true,
+            itemID = g.itemID, link = g.link, group = true, open = open,
             onClick = function()
                 x.open[g.itemID] = (not open) or nil
                 Window.Refresh()
             end,
             cells = {
-                (open and "|cffffd100-|r " or "|cffffd100+|r ") .. itemName(g.itemID, g.link) .. GREY .. "  x" .. n .. "|r"
+                itemName(g.itemID, g.link) .. GREY .. "  x" .. n .. "|r"
                     .. (g.salvager > 0 and ("  |cff9370db[Salvager " .. g.salvager .. "]|r") or ""),
                 when(g.last), g.known > 0 and ns.Money(g.paid) or (GREY .. "not recorded|r"), money(g.expected),
                 g.done > 0 and money(g.got) or (GREY .. "not disenchanted|r"), g.known > 0 and signed(g.result) or "",
@@ -705,12 +733,28 @@ function Window.Refresh()
         oddsView:Refresh()
     elseif history then
         local rows = Window.SoldRows(true)
+        list.onSort = nil
         list:SetColumns(COLUMNS.history)
         list:SetSource(#rows, function(i) return rows[i] end)
         list:Refresh()
     else
         local rows = Window.PurchaseRows()
-        list:SetColumns(COLUMNS.purchases)
+        -- The title it is ordered by shows an arrow; a click on a title orders by it, again turns it round.
+        local sort, cols = Window.PurchaseSort(), {}
+        for i, col in ipairs(COLUMNS.purchases) do
+            cols[i] = { col[1], col[2], col[3], help = col.help }
+            if sort.col == i then
+                cols[i][1] = col[1] .. (sort.desc and " |TInterface\\Buttons\\Arrow-Down-Up:10|t"
+                    or " |TInterface\\Buttons\\Arrow-Up-Up:10|t")
+            end
+        end
+        list.onSort = function(col)
+            local s = Window.PurchaseSort()
+            if s.col == col then s.desc = not s.desc else s.col, s.desc = col, col > 1 end
+            list.offset = 0
+            Window.Refresh()
+        end
+        list:SetColumns(cols)
         list:SetSource(#rows, function(i) return rows[i] end)
         list:Refresh()
     end
@@ -896,7 +940,7 @@ local function build()
         end
         local searchLabel = W.Label(f, "Search", "GameFontHighlightSmall")
         searchLabel:SetPoint("LEFT", f, "TOPLEFT", 14, -109)
-        local search = W.Edit(f, 150)
+        local search = W.Edit(f, 120)
         search:SetPoint("LEFT", searchLabel, "RIGHT", 8, 0)
         search:SetText(pf.search or "")
         search:SetScript("OnTextChanged", function(self)
@@ -952,6 +996,14 @@ local function build()
                 if #names > 3 then return #names .. " bands" end
                 return table.concat(names, ", ")
             end), "Item level bands: a band is a range of item levels that disenchants into the same materials.")
+        local waiting = W.Check(f, "Not disenchanted", "Shows the items you bought and have not disenchanted yet. "
+            .. "Untick it to see only what was disenchanted.", function(on)
+            pf.hideWaiting = (not on) or nil
+            changed()
+        end)
+        waiting:SetPoint("LEFT", prev, "RIGHT", 12, 0)
+        waiting:SetChecked(not pf.hideWaiting)
+        purchaseControls[#purchaseControls + 1] = waiting
         for _, c in ipairs(purchaseControls) do c:Hide() end
     end
     if VIEWS[f.saved.view] then Window.view = f.saved.view end

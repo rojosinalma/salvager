@@ -18,6 +18,7 @@ local Widgets = ns.Widgets
 function Widgets.List(parent, opts)
     opts = opts or {}
     local ROW_H = opts.rowHeight or 22
+    local TOGGLE = math.min(ROW_H, 18)   -- the open / close sign
     local HEAD_H = opts.header == false and 0 or ROW_H
     local MAX_ROWS, MAX_COLS, GAP, BAR_W = 60, 10, 6, 18
     local MIN_FIRST = 90       -- the first column never gets narrower than this
@@ -95,6 +96,10 @@ function Widgets.List(parent, opts)
         end
         row.icon = row:CreateTexture(nil, "ARTWORK")
         row.icon:SetSize(ROW_H - 4, ROW_H - 4)
+        -- The open / close sign of a row that opens (data.open ~= nil), first on the row, before the icon.
+        row.toggle = row:CreateTexture(nil, "ARTWORK")
+        row.toggle:SetSize(TOGGLE, TOGGLE)
+        row.toggle:Hide()
         row.cells = {}
         for i = 1, MAX_COLS do
             local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -188,7 +193,7 @@ function Widgets.List(parent, opts)
         local need = opts.fit ~= false and Widgets.FitColumns(titles, self.count, function(r)
             local data = self.getRow(r)
             if not data then return nil end
-            return data.cells, (data.indent or 0) + (data.itemID and ROW_H or 0)
+            return data.cells, (data.indent or 0) + (data.itemID and ROW_H or 0) + (data.open ~= nil and TOGGLE + 4 or 0)
         end, nil, samples) or nil
         local fixed = 0
         for i = 2, #cols do fixed = fixed + (need and need[i] or cols[i][2]) + GAP end
@@ -245,6 +250,16 @@ function Widgets.List(parent, opts)
                 row:Hide()
             else
                 local indent = data.indent or 0
+                if data.open ~= nil then
+                    row.toggle:SetTexture(data.open and "Interface\\Buttons\\UI-MinusButton-Up"
+                        or "Interface\\Buttons\\UI-PlusButton-Up")
+                    row.toggle:ClearAllPoints()
+                    row.toggle:SetPoint("LEFT", row, "LEFT", 4 + indent, 0)
+                    row.toggle:Show()
+                    indent = indent + TOGGLE + 4
+                else
+                    row.toggle:Hide()
+                end
                 local icon = data.itemID and Widgets.IconOf(data.itemID)
                 local textIndent = indent + (icon and ROW_H or 0)
                 if icon then

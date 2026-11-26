@@ -137,6 +137,11 @@ describe("Salvager in a simulated client", function()
         x.classes[4] = nil                                    -- weapons only: the boots go
         assert.is_nil(ns.LedgerWindow.PurchaseRows()[1].itemID)
         x.classes[4] = true
+        assert.is_false(ns.LedgerWindow.PurchaseRows()[1].open == nil)   -- it has the open / close sign
+        x.hideWaiting = true                                  -- the boots were disenchanted: still there
+        assert.are.equal(BOOTS, ns.LedgerWindow.PurchaseRows()[1].itemID)
+        x.hideWaiting = nil
+        assert.are.same({ 6, true }, { ns.LedgerWindow.PurchaseSort().col, ns.LedgerWindow.PurchaseSort().desc })
         x.open[BOOTS] = nil
         local accRows = ns.LedgerWindow.AccuracyBandRows()
         assert.is_true(#accRows >= 4)                              -- all bands, gear type, quality, a band
@@ -217,6 +222,27 @@ describe("Salvager in a simulated client", function()
         assert.is_falsy(short:find("after the cut", 1, true))       -- the details are behind the chart button
         assert.is_true(#lines >= 4)
         assert.is_truthy(table.concat(lines, "\n"):find("materials worth", 1, true))
+    end)
+
+    it("lists purchases by profit by default, any column on a click, and hides what is not disenchanted", function()
+        local L = ns.db.ledger
+        local saved = { purchases = L.purchases, disenchants = L.disenchants }
+        L.purchases = { [7001] = { { each = 100, t = 50 } } }                 -- bought, not disenchanted yet
+        L.disenchants = {
+            { t = 10, itemID = 7002, link = "|Hitem:7002|h[Alpha]|h", costKnown = true, cost = 100, value = 900, got = {} },
+            { t = 20, itemID = 7003, link = "|Hitem:7003|h[Beta]|h", costKnown = true, cost = 100, value = 300, got = {} },
+        }
+        local x = ns.LedgerWindow.PurchaseFilter()
+        x.sort = nil
+        local rows = ns.LedgerWindow.PurchaseRows()
+        assert.are.same({ 7002, 7003, 7001 }, { rows[1].itemID, rows[2].itemID, rows[3].itemID })   -- profit, best first
+        x.sort = { col = 2, desc = true }                                    -- by date, newest first
+        rows = ns.LedgerWindow.PurchaseRows()
+        assert.are.same({ 7001, 7003, 7002 }, { rows[1].itemID, rows[2].itemID, rows[3].itemID })
+        x.hideWaiting = true
+        assert.are.equal(2, #ns.LedgerWindow.PurchaseRows())
+        x.hideWaiting, x.sort = nil, nil
+        L.purchases, L.disenchants = saved.purchases, saved.disenchants
     end)
 
     it("clears the history after a confirmation, and keeps the stock", function()
