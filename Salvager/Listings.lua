@@ -321,8 +321,23 @@ function Listings.CancelNext()
     return false
 end
 
+-- The game sends AUCTION_CANCELED also when an auction sells (measured 2026-11-26: each sale was first
+-- booked as a cancel). It is a cancel only when one was asked for, by this addon or any other window.
+local askedCancel = {}   -- [auctionID] = time a cancel was asked
+local CANCEL_ANSWER = 30
+if hooksecurefunc and AH and AH.CancelAuction then
+    hooksecurefunc(AH, "CancelAuction", function(auctionID) if auctionID then askedCancel[auctionID] = GetTime() end end)
+end
+
 ns.On("AUCTION_CANCELED", function(auctionID)
     local p = Listings.pending
+    local asked = askedCancel[auctionID]
+    askedCancel[auctionID] = nil
+    if not (asked and GetTime() - asked <= CANCEL_ANSWER) then
+        -- Sold, or gone for another reason: the next read of your auctions says which.
+        Listings.Refresh()
+        return
+    end
     local rows = db().rows
     for i = #rows, 1, -1 do
         local r = rows[i]
@@ -368,4 +383,22 @@ end)
 ns.On("AUCTION_HOUSE_SHOW", function() Listings.Refresh() end)
 ns.On("AUCTION_HOUSE_CLOSED", function()
     Listings.checking, Listings.pending, Listings.afterRead = nil, nil, nil
+end)
+
+-- 0.3.79 to 0.3.83 booked every sale as a cancel first (see AUCTION_CANCELED above): those "deposit lost"
+-- records go, once. (No real cancel was made with those versions.)
+ns.On("SALVAGER_READY", function()
+    if ns.db.falseCancelsDropped then return end
+    ns.db.falseCancelsDropped = true
+    local sales, n = ns.db.ledger.sales, 0
+    for i = #sales, 1, -1 do
+        if sales[i].lost == "cancelled" then
+            table.remove(sales, i)
+            n = n + 1
+        end
+    end
+    for _, p in ipairs(ns.db.posted or {}) do
+        if p.lost == "cancelled" then p.lost = nil end
+    end
+    if n > 0 then ns.Log("ledger: removed %d lost deposits that were sales, not cancels", n) end
 end)

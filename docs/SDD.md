@@ -312,6 +312,11 @@ flipping is out of scope for now.
     - d. A "request dropped" event just after a Buy click, with a search just sent, is about the search: 23
        such drops in 36 purchases, and every purchase went through. The purchase is freed only when no
        search was sent in the last 2 s.
+75. **Measured 2026-11-26 06:21:** (a) the game sends `AUCTION_CANCELED` when an auction sells too: each sale
+    was first booked as a cancel with its deposit lost. It is a cancel only when `CancelAuction` was called
+    for that auction in the last 30 s (hooked, so other windows count); else your auctions are read again.
+    The false records of 0.3.79–0.3.83 are removed once. (b) `GetRealmName` gives nothing on this client:
+    the character is its name alone, after a 3 s wait; a change of gold never waits for it.
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

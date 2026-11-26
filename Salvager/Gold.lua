@@ -107,17 +107,20 @@ local function start(anyway)
     ns.Log("session: %s logged in with %s (Salvager %s)", Gold.Char(), ns.Money(sessionStart), ns.VERSION)
     return true
 end
+-- (This client gives no realm name at all, measured 2026-11-26: the name alone is used after a short wait.)
+local REALM_WAIT = 3
 ns.On("PLAYER_ENTERING_WORLD", function()
     if sessionStart then seen() return end   -- (a loading screen, not a login)
     if start() then return end
     local tries = 0
     local function again()
         tries = tries + 1
-        if not start(tries >= 30) and tries < 30 then C_Timer.After(1, again) end
+        if not start(tries >= REALM_WAIT) and tries < REALM_WAIT then C_Timer.After(1, again) end
     end
     C_Timer.After(1, again)
 end)
-ns.On("PLAYER_MONEY", function() if sessionStart or start() then seen() end end)
+-- A change of gold never waits for the realm name.
+ns.On("PLAYER_MONEY", function() if sessionStart or start(true) then seen() end end)
 -- (At logout the game reports 0 gold: the balance is not read then, the last one seen is the one logged.)
 ns.On("PLAYER_LOGOUT", function()
     local last = Gold.Char() and ns.db and db().chars[Gold.Char()]

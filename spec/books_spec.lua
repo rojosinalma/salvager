@@ -170,6 +170,12 @@ describe("Your auctions in a simulated client", function()
         assert.is_table(found)
     end)
 
+    it("does not take a sale for a cancel: the game sends the cancel event for both", function()
+        local n = #ns.db.ledger.sales
+        wow.fire(ns, "AUCTION_CANCELED", 4242)                 -- no cancel was asked for this auction
+        assert.are.equal(n, #ns.db.ledger.sales)
+    end)
+
     it("books the deposit of an auction that expired, once", function()
         local n = #ns.db.ledger.sales
         env.ah.owned = {
