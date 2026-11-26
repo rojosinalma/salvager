@@ -336,6 +336,12 @@ flipping is out of scope for now.
     - c. An "open all" takes several mails before the gold is read: one change of gold is matched to the
        first expectations, in order, that add up to it (8g 40s 75c from 5 sales mails at 13:28).
     - d. `make install` checks the version on the gaming PC after the copy (0.3.86 did not arrive the first time).
+78. **The main window leads** (2026-11-26, the user): when it closes, every Salvager window closes with it
+    (hidden, not marked closed: `UI.HideOthers`), and they come back with it (`UI.RestoreWindows` on its
+    OnShow and on `AUCTION_HOUSE_SHOW`). The "Auction house" button (top row, off while the auction house is
+    closed) closes the Salvager windows and leaves the game's auction house showing; scans and checks go on.
+    A "Salvager" button under the game's auction house window (`AuctionHouseFrame`, bottom right) opens and
+    closes them again.
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

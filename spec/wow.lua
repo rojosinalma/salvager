@@ -12,7 +12,11 @@ local function widget(kind)
         GetScript = function(self, name) return self.scripts[name] end,
         RegisterEvent = function(self, e) self.events[e] = true end,
         Show = function(self) self.shown = true if self.scripts.OnShow then self.scripts.OnShow(self) end end,
-        Hide = function(self) self.shown = false end,
+        Hide = function(self)
+            local was = self.shown
+            self.shown = false
+            if was and self.scripts.OnHide then self.scripts.OnHide(self) end
+        end,
         SetShown = function(self, v) if v then self:Show() else self:Hide() end end,
         IsShown = function(self) return self.shown end,
         SetText = function(self, t) self.text = t end,

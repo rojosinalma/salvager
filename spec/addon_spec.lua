@@ -1231,6 +1231,37 @@ describe("Salvager layout", function()
         assert.is_true(ns.Materials.IsPoppedOut())
     end)
 
+    it("closes every window with the main one, and brings back the ones that were open", function()
+        ns.LedgerWindow.Show()
+        ns.LogWindow.Show()
+        _G.SalvagerFrame:Hide()
+        assert.is_false(_G.SalvagerLedgerFrame:IsShown())
+        assert.is_false(_G.SalvagerLogFrame:IsShown())
+        assert.is_true(ns.db.windows.ledger.open)                -- still remembered
+        ns.UI.Show()
+        assert.is_true(_G.SalvagerLedgerFrame:IsShown())
+        assert.is_true(_G.SalvagerLogFrame:IsShown())
+    end)
+
+    it("goes to the game's auction house and back, without stopping a scan", function()
+        _G.AuctionHouseFrame = wow.widget("Frame")
+        wow.fire(ns, "AUCTION_HOUSE_SHOW")
+        ns.Scanner.state = "browsing"
+        ns.UI.ToAuctionHouse()
+        assert.is_false(_G.SalvagerFrame:IsShown())
+        assert.is_false(_G.SalvagerLedgerFrame:IsShown())
+        assert.is_true(_G.AuctionHouseFrame:IsShown())
+        assert.are.equal("browsing", ns.Scanner.state)
+        local button
+        for _, fr in ipairs(env.frames) do if fr.parent == _G.AuctionHouseFrame and fr.text == "Salvager" then button = fr end end
+        assert.is_table(button)
+        button:Click()
+        assert.is_true(_G.SalvagerFrame:IsShown())
+        assert.is_true(_G.SalvagerLedgerFrame:IsShown())
+        ns.Scanner.state = "idle"
+        _G.AuctionHouseFrame = nil
+    end)
+
     it("leaves closed what the player closed on purpose", function()
         ns.LogWindow.Toggle()                               -- the Log button: closed on purpose
         ns.Materials.PutBack()

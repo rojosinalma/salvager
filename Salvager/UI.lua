@@ -66,7 +66,7 @@ local VIEWS = {
 local f, rows, headers, status, footer, minProfit, playButton, stopButton, gearChoice, tabs =
     nil, {}, {}, nil, nil, nil, nil, nil, nil, {}
 local maxPrice, cautious, bandDrop, ilvlMin, ilvlMax, levelHint, materialsOnly, scanOwned, gold, maxChecks
-local qualityDrop, popOut, minReturn
+local qualityDrop, popOut, minReturn, ahButton
 local headerHelp = {}
 local actionHeader
 local REFRESH_GAP, lastRefresh, refreshQueued = 0.25, 0, false
@@ -319,6 +319,11 @@ function UI.UpdatePlay()
     end
     stopButton:SetEnabled(s.auto or ns.Busy())
     stopButton:UpdateGlyph()
+    -- (The auction house button needs the auction house open; its tooltip says why it is off.)
+    if ahButton then
+        ahButton:SetEnabled(ns.Queue.open)
+        ahButton.reason = not ns.Queue.open and "Open the auction house first." or nil
+    end
 end
 
 function UI.Refresh()
@@ -550,9 +555,17 @@ local function build()
     local market = W.Button(f, "Market", 80, function() ns.Market.Toggle() end,
         "Opens the market charts in their own window: the price of each material over time, from your scans.")
     market:SetPoint("RIGHT", ledger, "LEFT", -6, 0)
+    ahButton = W.Button(f, "Auction house", 104, function() UI.ToAuctionHouse() end,
+        "Closes the Salvager windows and shows the game's auction house. Scans keep running. The Salvager button "
+        .. "under the auction house brings the windows back.")
+    ahButton:SetPoint("RIGHT", market, "LEFT", -6, 0)
+    ahButton:SetMotionScriptsWhileDisabled(true)
+    ahButton:HookScript("OnEnter", function(self)
+        if self.reason then GameTooltip:AddLine(self.reason, 1, 0.3, 0.3, true) GameTooltip:Show() end
+    end)
     status = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     status:SetPoint("LEFT", spinner, "RIGHT", 6, 0)
-    status:SetPoint("RIGHT", market, "LEFT", -10, 0)
+    status:SetPoint("RIGHT", ahButton, "LEFT", -10, 0)
     status:SetJustifyH("LEFT")
     status:SetWordWrap(false)
 
@@ -994,8 +1007,52 @@ local function build()
     f:SetScript("OnSizeChanged", function() UI.Refresh() end)
 
     if VIEWS[ns.db.window.view] then UI.view = ns.db.window.view end
-    f:SetScript("OnShow", function() UI.Refresh() end)
+    f:SetScript("OnShow", function()
+        UI.Refresh()
+        UI.RestoreWindows()
+    end)
+    -- The main window closes: every Salvager window goes with it (what was open is still remembered, and
+    -- comes back with the main window).
+    f:SetScript("OnHide", function() UI.HideOthers() end)
     f:Hide()
+end
+
+-- Every window of the addon besides the main one.
+local OTHERS = { "SalvagerLedgerFrame", "SalvagerLogFrame", "SalvagerMaterialsFrame", "SalvagerMarketFrame",
+    "SalvagerBreakdownFrame", "SalvagerOddsFrame", "SalvagerPostFrame", "SalvagerOptionsFrame" }
+
+--- Hides the other windows, without changing what is remembered as open.
+function UI.HideOthers()
+    for _, name in ipairs(OTHERS) do
+        local w = _G[name]
+        if w and w:IsShown() then w:Hide() end
+    end
+end
+
+--- The windows that were open last time, again (with the main window, when the setting is on).
+function UI.RestoreWindows()
+    if not ns.db.settings.restoreWindows then return end
+    ns.LedgerWindow.Restore()
+    ns.LogWindow.Restore()
+    ns.Materials.Restore()
+    ns.Market.Restore()
+end
+
+--- Only the game's auction house: the Salvager windows close, scans and checks go on.
+function UI.ToAuctionHouse()
+    if f then f:Hide() end
+    local ah = _G.AuctionHouseFrame
+    if ah and not ah:IsShown() then ah:Show() end
+end
+
+-- Under the game's auction house window: a button that brings the Salvager windows back.
+local ahFrameButton
+local function addAuctionHouseButton()
+    local ah = _G.AuctionHouseFrame
+    if ahFrameButton or not ah then return end
+    ahFrameButton = W.Button(ah, "Salvager", 90, function() UI.Toggle() end,
+        "Opens the Salvager windows over the auction house (and closes them again).")
+    ahFrameButton:SetPoint("TOPRIGHT", ah, "BOTTOMRIGHT", 0, -2)
 end
 
 function UI.Frame() return f end
@@ -1016,15 +1073,12 @@ for _, e in ipairs({ "SALVAGER_PRICES", "SALVAGER_PRICES_DONE", "SALVAGER_SCAN",
 end
 
 ns.On("AUCTION_HOUSE_SHOW", function()
+    addAuctionHouseButton()
     if ns.db.settings.autoOpen then
         UI.Show()
-        -- The layout of last time: the windows that were open, and the tab that was showing.
-        if ns.db.settings.restoreWindows then
-            ns.LedgerWindow.Restore()
-            ns.LogWindow.Restore()
-            ns.Materials.Restore()
-            ns.Market.Restore()
-        end
+        -- The layout of last time: the windows that were open, and the tab that was showing. (Also when the
+        -- main window was open already: then it gets no OnShow.)
+        UI.RestoreWindows()
     end
     UI.Refresh()
 end)
