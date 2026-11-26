@@ -130,25 +130,29 @@ function Market.ValueSeries(quality, classID, up, from)
     return out
 end
 
+--- By gear type, quality under it, and each band by its range (ns.GroupedRows).
 function Value.Rows()
-    local rows, from = {}, since()
+    local entries, from = {}, since()
     local opts = valueOptions()
     for _, q in ipairs({ { 2, Data.GREEN }, { 3, Data.BLUE }, { 4, Data.PURPLE } }) do
         for _, classID in ipairs({ Data.CLASS_ARMOR, Data.CLASS_WEAPON }) do
             for _, band in ipairs(q[2]) do
                 local series = Market.ValueSeries(q[1], classID, band.up, from)
                 if #series > 0 then
-                    local key = Ledger.BandKey(q[1], classID, band.up)
                     local v = Model.Value(Model.Outcomes(q[1], classID, band.up), ns.PriceOf, opts)
-                    rows[#rows + 1] = pickRow(key, { ns.BandName(q[1], classID, band.up), ns.Money(v.net),
-                        percent((History.Change(series))) })
-                    rows[#rows].key = key
-                    rows[#rows].sort = { #rows, v.net, (History.Change(series)) or -math.huge }
+                    entries[#entries + 1] = { quality = q[1], classID = classID, band = band.up, net = v.net,
+                        change = (History.Change(series)) }
                 end
             end
         end
     end
-    return rows
+    return ns.GroupedRows(entries, function(e)
+        local key = Ledger.BandKey(e.quality, e.classID, e.band)
+        local r = pickRow(key, { "", ns.Money(e.net), percent(e.change) })
+        r.key = key
+        r.sort = { e.band, e.net, e.change or -math.huge }
+        return r
+    end, function(_, label) return { cells = { label, "", "" } } end)
 end
 
 function Value.Chart(key)
@@ -164,7 +168,7 @@ function Value.Chart(key)
         lines = { { points = line, color = { 1, 0.82, 0 }, label = "Value of one disenchant (average, after the cut)" } },
         levels = limit > 0 and { { value = limit, color = { 0.3, 1, 0.3 }, label = "Buy limit now" } } or {},
         empty = "No value in this time: a material of this band has no price yet. Pick a longer time.",
-    }), ns.BandName(quality, classID, up), Market.Facts(series)
+    }), ns.BandShort(quality, classID, up), Market.Facts(series)
 end
 
 ------------------------------------------------------------------ Profit
@@ -278,7 +282,7 @@ end
 
 ------------------------------------------------------------------ By hour
 
-local Hour = { title = "By hour", columns = Material.columns }
+local Hour = { title = "Time of day", columns = Material.columns }
 Hour.Rows = Material.Rows
 
 function Hour.Chart(matID)
@@ -295,9 +299,15 @@ function Hour.Chart(matID)
             GOLD, low[1], ns.Money(low[2]), GOLD, high[1], ns.Money(high[2]), GOLD, #byHour)
     return {
         from = 0, to = 23, xFormat = function(h) return string.format("%02d:00", h) end,
+        -- A mark at every hour, labelled every 3 hours, so each point reads as a time of day.
+        xTicks = (function()
+            local ticks = {}
+            for h = 0, 23 do ticks[#ticks + 1] = { h, h % 3 == 0 and string.format("%02d:00", h) or nil } end
+            return ticks
+        end)(),
         lines = { { points = byHour, color = { 1, 0.82, 0 }, label = "Average price at each hour of the day" } },
         empty = "No price seen for this material in this time.",
-    }, ns.MaterialName(matID) .. " by hour of the day", text
+    }, ns.MaterialName(matID) .. ": average price by time of day", text
 end
 
 ------------------------------------------------------------------ the window
@@ -332,6 +342,12 @@ function Market.Rows()
     if sort then
         for i, row in ipairs(rows) do row.index = i end
         table.sort(rows, function(a, b)
+            -- Grouped rows (ns.GroupedRows) are sorted inside their group, under its heading.
+            if (a.section or 0) ~= (b.section or 0) then return (a.section or 0) < (b.section or 0) end
+            if a.head or b.head then
+                if a.head and b.head then return a.index < b.index end
+                return a.head == true
+            end
             local x, y = a.sort and a.sort[sort.col], b.sort and b.sort[sort.col]
             if x == y or x == nil or y == nil or type(x) ~= type(y) then return a.index < b.index end
             if sort.desc then return x > y end
@@ -342,11 +358,16 @@ function Market.Rows()
     for _, row in ipairs(rows) do
         if row.key ~= nil and row.key == Market.pick[Market.view] then picked = row.key end
     end
-    if picked == nil and rows[1] and rows[1].key ~= nil then
-        picked = rows[1].key
-        Market.pick[Market.view] = picked
-        rows[1].group = true
-        for i = 2, #rows do rows[i].group = false end
+    if picked == nil then
+        -- The first row that can be picked (headings cannot).
+        for _, row in ipairs(rows) do
+            if row.key ~= nil then
+                picked = row.key
+                Market.pick[Market.view] = picked
+                break
+            end
+        end
+        for _, row in ipairs(rows) do if row.key ~= nil then row.group = row.key == picked end end
     end
     if #rows == 0 then
         local n = #view.columns
@@ -403,7 +424,7 @@ local function build()
         value = "What one disenchant of an item level band was worth over time, against its buy limit: is gear worth buying now?",
         profit = "The profit of your sales (units with a known cost, less deposits lost), added up over time, and per day.",
         essence = "Three lesser against one greater, per essence: when combining or splitting pays.",
-        hour = "The average price of a material at each hour of the day: when to post, and when to buy.",
+        hour = "The average price of a material at each time of day, over the time picked: when to post, and when to buy.",
     }
     for _, key in ipairs(ORDER) do
         local b = W.Button(f, VIEWS[key].title, key == "value" and 124 or 90, function()

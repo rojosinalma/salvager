@@ -126,11 +126,12 @@ describe("Salvager in a simulated client", function()
         assert.is_true(rows[2].indent > 0)
         assert.is_truthy(rows[2].cells[1]:find("2x Soul Dust", 1, true))
         local accRows = ns.LedgerWindow.AccuracyBandRows()
-        assert.is_true(#accRows >= 3)                              -- all bands, a heading, a band
-        assert.is_truthy(accRows[2].cells[1]:find("Uncommon Armor", 1, true))
+        assert.is_true(#accRows >= 4)                              -- all bands, gear type, quality, a band
+        assert.is_truthy(accRows[2].cells[1]:find("Armor", 1, true))
         assert.is_true(accRows[2].group)
-        assert.is_nil(accRows[3].cells[1]:find("Uncommon", 1, true))   -- the band row: its item levels only
-        assert.is_truthy(accRows[3].cells[1]:find("^%d+[-+]"))
+        assert.is_truthy(accRows[3].cells[1]:find("Uncommon", 1, true))
+        assert.is_true(accRows[3].group)
+        assert.are.equal("26-30", accRows[4].cells[1])             -- the band row: its range only
         local sales = ns.LedgerWindow.SoldRows(true)               -- booked from its mail: it is history at once
         local paid
         for _, r in ipairs(sales) do if r.itemID == 11083 then paid = r end end
@@ -141,7 +142,7 @@ describe("Salvager in a simulated client", function()
         assert.is_true(#odds > 2 * 24)
         local band, dust
         for i, r in ipairs(odds) do
-            if r.cells[1]:find("Uncommon Armor", 1, true) and r.cells[1]:find("item level 26-30", 1, true) then
+            if r.cells[1]:find("Uncommon", 1, true) and r.cells[1]:find("26-30", 1, true) then
                 band, dust = r, odds[i + 1]
             end
         end
@@ -172,7 +173,7 @@ describe("Salvager in a simulated client", function()
         assert.are.equal(24, #cards)
         local card
         for _, c in ipairs(cards) do
-            if c.title:find("Uncommon Armor", 1, true) and c.title:find("item level 26-30", 1, true) then card = c end
+            if c.title:find("Uncommon", 1, true) and c.title:find("26-30", 1, true) then card = c end
         end
         assert.are.equal(3, #card.rows)                            -- dust, essence, shard
         assert.is_truthy(card.facts:find("Value now", 1, true))
@@ -182,19 +183,19 @@ describe("Salvager in a simulated client", function()
         ns.db.windows.ledger = { oddsDataOnly = true }
         local mine = ns.LedgerWindow.OddsRows()
         assert.are.equal(4, #mine)                                 -- the band, dust, essence, shard
-        assert.is_truthy(mine[1].cells[1]:find("item level 26-30", 1, true))
+        assert.is_truthy(mine[1].cells[1]:find("26-30", 1, true))
         -- Filters: only blue weapons.
         ns.db.windows.ledger = { oddsQuality = { [3] = true }, oddsTab = "w" }
         local few = ns.LedgerWindow.OddsRows()
         assert.are.equal(#ns.Data.BLUE * 2, #few)                  -- each band: its row and its one shard
-        assert.is_truthy(few[1].cells[1]:find("Rare Weapons", 1, true))
+        assert.is_truthy(few[1].cells[1]:find("Rare", 1, true))
         -- The band filter: only item levels 26-30. Uncommon has that band; rare's 26-30 band too.
         local off = {}
         for _, range in ipairs(ns.LevelBands()) do if range.up ~= 30 then off[range.up] = true end end
         ns.db.windows.ledger = { oddsBandsOff = off, oddsQuality = { [2] = true } }
         local one = ns.LedgerWindow.OddsCards()
         assert.are.equal(1, #one)
-        assert.is_truthy(one[1].title:find("item level 26-30", 1, true))
+        assert.is_truthy(one[1].title:find("26-30", 1, true))
         ns.db.windows.ledger = nil
         local short, lines = ns.LedgerWindow.Summary()
         for _, word in ipairs({ "Bought", "Disenchanted", "Sold", "Profit" }) do
@@ -360,6 +361,39 @@ describe("Salvager window and options", function()
         assert.is_true(_G.SalvagerLogFrame:IsShown())
         assert.is_true(#ns.db.log > 0)
         for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
+    end)
+
+    it("groups every list of bands one way: gear type, quality, then the range", function()
+        local entries = { { quality = 3, classID = 4, band = 50 }, { quality = 2, classID = 2, band = 30 },
+            { quality = 2, classID = 4, band = 35 }, { quality = 2, classID = 4, band = 30 } }
+        local rows = ns.GroupedRows(entries, function() return { cells = { "" } } end)
+        local labels = {}
+        for _, r in ipairs(rows) do labels[#labels + 1] = (r.cells[1]:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
+        assert.are.same({ "Armor", "Uncommon", "26-30", "31-35", "Rare", "46-50", "Weapons", "Uncommon", "26-30" }, labels)
+        -- The market's Disenchant value tab uses it, and its sorting stays inside each group.
+        ns.Market.Toggle()
+        ns.Market.view = "value"
+        local value = ns.Market.Rows()
+        for i = 2, #value do assert.is_true((value[i].section or 0) >= (value[i - 1].section or 0)) end
+        ns.Market.view = "hour"
+        assert.are.equal("Time of day", ns.Market.VIEWS.hour.title)
+        local chart = ns.Market.VIEWS.hour.Chart(11083)
+        assert.are.equal(24, #chart.xTicks)
+        assert.are.equal("03:00", chart.xTicks[4][2])
+        ns.Market.view = "material"
+        ns.Market.Toggle()
+        -- The chart under the mouse: the values at the nearest moment that has one.
+        local data = { from = 0, to = 100, lines = {
+            { label = "Price", color = { 1, 1, 0 }, points = { { 10, 500 }, { 50, 520 }, { 90, 480 } } },
+            { label = "Lowest", color = { 1, 1, 1 }, points = { { 10, 450 }, { 90, 470 } } } },
+            bars = { label = "Units listed", points = { { 50, 1300 } } },
+            levels = { { label = "Your break-even", value = 600, color = { 1, 0, 0 } } } }
+        local n = ns.Widgets.Chart(_G.UIParent).Nearest(data, 47)
+        assert.are.equal(50, n.t)
+        assert.are.same({ "Price", 520 }, { n.values[1].label, n.values[1].value })   -- "Lowest" has no point there
+        assert.are.same({ "Units listed", 1300, true }, { n.values[2].label, n.values[2].value, n.values[2].count })
+        assert.are.equal("Your break-even", n.values[3].label)
+        assert.is_nil(ns.Widgets.Chart(_G.UIParent).Nearest({ lines = {} }, 5))
     end)
 
     it("draws nothing, and no error, for a table shown before it has columns", function()

@@ -301,7 +301,60 @@ end
 
 --- The short form for narrow columns: "Uncommon Armor 26-30".
 function ns.BandShort(quality, classID, band)
-    return (ns.BandName(quality, classID, band):gsub(", item level ", " "))
+    return (ns.BandName(quality, classID, band):gsub("|r|cffffd100, item level ", " |r|cffffd100"))
+end
+
+ns.CLASS_LABEL = { [Data.CLASS_ARMOR] = "Armor", [Data.CLASS_WEAPON] = "Weapons" }
+
+--- A quality's name in its color: "Uncommon".
+function ns.QualityText(quality)
+    return (ns.QUALITY_COLOR[quality] or "") .. (ns.QUALITY_NAME[quality] or "?") .. "|r"
+end
+
+--- An item level band as its range only: "26-30", "61+".
+function ns.BandRange(quality, band)
+    return ns.BandName(quality, nil, band):match("item level (.-)|r$") or tostring(band)
+end
+
+--- Lists of several gear types, qualities and bands are grouped one way everywhere (the user, 2026-11-26):
+--- gear type (Armor, then Weapons), quality under it (Uncommon, Rare, Epic), then each band by its range only.
+--- `entries` = { { quality, classID, band, ... } }. `row(e)` = the row of one entry (its first cell is set to
+--- the range); `head(list, label, level)` = a heading row for a group (level 1 = gear type, 2 = quality),
+--- or nil for a plain heading. Headings have `head = true`; every row has `section` (its quality group).
+--- @return table rows
+function ns.GroupedRows(entries, row, head, indent)
+    indent = indent or 22
+    local rows, section = {}, 0
+    for _, classID in ipairs({ Data.CLASS_ARMOR, Data.CLASS_WEAPON }) do
+        local ofType = {}
+        for _, e in ipairs(entries) do if e.classID == classID then ofType[#ofType + 1] = e end end
+        if #ofType > 0 then
+            section = section + 1
+            local label = "|cffffd100" .. ns.CLASS_LABEL[classID] .. "|r"
+            local h = head and head(ofType, label, 1) or { cells = { label } }
+            h.head, h.section = true, section
+            rows[#rows + 1] = h
+            for _, quality in ipairs({ 2, 3, 4 }) do
+                local of = {}
+                for _, e in ipairs(ofType) do if e.quality == quality then of[#of + 1] = e end end
+                if #of > 0 then
+                    section = section + 1
+                    table.sort(of, function(a, b) return (a.band or 0) < (b.band or 0) end)
+                    local qLabel = ns.QualityText(quality)
+                    local qh = head and head(of, qLabel, 2) or { cells = { qLabel } }
+                    qh.head, qh.section, qh.indent = true, section, indent
+                    rows[#rows + 1] = qh
+                    for _, e in ipairs(of) do
+                        local r = row(e)
+                        r.cells[1] = ns.BandRange(e.quality, e.band)
+                        r.indent, r.section = 2 * indent, section
+                        rows[#rows + 1] = r
+                    end
+                end
+            end
+        end
+    end
+    return rows
 end
 
 --- The item level bands, as the scan's level filter offers them: { { up, label }, ... }.

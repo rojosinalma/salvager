@@ -7,9 +7,13 @@
 --     bars   = { points = { { t, value }, ... }, label = text },
 --     format = function(value) -> text      (the scale's labels; default: money)
 --     xFormat = function(x) -> text         (the labels under the two ends; default: date and time)
+--     xTicks = { { x, label or nil }, ... } (marks on the time axis; a label under the ones that have one,
+--                                            in place of the two end labels)
 --     negative = true                       (the scale may go below zero)
 --     empty  = text shown when there is nothing to draw
 --   })
+-- The mouse over the chart shows the values at the point nearest to it: a mark, a dot on each line, and a
+-- tooltip with the time and each value.
 local _, ns = ...
 
 local Widgets = ns.Widgets
@@ -42,6 +46,7 @@ function Widgets.Chart(parent)
     end
     times[1]:SetPoint("TOPLEFT", plot, "BOTTOMLEFT", 0, -3)
     times[2]:SetPoint("TOPRIGHT", plot, "BOTTOMRIGHT", 0, -3)
+    local tickMarks, tickLabels = {}, {}
 
     -- Drawn things are made once and used again.
     local pools = { line = {}, dot = {}, bar = {} }
@@ -87,6 +92,102 @@ function Widgets.Chart(parent)
 
     function chart:SetData(data) self.data = data end
 
+    --- The values at the moment nearest to `t` that has one: its time, and per line, the bars and each level,
+    --- { label, color, value } (a line with no point at that moment is left out). Pure: used by the tests.
+    function chart.Nearest(data, t)
+        local best
+        local function see(p)
+            if p[2] and p[1] >= (data.from or -math.huge) and p[1] <= (data.to or math.huge)
+                and (not best or math.abs(p[1] - t) < math.abs(best - t)) then best = p[1] end
+        end
+        for _, line in ipairs(data.lines or {}) do for _, p in ipairs(line.points) do see(p) end end
+        if data.bars then for _, p in ipairs(data.bars.points) do see(p) end end
+        if not best then return nil end
+        local out = { t = best, values = {} }
+        for _, line in ipairs(data.lines or {}) do
+            for _, p in ipairs(line.points) do
+                if p[1] == best and p[2] then
+                    out.values[#out.values + 1] = { label = line.label, color = line.color, value = p[2], line = true }
+                    break
+                end
+            end
+        end
+        if data.bars then
+            for _, p in ipairs(data.bars.points) do
+                if p[1] == best and p[2] then
+                    out.values[#out.values + 1] = { label = data.bars.label, color = { 0.35, 0.6, 1 }, value = p[2],
+                        count = true }
+                    break
+                end
+            end
+        end
+        for _, level in ipairs(data.levels or {}) do
+            out.values[#out.values + 1] = { label = level.label, color = level.color, value = level.value }
+        end
+        return out
+    end
+
+    -- The mark under the mouse: a thin vertical line, and a dot on each line at that moment.
+    local mark = plot:CreateTexture(nil, "OVERLAY")
+    mark:SetColorTexture(1, 1, 1, 0.35)
+    mark:SetWidth(1)
+    mark:Hide()
+    local marks = {}
+    local view   -- what the last Refresh drew: { x = fn, y = fn, w, from, to }
+    local function hideMarks()
+        mark:Hide()
+        for _, d in ipairs(marks) do d:Hide() end
+        if GameTooltip:IsOwned(plot) then GameTooltip:Hide() end
+    end
+    local function hover()
+        if not view then return hideMarks() end
+        local cx = GetCursorPosition()
+        local scaleUI = plot:GetEffectiveScale() or 1
+        local left = plot:GetLeft()
+        if not cx or not left then return end
+        local px = cx / scaleUI - left
+        local t = view.from + math.max(0, math.min(1, px / view.w)) * (view.to - view.from)
+        local n = chart.Nearest(chart.data or {}, t)
+        if not n then return hideMarks() end
+        local mx = view.x(n.t)
+        mark:ClearAllPoints()
+        mark:SetPoint("TOPLEFT", plot, "TOPLEFT", mx, 0)
+        mark:SetPoint("BOTTOMLEFT", plot, "BOTTOMLEFT", mx, 0)
+        mark:Show()
+        local data = chart.data
+        local format = data.format or ns.Money
+        local xFormat = data.xFormat or function(at) return date("%m-%d %H:%M", at) end
+        GameTooltip:SetOwner(plot, "ANCHOR_CURSOR")
+        GameTooltip:SetText(xFormat(n.t), 1, 1, 1)
+        local d = 0
+        for _, v in ipairs(n.values) do
+            local c = v.color or { 1, 1, 1 }
+            GameTooltip:AddDoubleLine(v.label or "", v.count and tostring(v.value) or format(math.floor(v.value + 0.5)),
+                c[1], c[2], c[3], 1, 1, 1)
+            if v.line then
+                d = d + 1
+                local dot = marks[d]
+                if not dot then
+                    dot = plot:CreateTexture(nil, "OVERLAY")
+                    dot:SetSize(6, 6)
+                    marks[d] = dot
+                end
+                dot:SetColorTexture(c[1], c[2], c[3], 1)
+                dot:ClearAllPoints()
+                dot:SetPoint("CENTER", plot, "BOTTOMLEFT", mx, view.y(v.value))
+                dot:Show()
+            end
+        end
+        for i = d + 1, #marks do marks[i]:Hide() end
+        GameTooltip:Show()
+    end
+    plot:EnableMouse(true)
+    plot:SetScript("OnEnter", function(self) self:SetScript("OnUpdate", hover) end)
+    plot:SetScript("OnLeave", function(self)
+        self:SetScript("OnUpdate", nil)
+        hideMarks()
+    end)
+
     --- The lowest and highest value of everything on the money scale. Pure: used by the tests.
     function chart.Bounds(data)
         local lo, hi
@@ -119,12 +220,14 @@ function Widgets.Chart(parent)
         legend:SetText("")
         for i = 1, 3 do scale[i]:SetText("") grid[i]:Hide() end
         times[1]:SetText("") times[2]:SetText("")
+        view = nil
         if not any then return end
         local format = data.format or ns.Money
         local bars = data.bars and #data.bars.points > 0 and data.bars or nil
         local base = bars and h * BARS or 0          -- the lines sit above the bars
         local function x(t) return (t - from) / (to - from) * w end
         local function y(v) return base + (v - lo) / (hi - lo) * (h - base) end
+        view = { x = x, y = y, w = w, from = from, to = to }
         for i, v in ipairs({ hi, (hi + lo) / 2, lo }) do
             scale[i]:ClearAllPoints()
             scale[i]:SetPoint("RIGHT", plot, "BOTTOMLEFT", -6, y(v))
@@ -135,8 +238,41 @@ function Widgets.Chart(parent)
             grid[i]:Show()
         end
         local xFormat = data.xFormat or function(t) return date("%m-%d %H:%M", t) end
-        times[1]:SetText(xFormat(from))
-        times[2]:SetText(xFormat(to))
+        for _, m in ipairs(tickMarks) do m:Hide() end
+        for _, l in ipairs(tickLabels) do l:Hide() end
+        if data.xTicks then
+            -- Marks on the axis, a label under the ones that have one (the end labels give way to them).
+            local nl = 0
+            for i, tk in ipairs(data.xTicks) do
+                local m = tickMarks[i]
+                if not m then
+                    m = plot:CreateTexture(nil, "BACKGROUND")
+                    m:SetColorTexture(1, 1, 1, 0.12)
+                    m:SetWidth(1)
+                    tickMarks[i] = m
+                end
+                m:ClearAllPoints()
+                m:SetPoint("BOTTOM", plot, "BOTTOMLEFT", x(tk[1]), 0)
+                m:SetHeight(tk[2] and h or 4)
+                m:SetAlpha(tk[2] and 1 or 0.6)
+                m:Show()
+                if tk[2] then
+                    nl = nl + 1
+                    local l = tickLabels[nl]
+                    if not l then
+                        l = chart:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+                        tickLabels[nl] = l
+                    end
+                    l:ClearAllPoints()
+                    l:SetPoint("TOP", plot, "BOTTOMLEFT", x(tk[1]), -3)
+                    l:SetText(tk[2])
+                    l:Show()
+                end
+            end
+        else
+            times[1]:SetText(xFormat(from))
+            times[2]:SetText(xFormat(to))
+        end
         local names = {}
         if bars then
             local top = 0

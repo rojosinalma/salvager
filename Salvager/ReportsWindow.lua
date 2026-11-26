@@ -150,8 +150,6 @@ local function profitCells(x, name)
         signed(profit), pct(profit, x.paid), x.n > 0 and signed(profit / x.n) or "-" }
 end
 
-local CLASS_ORDER = { { 4, "Armor" }, { 2, "Weapons" } }
-
 --- By gear type (a heading with its totals), by quality under it (with its totals), and by item level band
 --- under each quality (the range only).
 function Reports.ProfitRows()
@@ -161,22 +159,16 @@ function Reports.ProfitRows()
             .. "Deals tab, then disenchant.") }
     end
     local rows = { { group = true, cells = profitCells(p.total, GOLD .. "All|r") } }
-    for _, c in ipairs(CLASS_ORDER) do
-        local of = {}
-        for _, g in ipairs(p.groups) do if g.classID == c[1] then of[#of + 1] = g end end
-        if #of > 0 then
-            local sum = { n = 0, paid = 0, value = 0, sold = 0, salvager = 0 }
-            for _, g in ipairs(of) do for k in pairs(sum) do sum[k] = sum[k] + g[k] end end
-            rows[#rows + 1] = { group = true, cells = profitCells(sum, GOLD .. c[2] .. "|r") }
-            for _, g in ipairs(of) do
-                local name = (ns.QUALITY_COLOR[g.quality] or "") .. (ns.QUALITY_NAME[g.quality] or "?") .. "|r"
-                rows[#rows + 1] = { group = true, cells = profitCells(g, name), indent = INDENT }
-                for _, b in ipairs(g.bands) do
-                    local range = ns.BandName(b.quality, b.classID, b.band):match("item level (.-)|r$") or tostring(b.band)
-                    rows[#rows + 1] = { cells = profitCells(b, range), indent = 2 * INDENT }
-                end
-            end
-        end
+    local bands = {}
+    for _, g in ipairs(p.groups) do for _, b in ipairs(g.bands) do bands[#bands + 1] = b end end
+    local function sum(of)
+        local t = { n = 0, paid = 0, value = 0, sold = 0, salvager = 0 }
+        for _, b in ipairs(of) do for k in pairs(t) do t[k] = t[k] + b[k] end end
+        return t
+    end
+    for _, r in ipairs(ns.GroupedRows(bands, function(b) return { cells = profitCells(b, "") } end,
+        function(of, label) return { group = true, cells = profitCells(sum(of), label) } end, INDENT)) do
+        rows[#rows + 1] = r
     end
     return rows
 end

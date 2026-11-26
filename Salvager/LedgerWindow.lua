@@ -263,29 +263,23 @@ function Window.AccuracyBandRows()
         return rows
     end
     row(acc.total, GOLD .. "All bands|r", true)
-    -- One heading per quality and gear type, with its own totals; its bands under it, by item level only.
-    local groups, order = {}, {}
-    for _, b in ipairs(acc.bands) do
-        local key = (b.quality or 0) .. ":" .. (b.classID or 0)
-        local g = groups[key]
-        if not g then
-            g = { n = 0, paid = 0, promised = 0, got = 0, sold = 0, units = 0, soldUnits = 0, bands = {} }
-            g.name = ns.BandName(b.quality, b.classID, b.band):match("^(.-|r)") or "?"
-            groups[key] = g
-            order[#order + 1] = g
-        end
-        for _, field in ipairs({ "n", "paid", "promised", "got", "sold", "units", "soldUnits" }) do
-            g[field] = g[field] + b[field]
-        end
-        g.bands[#g.bands + 1] = b
+    -- Grouped the one way (ns.GroupedRows): gear type, quality, then each band by its range, with totals.
+    local FIELDS = { "n", "paid", "promised", "got", "sold", "units", "soldUnits" }
+    local function sum(bands)
+        local t = {}
+        for _, field in ipairs(FIELDS) do t[field] = 0 end
+        for _, b in ipairs(bands) do for _, field in ipairs(FIELDS) do t[field] = t[field] + b[field] end end
+        return t
     end
-    for _, g in ipairs(order) do
-        row(g, g.name, true)
-        for _, b in ipairs(g.bands) do
-            local range = ns.BandName(b.quality, b.classID, b.band):match("item level (.-)|r$") or tostring(b.band)
-            row(b, range)
-            rows[#rows].indent = INDENT
-        end
+    local function made(b, name, group)
+        row(b, name, group)
+        local r = rows[#rows]
+        rows[#rows] = nil
+        return r
+    end
+    for _, r in ipairs(ns.GroupedRows(acc.bands, function(b) return made(b, "") end,
+        function(of, label) return made(sum(of), label, true) end, INDENT)) do
+        rows[#rows + 1] = r
     end
     return rows
 end
@@ -340,7 +334,8 @@ function Window.OddsBands()
                     local limit = ns.BuyLimit(quality, classID, up, ns.LimitBasis(v))
                     local entry = { rows = {}, head = {
                         group = true,
-                        cells = { ns.BandName(quality, classID, up),
+                        -- (The subtab is the gear type: the quality and the range say the rest.)
+                        cells = { ns.QualityText(quality) .. " " .. ns.BandRange(quality, up),
                             n > 0 and tostring(n) or (GREY .. "0|r"), "", "",
                             ns.Money(v.net) .. (#v.missing > 0 and (GREY .. "?|r") or ""),
                             ns.Money(limit),

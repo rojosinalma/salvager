@@ -358,6 +358,15 @@ flipping is out of scope for now.
     filters on the row under the tabs (gear type, quality, item level band, with or without the Salvager;
     remembered; at least one ticked). Materials: Held = bags and bank (`GetItemCount(id, true)`), Listed = your
     unsold auctions as last read; the ledger's stock counts both and is not shown as "in stock".
+80. **One grouping for every list of bands** (the user, 2026-11-26): gear type (Armor, then Weapons), quality
+    under it, then each band by its range only ("26-30", never "item level 26-30"). `ns.GroupedRows` builds
+    it, with totals on the headings where the table has totals: Market's Disenchant value, Ledger's
+    Accuracy, Reports' Profit, Breakdown's bands. Odds cards sit under the Armor/Weapons subtab and are titled
+    "Uncommon 26-30". A sorted grouped list sorts inside each group (`section`, `head`). The main window's
+    Limits tab keeps Armor and Weapons as columns.
+81. **Charts:** the mouse over a chart shows the values at the nearest moment that has one (a mark, a dot per
+    line, a tooltip with the time, each line, the units listed and each level; `chart.Nearest`). Market's
+    "By hour" is now "Time of day", with a mark at every hour and a label every 3 hours (`xTicks`).
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

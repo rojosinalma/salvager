@@ -125,7 +125,15 @@ function Breakdown.Refresh()
     local items = Breakdown.Rows(b.items, matID, itemLabel)
     parts[2]:SetSource(#items, function(i) return items[i] end)
     parts[2]:Refresh()
-    local bands = Breakdown.Rows(b.bands, matID, bandLabel)
+    -- Grouped the one way: gear type, quality, then each band by its range.
+    local byBand = {}
+    for _, s in ipairs(b.bands) do
+        local r = Breakdown.Rows({ s }, matID, bandLabel)[1]
+        byBand[#byBand + 1] = { quality = s.quality, classID = s.classID, band = s.band, row = r }
+    end
+    local bands = #byBand > 0 and ns.GroupedRows(byBand, function(e) return e.row end,
+        function(_, label) return { group = true, cells = { label } } end)
+        or Breakdown.Rows(b.bands, matID, bandLabel)
     parts[4]:SetSource(#bands, function(i) return bands[i] end)
     parts[4]:Refresh()
 end
