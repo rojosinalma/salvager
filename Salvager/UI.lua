@@ -477,7 +477,9 @@ local function updateBuyTop()
     local icon = d and W.IconOf(d.itemID)
     if icon then topItem.icon:SetTexture(icon) topItem.icon:Show() else topItem.icon:Hide() end
     local tw = tonumber((topItem.text:GetStringWidth())) or 0
-    topItem.text:SetWidth(math.max(1, math.min(tw + 2, ((f:GetWidth() or 800) - 150) / 2)))
+    local w = math.max(1, math.min(tw + 2, ((f:GetWidth() or 800) - 150) / 2))
+    topItem.text:SetWidth(w)
+    topItem:SetWidth(w + (icon and 17 or 0))   -- the icon (14) and its gap (3)
     topItem:SetShown(d ~= nil)
     if buyTop.hover then buyTopTooltip(buyTop) end
 end
@@ -710,17 +712,18 @@ local function build()
     local ledger = W.Button(f, "Ledger", 80, function() ns.LedgerWindow.Toggle() end,
         "Opens the ledger in its own window: what you bought, what each item was disenchanted into, "
         .. "your sales and their profit.")
-    ledger:SetPoint("RIGHT", log, "LEFT", -6, 0)
     local market = W.Button(f, "Market", 80, function() ns.Market.Toggle() end,
         "Opens the market charts in their own window: the price of each material over time, from your scans.")
-    market:SetPoint("RIGHT", ledger, "LEFT", -6, 0)
+    market:SetPoint("RIGHT", log, "LEFT", -6, 0)
     ahButton = W.Button(f, "Auction house", 104, function() UI.ToAuctionHouse() end,
         "Closes the Salvager windows: only the auction house window stays. Scans keep running. The Salvager button "
         .. "above the auction house window brings them back.")
     local reports = W.Button(f, "Reports", 80, function() ns.Reports.Toggle() end,
         "Opens the reports in their own window: your gold, and the profit by quality, band, material and item.")
     reports:SetPoint("RIGHT", market, "LEFT", -6, 0)
-    ahButton:SetPoint("RIGHT", reports, "LEFT", -6, 0)
+    -- Left to right: Auction house, Ledger, Reports, Market, Log, Options (the user, 0.3.113).
+    ledger:SetPoint("RIGHT", reports, "LEFT", -6, 0)
+    ahButton:SetPoint("RIGHT", ledger, "LEFT", -6, 0)
     ahButton:SetMotionScriptsWhileDisabled(true)
     ahButton:HookScript("OnEnter", function(self)
         if self.reason then GameTooltip:AddLine(self.reason, 1, 0.3, 0.3, true) GameTooltip:Show() end
@@ -759,7 +762,7 @@ local function build()
     topItem.icon = topItem:CreateTexture(nil, "ARTWORK")
     topItem.icon:SetSize(14, 14)
     topItem.icon:SetPoint("RIGHT", topItem.text, "LEFT", -3, 0)
-    topItem:SetPoint("LEFT", topItem.icon, "LEFT", 0, 0)
+    topItem:SetWidth(1)   -- set from the text in updateBuyTop (anchoring it to its own icon is a loop the client refuses)
     topItem:SetScript("OnEnter", function(self)
         if not self.link then return end
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -1313,13 +1316,23 @@ end
 
 function UI.Frame() return f end
 
+-- A build that fails leaves a half-made window: the error goes to the Log too, not only to the game's error box.
+local function ensure()
+    if f then return end
+    local ok, err = pcall(build)
+    if not ok then
+        ns.Log("ERROR building the main window: %s", tostring(err))
+        error(err, 0)
+    end
+end
+
 function UI.Toggle()
-    if not f then build() end
+    ensure()
     f:SetShown(not f:IsShown())
 end
 
 function UI.Show()
-    if not f then build() end
+    ensure()
     f:Show()
 end
 

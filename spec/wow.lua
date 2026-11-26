@@ -4,6 +4,20 @@ local M = {}
 
 local function noop() end
 
+-- True when `region` is `target` or is anchored, directly or through others, to it.
+local function dependsOn(region, target, seen)
+    if region == target then return true end
+    seen = seen or {}
+    if type(region) ~= "table" or seen[region] then return false end
+    seen[region] = true
+    for _, p in ipairs(rawget(region, "points") or {}) do
+        for i = 1, #p do
+            if type(p[i]) == "table" and dependsOn(p[i], target, seen) then return true end
+        end
+    end
+    return false
+end
+
 --- A frame/region whose unknown methods do nothing. Scripts and state are kept.
 local function widget(kind)
     local w = { kind = kind, scripts = {}, shown = true, events = {}, text = "", checked = false }
@@ -30,7 +44,16 @@ local function widget(kind)
         IsEnabled = function(self) return self.enabled ~= false end,
         GetPoint = function() return "CENTER", nil, "CENTER", 0, 0 end,
         -- The anchors set, in order, so a spec can tell what a region hangs on.
-        SetPoint = function(self, ...) rawset(self, "points", rawget(self, "points") or {}) table.insert(self.points, { ... }) end,
+        SetPoint = function(self, ...)
+            -- The client refuses an anchor to a region that depends on this one (a loop): so does the stand-in.
+            for i = 1, select("#", ...) do
+                local rel = select(i, ...)
+                if type(rel) == "table" and dependsOn(rel, self) then
+                    error("Action[SetPoint] failed because[Cannot anchor to a region dependent on it]", 2)
+                end
+            end
+            rawset(self, "points", rawget(self, "points") or {}) table.insert(self.points, { ... })
+        end,
         ClearAllPoints = function(self) rawset(self, "points", nil) end,
         GetParent = function(self) return self.parent end,
         CreateFontString = function(self) local fs = widget("FontString") fs.parent = self return fs end,
