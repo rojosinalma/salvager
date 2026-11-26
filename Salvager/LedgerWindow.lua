@@ -40,7 +40,9 @@ local COLUMNS = {
             .. "disenchant value. The gap is prices that moved, and undercutting. * = more than half of the row's "
             .. "materials are not sold yet, so most of it is still the disenchant value." } },
         { "Expected profit", 70, "RIGHT", help = { "Expected profit", "Expected value minus Paid." } },
-        { "Actual profit", 70, "RIGHT", help = { "Actual profit", "Sold value minus Paid." } } },
+        { "Actual profit", 70, "RIGHT", help = { "Actual profit", "Sold value minus Paid." } },
+        { "Profit difference", 70, "RIGHT", help = { "Profit difference", "Actual profit minus Expected profit: how "
+            .. "much more (+) or less (-) the items made than the Deals list said when you bought them." } } },
     accMats = { { "Material", 170 }, { "Units", 44, "CENTER" },
         { "Disenchant value each", 80, "RIGHT", help = { "Disenchant value each", "The average market price of one "
             .. "unit at the moment you disenchanted, after the auction house cut." } },
@@ -74,18 +76,127 @@ local oddsFrame, oddsOut -- the odds in a window of their own
 local popOut            -- the button next to the Odds tab that moves them there and back
 local salesParts = {}   -- title, table, title, table of the Sales view
 local purchaseControls = {} -- the Purchases view's search box and filters
+local accuracyControls = {} -- the Accuracy view's filters
 local salesTabs = {}    -- the Sales view's subtabs: open and sold, history
 
 --- Which bands the Odds view shows: { quality = { [2], [3], [4] }, type = { a, w } }, kept with the window.
+--- A filter set as every view keeps it: gear types, qualities, item level bands left out, Salvager
+--- ("all" | "with" | "without"), and the closed headings. Missing parts are filled in.
+local function filterSet(x)
+    x.classes = x.classes or { [Data.CLASS_ARMOR] = true, [Data.CLASS_WEAPON] = true }
+    x.qualities = x.qualities or { [2] = true, [3] = true, [4] = true }
+    x.bandsOff = x.bandsOff or {}
+    x.salvager = x.salvager or "all"
+    x.collapsed = x.collapsed or {}
+    return x
+end
+
+--- Does a thing of this gear type, quality, item level (and Salvager) pass the filter? Unknown parts pass.
+-- The Purchases view's search and filters (in the window's saved data): text in the item's name, gear types,
+-- qualities, item level bands left out.
+local function purchaseFilter()
+    ns.db.windows.ledger = ns.db.windows.ledger or {}
+    local saved = ns.db.windows.ledger
+    saved.purchaseFilter = saved.purchaseFilter or {}
+    local x = filterSet(saved.purchaseFilter)
+    x.open = x.open or {}
+    return x
+end
+Window.PurchaseFilter = purchaseFilter
+
+local function filterPasses(x, classID, quality, ilvl, salvager)
+    if classID and not x.classes[classID] then return false end
+    if quality and not x.qualities[quality] then return false end
+    if x.salvager == "with" and salvager == false then return false end
+    if x.salvager == "without" and salvager == true then return false end
+    if ilvl then
+        for _, b in ipairs(ns.LevelBands()) do
+            if ilvl <= b.up then return not x.bandsOff[b.up] end
+        end
+    end
+    return true
+end
+Window.FilterPasses = filterPasses
+
+--- The filter row every view has: Gear, Quality, Bands (and Salvager with `salvager`), after `after` (a
+--- region) or at `point` = { x, y } of `parent`. `changed()` runs after each change.
+--- @return table controls, region the last one
+local function filterRow(parent, x, changed, point, salvager)
+    local controls, prev = {}, nil
+    local function setOf(tbl, invert, all)
+        return function(key) if invert then return not tbl[key] end return tbl[key] and true or false end,
+            function(key, on)
+                if invert then tbl[key] = (not on) or nil else tbl[key] = on or nil end
+                local any = false
+                for _, k in ipairs(all) do if (invert and not tbl[k]) or (not invert and tbl[k]) then any = true end end
+                if not any then
+                    if invert then tbl[key] = nil else tbl[key] = true end
+                    ns.Print("at least one must stay ticked")
+                end
+                changed()
+            end
+    end
+    local function allOr(names, total) return #names == total and "All" or table.concat(names, ", ") end
+    local function add(label, drop, help)
+        local l = W.Label(parent, label, "GameFontHighlightSmall")
+        if prev then
+            l:SetPoint("LEFT", prev, "RIGHT", 14, 0)
+        elseif type(point) == "table" and point.GetObjectType then
+            l:SetPoint("LEFT", point, "RIGHT", 14, 0)
+        else
+            l:SetPoint("LEFT", parent, "TOPLEFT", point[1], point[2])
+        end
+        drop:SetPoint("LEFT", l, "RIGHT", 6, 0)
+        W.HelpArea(parent, l, label, help)
+        controls[#controls + 1] = l
+        controls[#controls + 1] = drop
+        prev = drop
+    end
+    local gGet, gSet = setOf(x.classes, false, { Data.CLASS_ARMOR, Data.CLASS_WEAPON })
+    add("Gear", W.CheckDropdown(parent, 100, { { Data.CLASS_ARMOR, "Armor" }, { Data.CLASS_WEAPON, "Weapons" } }, gGet, gSet,
+        "Which gear types show.", "Gear", allOr), "Armor, weapons, or both.")
+    local qGet, qSet = setOf(x.qualities, false, { 2, 3, 4 })
+    add("Quality", W.CheckDropdown(parent, 130, { { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" },
+        { 4, "|cffa335eeEpic|r" } }, qGet, qSet, "Which qualities show.", "Quality", allOr), "Uncommon, Rare, Epic.")
+    local bandOptions, bandKeys = {}, {}
+    for _, b in ipairs(ns.LevelBands()) do
+        bandOptions[#bandOptions + 1] = { b.up, b.label }
+        bandKeys[#bandKeys + 1] = b.up
+    end
+    local bGet, bSet = setOf(x.bandsOff, true, bandKeys)
+    add("Bands", W.CheckDropdown(parent, 120, bandOptions, bGet, bSet, "Which item level bands show.", "Bands",
+        function(names, total)
+            if #names == total then return "All" end
+            if #names > 3 then return #names .. " bands" end
+            return table.concat(names, ", ")
+        end), "Item level bands: a band is a range of item levels that disenchants into the same materials.")
+    if salvager then
+        local drop
+        drop = W.CheckDropdown(parent, 100, { { "all", "All" }, { "with", "With it" }, { "without", "Without it" } },
+            function(key) return x.salvager == key end,
+            function(key)
+                x.salvager = key
+                drop:Close()
+                changed()
+            end, "Disenchants with the Arcane Salvager's bonus, without it, or all.", "Salvager")
+        add("Salvager", drop, "Disenchants with the Arcane Salvager's bonus, without it, or all.")
+    end
+    return controls, prev
+end
+
+--- The Odds view's filters (saved; the gear type was a subtab before 0.3.99, the qualities and bands
+--- had keys of their own).
 local function oddsFilter()
     local saved = ns.db.windows.ledger or {}
     ns.db.windows.ledger = saved
-    saved.oddsQuality = saved.oddsQuality or { [2] = true, [3] = true, [4] = true }
-    -- The gear type is a subtab: armor or weapons, one at a time.
-    if saved.oddsTab ~= "w" then saved.oddsTab = "a" end
-    saved.oddsBandsOff = saved.oddsBandsOff or {}   -- item level ranges not shown, by their upper level
-    return saved.oddsQuality, { [saved.oddsTab] = true }, saved
+    if not saved.oddsFilter then
+        saved.oddsFilter = { qualities = saved.oddsQuality, bandsOff = saved.oddsBandsOff,
+            dataOnly = saved.oddsDataOnly }
+        saved.oddsQuality, saved.oddsBandsOff, saved.oddsDataOnly, saved.oddsTab = nil, nil, nil, nil
+    end
+    return filterSet(saved.oddsFilter)
 end
+Window.OddsFilter = oddsFilter
 
 local function when(t) return (t and t > 0) and date("%m-%d %H:%M", t) or "-" end
 local function money(c) return c and ns.Money(c) or "-" end
@@ -101,20 +212,6 @@ local function note(text) return { cells = { GREY .. text .. "|r" } } end
 ------------------------------------------------------------------ rows
 
 --- Purchases: one row per item, its materials indented under it.
--- The Purchases view's search and filters (in the window's saved data): text in the item's name, gear types,
--- qualities, item level bands left out.
-local function purchaseFilter()
-    ns.db.windows.ledger = ns.db.windows.ledger or {}
-    local saved = ns.db.windows.ledger
-    saved.purchaseFilter = saved.purchaseFilter or {}
-    local x = saved.purchaseFilter
-    x.classes = x.classes or { [Data.CLASS_ARMOR] = true, [Data.CLASS_WEAPON] = true }
-    x.qualities = x.qualities or { [2] = true, [3] = true, [4] = true }
-    x.bandsOff = x.bandsOff or {}
-    x.open = x.open or {}
-    return x
-end
-Window.PurchaseFilter = purchaseFilter
 
 --- The Purchases view's order: { col, desc }, by Profit (the 6th column), the highest first, until a title
 --- is clicked.
@@ -135,16 +232,7 @@ end
 local function passes(e, x, search)
     if x.hideWaiting and not e.done then return false end
     local classID, quality, ilvl = describeEntry(e)
-    if classID and not x.classes[classID] then return false end
-    if quality and not x.qualities[quality] then return false end
-    if ilvl then
-        for _, b in ipairs(ns.LevelBands()) do
-            if ilvl <= b.up then
-                if x.bandsOff[b.up] then return false end
-                break
-            end
-        end
-    end
+    if not filterPasses(x, classID, quality, ilvl) then return false end
     if search ~= "" then
         local name = (e.link and e.link:match("%[(.-)%]")) or (ns.GetItemInfo(e.itemID)) or ""
         if not name:lower():find(search, 1, true) then return false end
@@ -351,18 +439,33 @@ local function share(part, whole)
 end
 
 --- Accuracy, by band: what was promised, what the disenchants gave, what the sales brought.
+--- The Accuracy view's filters and closed headings (saved).
+local function accuracyFilter()
+    ns.db.windows.ledger = ns.db.windows.ledger or {}
+    local saved = ns.db.windows.ledger
+    saved.accuracyFilter = filterSet(saved.accuracyFilter or {})
+    return saved.accuracyFilter
+end
+Window.AccuracyFilter = accuracyFilter
+
+local function accuracyKeep(r)
+    return filterPasses(accuracyFilter(), r.classID, r.quality, r.ilvl or r.band, r.salvager and true or false)
+end
+
 function Window.AccuracyBandRows()
-    local acc = Ledger.Accuracy(ns.db.ledger)
+    local acc = Ledger.Accuracy(ns.db.ledger, accuracyKeep)
     local rows = {}
     local function row(b, name, group)
         local few = b.n < 20
         rows[#rows + 1] = { group = group, cells = { name, (few and GREY or "") .. b.n .. (few and "|r" or ""),
             ns.Money(b.paid), ns.Money(b.promised), ns.Money(b.got), share(b.got, b.promised), ns.Money(b.sold),
             share(b.sold, b.got) .. ((b.units > 0 and b.soldUnits < b.units / 2) and (GREY .. "*|r") or ""),
-            signed(b.promised - b.paid), signed(math.floor(b.sold + 0.5) - b.paid) } }
+            signed(b.promised - b.paid), signed(math.floor(b.sold + 0.5) - b.paid),
+            signed(math.floor(b.sold + 0.5) - b.promised) } }
     end
     if acc.total.n == 0 then
-        rows[1] = note("Nothing to compare yet: it needs items you bought and then disenchanted.")
+        rows[1] = note("Nothing to compare yet, or nothing under these filters: it needs items you bought and then "
+            .. "disenchanted.")
         return rows
     end
     row(acc.total, GOLD .. "All bands|r", true)
@@ -380,8 +483,9 @@ function Window.AccuracyBandRows()
         rows[#rows] = nil
         return r
     end
+    local opts = { collapsed = accuracyFilter().collapsed, changed = function() Window.Refresh() end }
     for _, r in ipairs(ns.GroupedRows(acc.bands, function(b) return made(b, "") end,
-        function(of, label) return made(sum(of), label, true) end, INDENT)) do
+        function(of, label) return made(sum(of), label, true) end, INDENT, opts)) do
         rows[#rows + 1] = r
     end
     return rows
@@ -390,7 +494,7 @@ end
 --- Accuracy, by material: the price it was valued at when disenchanted against what it really sold for.
 function Window.AccuracyMaterialRows()
     local rows = {}
-    for _, m in ipairs(Ledger.Accuracy(ns.db.ledger).mats) do
+    for _, m in ipairs(Ledger.Accuracy(ns.db.ledger, accuracyKeep).mats) do
         local valued = m.units > 0 and m.valued / m.units or nil
         local sold = m.soldUnits > 0 and m.soldNet / m.soldUnits or nil
         rows[#rows + 1] = { itemID = m.id, cells = { ns.MaterialName(m.id), tostring(m.units),
@@ -418,24 +522,27 @@ end
 --- @return table  bands { head = the band's row, rows = its material rows }, in the flat list's cell order
 function Window.OddsBands()
     local bands = {}
-    local by = Ledger.Report(ns.db.ledger)
+    local by = Ledger.Report(ns.db.ledger, nil, function(r)
+        local f0 = oddsFilter()
+        return filterPasses(f0, nil, nil, nil, r.salvager and true or false)
+    end)
     local s = ns.db.settings
     local opts = { salvager = ns.SalvagerForBuy(), salvagerChance = s.salvagerChance, cut = s.cut }
-    local showQuality, showType, saved = oddsFilter()
+    local x = oddsFilter()
     for _, q in ipairs({ { 2, Data.GREEN }, { 3, Data.BLUE }, { 4, Data.PURPLE } }) do
-        for _, c in ipairs({ { Data.CLASS_ARMOR, "a", " armor" }, { Data.CLASS_WEAPON, "w", " weapons" } }) do
+        for _, c in ipairs({ { Data.CLASS_ARMOR }, { Data.CLASS_WEAPON } }) do
             local lo = 1
-            for _, band in ipairs((showQuality[q[1]] and showType[c[2]]) and q[2] or {}) do
+            for _, band in ipairs((x.qualities[q[1]] and x.classes[c[1]]) and q[2] or {}) do
                 local quality, classID, up = q[1], c[1], band.up
-                local inRange = levelShown(lo, up, saved.oddsBandsOff)
+                local inRange = levelShown(lo, up, x.bandsOff)
                 lo = up + 1
                 local outcomes = Model.Outcomes(quality, classID, up)
                 local mine = by[Ledger.BandKey(quality, classID, up)]
                 local n = mine and mine.n or 0
-                if inRange and (n > 0 or not saved.oddsDataOnly) then
+                if inRange and (n > 0 or not x.dataOnly) then
                     local v = Model.Value(outcomes, ns.PriceOf, opts)
                     local limit = ns.BuyLimit(quality, classID, up, ns.LimitBasis(v))
-                    local entry = { rows = {}, head = {
+                    local entry = { quality = quality, classID = classID, band = up, rows = {}, head = {
                         group = true,
                         -- (The subtab is the gear type: the quality and the range say the rest.)
                         cells = { ns.QualityText(quality) .. " " .. ns.BandRange(quality, up),
@@ -480,8 +587,7 @@ function Window.OddsBands()
 end
 
 local function oddsNote()
-    local _, _, saved = oddsFilter()
-    return saved.oddsDataOnly and "No disenchants yet in the selected bands. Untick \"Only bands with my data\" "
+    return oddsFilter().dataOnly and "No disenchants yet in the selected bands. Untick \"Only bands with my data\" "
         .. "to see the tables." or "Nothing selected: pick a quality and an item level band above."
 end
 
@@ -521,14 +627,33 @@ local BAND_HELP = { "This band", "Disenchants: how many of yours are in this ban
 function Window.OddsCards()
     local cards = {}
     local function fact(label, value) return GREY .. label .. "|r " .. value end
-    for _, band in ipairs(Window.OddsBands()) do
-        local c = band.head.cells
-        cards[#cards + 1] = {
-            title = c[1],
-            facts = table.concat({ fact("Disenchants", c[2]), fact("Value now", c[5]), fact("Buy below", c[6]),
-                fact("Loss chance", c[7]), fact("Your average", c[8]) }, "     "),
-            factsHelp = BAND_HELP, rows = band.rows,
-        }
+    local x = oddsFilter()
+    local byKey = {}
+    for _, band in ipairs(Window.OddsBands()) do byKey[Ledger.BandKey(band.quality, band.classID, band.band)] = band end
+    -- Grouped the one way: gear type, quality, then each band by its range; every heading and band opens
+    -- and closes.
+    local rows = ns.GroupedRows(Window.OddsBands(), function(band)
+        return { key = Ledger.BandKey(band.quality, band.classID, band.band), cells = { "" } }
+    end, nil, INDENT, { collapsed = x.collapsed, changed = function() Window.Refresh() end })
+    for _, r in ipairs(rows) do
+        if r.head then
+            cards[#cards + 1] = { heading = true, title = r.cells[1], open = r.open, onClick = r.onClick,
+                indent = r.indent }
+        else
+            local band = byKey[r.key]
+            local c = band.head.cells
+            local open = not x.collapsed["b" .. r.key]
+            cards[#cards + 1] = {
+                title = ns.QualityText(band.quality) .. " " .. r.cells[1], indent = r.indent, open = open,
+                onClick = function()
+                    x.collapsed["b" .. r.key] = open or nil
+                    Window.Refresh()
+                end,
+                facts = table.concat({ fact("Disenchants", c[2]), fact("Value now", c[5]), fact("Buy below", c[6]),
+                    fact("Loss chance", c[7]), fact("Your average", c[8]) }, "     "),
+                factsHelp = BAND_HELP, rows = open and band.rows or {},
+            }
+        end
     end
     if #cards == 0 then cards[1] = { title = GREY .. oddsNote() .. "|r", rows = {} } end
     return cards
@@ -590,67 +715,32 @@ local VIEWS = { sales = true, purchases = true, odds = true, accuracy = true }
 
 --- The Odds view: the three filters and the stack of tables, one per band. The caller anchors its parts.
 --- The ledger window has one, and the popped-out odds window has one.
-function newOddsView(parent)
+function newOddsView(parent, point)
     local view = {}
     local function changed()
         view.stack.offset = 0
         Window.Refresh()
     end
-    -- The subtabs: the odds of armor, and the odds of weapons.
-    view.tabs = {}
-    for _, t in ipairs({ { "a", "Armor", "The odds of armor: mostly dust." },
-        { "w", "Weapons", "The odds of weapons: mostly essence." } }) do
-        local b = W.Button(parent, t[2], 90, function()
-            select(3, oddsFilter()).oddsTab = t[1]
-            changed()
-        end, t[3])
-        if view.tabs.a then b:SetPoint("LEFT", view.tabs.a, "RIGHT", 4, 0) end
-        view.tabs[t[1]] = b
-    end
-    view.qualityFilter = W.CheckDropdown(parent, 150, {
-        { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" }, { 4, "|cffa335eeEpic|r" },
-    }, function(q) return (oddsFilter())[q] end, function(q, on)
-        (oddsFilter())[q] = on
-        changed()
-    end, "Which qualities the odds list.", "Quality")
-    local bandOptions = {}
-    for _, band in ipairs(ns.LevelBands()) do bandOptions[#bandOptions + 1] = { band.up, band.label } end
-    view.bandFilter = W.CheckDropdown(parent, 150, bandOptions,
-        function(up) return not select(3, oddsFilter()).oddsBandsOff[up] end,
-        function(up, on)
-            select(3, oddsFilter()).oddsBandsOff[up] = (not on) or nil
-            changed()
-        end, "Which item levels the odds list. A rare or epic band covers more levels than these: it shows when "
-            .. "one of its levels is ticked.", "Bands",
-        function(names, total)
-            if #names == total then return "All" end
-            if #names > 2 then return #names .. " bands" end
-            return #names == 0 and "None" or table.concat(names, ", ")
-        end)
+    -- The filter row, as everywhere: Gear, Quality, Bands, Salvager; then "Only bands with my data".
+    local controls, last = filterRow(parent, oddsFilter(), changed, point, true)
+    view.controls = controls
     view.dataOnly = W.Check(parent, "Only bands with my data",
         "Lists only the item level bands you have disenchanted in. Untick it to see the table of every band.",
         function(on)
-            select(3, oddsFilter()).oddsDataOnly = on
+            oddsFilter().dataOnly = on or nil
             changed()
         end)
+    view.dataOnly:SetPoint("LEFT", last, "RIGHT", 12, 0)
+    controls[#controls + 1] = view.dataOnly
     view.stack = W.CardList(parent)
     view.stack:SetColumns(ODDS_COLUMNS)
     function view:SetShown(on)
-        self.tabs.a:SetShown(on)
-        self.tabs.w:SetShown(on)
-        self.qualityFilter:SetShown(on)
-        self.bandFilter:SetShown(on)
-        self.dataOnly:SetShown(on)
+        for _, c in ipairs(self.controls) do c:SetShown(on) end
         self.stack:SetShown(on)
     end
     function view:Refresh()
-        self.dataOnly:SetChecked(select(3, oddsFilter()).oddsDataOnly and true or false)
-        self.qualityFilter:Update()
-        self.bandFilter:Update()
-        local tab = select(3, oddsFilter()).oddsTab
-        for key, b in pairs(self.tabs) do
-            if key == tab then b:LockHighlight() else b:UnlockHighlight() end
-        end
+        self.dataOnly:SetChecked(oddsFilter().dataOnly and true or false)
+        for _, c in ipairs(self.controls) do if c.Update then c:Update() end end
         self.stack:SetCards(Window.OddsCards())
         self.stack:Refresh()
     end
@@ -661,7 +751,7 @@ end
 local SPLIT_DEFAULT, SPLIT_MIN, SPLIT_MAX, TABLE_MIN = 0.45, 0.1, 0.9, 66
 local SUBTABS = 28   -- the height of a row of subtabs over the tables
 local function salesRoom()
-    return (f:GetHeight() or 0) - 98 - 14 - 2 * 20 - (Window.view == "sales" and SUBTABS or 0)
+    return (f:GetHeight() or 0) - 98 - 14 - 2 * 20 - ((Window.view == "sales" or Window.view == "accuracy") and SUBTABS or 0)
 end
 
 --- Sets how much of the room the upper Sales table takes (0.1 to 0.9), and remembers it.
@@ -671,7 +761,7 @@ function Window.SetSalesSplit(part)
     Window.Refresh()
 end
 
-local ODDS_TOP = 86
+local ODDS_TOP = 60
 
 function Window.Refresh()
     if oddsFrame and oddsFrame:IsShown() then oddsOut:Refresh() end
@@ -691,7 +781,11 @@ function Window.Refresh()
         c:SetShown(purchases)
         if purchases and c.Update then c:Update() end
     end
-    local down = (sales or purchases) and SUBTABS or 0
+    for _, c in ipairs(accuracyControls) do
+        c:SetShown(accuracy)
+        if accuracy and c.Update then c:Update() end
+    end
+    local down = (sales or purchases or accuracy) and SUBTABS or 0
     for key, b in pairs(salesTabs) do
         b:SetShown(sales)
         if (key == "history") == history then b:LockHighlight() else b:UnlockHighlight() end
@@ -840,15 +934,8 @@ local function build()
         .. "yours. Auctions that are sold are not checked. The number is how many listings are still for sale. "
         .. "About one second per material. Needs the auction house open.")
     checkButton:SetPoint("RIGHT", cancelButton, "LEFT", -6, 0)
-    oddsView = newOddsView(f)
-    -- The Odds filters sit on the row of its subtabs, at the right: the tab row is full, and the two lines of
-    -- totals take the top. The check box has its label on its left, so the row ends with the box.
-    oddsView.qualityFilter:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -98)
-    oddsView.bandFilter:SetPoint("RIGHT", oddsView.qualityFilter, "LEFT", -6, 0)
-    oddsView.dataOnly:SetPoint("RIGHT", oddsView.bandFilter, "LEFT", -8, 0)
-    oddsView.dataOnly.label:ClearAllPoints()
-    oddsView.dataOnly.label:SetPoint("RIGHT", oddsView.dataOnly, "LEFT", -2, 0)
-    oddsView.tabs.a:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98)
+    -- The Odds filters on the row under the tabs, as in the other views.
+    oddsView = newOddsView(f, { 14, -109 })
     oddsView.stack:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -126)
     oddsView.stack:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
     -- Right next to the Odds tab: the odds in a window of their own, and back.
@@ -954,48 +1041,9 @@ local function build()
         search:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
         W.HelpArea(f, searchLabel, "Search", "Shows the items whose name has this text in it.")
         purchaseControls = { searchLabel, search }
-        local function setOf(tbl, invert, all)
-            return function(key) if invert then return not tbl[key] end return tbl[key] and true or false end,
-                function(key, on)
-                    if invert then tbl[key] = (not on) or nil else tbl[key] = on or nil end
-                    local any = false
-                    for _, k in ipairs(all) do if (invert and not tbl[k]) or (not invert and tbl[k]) then any = true end end
-                    if not any then
-                        if invert then tbl[key] = nil else tbl[key] = true end
-                        ns.Print("at least one must stay ticked")
-                    end
-                    changed()
-                end
-        end
-        local function allOr(names, total) return #names == total and "All" or table.concat(names, ", ") end
-        local prev = search
-        local function add(label, drop, help)
-            local l = W.Label(f, label, "GameFontHighlightSmall")
-            l:SetPoint("LEFT", prev, "RIGHT", 14, 0)
-            drop:SetPoint("LEFT", l, "RIGHT", 6, 0)
-            W.HelpArea(f, l, label, help)
-            purchaseControls[#purchaseControls + 1] = l
-            purchaseControls[#purchaseControls + 1] = drop
-            prev = drop
-        end
-        local gGet, gSet = setOf(pf.classes, false, { Data.CLASS_ARMOR, Data.CLASS_WEAPON })
-        add("Gear", W.CheckDropdown(f, 100, { { Data.CLASS_ARMOR, "Armor" }, { Data.CLASS_WEAPON, "Weapons" } }, gGet, gSet,
-            "Which gear types show.", "Gear", allOr), "Armor, weapons, or both.")
-        local qGet, qSet = setOf(pf.qualities, false, { 2, 3, 4 })
-        add("Quality", W.CheckDropdown(f, 130, { { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" },
-            { 4, "|cffa335eeEpic|r" } }, qGet, qSet, "Which qualities show.", "Quality", allOr), "Uncommon, Rare, Epic.")
-        local bandOptions, bandKeys = {}, {}
-        for _, b in ipairs(ns.LevelBands()) do
-            bandOptions[#bandOptions + 1] = { b.up, b.label }
-            bandKeys[#bandKeys + 1] = b.up
-        end
-        local bGet, bSet = setOf(pf.bandsOff, true, bandKeys)
-        add("Bands", W.CheckDropdown(f, 130, bandOptions, bGet, bSet, "Which item level bands show.", "Bands",
-            function(names, total)
-                if #names == total then return "All" end
-                if #names > 3 then return #names .. " bands" end
-                return table.concat(names, ", ")
-            end), "Item level bands: a band is a range of item levels that disenchants into the same materials.")
+        local row, last = filterRow(f, pf, changed, search, false)
+        for _, c in ipairs(row) do purchaseControls[#purchaseControls + 1] = c end
+        local prev = last
         local waiting = W.Check(f, "Not disenchanted", "Shows the items you bought and have not disenchanted yet. "
             .. "Untick it to see only what was disenchanted.", function(on)
             pf.hideWaiting = (not on) or nil
@@ -1005,6 +1053,14 @@ local function build()
         waiting:SetChecked(not pf.hideWaiting)
         purchaseControls[#purchaseControls + 1] = waiting
         for _, c in ipairs(purchaseControls) do c:Hide() end
+    end
+    -- The Accuracy view: the filter row, Salvager too.
+    do
+        accuracyControls = filterRow(f, accuracyFilter(), function()
+            salesParts[2].offset, salesParts[4].offset = 0, 0
+            Window.Refresh()
+        end, { 14, -109 }, true)
+        for _, c in ipairs(accuracyControls) do c:Hide() end
     end
     if VIEWS[f.saved.view] then Window.view = f.saved.view end
     f.onResize = Window.Refresh
@@ -1030,13 +1086,9 @@ StaticPopupDialogs["SALVAGER_CLEAR_LEDGER"] = {
 
 local function buildOdds()
     -- As wide as its tables need; the height is the player's (the corner sizes it up and down only).
-    oddsFrame = W.Window("SalvagerOddsFrame", "Salvager odds", "odds", 760, 520, 760, 200, "vertical")
+    oddsFrame = W.Window("SalvagerOddsFrame", "Salvager odds", "odds", 860, 520, 860, 200, "vertical")   -- (its filter row needs 860)
     oddsFrame.onResize = Window.Refresh
-    oddsOut = newOddsView(oddsFrame)
-    oddsOut.dataOnly:SetPoint("TOPLEFT", oddsFrame, "TOPLEFT", 12, -29)
-    oddsOut.qualityFilter:SetPoint("TOPRIGHT", oddsFrame, "TOPRIGHT", -12, -30)
-    oddsOut.bandFilter:SetPoint("RIGHT", oddsOut.qualityFilter, "LEFT", -6, 0)
-    oddsOut.tabs.a:SetPoint("TOPLEFT", oddsFrame, "TOPLEFT", 12, -58)
+    oddsOut = newOddsView(oddsFrame, { 14, -41 })
     oddsOut.stack:SetPoint("TOPLEFT", oddsFrame, "TOPLEFT", 12, -ODDS_TOP)
     oddsOut.stack:SetPoint("BOTTOMRIGHT", oddsFrame, "BOTTOMRIGHT", -12, 14)
     oddsFrame:SetScript("OnShow", Window.Refresh)

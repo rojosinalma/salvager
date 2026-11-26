@@ -301,6 +301,9 @@ end
 function Widgets.CardList(parent)
     -- (The title band has two lines: the title, and under it the card's facts.)
     local TITLE_H, HEAD_H, ROW_H, GAP, BAR_W, STEP, MAX_COLS = 40, 18, 22, 8, 18, 22, 8
+    local HEADING_H, TOGGLE = 26, 18   -- a heading card (title only); the open / close sign
+    -- A card may be a heading (data.heading: its title only), may open and close (data.open ~= nil: the sign
+    -- before its title, a click on its title band calls data.onClick), and may sit in (data.indent).
     local stack = CreateFrame("Frame", nil, parent)
     stack.offset, stack.cards, stack.data, stack.columns = 0, {}, {}, {}
     local scroll = CreateFrame("ScrollFrame", nil, stack)
@@ -350,6 +353,16 @@ function Widgets.CardList(parent)
         band:SetPoint("TOPRIGHT", card, "TOPRIGHT", -1, -1)
         band:SetHeight(TITLE_H)
         band:SetColorTexture(1, 0.82, 0, 0.09)
+        card.band = band
+        card.toggle = card:CreateTexture(nil, "OVERLAY")
+        card.toggle:SetSize(TOGGLE, TOGGLE)
+        card.toggle:Hide()
+        card.click = CreateFrame("Button", nil, card)
+        card.click:SetPoint("TOPLEFT", card, "TOPLEFT", 0, 0)
+        card.click:SetPoint("TOPRIGHT", card, "TOPRIGHT", -200, 0)   -- (the facts' help stays reachable on the right)
+        card.click:SetScript("OnClick", function()
+            if card.data and card.data.onClick then card.data.onClick(card.data) end
+        end)
         card.title = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         card.title:SetPoint("TOPLEFT", card, "TOPLEFT", 8, -5)
         card.facts = card:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -461,15 +474,37 @@ function Widgets.CardList(parent)
             end
             card.data = data
             local rows = data.rows or {}
-            local height = TITLE_H + 2 + (#rows > 0 and (HEAD_H + #rows * ROW_H + 2) or 0)
+            local titleH = data.heading and HEADING_H or TITLE_H
+            local height = titleH + 2 + (#rows > 0 and (HEAD_H + #rows * ROW_H + 2) or 0)
             card:ClearAllPoints()
-            card:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
+            card:SetPoint("TOPLEFT", content, "TOPLEFT", data.indent or 0, -y)
             card:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, -y)
             card:SetHeight(height)
+            card.band:SetHeight(titleH)
+            card.click:SetHeight(titleH)
+            card.click:SetShown(data.onClick ~= nil)
+            local tx = 8
+            if data.open ~= nil then
+                card.toggle:SetTexture(data.open and "Interface\\Buttons\\UI-MinusButton-Up"
+                    or "Interface\\Buttons\\UI-PlusButton-Up")
+                card.toggle:ClearAllPoints()
+                card.toggle:SetPoint("TOPLEFT", card, "TOPLEFT", 6, -(data.heading and 4 or 3))
+                card.toggle:Show()
+                tx = 6 + TOGGLE + 4
+            else
+                card.toggle:Hide()
+            end
+            card.title:ClearAllPoints()
+            card.title:SetPoint("TOPLEFT", card, "TOPLEFT", tx, data.heading and -6 or -5)
+            card.facts:ClearAllPoints()
+            card.facts:SetPoint("TOPLEFT", card, "TOPLEFT", tx, -23)
             card.title:SetText(data.title or "")
             card.facts:SetText(data.facts or "")
             card.factsHelp:SetShown(data.factsHelp ~= nil)
             card.heads:SetShown(#rows > 0)
+            card.heads:ClearAllPoints()
+            card.heads:SetPoint("TOPLEFT", card, "TOPLEFT", 0, -titleH - 1)
+            card.heads:SetPoint("TOPRIGHT", card, "TOPRIGHT", 0, -titleH - 1)
             for i = 1, MAX_COLS do
                 local h, col = card.headTexts[i], cols[i]
                 if col then

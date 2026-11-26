@@ -322,8 +322,21 @@ end
 --- the range); `head(list, label, level)` = a heading row for a group (level 1 = gear type, 2 = quality),
 --- or nil for a plain heading. Headings have `head = true`; every row has `section` (its quality group).
 --- @return table rows
-function ns.GroupedRows(entries, row, head, indent)
+--- `opts.collapsed` = { [key] = true } closes a heading (key "<classID>" or "<classID>:<quality>"): its rows
+--- are left out; with it the headings get `open` (the open / close sign) and `onClick` (it flips, then
+--- `opts.changed()`).
+function ns.GroupedRows(entries, row, head, indent, opts)
     indent = indent or 22
+    opts = opts or {}
+    local collapsed = opts.collapsed
+    local function toggle(h, key)
+        if not collapsed then return end
+        h.open = not collapsed[key]
+        h.onClick = function()
+            collapsed[key] = (not collapsed[key]) or nil
+            if opts.changed then opts.changed() end
+        end
+    end
     local rows, section = {}, 0
     for _, classID in ipairs({ Data.CLASS_ARMOR, Data.CLASS_WEAPON }) do
         local ofType = {}
@@ -333,8 +346,9 @@ function ns.GroupedRows(entries, row, head, indent)
             local label = "|cffffd100" .. ns.CLASS_LABEL[classID] .. "|r"
             local h = head and head(ofType, label, 1) or { cells = { label } }
             h.head, h.section = true, section
+            toggle(h, tostring(classID))
             rows[#rows + 1] = h
-            for _, quality in ipairs({ 2, 3, 4 }) do
+            for _, quality in ipairs((collapsed and collapsed[tostring(classID)]) and {} or { 2, 3, 4 }) do
                 local of = {}
                 for _, e in ipairs(ofType) do if e.quality == quality then of[#of + 1] = e end end
                 if #of > 0 then
@@ -343,8 +357,10 @@ function ns.GroupedRows(entries, row, head, indent)
                     local qLabel = ns.QualityText(quality)
                     local qh = head and head(of, qLabel, 2) or { cells = { qLabel } }
                     qh.head, qh.section, qh.indent = true, section, indent
+                    local qKey = classID .. ":" .. quality
+                    toggle(qh, qKey)
                     rows[#rows + 1] = qh
-                    for _, e in ipairs(of) do
+                    for _, e in ipairs((collapsed and collapsed[qKey]) and {} or of) do
                         local r = row(e)
                         r.cells[1] = ns.BandRange(e.quality, e.band)
                         r.indent, r.section = 2 * indent, section

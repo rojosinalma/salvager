@@ -378,6 +378,14 @@ flipping is out of scope for now.
 81. **Charts:** the mouse over a chart shows the values at the nearest moment that has one (a mark, a dot per
     line, a tooltip with the time, each line, the units listed and each level; `chart.Nearest`). Market's
     "By hour" is now "Time of day", with a mark at every hour and a label every 3 hours (`xTicks`).
+83. **Filters as usual, headings that close** (0.3.99): one filter row (`filterRow` in LedgerWindow.lua:
+    Gear, Quality, Bands, and Salvager where the data says it) on the row under the Ledger's tabs, in
+    Purchases, Accuracy and Odds; each view keeps its own (`purchaseFilter`, `accuracyFilter`,
+    `oddsFilter` in `SalvagerDB.windows.ledger`). Odds lost its Armor/Weapons subtabs (the Gear filter does
+    it; old settings move over once). Every heading of a grouped list opens and closes (`ns.GroupedRows`
+    `opts.collapsed`); Odds cards too, each band on its own (`Widgets.CardList`: `heading`, `open`,
+    `onClick`, `indent`). Accuracy has a Profit difference column (Actual profit − Expected profit), on the
+    headings too. The odds window is 860 wide for its filter row.
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

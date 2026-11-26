@@ -154,9 +154,10 @@ describe("Salvager in a simulated client", function()
         local paid
         for _, r in ipairs(sales) do if r.itemID == 11083 then paid = r end end
         assert.is_truthy(paid.cells[1]:find("2x Soul Dust", 1, true))
+        ns.db.windows.ledger = nil
+        ns.LedgerWindow.OddsFilter().classes[ns.Data.CLASS_WEAPON] = nil     -- the Gear filter: armor only
         local odds = ns.LedgerWindow.OddsRows()
-        -- Every band of every quality is there for the Armor subtab, with or without data: 24 bands,
-        -- and at least two rows each.
+        -- Every band of every quality is there for armor, with or without data: 24 bands, two rows each at least.
         assert.is_true(#odds > 2 * 24)
         local band, dust
         for i, r in ipairs(odds) do
@@ -186,34 +187,60 @@ describe("Salvager in a simulated client", function()
         end
         des[#des] = nil
         assert.is_table(odd)
-        -- In the window each band is a table of its own: a card with the band's facts and its material rows.
+        -- In the window: a heading for the gear type, one per quality, and a card per band, each opens and closes.
         local cards = ns.LedgerWindow.OddsCards()
-        assert.are.equal(24, #cards)
+        assert.are.equal(1 + 3 + 24, #cards)
+        assert.is_true(cards[1].heading)
+        assert.is_truthy(cards[1].title:find("Armor", 1, true))
         local card
         for _, c in ipairs(cards) do
-            if c.title:find("Uncommon", 1, true) and c.title:find("26-30", 1, true) then card = c end
+            if not c.heading and c.title:find("Uncommon", 1, true) and c.title:find("26-30", 1, true) then card = c end
         end
         assert.are.equal(3, #card.rows)                            -- dust, essence, shard
         assert.is_truthy(card.facts:find("Value now", 1, true))
         assert.is_truthy(card.facts:find("Buy below", 1, true))
         assert.are.equal(11083, card.rows[1].itemID)
+        card.onClick()                                             -- closed: no rows
+        for _, c in ipairs(ns.LedgerWindow.OddsCards()) do
+            if not c.heading and c.title:find("Uncommon", 1, true) and c.title:find("26-30", 1, true) then card = c end
+        end
+        assert.are.same({ false, 0 }, { card.open, #card.rows })
+        card.onClick()
+        cards[2].onClick()                                         -- the Uncommon heading closes its bands
+        assert.are.equal(1 + 3 + 24 - #ns.Data.GREEN, #ns.LedgerWindow.OddsCards())
+        cards[2].onClick()
         -- Only the bands with data: the one band, its table rows.
-        ns.db.windows.ledger = { oddsDataOnly = true }
+        ns.LedgerWindow.OddsFilter().dataOnly = true
         local mine = ns.LedgerWindow.OddsRows()
         assert.are.equal(4, #mine)                                 -- the band, dust, essence, shard
         assert.is_truthy(mine[1].cells[1]:find("26-30", 1, true))
-        -- Filters: only blue weapons.
-        ns.db.windows.ledger = { oddsQuality = { [3] = true }, oddsTab = "w" }
+        -- Filters: only rare weapons.
+        ns.db.windows.ledger = { oddsFilter = { qualities = { [3] = true }, classes = { [ns.Data.CLASS_WEAPON] = true } } }
         local few = ns.LedgerWindow.OddsRows()
         assert.are.equal(#ns.Data.BLUE * 2, #few)                  -- each band: its row and its one shard
         assert.is_truthy(few[1].cells[1]:find("Rare", 1, true))
-        -- The band filter: only item levels 26-30. Uncommon has that band; rare's 26-30 band too.
+        -- The band filter: only item levels 26-30.
         local off = {}
         for _, range in ipairs(ns.LevelBands()) do if range.up ~= 30 then off[range.up] = true end end
-        ns.db.windows.ledger = { oddsBandsOff = off, oddsQuality = { [2] = true } }
+        ns.db.windows.ledger = { oddsFilter = { bandsOff = off, qualities = { [2] = true },
+            classes = { [ns.Data.CLASS_ARMOR] = true } } }
         local one = ns.LedgerWindow.OddsCards()
-        assert.are.equal(1, #one)
-        assert.is_truthy(one[1].title:find("26-30", 1, true))
+        assert.are.equal(3, #one)                                  -- Armor, Uncommon, the band
+        assert.is_truthy(one[3].title:find("26-30", 1, true))
+        -- Settings from before (a gear subtab, qualities of their own) move into the filter.
+        ns.db.windows.ledger = { oddsQuality = { [3] = true }, oddsTab = "w", oddsDataOnly = true }
+        assert.are.same({ true, true }, { ns.LedgerWindow.OddsFilter().qualities[3], ns.LedgerWindow.OddsFilter().dataOnly })
+        assert.is_nil(ns.db.windows.ledger.oddsTab)
+        -- Accuracy: the profit difference, its filters and its headings that close.
+        ns.db.windows.ledger = nil
+        local acc = ns.LedgerWindow.AccuracyBandRows()
+        assert.are.equal(11, #acc[1].cells)                         -- with the profit difference
+        assert.is_true(acc[2].open)
+        acc[2].onClick()                                            -- the Armor heading closes
+        assert.are.equal(2, #ns.LedgerWindow.AccuracyBandRows())
+        ns.LedgerWindow.AccuracyFilter().collapsed = {}
+        ns.LedgerWindow.AccuracyFilter().qualities[2] = nil         -- no uncommon: nothing left to compare
+        assert.are.equal(1, #ns.LedgerWindow.AccuracyBandRows())
         ns.db.windows.ledger = nil
         local short, lines = ns.LedgerWindow.Summary()
         for _, word in ipairs({ "Bought", "Disenchanted", "Sold", "Profit" }) do

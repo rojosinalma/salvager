@@ -644,7 +644,8 @@ end
 ---   total = the same fields over all bands,
 ---   mats = { { id, units (from these disenchants), valued (their value at the disenchants, after the cut),
 ---              soldUnits, soldNet (all your sales of it) }, ... } }
-function Ledger.Accuracy(state)
+--- `keep(record)` (optional): only the disenchants it says yes to count.
+function Ledger.Accuracy(state, keep)
     -- What one unit of each material really sold for, after the cut.
     local sold = {}
     for _, s in ipairs(state.sales) do
@@ -662,7 +663,7 @@ function Ledger.Accuracy(state)
     local out = { bands = {}, total = blank(), mats = {} }
     local byBand, byMat = {}, {}
     for _, r in ipairs(state.disenchants) do
-        if r.costKnown then
+        if r.costKnown and (not keep or keep(r)) then
             local key = Ledger.BandKey(r.quality, r.classID, r.band)
             local b = byBand[key]
             if not b then
@@ -711,10 +712,11 @@ end
 --- Summary per disenchant band: counts, planned vs actual, observed odds.
 --- @return table  { [key] = { n, planned, value, cost, mats = { [id] = { hits, qty } }, salvager = n } }
 ---                key = "<quality>:<a|w>:<band>"
-function Ledger.Report(state, since)
+--- `keep(record)` (optional): only the disenchants it says yes to count.
+function Ledger.Report(state, since, keep)
     local out = {}
     for _, r in ipairs(state.disenchants) do
-        if not since or (r.t or 0) >= since then
+        if (not since or (r.t or 0) >= since) and (not keep or keep(r)) then
             local key = Ledger.BandKey(r.quality, r.classID, r.band)
             local b = out[key]
             if not b then
