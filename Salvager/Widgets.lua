@@ -446,7 +446,7 @@ function Widgets.Subtab(parent, text, onClick, tooltip)
     b:SetHeight(SUBTAB_H)
     local fill = b:CreateTexture(nil, "BACKGROUND")
     fill:SetAllPoints()
-    local edges = {}
+    local sides = {}
     for _, side in ipairs({ "TOP", "BOTTOM", "LEFT", "RIGHT" }) do
         local e = b:CreateTexture(nil, "BORDER")
         if side == "TOP" or side == "BOTTOM" then
@@ -458,7 +458,7 @@ function Widgets.Subtab(parent, text, onClick, tooltip)
             e:SetPoint("BOTTOM" .. side, b, "BOTTOM" .. side, 0, 0)
             e:SetWidth(1)
         end
-        edges[#edges + 1] = e
+        sides[#sides + 1] = e
     end
     local hl = b:CreateTexture(nil, "HIGHLIGHT")
     hl:SetPoint("TOPLEFT", b, "TOPLEFT", 1, -1)
@@ -470,10 +470,10 @@ function Widgets.Subtab(parent, text, onClick, tooltip)
         self.selected = on and true or false
         if on then
             fill:SetColorTexture(0.85, 0.68, 0.3, 0.35)
-            for _, e in ipairs(edges) do e:SetColorTexture(1, 0.82, 0, 0.9) end
+            for _, e in ipairs(sides) do e:SetColorTexture(1, 0.82, 0, 0.9) end
         else
             fill:SetColorTexture(0.12, 0.12, 0.14, 0.9)
-            for _, e in ipairs(edges) do e:SetColorTexture(0.45, 0.45, 0.48, 0.9) end
+            for _, e in ipairs(sides) do e:SetColorTexture(0.45, 0.45, 0.48, 0.9) end
         end
         self:SetNormalFontObject(on and "GameFontHighlightSmall" or "GameFontNormalSmall")
     end
