@@ -39,27 +39,31 @@ local COLUMNS = {
             .. "the average disenchant value at the material prices of that moment, after the auction house cut." } },
         { "Disenchant value", 70, "RIGHT", help = { "Disenchant value", "The market value of the materials you got, "
             .. "at the prices of the moment you disenchanted, after the auction house cut." } },
-        { "Drop luck", 46, "RIGHT", help = { "Drop luck", "How far the disenchant value is from the expected "
-            .. "value, in percent: drop luck, or drop rates that differ from the table." } },
+        { "Disenchant vs expected %", 46, "RIGHT", help = { "Disenchant vs expected %",
+            "The difference between Disenchant value and Expected value, in percent of the Expected value. The "
+            .. "gap comes from luck in the results, or from drop rates that are not what the addon assumes." } },
         { "Sold value", 70, "RIGHT", help = { "Sold value", "The same materials at the average price each one really "
             .. "sold for, after the auction house cut. Materials you have not sold yet count at their disenchant value." } },
-        { "Price change", 46, "RIGHT", help = { "Price change", "How far the sold value is from the disenchant value, "
-            .. "in percent: prices that moved, and undercutting. * = more than half of the row's materials are not "
+        { "Sold vs disenchant %", 46, "RIGHT", help = { "Sold vs disenchant %",
+            "The difference between Sold value and Disenchant value, in percent of the Disenchant value. The gap "
+            .. "comes from prices that moved, and from undercutting. * = more than half of the row's materials are not "
             .. "sold yet, so most of it is still the disenchant value." } },
         { "Expected profit", 70, "RIGHT", help = { "Expected profit", "Expected value minus Paid." } },
         { "Actual profit", 70, "RIGHT", help = { "Actual profit", "Sold value minus Paid." } },
-        { "Profit vs expected", 46, "RIGHT", help = { "Profit vs expected", "How much more (+) or less (-) the items "
-            .. "made than the Deals list said when you bought them, in percent of the expected profit. "
+        { "Actual vs expected profit %", 46, "RIGHT", help = { "Actual vs expected profit %",
+            "The difference between Actual profit and Expected profit, in percent of the Expected profit: how much "
+            .. "more (+) or less (-) the items made than the Deals list said when you bought them. "
             .. "- = no expected profit to compare with." } } },
     accMats = { { "Material", 170 }, { "Units", 44, "CENTER" },
         { "Disenchant value each", 80, "RIGHT", help = { "Disenchant value each", "The average market price of one "
             .. "unit at the moment you disenchanted, after the auction house cut." } },
         { "Sold value each", 80, "RIGHT", help = { "Sold value each", "The average of what one unit really brought "
             .. "in your sales, after the auction house cut." } },
-        { "Price change each", 80, "RIGHT", help = { "Price change each", "Sold value each minus Disenchant value "
-            .. "each." } },
-        { "Price change", 46, "RIGHT", help = { "Price change", "How far the sold value is from the disenchant value, "
-            .. "in percent: prices that moved, and undercutting." } },
+        { "Sold vs disenchant each", 80, "RIGHT", help = { "Sold vs disenchant each",
+            "Sold value each minus Disenchant value each, in coins." } },
+        { "Sold vs disenchant %", 46, "RIGHT", help = { "Sold vs disenchant %",
+            "The difference between Sold value each and Disenchant value each, in percent of the Disenchant value "
+            .. "each. The gap comes from prices that moved, and from undercutting." } },
         { "Units sold", 70, "CENTER" } },
     -- The Sales view is two tables: your auctions, and the sales already paid.
     listed = { { "Material", 150 }, { "Status", 110 },
@@ -515,7 +519,7 @@ local function share(part, whole)
     return (pct > 0 and (GREEN .. "+") or pct < 0 and RED or GREY) .. pct .. "%|r"
 end
 
---- Profit vs expected: how far the actual profit is from the expected one, in percent of the expected one
+--- Actual vs expected profit %: how far the actual profit is from the expected one, in percent of the expected one
 --- (which can be a loss, so its size). "-" where nothing was expected.
 local function profitShare(actual, expected)
     if not expected or expected == 0 then return GREY .. "-|r" end

@@ -204,12 +204,12 @@ flipping is out of scope for now.
     purchase: Paid, Promised (value shown when bought), Got (value at the disenchant), Sold for (the same
     materials at the average price each really sold for; at the disenchant's price where none sold yet), and
     the planned and real profit. A second table per material: valued each against sold each. Sales are not
-    tied to items (pooled stock), so "Sold for" per band is an estimate. Column names (0.3.115, the user):
-    By band `Band | Items | Paid | Expected value | Disenchant value | Drop luck | Sold value | Price change |
-    Expected profit | Actual profit | Profit vs expected`; By material `Material | Units | Disenchant value each |
-    Sold value each | Price change each | Price change | Units sold`. Drop luck = Disenchant value against
-    Expected value, Price change = Sold value against Disenchant value (the same name in both tables),
-    Profit vs expected = (Actual profit − Expected profit) / |Expected profit|, "-" where Expected profit is 0;
+    tied to items (pooled stock), so "Sold for" per band is an estimate. Column names (0.3.116, the user: a percent column is named for the two values it compares):
+    By band `Band | Items | Paid | Expected value | Disenchant value | Disenchant vs expected % | Sold value | Sold vs disenchant % |
+    Expected profit | Actual profit | Actual vs expected profit %`; By material `Material | Units | Disenchant value each |
+    Sold value each | Sold vs disenchant each | Sold vs disenchant % | Units sold`. Disenchant vs expected % = Disenchant value against
+    Expected value, Sold vs disenchant % = Sold value against Disenchant value (the same name in both tables),
+    Actual vs expected profit % = (Actual profit − Expected profit) / |Expected profit|, "-" where Expected profit is 0;
     all in percent, "+" and green on a gain, red on a loss.
 62. **(Replaced 2026-11-26 by 65.) A Buy click while the auction house is busy is not sent** (`IsThrottledMessageSystemReady` false): it
     would be thrown away without an answer (measured 2026-11-26: four clicks during a browse, none answered).
@@ -390,7 +390,7 @@ flipping is out of scope for now.
     `oddsFilter` in `SalvagerDB.windows.ledger`). Odds lost its Armor/Weapons subtabs (the Gear filter does
     it; old settings move over once). Every heading of a grouped list opens and closes (`ns.GroupedRows`
     `opts.collapsed`); Odds cards too, each band on its own (`Widgets.CardList`: `heading`, `open`,
-    `onClick`, `indent`). Accuracy has a Profit vs expected column in percent (SDD 61), on the headings
+    `onClick`, `indent`). Accuracy has a Actual vs expected profit % column in percent (SDD 61), on the headings
     too, after Actual profit (0.3.115, the user; it replaces the gold Profit difference of 0.3.99/0.3.110). The odds window is 740 wide (0.3.101): "Only bands with my data" on a row of its own under
     the filter row; the Odds cards sit in 12 px per level (22 in the other tables).
 84. **The Materials window fits its list** (0.3.100): as wide as its columns need, the Post column ending

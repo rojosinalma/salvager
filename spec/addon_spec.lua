@@ -286,11 +286,11 @@ describe("Salvager in a simulated client", function()
         ns.db.windows.ledger = { oddsQuality = { [3] = true }, oddsTab = "w", oddsDataOnly = true }
         assert.are.same({ true, true }, { ns.LedgerWindow.OddsFilter().qualities[3], ns.LedgerWindow.OddsFilter().dataOnly })
         assert.is_nil(ns.db.windows.ledger.oddsTab)
-        -- Accuracy: Profit vs expected, its filters and its headings that close.
+        -- Accuracy: Actual vs expected profit %, its filters and its headings that close.
         ns.db.windows.ledger = nil
         local acc = ns.LedgerWindow.AccuracyBandRows()
-        assert.are.equal(11, #acc[1].cells)                         -- with Profit vs expected
-        -- Profit vs expected in percent of the expected profit (its size: it can be a loss); "-" where none.
+        assert.are.equal(11, #acc[1].cells)                         -- with Actual vs expected profit %
+        -- Actual vs expected profit % in percent of the expected profit (its size: it can be a loss); "-" where none.
         local realAccuracy = ns.Ledger.Accuracy
         local function vsExpected(cost, promised, sold)
             ns.Ledger.Accuracy = function()
@@ -315,7 +315,7 @@ describe("Salvager in a simulated client", function()
         ns.LedgerWindow.AccuracyFilter().qualities[2] = nil         -- no uncommon: nothing left to compare
         assert.are.equal(1, #ns.LedgerWindow.AccuracyBandRows())
         ns.db.windows.ledger = nil
-        -- In the window: the By band table shows Profit vs expected, after Actual profit, with the titles in order,
+        -- In the window: the By band table shows Actual vs expected profit %, after Actual profit, with the titles in order,
         -- and its first column is wide enough for the indented quality heading ("Uncommon", not "Uncom...").
         local realWidth = ns.Widgets.TextWidth
         ns.Widgets.TextWidth = shownWidth
@@ -348,9 +348,9 @@ describe("Salvager in a simulated client", function()
         local at
         local titles = {}
         for i, h in ipairs(byBand.headers) do if h:IsShown() then titles[#titles + 1] = h:GetText() end
-            if h:IsShown() and h:GetText() == "Profit vs expected" then at = i end end
-        assert.are.same({ "Band", "Items", "Paid", "Expected value", "Disenchant value", "Drop luck", "Sold value",
-            "Price change", "Expected profit", "Actual profit", "Profit vs expected" }, titles)
+            if h:IsShown() and h:GetText() == "Actual vs expected profit %" then at = i end end
+        assert.are.same({ "Band", "Items", "Paid", "Expected value", "Disenchant value", "Disenchant vs expected %", "Sold value",
+            "Sold vs disenchant %", "Expected profit", "Actual profit", "Actual vs expected profit %" }, titles)
         assert.is_number(at)                                  -- the title is drawn, inside the resize bounds
         local total = ns.Ledger.Accuracy(ns.db.ledger, function() return true end).total
         local cell = byBand.rows[1].cells[at]
@@ -361,8 +361,8 @@ describe("Salvager in a simulated client", function()
             cell:GetText())
         local matTitles = {}
         for _, h in ipairs(byMat.headers) do if h:IsShown() then matTitles[#matTitles + 1] = h:GetText() end end
-        assert.are.same({ "Material", "Units", "Disenchant value each", "Sold value each", "Price change each",
-            "Price change", "Units sold" }, matTitles)
+        assert.are.same({ "Material", "Units", "Disenchant value each", "Sold value each", "Sold vs disenchant each",
+            "Sold vs disenchant %", "Units sold" }, matTitles)
         -- At logout the layout of every window on show is written for the developer: the main window and the
         -- Ledger with their regions, and the By band table as the client drew it.
         _G.SalvagerFrame:Show()
@@ -380,7 +380,7 @@ describe("Salvager in a simulated client", function()
         end
         assert.is_table(bandList)
         assert.are.equal(12, bandList.cells)
-        assert.are.equal("Profit vs expected\tS", bandList.headers[11]:match("^[^\t]*\t[^\t]*"))
+        assert.are.equal("Actual vs expected profit %\tS", bandList.headers[11]:match("^[^\t]*\t[^\t]*"))
         assert.is_true(layout.entries <= 2000 and layout.size < 300 * 1024)
         ns.Widgets.TextWidth = realWidth
         assert.is_true(frameW > 860)                          -- wider than its bounds at build

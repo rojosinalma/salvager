@@ -36,7 +36,8 @@ reply must say so.
 1. The game's own words: Uncommon, Rare, Epic; Armor, Weapons; disenchant; buyout; auction.
    Never the color names for qualities.
 2. Trading terms, the same everywhere: Expected value, Disenchant value, Sold value, Expected
-   profit, Profit, Loss chance, Break-even, Drop rate, Drop luck, Price change, Profit vs expected. One thing has one name in every window.
+   profit, Profit, Loss chance, Break-even, Drop rate. One thing has one name in every window.
+   A column that compares two values is named for them: "Sold vs disenchant %", never "Diff" or a nickname.
 3. A title says what the column holds ("Price now", not "Price"). No verbs as titles ("Got",
    "Came").
 4. Every title that is not obvious has help on hover. Static explanations are behind the "?"
