@@ -118,6 +118,24 @@ function Journal.Match(list, d, now)
     for i, x in ipairs(list) do
         if x.a == nil and x.sign == sign then table.remove(list, i) return x.k, x.r end
     end
+    -- Several at once (an "open all" takes many mails before the gold is read): the first ones, in order,
+    -- whose amounts add up to the change.
+    local sum, take = 0, {}
+    for i, x in ipairs(list) do
+        if x.a and (x.a < 0) == (d < 0) then
+            sum = sum + x.a
+            take[#take + 1] = i
+            if sum == d then
+                local kind = list[take[1]].k
+                for j = #take, 1, -1 do
+                    if list[take[j]].k ~= kind then kind = "mixed" end
+                    table.remove(list, take[j])
+                end
+                return kind == "mixed" and "mail" or kind, string.format("%d at once", #take)
+            end
+            if (d > 0 and sum > d) or (d < 0 and sum < d) then break end
+        end
+    end
     return nil
 end
 

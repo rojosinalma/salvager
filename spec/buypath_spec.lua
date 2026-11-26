@@ -135,19 +135,20 @@ describe("Buy path safety", function()
         ns.Scanner.deals = {}
     end)
 
-    it("takes a dropped request to be the search when one was just sent, not the purchase", function()
-        ns.db.buyResendBlocked = true
+    it("takes a dropped request to be the search when one was just sent, and never frees a purchase it cannot resend", function()
         local deal = { auctionID = 900, itemID = BOOTS, link = BOOTS_LINK, buyout = 100, value = 500, profit = 400,
             quality = 2, classID = 4, ilvl = 28 }
         ns.Scanner.deals = { deal }
         ns.Scanner.Buy(deal)
         ns.Queue.current = { sentAt = GetTime(), itemKey = { itemID = BOOTS } }
         wow.fire(ns, "AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED")
-        assert.is_true(deal.pending)                               -- the purchase stays on its way
+        assert.is_true(deal.pending)                               -- the search was dropped, not the purchase
         ns.Queue.current = nil
+        ns.db.buyResendBlocked = true
         wow.fire(ns, "AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED")
-        assert.is_false(deal.pending)                              -- no search: it was the purchase
+        assert.is_true(deal.pending)                               -- no resend possible: it waits for its answer
         wow.fire(ns, "AUCTION_HOUSE_PURCHASE_COMPLETED", 900)
+        assert.are.equal(0, #ns.Scanner.deals)                     -- bought: its row goes
         ns.db.buyResendBlocked = nil
         ns.Scanner.deals = {}
     end)

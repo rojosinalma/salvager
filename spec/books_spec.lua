@@ -170,6 +170,20 @@ describe("Your auctions in a simulated client", function()
         assert.is_table(found)
     end)
 
+    it("knows a cancel from the list of your auctions: this client sends no event for it", function()
+        ns.Listings.NotePost(5, VISION, 4, 900, 40)
+        table.insert(env.ah.owned, { auctionID = 5, itemKey = { itemID = VISION }, status = 0, quantity = 4,
+            timeLeftSeconds = 40000, buyoutAmount = 900 })
+        ns.Listings.Refresh(true)
+        wow.tick(ns, 0.5)
+        local n = #ns.db.ledger.sales
+        C_AuctionHouse.CancelAuction(5)                           -- (any window: the call is what counts)
+        for i = #env.ah.owned, 1, -1 do if env.ah.owned[i].auctionID == 5 then table.remove(env.ah.owned, i) end end
+        wow.tick(ns, 2)                                           -- the addon reads your auctions again
+        assert.are.equal(n + 1, #ns.db.ledger.sales)
+        assert.are.same({ "cancelled", -40, VISION }, { last().lost, last().profit, last().id })
+    end)
+
     it("does not take a sale for a cancel: the game sends the cancel event for both", function()
         local n = #ns.db.ledger.sales
         wow.fire(ns, "AUCTION_CANCELED", 4242)                 -- no cancel was asked for this auction

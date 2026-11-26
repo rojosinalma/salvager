@@ -149,9 +149,9 @@ local function mailTaken(index)
     local invoiceType, itemName
     if GetInboxInvoiceInfo then invoiceType, itemName = GetInboxInvoiceInfo(index) end
     if invoiceType == "seller" then
-        Gold.Expect("sale", money, itemName, 10)
+        Gold.Expect("sale", money, itemName, 60)
     else
-        Gold.Expect("mail", money, subject, 10)
+        Gold.Expect("mail", money, subject, 60)
     end
 end
 

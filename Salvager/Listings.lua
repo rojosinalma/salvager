@@ -12,7 +12,7 @@ local Data = ns.Data
 local Listings = { checking = nil, pending = nil }
 ns.Listings = Listings
 
-local CANCEL_WAIT = 5      -- seconds a cancel may take before it is given up
+local CANCEL_WAIT = 8      -- seconds a cancel may take before it is given up (its answer is a read, see below)
 local MAX_POSTED = 300     -- posts remembered (their unit prices are known for sure)
 local LOWEST_MAX_AGE = 120 -- seconds a checked lowest price counts: older, the listing counts as not checked
 local MAIL_DELAY = 3600    -- a sold auction stays in the list (as sold) about this long, until its money is mailed
@@ -87,6 +87,8 @@ local function findExpired(prev, prevT, rows, now)
     end
 end
 
+local findCancelled
+
 --- Reads your auctions from the game into the saved list.
 function Listings.Read()
     local l = db()
@@ -112,6 +114,7 @@ function Listings.Read()
         end
     end
     l.rows, l.t = rows, time()
+    findCancelled(prev, rows)
     findExpired(prev, prevT, rows, l.t)
     -- A sale is known as soon as its listing shows as sold: book it now, not when the mail is taken.
     local sold = {}
@@ -321,40 +324,60 @@ function Listings.CancelNext()
     return false
 end
 
--- The game sends AUCTION_CANCELED also when an auction sells (measured 2026-11-26: each sale was first
--- booked as a cancel). It is a cancel only when one was asked for, by this addon or any other window.
+-- This client sends AUCTION_CANCELED when an auction sells, and nothing when it is cancelled (measured
+-- 2026-11-26: every sale came as a cancel; the cancels at 03:15 and 06:28 got no event). So a cancel is known
+-- from the list of your auctions: an auction a cancel was asked for (by this addon or any window) that is
+-- gone from it, unsold. AUCTION_CANCELED for such an auction counts too, in case a client sends it.
 local askedCancel = {}   -- [auctionID] = time a cancel was asked
-local CANCEL_ANSWER = 30
+local CANCEL_ANSWER = 60
 if hooksecurefunc and AH and AH.CancelAuction then
-    hooksecurefunc(AH, "CancelAuction", function(auctionID) if auctionID then askedCancel[auctionID] = GetTime() end end)
+    hooksecurefunc(AH, "CancelAuction", function(auctionID)
+        if not auctionID then return end
+        askedCancel[auctionID] = GetTime()
+        -- The answer is the next read of your auctions.
+        C_Timer.After(1, function() Listings.Refresh(true) end)
+    end)
 end
 
-ns.On("AUCTION_CANCELED", function(auctionID)
-    local p = Listings.pending
+--- An auction a cancel was asked for is gone: book its deposit as lost. `rows` = the list it was in.
+local function cancelDone(auctionID, rows)
     local asked = askedCancel[auctionID]
     askedCancel[auctionID] = nil
-    if not (asked and GetTime() - asked <= CANCEL_ANSWER) then
-        -- Sold, or gone for another reason: the next read of your auctions says which.
-        Listings.Refresh()
-        return
-    end
-    local rows = db().rows
-    for i = #rows, 1, -1 do
-        local r = rows[i]
-        if r.auctionID == auctionID then
-            if not r.sold then
-                depositLost(auctionID, r.itemID, r.qty, "cancelled", p and p.row.auctionID == auctionID and p.cost or nil)
-            end
-            table.remove(rows, i)
+    if not (asked and GetTime() - asked <= CANCEL_ANSWER) then return false end
+    local p = Listings.pending
+    local mine = p and p.row.auctionID == auctionID
+    for _, r in ipairs(rows) do
+        if r.auctionID == auctionID and not r.sold then
+            depositLost(auctionID, r.itemID, r.qty, "cancelled", mine and p.cost or nil)
         end
     end
-    if p and p.row.auctionID == auctionID then
+    if mine then
         Listings.pending = nil
         ns.Print("cancelled %dx %s (it comes back by mail)%s", p.row.qty, ns.MaterialName(p.row.itemID),
             (p.cost and p.cost > 0) and (", cost " .. ns.Money(p.cost)) or "")
         ns.Log("listings: cancelled %dx %s", p.row.qty, ns.MaterialName(p.row.itemID))
     end
-    ns.Fire("SALVAGER_LISTINGS")
+    return true
+end
+
+--- After a read: the auctions a cancel was asked for that are no longer for sale.
+function findCancelled(prev, rows)
+    local open = {}
+    for _, r in ipairs(rows) do if not r.sold then open[r.auctionID] = true end end
+    for auctionID in pairs(askedCancel) do
+        if not open[auctionID] then cancelDone(auctionID, prev) end
+    end
+end
+
+ns.On("AUCTION_CANCELED", function(auctionID)
+    local rows = db().rows
+    if cancelDone(auctionID, rows) then
+        for i = #rows, 1, -1 do if rows[i].auctionID == auctionID and not rows[i].sold then table.remove(rows, i) end end
+        ns.Fire("SALVAGER_LISTINGS")
+    else
+        -- Sold, or gone for another reason: the next read of your auctions says which.
+        Listings.Refresh()
+    end
 end)
 
 -- An auction that ran out while the auction house is open.

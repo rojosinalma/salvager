@@ -43,6 +43,18 @@ describe("Journal", function()
         assert.is_nil(J.Match(list, -500, 11))                    -- too late
     end)
 
+    it("matches one change to several expectations that add up to it, in order", function()
+        local list = {}
+        J.Expect(list, { k = "sale", a = 500 }, 0, 10)
+        J.Expect(list, { k = "sale", a = 300 }, 0, 10)
+        J.Expect(list, { k = "mail", a = 50 }, 0, 10)
+        assert.are.same({ "sale", "2 at once" }, { J.Match(list, 800, 1) })
+        assert.are.equal(1, #list)
+        J.Expect(list, { k = "sale", a = 20 }, 0, 10)
+        assert.are.same({ "mail", "2 at once" }, { J.Match(list, 70, 1) })   -- of two kinds: mail
+        assert.are.equal(0, #list)
+    end)
+
     it("stays bounded", function()
         local s = J.Init({})
         J.Seen(s, "A-R", 0, 0)

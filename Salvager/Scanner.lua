@@ -599,6 +599,7 @@ function Scanner.Buying()
         dropped[id] = d
         d.pending = false
         ns.Log("purchase of %s got no answer in %ds", d.link or d.itemID, BUY_EXPIRES)
+        ns.Print("no answer for the purchase of %s: click Buy again if it is still listed", d.link or "the item")
     end
     return false
 end
@@ -709,6 +710,10 @@ ns.On("AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED", function()
     -- purchase went through). The search sends itself again when it gets no answer.
     local task = ns.Queue.current
     if task and task.sentAt and GetTime() - task.sentAt <= DROP_WINDOW then return end
+    -- The game does not allow a resend: nothing can be done about a dropped purchase, and it is often not
+    -- the purchase that was dropped (measured 2026-11-26 06:31: rows freed at every purchase, each bought).
+    -- It stays on its way until its answer comes, or until BUY_EXPIRES.
+    if ns.db.buyResendBlocked then return end
     for _, d in pairs(pendingBuys) do
         if GetTime() - d.clickedAt < DROP_WINDOW and not d.resend then
             if ns.db.buyResendBlocked or (d.resends or 0) >= MAX_BUY_RESENDS then

@@ -325,6 +325,17 @@ flipping is out of scope for now.
     the character is its name alone, after a 3 s wait; a change of gold never waits for it.
 76. **The Arcane Salvager camp: 15 minutes, then about 1 hour of cooldown** (the user, 2026-11-26). So it limits
     the disenchants with the bonus to one batch per hour or so. Bought gear waits in the bags for the next camp.
+77. **Measured 2026-11-26 13:30 (second Salvager batch, 30 Azure Silk Hoods):**
+    - a. A real cancel gets no event in this client (03:15, 06:28 and before), while a sale gets
+       `AUCTION_CANCELED` (75a). A cancel is now known from the next read of your auctions: an auction a
+       cancel was asked for (`CancelAuction` hooked, any window) that is gone unsold. The read is asked 1 s
+       after the call.
+    - b. With resends blocked by the game (`buyResendBlocked`), "request dropped" never frees a purchase:
+       it waits for its answer or for 10 s. (06:31: every purchase was freed with "click Buy again" and
+       went through; the extra clicks then gave "could not buy".)
+    - c. An "open all" takes several mails before the gold is read: one change of gold is matched to the
+       first expectations, in order, that add up to it (8g 40s 75c from 5 sales mails at 13:28).
+    - d. `make install` checks the version on the gaming PC after the copy (0.3.86 did not arrive the first time).
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),
