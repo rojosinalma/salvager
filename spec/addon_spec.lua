@@ -873,7 +873,7 @@ describe("Salvager posting", function()
         ns.db.prices[lesser] = { p = 600, lo = 600, t = 0 }          -- three lesser: 17s 97c, +6%
         assert.are.equal("convert", ns.Post.Convert(greater, 1, listed(1700, 10), listed(600, 50)).verdict)
         assert.are.equal("crowded", ns.Post.Convert(greater, 1, listed(1700, 10), listed(600, 4000)).verdict)
-        assert.is_truthy(ns.Post.ConvertText(greater, 1, listed(1700, 10), listed(600, 4000)):find("far more is listed", 1, true))
+        assert.is_truthy(ns.Post.ConvertText(greater, 1, listed(1700, 10), listed(600, 4000)):find("Far more is listed", 1, true))
         assert.are.equal("keep", ns.Post.Convert(lesser, 6).verdict)
         ns.db.prices[lesser] = { p = 500, lo = 500, t = 0 }          -- now the greater pays more
         assert.is_truthy(ns.Post.ConvertText(lesser, 7):find("Your 7 make 2", 1, true))

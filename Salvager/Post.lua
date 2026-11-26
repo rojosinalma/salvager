@@ -182,18 +182,20 @@ function Post.ConvertText(itemID, bags, market, otherMarket)
     if not c then return "" end
     local otherName = ns.MaterialName(c.other)
     local pct = math.floor(c.pct * 100 + 0.5)
-    local listed = string.format("Listed near the lowest price: %d there, %d here.", c.otherNear, c.near)
+    -- One line each: the verdict, the prices, how much is listed.
+    local listed = string.format("\nListed near the lowest price: %d there, %d here.", c.otherNear, c.near)
     if c.verdict == "keep" then
         return "|cff808080" .. otherName .. " does not pay more now: keep this form.|r"
     elseif c.verdict == "crowded" then
-        return string.format("|cffffd100Keep this form.|r %s pays +%d%%, but far more is listed there. %s", otherName,
-            pct, listed)
+        return string.format("|cffffd100Keep this form.|r Far more is listed in the other one.\n%s pays +%d%%: %s "
+            .. "against %s here.%s", otherName, pct, ns.Money(c.same * (c.lesser and 3 or 1)),
+            ns.Money(c.mine * (c.lesser and 3 or 1)), listed)
     elseif c.lesser then
-        return string.format("|cff40ff40Better: combine 3 into 1 %s (+%d%%).|r One sells for %s, three of these for "
-            .. "%s. Your %d make %d. %s", otherName, pct, ns.Money(c.same * 3), ns.Money(c.mine * 3), bags,
-            math.floor(bags / 3), listed)
+        return string.format("|cff40ff40Better: combine 3 into 1 %s (+%d%%).|r Your %d make %d.\nOne sells for %s, "
+            .. "three of these for %s.%s", otherName, pct, bags, math.floor(bags / 3), ns.Money(c.same * 3),
+            ns.Money(c.mine * 3), listed)
     end
-    return string.format("|cff40ff40Better: split each into 3 %s (+%d%%).|r Three sell for %s, one of these for %s. %s",
+    return string.format("|cff40ff40Better: split each into 3 %s (+%d%%).|r\nThree sell for %s, one of these for %s.%s",
         otherName, pct, ns.Money(c.same), ns.Money(c.mine), listed)
 end
 
@@ -311,7 +313,7 @@ end
 
 local function build()
     -- A window of its own: drag it where you want it, and it opens there the next time.
-    d = W.Window("SalvagerPostFrame", "Post on the auction house", "post", 760, 390, 760, 390, true)
+    d = W.Window("SalvagerPostFrame", "Post on the auction house", "post", 730, 400, 730, 400, true)
     d:SetFrameStrata("DIALOG")
 
     d.icon = d:CreateTexture(nil, "ARTWORK")
@@ -374,10 +376,10 @@ local function build()
     end
     d.list = W.List(d, { rowHeight = 20 })
     d.list:SetColumns({
-        { "Price each", 120, help = { "Price each", "The other sellers' listings, cheapest first. The game shows the "
+        { "Price each", 112, help = { "Price each", "The other sellers' listings, cheapest first. The game shows the "
             .. "auctions of one price as one line. Red = under your break-even. Grey = dearer than your price." } },
-        { "Units", 110, "CENTER" },
-        { "Units up to here", 110, "CENTER", help = { "Units up to here", "How many units are listed at this price or "
+        { "Units", 84, "CENTER" },
+        { "Units up to here", 96, "CENTER", help = { "Units up to here", "How many units are listed at this price or "
             .. "cheaper. The number on the last line above \"Your price\" is what must sell before yours does." } },
     })
     d.list:SetPoint("TOPLEFT", d, "TOPLEFT", 382, -70)
