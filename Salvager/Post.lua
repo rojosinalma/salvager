@@ -49,6 +49,82 @@ function Post.Suggest(itemID)
     return { price = price, lowest = lowest, breakEven = breakEven, below = breakEven ~= nil and price < breakEven }
 end
 
+--- The other sellers' listings of a material, as the client holds them now (after a search), cheapest
+--- first. The game shows the auctions of one price as one line, so a "listing" here is a price line.
+--- @return table { rows = { { price, qty, mine (your own units at that price) }, ... }, units, listings,
+---                 partial (the game holds only the first results) }
+function Post.Market(itemID)
+    local out = { rows = {}, units = 0, listings = 0, partial = false }
+    for i = 1, (AH.GetNumCommoditySearchResults(itemID) or 0) do
+        local r = AH.GetCommoditySearchResultInfo(itemID, i)
+        if r and r.unitPrice and r.unitPrice > 0 then
+            local mine = r.numOwnerItems or 0
+            local qty = (r.quantity or 0) - mine
+            if qty > 0 then
+                out.rows[#out.rows + 1] = { price = r.unitPrice, qty = qty, mine = mine }
+                out.units = out.units + qty
+                out.listings = out.listings + 1
+            end
+        end
+    end
+    table.sort(out.rows, function(a, b) return a.price < b.price end)
+    if AH.HasFullCommoditySearchResults then
+        local ok, full = pcall(AH.HasFullCommoditySearchResults, itemID)
+        out.partial = ok and full == false
+    end
+    return out
+end
+
+--- The market against a price and a break-even: what is ahead of you, and what is under your cost.
+--- @return table rows for the list (with a line for your price and one for your break-even), table counts
+---   counts = { ahead, aheadListings (units and listings at or under your price: they sell before you),
+---              under, underListings (units and listings under your break-even) }
+function Post.MarketRows(market, price, breakEven)
+    local rows, c = {}, { ahead = 0, aheadListings = 0, under = 0, underListings = 0 }
+    local GREY, GOLD, RED = "|cff808080", "|cffffd100", "|cffff6060"
+    local total, didPrice, didEven = 0, false, false
+    local function evenMark(nextPrice)
+        if breakEven and not didEven and (not nextPrice or nextPrice >= breakEven) then
+            didEven = true
+            rows[#rows + 1] = { group = true, cells = { GOLD .. "Your break-even|r", ns.Money(breakEven), "" } }
+        end
+    end
+    local function priceMark(nextPrice)
+        if price > 0 and not didPrice and (not nextPrice or nextPrice > price) then
+            didPrice = true
+            rows[#rows + 1] = { group = true, cells = { GOLD .. "Your price|r", ns.Money(price), "" } }
+        end
+    end
+    -- The two lines go in before the first listing that is dearer, the lower of the two first.
+    local function marks(nextPrice)
+        if breakEven and breakEven <= price then
+            evenMark(nextPrice)
+            priceMark(nextPrice)
+        else
+            priceMark(nextPrice)
+            evenMark(nextPrice)
+        end
+    end
+    for _, r in ipairs(market.rows) do
+        marks(r.price)
+        total = total + r.qty
+        local ahead = price > 0 and r.price <= price
+        local under = breakEven ~= nil and r.price < breakEven
+        if ahead then c.ahead, c.aheadListings = c.ahead + r.qty, c.aheadListings + 1 end
+        if under then c.under, c.underListings = c.under + r.qty, c.underListings + 1 end
+        local color = under and RED or (ahead and "" or GREY)
+        rows[#rows + 1] = { cells = {
+            color .. ns.Money(r.price) .. (color ~= "" and "|r" or ""),
+            color .. r.qty .. (color ~= "" and "|r" or "") .. (r.mine > 0 and (GREY .. " +" .. r.mine .. " yours|r") or ""),
+            color .. total .. (color ~= "" and "|r" or "") } }
+    end
+    marks(nil)
+    if #market.rows == 0 then
+        rows[#rows + 1] = { cells = { GREY .. "Nobody else lists it.|r", "", "" } }
+    end
+    return rows, c
+end
+
 --- What a post brings: after the cut, and against your cost.
 --- @return table { gross, net, cost (nil when unknown), profit (nil when unknown), deposit }
 function Post.Outcome(itemID, quantity, unitPrice, duration)
@@ -144,13 +220,25 @@ local function recalc()
     else
         d.warn:SetText("")
     end
+    -- The other sellers: how much is listed, how much of it sells before you, how much is under your cost.
+    local market = d.market or { rows = {}, units = 0, listings = 0 }
+    local rows, c = Post.MarketRows(market, price, s.breakEven)
+    d.marketLines[1]:SetText(string.format("|cffffd100Others list|r %d units in %d listings%s", market.units,
+        market.listings, market.partial and " |cff808080(the first results only)|r" or ""))
+    d.marketLines[2]:SetText(string.format("|cffffd100Ahead of your price|r %d units in %d%s", c.ahead, c.aheadListings,
+        s.breakEven and string.format("    |cffffd100Under your break-even|r %d units in %d", c.under, c.underListings)
+            or ""))
+    d.list:SetSource(#rows, function(i) return rows[i] end)
+    d.list:Refresh()
+    d.toEven:SetEnabled(s.breakEven ~= nil)
+    d.toLowest:SetEnabled(s.lowest ~= nil)
     d.post:SetEnabled(ns.Queue.open and qty >= 1 and qty <= bags and price >= 1)
     d.post:SetText(d.confirm and "Confirm" or "Post")
 end
 
 local function build()
     -- A window of its own: drag it where you want it, and it opens there the next time.
-    d = W.Window("SalvagerPostFrame", "Post on the auction house", "post", 380, 300, 380, 300, true)
+    d = W.Window("SalvagerPostFrame", "Post on the auction house", "post", 760, 340, 760, 340, true)
     d:SetFrameStrata("DIALOG")
 
     d.icon = d:CreateTexture(nil, "ARTWORK")
@@ -195,6 +283,37 @@ local function build()
     d.warn = W.Label(d, "", "GameFontHighlightSmall")
     d.warn:SetPoint("BOTTOMLEFT", d, "BOTTOMLEFT", 16, 44)
     d.warn:SetTextColor(1, 0.3, 0.3)
+    d.warn:SetWidth(350)
+    d.warn:SetJustifyH("LEFT")
+
+    -- On the right: the other sellers' listings, cheapest first, with your price and your break-even
+    -- in their place among them.
+    d.marketLines = {}
+    for i = 1, 2 do
+        local l = W.Label(d, "", "GameFontHighlightSmall")
+        l:SetPoint("TOPLEFT", d, "TOPLEFT", 384, -16 - i * 16)
+        d.marketLines[i] = l
+    end
+    d.list = W.List(d, { rowHeight = 20 })
+    d.list:SetColumns({
+        { "Price each", 120, help = { "Price each", "The other sellers' listings, cheapest first. The game shows the "
+            .. "auctions of one price as one line. Red = under your break-even. Grey = dearer than your price." } },
+        { "Units", 110, "CENTER" },
+        { "Units up to here", 110, "CENTER", help = { "Units up to here", "How many units are listed at this price or "
+            .. "cheaper. The number on the last line above \"Your price\" is what must sell before yours does." } },
+    })
+    d.list:SetPoint("TOPLEFT", d, "TOPLEFT", 382, -70)
+    d.list:SetPoint("BOTTOMRIGHT", d, "BOTTOMRIGHT", -14, 44)
+    d.toLowest = W.Button(d, "Undercut lowest", 120, function()
+        local s = Post.Suggest(d.itemID)
+        if s.lowest then d.price:Set(math.max(1, s.lowest - 1)) d.confirm = nil recalc() end
+    end, "Sets the price to 1 copper under the cheapest listing: yours sells first.")
+    d.toLowest:SetPoint("BOTTOMLEFT", d, "BOTTOMLEFT", 382, 12)
+    d.toEven = W.Button(d, "Break-even", 100, function()
+        local s = Post.Suggest(d.itemID)
+        if s.breakEven then d.price:Set(s.breakEven) d.confirm = nil recalc() end
+    end, "Sets the price to your break-even: no loss, but everything cheaper sells before yours.")
+    d.toEven:SetPoint("LEFT", d.toLowest, "RIGHT", 6, 0)
 
     d.post = W.Button(d, "Post", 100, function()
         local result, why = Post.Send(d.itemID, quantityOf(), d.price:Get(), ns.db.settings.postDuration, d.confirm)
@@ -218,6 +337,7 @@ local function show(itemID, stale)
     if not d then build() end
     local s = Post.Suggest(itemID)
     d.itemID, d.stale, d.confirm = itemID, stale, nil
+    d.market = Post.Market(itemID)
     d.icon:SetTexture(W.IconOf(itemID))
     d.name:SetText(ns.MaterialName(itemID))
     d.qty:SetText(tostring(Post.BagCount(itemID)))

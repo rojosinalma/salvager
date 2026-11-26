@@ -856,6 +856,24 @@ describe("Salvager posting", function()
     end)
 
     it("works out what the post brings", function()
+        -- The other sellers, against a price and a break-even.
+        local saved = env.ah.commodities[DUST]
+        env.ah.commodities[DUST] = { { unitPrice = 400, quantity = 30, numOwnerItems = 0 },
+            { unitPrice = 450, quantity = 25, numOwnerItems = 5 }, { unitPrice = 500, quantity = 10, numOwnerItems = 10 },
+            { unitPrice = 600, quantity = 40, numOwnerItems = 0 } }
+        local market = ns.Post.Market(DUST)
+        assert.are.equal(3, market.listings)                       -- your own listing at 500 is left out
+        assert.are.equal(90, market.units)
+        local rows, counts = ns.Post.MarketRows(market, 450, 520)
+        assert.are.equal(50, counts.ahead)                         -- 30 at 400 and 20 at 450 sell before a post at 450
+        assert.are.equal(2, counts.aheadListings)
+        assert.are.equal(50, counts.under)                         -- and both are under a break-even of 520
+        assert.are.equal(5, #rows)                                 -- three listings, your price, your break-even
+        assert.is_truthy(rows[3].cells[1]:find("Your price", 1, true))
+        assert.is_truthy(rows[4].cells[1]:find("Your break-even", 1, true))
+        assert.is_truthy(rows[2].cells[2]:find("+5 yours", 1, true))
+        assert.is_truthy(rows[5].cells[3]:find("90", 1, true))
+        env.ah.commodities[DUST] = saved
         local o = ns.Post.Outcome(DUST, 10, 429, 2)
         assert.are.equal(4290, o.gross)
         assert.are.equal(4076, o.net)        -- after the 5% cut

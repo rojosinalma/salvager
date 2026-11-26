@@ -172,6 +172,10 @@ flipping is out of scope for now.
     epic band shows when it overlaps a ticked range.
 52. **Sales tables share their height by a draggable bar** (`windows.ledger.salesSplit`, 0.1 to 0.9, default
     0.45; right-click resets).
+53. **The Post window shows the other sellers** (`Post.Market`, `Post.MarketRows`): their listings cheapest
+    first, read from the search Post just made, with "Your price" and "Your break-even" in their place, the
+    units ahead of your price and the units under your break-even. Two buttons set the price: Undercut lowest,
+    Break-even. The game gives one line per price, not per auction.
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),
