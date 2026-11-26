@@ -185,6 +185,11 @@ local function footerText()
         else
             text = text .. " No gear scan yet: click Play, or Scan once: Both."
         end
+        -- A limit that hides items says so, most of all when the list is empty.
+        local cap = ns.db.settings.maxPrice
+        if cap > 0 then
+            text = text .. string.format(" |cffff8040Max price %s is on: dearer items are never listed.|r", ns.Money(cap))
+        end
         return text
     elseif UI.view == "limits" and ns.db.settings.cautious then
         return "Cautious pricing is on."
