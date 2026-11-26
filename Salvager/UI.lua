@@ -558,7 +558,10 @@ local function build()
     ahButton = W.Button(f, "Auction house", 104, function() UI.ToAuctionHouse() end,
         "Closes the Salvager windows: only the auction house window stays. Scans keep running. The Salvager button "
         .. "above the auction house window brings them back.")
-    ahButton:SetPoint("RIGHT", market, "LEFT", -6, 0)
+    local reports = W.Button(f, "Reports", 80, function() ns.Reports.Toggle() end,
+        "Opens the reports in their own window: your gold, and the profit by quality, band, material and item.")
+    reports:SetPoint("RIGHT", market, "LEFT", -6, 0)
+    ahButton:SetPoint("RIGHT", reports, "LEFT", -6, 0)
     ahButton:SetMotionScriptsWhileDisabled(true)
     ahButton:HookScript("OnEnter", function(self)
         if self.reason then GameTooltip:AddLine(self.reason, 1, 0.3, 0.3, true) GameTooltip:Show() end
@@ -1019,6 +1022,7 @@ end
 
 -- Every window of the addon besides the main one.
 local OTHERS = { "SalvagerLedgerFrame", "SalvagerLogFrame", "SalvagerMaterialsFrame", "SalvagerMarketFrame",
+    "SalvagerReportsFrame",
     "SalvagerBreakdownFrame", "SalvagerOddsFrame", "SalvagerPostFrame", "SalvagerOptionsFrame" }
 
 --- Hides the other windows, without changing what is remembered as open.
@@ -1036,6 +1040,7 @@ function UI.RestoreWindows()
     ns.LogWindow.Restore()
     ns.Materials.Restore()
     ns.Market.Restore()
+    ns.Reports.Restore()
 end
 
 --- Only the auction house window (the game's, or another addon's): the Salvager windows close, scans and

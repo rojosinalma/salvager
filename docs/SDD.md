@@ -292,7 +292,7 @@ flipping is out of scope for now.
 71. **A click that cannot run now runs by itself** (`ns.Defer`): a gear scan clicked during a material scan,
     a material scan during a gear scan or an undercut check, and an undercut check during a material scan
     start when the other is done (dropped if the auction house closes). The chat says when it starts.
-72. **Gold view** (Ledger window, last tab): the last 24 h of `Gold.Period`: start, now, change, money in
+72. **Gold view** (moved 2026-11-26 to the Reports window, 79): the last 24 h of `Gold.Period`: start, now, change, money in
     the mail and after you collect it, each kind, the buys that lost and the part valued wrong; under it
     every change of gold, newest first.
 73. **Min return** (`minReturn`, percent, 0 = off) next to the min profit: the recommended limit is the lower
@@ -348,6 +348,12 @@ flipping is out of scope for now.
     ForeverForge hides that one on purpose. Facts read from ForeverForge Auction (no code taken): its
     "ForeverForge AH" button hangs below the game's window, bottom right, and can be dragged (kept in its own
     saved data), so its overlaps can be fixed by dragging it, with no patch.
+79. **Reports window** (`ReportsWindow.lua`, the main window's Reports button, `/salv reports`): one time
+    choice for all views (24 hours, 7 days, 30 days, all), remembered. Views: Gold (from the Ledger, 72);
+    Profit by quality and gear type with its bands under it (`Ledger.Profits`: disenchants with a known
+    cost; Sold value = the materials at what one unit really sold for, at their disenchant value while that
+    material has not sold; Profit = Sold value − Paid; grey under 20 disenchants); Materials (got, sold,
+    sold for, cost of sold, deposits lost, profit, in stock and its value now); Items (best first).
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

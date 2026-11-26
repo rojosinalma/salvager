@@ -16,6 +16,35 @@ describe("Ledger", function()
         assert.are.equal(2250, out[2])
     end)
 
+    it("sums the profit by quality and gear type, by band, by item and by material, for a time", function()
+        local prices = { [11083] = 400, [11084] = 5000 }
+        local function priceOf(id) return prices[id] end
+        local function de(t, itemID, cost, got, quality, band, salvager)
+            Ledger.Disenchant(state, { t = t, itemID = itemID, link = "[" .. itemID .. "]", quality = quality,
+                classID = 4, band = band, got = got, salvager = salvager }, cost and { each = cost } or nil, priceOf, 0.05)
+        end
+        de(100, 7048, 1000, { [11083] = 3 }, 2, 30, true)
+        de(200, 7048, 1000, { [11084] = 1 }, 2, 30, false)
+        de(300, 9433, 18000, { [11178] = 1 }, 3, 50, false)
+        de(400, 3835, nil, { [11083] = 1 }, 2, 35, false)               -- no price known: only in the materials
+        de(10, 7048, 1000, { [11083] = 1 }, 2, 30, false)                -- before the time asked for
+        Ledger.Sell(state, 11083, 2, 1000, 50, 500)                      -- 2 dust sold: 475 each after the cut
+        local p = Ledger.Profits(state, 50)
+        assert.are.equal(3, p.total.n)
+        assert.are.equal(20000, p.total.paid)
+        local green = p.groups[1]
+        assert.are.same({ 2, 4, 2, 1 }, { green.quality, green.classID, green.n, green.salvager })
+        assert.are.equal(30, green.bands[1].band)
+        -- The dust at what one sold for (475), the shard at its disenchant value (no shard sold yet).
+        assert.are.equal(3 * 475 + math.floor(5000 * 0.95 + 0.5), math.floor(green.sold + 0.5))
+        assert.are.equal(3, p.groups[2].quality)
+        assert.are.equal(2, p.items[1].n)                                -- the hoods paid best
+        local dust
+        for _, m in ipairs(p.mats) do if m.id == 11083 then dust = m end end
+        assert.are.same({ 4, 2, 950 }, { dust.got, dust.sold, dust.net })
+        assert.are.equal(4, Ledger.Profits(state).total.n)               -- all of it
+    end)
+
     it("splits by quantity when nothing has a price", function()
         local out = Ledger.Allocate(900, { [1] = 2, [2] = 1 }, function() return nil end)
         assert.are.equal(600, out[1])

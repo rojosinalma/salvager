@@ -49,13 +49,6 @@ local COLUMNS = {
         { "Difference", 80, "RIGHT", help = { "Difference", "Sold value each minus Disenchant value each." } },
         { "Diff", 46, "RIGHT", help = { "Difference in percent", "The same difference as a share of the disenchant value." } },
         { "Units sold", 70, "CENTER" } },
-    -- The Gold view: the period in sums, then every change of gold, newest first.
-    goldSum = { { "Gold", 170 }, { "Amount", 90, "RIGHT" },
-        { "Times", 50, "RIGHT", help = { "Times", "How many changes of gold of this kind." } } },
-    goldLog = { { "What", 200 }, { "Time", 90 }, { "Change", 90, "RIGHT" },
-        { "Kind", 140, "LEFT", help = { "Kind", "What the change was: told by what the addon did (a purchase, a "
-            .. "deposit, a mail taken), else by the window open then (vendor, mailbox, trade)." } },
-        { "Gold after", 90, "RIGHT" } },
     -- The Sales view is two tables: your auctions, and the sales already paid.
     listed = { { "Material", 150 }, { "Status", 110 },
         { "Time", 62, "RIGHT", sample = COUNTDOWN_MAX, help = { "Time", "A sold auction: the time until its money arrives by mail. "
@@ -146,47 +139,6 @@ local function countdown(seconds)
     local h, m, sec = math.floor(seconds / 3600), math.floor(seconds % 3600 / 60), seconds % 60
     if h > 0 then return string.format("%d:%02d:%02d", h, m, sec) end
     return string.format("%d:%02d", m, sec)
-end
-
-Window.GOLD_HOURS = 24
-
---- The Gold view: the sums of the last GOLD_HOURS hours, and every change of gold in them, newest first.
-function Window.GoldRows()
-    local s = ns.Gold.Period(Window.GOLD_HOURS)
-    if not s then
-        local none = note("No gold recorded yet: every change of your gold is recorded from now on.")
-        return { none }, { none }
-    end
-    local sums = {
-        { cells = { "At the start", ns.Money(s.start), "" } },
-        { cells = { "Now", ns.Money(s.finish), "" } },
-        { cells = { "Change", signed(s.change), "" } },
-    }
-    if s.mailSales > 0 then
-        sums[#sums + 1] = { cells = { "In the mail (sold, not collected)", ns.Money(s.mail), tostring(s.mailSales) } }
-        sums[#sums + 1] = { cells = { "After you collect it", ns.Money(s.finish + s.mail), "" } }
-        sums[#sums + 1] = { cells = { "Change after you collect it", signed(s.change + s.mail), "" } }
-    end
-    for _, k in ipairs(ns.Journal.KINDS) do
-        local x = s.kinds[k[1]]
-        if x then sums[#sums + 1] = { cells = { GREY .. k[2] .. "|r", signed(x.gain + x.loss), tostring(x.n) } } end
-    end
-    if #s.losses > 0 then
-        sums[#sums + 1] = { cells = { "Buys that lost", signed(s.lost), tostring(#s.losses) } }
-        if s.lostWrong < 0 then
-            sums[#sums + 1] = { cells = { RED .. "  of it valued wrong|r", signed(s.lostWrong), "" } }
-        end
-    end
-    local log = {}
-    for i = #s.entries, 1, -1 do
-        local e = s.entries[i]
-        if e.k ~= "start" then
-            log[#log + 1] = { cells = { e.r or GREY .. "-|r", date("%m-%d %H:%M", e.t), signed(e.d),
-                ns.Journal.KIND_NAME[e.k] or e.k, ns.Money(e.b) }, link = e.r and e.r:match("|Hitem:[^|]+|h") and e.r }
-        end
-    end
-    if #log == 0 then log[1] = note("No change of gold in this time.") end
-    return sums, log
 end
 
 --- Your auctions as last read: what is listed, what is sold and waiting for its money.
@@ -529,7 +481,7 @@ function Window.Summary()
     return line1, line2
 end
 
-local VIEWS = { sales = true, purchases = true, odds = true, accuracy = true, gold = true }
+local VIEWS = { sales = true, purchases = true, odds = true, accuracy = true }
 
 ------------------------------------------------------------------ the window
 
@@ -625,10 +577,9 @@ function Window.Refresh()
     if Window.view == "odds" and Window.OddsPoppedOut() then Window.view = "sales" end
     -- Sales (its first subtab) and Accuracy are two tables, each in its own panel; the other views are one.
     local accuracy = Window.view == "accuracy"
-    local gold = Window.view == "gold"
     local sales = Window.view == "sales"
     local history = sales and f.saved.salesTab == "history"
-    local split = (sales and not history) or accuracy or gold
+    local split = (sales and not history) or accuracy
     local odds = Window.view == "odds"
     list:SetShown(not split and not odds)
     -- The Sales view has a row of subtabs, and its tables start under it.
@@ -649,18 +600,7 @@ function Window.Refresh()
         local share_ = f.saved.salesSplit or SPLIT_DEFAULT
         salesParts[2]:SetHeight(math.max(TABLE_MIN, math.min(room - TABLE_MIN, math.floor(room * share_))))
     end
-    if gold then
-        salesParts[1]:SetText(GOLD .. "Last " .. Window.GOLD_HOURS .. " hours|r" .. GREY .. "  " .. tostring(ns.Gold.Char())
-            .. ", every change of gold by its kind|r")
-        salesParts[3]:SetText(GOLD .. "Changes|r" .. GREY .. "  newest first|r")
-        local sums, log = Window.GoldRows()
-        salesParts[2]:SetColumns(COLUMNS.goldSum)
-        salesParts[2]:SetSource(#sums, function(i) return sums[i] end)
-        salesParts[2]:Refresh()
-        salesParts[4]:SetColumns(COLUMNS.goldLog)
-        salesParts[4]:SetSource(#log, function(i) return log[i] end)
-        salesParts[4]:Refresh()
-    elseif accuracy then
+    if accuracy then
         salesParts[1]:SetText(GOLD .. "By band|r" .. GREY .. "  expected value, disenchant value, sold value|r")
         salesParts[3]:SetText(GOLD .. "By material|r" .. GREY .. "  disenchant value against sold value, per unit|r")
         local bands, mats = Window.AccuracyBandRows(), Window.AccuracyMaterialRows()
@@ -734,7 +674,7 @@ local function build()
     end
     local x = 12
     for _, t in ipairs({ { "sales", "Sales" }, { "purchases", "Purchases" }, { "accuracy", "Accuracy" },
-        { "odds", "Odds" }, { "gold", "Gold" } }) do
+        { "odds", "Odds" } }) do
         local b = W.Button(f, t[2], 88, function()
             -- The Odds tab, while the odds are in their own window: put them back here.
             if t[1] == "odds" then Window.OddsPutBack() end
@@ -748,8 +688,6 @@ local function build()
         tabs[t[1]] = b
         x = x + (t[1] == "odds" and 116 or 92)   -- (the Odds tab has its pop-out button after it)
     end
-    W.Tooltip(tabs.gold, "Gold", "Your gold over the last 24 hours: where it started, where it is, the money still "
-        .. "in the mail, and every change by its kind. /salv gold <hours> prints the same for any time.")
     W.Tooltip(tabs.accuracy, "Accuracy", "Expected value when you bought, against the disenchant value of what you got, "
         .. "against the sold value. By band and by material.")
     W.Tooltip(tabs.purchases, "Purchases", "Every item you bought, newest first. Under each one: what it was disenchanted "
@@ -960,7 +898,7 @@ ns.OnTick(function()
     end
 end)
 
-for _, e in ipairs({ "SALVAGER_LEDGER", "SALVAGER_PRICES_DONE", "SALVAGER_SETTINGS", "SALVAGER_LISTINGS", "SALVAGER_GOLD",
+for _, e in ipairs({ "SALVAGER_LEDGER", "SALVAGER_PRICES_DONE", "SALVAGER_SETTINGS", "SALVAGER_LISTINGS",
     "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED" }) do
     ns.On(e, function() Window.Refresh() end)
 end

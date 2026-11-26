@@ -109,13 +109,19 @@ describe("The gold journal in a simulated client", function()
         assert.is_truthy(out:find("in the mail:", 1, true))
         assert.is_truthy(out:find("Gear bought:", 1, true))
         assert.is_truthy(out:find("valued wrong", 1, true))
-        ns.LedgerWindow.Toggle()
-        ns.LedgerWindow.view = "gold"
-        ns.LedgerWindow.Refresh()
-        local sums, log = ns.LedgerWindow.GoldRows()
+        ns.Reports.Toggle()
+        ns.Reports.view = "gold"
+        ns.Reports.Refresh()
+        local sums, log = ns.Reports.GoldRows()
         assert.are.equal("At the start", sums[1].cells[1])
         assert.is_truthy(sums[4].cells[1]:find("In the mail", 1, true))
         assert.is_true(#log >= 5)
+        for _, view in ipairs({ "profit", "materials", "items" }) do   -- every view draws, with data and the time picked
+            ns.Reports.view = view
+            for _, range in ipairs({ "24h", "all" }) do ns.Reports.range = range ns.Reports.Refresh() end
+        end
+        assert.is_truthy(ns.Reports.ProfitRows()[1].cells[1]:find("All", 1, true))
+        assert.are.equal(1, #ns.Reports.ItemRows())
         local l = ns.Gold.Losses(0)[1]
         assert.are.same({ -6661, true }, { l.loss, l.misjudged })
     end)

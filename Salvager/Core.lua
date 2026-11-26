@@ -482,6 +482,7 @@ local HELP = {
     "/salv stock <item> <quantity> <cost each> - opening stock, e.g. /salv stock 11137 40 6s",
     "/salv report - disenchant results by band",
     "/salv gold 24 - what happened to your gold in the last 24 hours (or any number of hours)",
+    "/salv reports - the reports window (gold, profit by quality and band, materials, items)",
     "/salv auras - list your buffs (to find the Salvager's)",
     "/salv materials - the materials list in its own window (again: put it back)",
     "/salv ledger - the ledger window (purchases, sales, odds)",
@@ -563,6 +564,8 @@ SlashCmdList.SALVAGER = function(msg)
         local h = tonumber(args[2] or "24")
         if not h or h <= 0 then ns.Print("usage: /salv gold 24 (hours)") return end
         ns.Gold.Report(h)
+    elseif cmd == "reports" then
+        ns.Reports.Toggle()
     elseif cmd == "report" then
         if ns.Report then ns.Report.Print() end
     elseif cmd == "materials" then

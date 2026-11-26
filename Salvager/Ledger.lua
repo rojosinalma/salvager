@@ -439,6 +439,103 @@ function Ledger.DepositLost(state, matID, qty, amount, why, t)
     return rec
 end
 
+--- What the trading made from `from` on (nil = all of it), to report it by quality and gear type, by band,
+--- by item and by material. Only disenchants with a known cost count in the first three.
+---   sold value of a disenchant = its materials at what one unit really sold for on average (after the cut),
+---   or at their disenchant value when that material has not sold yet.
+--- @return table {
+---   total = sums, groups = { { quality, classID, bands = { sums with band }, sums... } },
+---   items = { sums with itemID, link }, mats = { id, got, sold, net, cost, profit, untracked, depositsLost } }
+---   sums = { n, paid, value (disenchant value), sold (sold value), salvager (disenchants with it) }
+function Ledger.Profits(state, from)
+    from = from or 0
+    local each = {}
+    for _, s in ipairs(state.sales) do
+        if not s.lost and s.count > 0 then
+            local e = each[s.id] or { units = 0, net = 0 }
+            each[s.id] = e
+            e.units, e.net = e.units + s.count, e.net + s.net
+        end
+    end
+    local function sums(extra)
+        extra = extra or {}
+        extra.n, extra.paid, extra.value, extra.sold, extra.salvager = 0, 0, 0, 0, 0
+        return extra
+    end
+    local out = { total = sums(), groups = {}, items = {}, mats = {} }
+    local groups, bands, items, mats = {}, {}, {}, {}
+    local function mat(id)
+        local m = mats[id]
+        if not m then
+            m = { id = id, got = 0, sold = 0, net = 0, cost = 0, profit = 0, untracked = 0, depositsLost = 0 }
+            mats[id] = m
+            out.mats[#out.mats + 1] = m
+        end
+        return m
+    end
+    for _, r in ipairs(state.disenchants) do
+        if (r.t or 0) >= from then
+            for id, qty in pairs(r.got or {}) do mat(id).got = mat(id).got + qty end
+            if r.costKnown then
+                local soldValue = 0
+                for id, qty in pairs(r.got or {}) do
+                    local e = each[id]
+                    soldValue = soldValue + ((e and e.units > 0) and (qty * e.net / e.units) or (r.vals and r.vals[id] or 0))
+                end
+                local gkey = (r.quality or 0) .. ":" .. (r.classID or 0)
+                local g = groups[gkey]
+                if not g then
+                    g = sums({ quality = r.quality, classID = r.classID, bands = {} })
+                    groups[gkey] = g
+                    out.groups[#out.groups + 1] = g
+                end
+                local bkey = Ledger.BandKey(r.quality, r.classID, r.band)
+                local b = bands[bkey]
+                if not b then
+                    b = sums({ quality = r.quality, classID = r.classID, band = r.band })
+                    bands[bkey] = b
+                    g.bands[#g.bands + 1] = b
+                end
+                local it = items[r.itemID or 0]
+                if not it then
+                    it = sums({ itemID = r.itemID, link = r.link })
+                    items[r.itemID or 0] = it
+                    out.items[#out.items + 1] = it
+                end
+                for _, x in ipairs({ out.total, g, b, it }) do
+                    x.n = x.n + 1
+                    x.paid = x.paid + (r.cost or 0)
+                    x.value = x.value + (r.value or 0)
+                    x.sold = x.sold + soldValue
+                    if r.salvager then x.salvager = x.salvager + 1 end
+                end
+            end
+        end
+    end
+    for _, s in ipairs(state.sales) do
+        if (s.t or 0) >= from then
+            local m = mat(s.id)
+            if s.lost then
+                m.depositsLost = m.depositsLost - (s.net or 0)
+            else
+                m.sold = m.sold + (s.count or 0)
+                m.net = m.net + (s.net or 0)
+                m.cost = m.cost + (s.cost or 0)
+                m.untracked = m.untracked + (s.untracked or 0)
+            end
+            m.profit = m.profit + (s.profit or 0)
+        end
+    end
+    table.sort(out.groups, function(a, c)
+        if a.quality ~= c.quality then return (a.quality or 0) < (c.quality or 0) end
+        return (a.classID or 0) > (c.classID or 0)
+    end)
+    for _, g in ipairs(out.groups) do table.sort(g.bands, function(a, c) return (a.band or 0) < (c.band or 0) end) end
+    table.sort(out.items, function(a, c) return (a.sold - a.paid) > (c.sold - c.paid) end)
+    table.sort(out.mats, function(a, c) return a.net > c.net end)
+    return out
+end
+
 --- Every item bought or disenchanted, newest first: one entry per item, with what it gave.
 --- @return table  entries {
 ---   t, itemID, link, paid (nil = no purchase recorded), expected (value expected when bought, or at the
