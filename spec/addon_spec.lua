@@ -670,9 +670,14 @@ describe("Salvager scan safety", function()
         assert.is_true(ns.Scanner.Buying())                        -- the scan sends nothing new
         ns.Scanner.Aim(false)
         assert.is_false(ns.Scanner.Buying())
-        env.ah.ready = false                                       -- the auction house is busy: the click still buys
+        -- The auction house is busy with one request: the purchase waits for that one answer only, and
+        -- goes out the moment the auction house is ready. No second click.
+        env.ah.ready = false
         ns.Scanner.Buy(deal)
+        assert.is_true(deal.pending)
+        assert.are.equal(bids, #env.ah.bids)
         env.ah.ready = true
+        wow.fire(ns, "AUCTION_HOUSE_THROTTLED_SYSTEM_READY")
         assert.are.equal(bids + 1, #env.ah.bids)
         assert.is_true(deal.pending)
         -- The auction house threw it away: the addon sends it again as soon as the auction house is ready,

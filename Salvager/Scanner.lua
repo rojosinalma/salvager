@@ -525,12 +525,22 @@ function Scanner.Buy(deal)
     -- One at a time with a cancel: the auction house's error message does not say which one failed.
     if ns.Listings and ns.Listings.Cancelling() then ns.Print("wait for the cancel to finish") return end
     if GetMoney() < deal.buyout then ns.Print("not enough money for %s", deal.link or "this item") return end
-    -- A click on Buy always buys: the purchase goes out at once, whatever else is going on.
+    -- A click on Buy always buys. Everything else stops at once, and the purchase is next on the line:
+    --   the auction house is free: it goes out now;
+    --   the auction house is busy with one request (a purchase sent now is lost without any answer,
+    --   measured 2026-11-26): it goes out the moment that one request is answered, ahead of the queue.
     deal.pending = true
     deal.clickedAt = GetTime()
     lastBuyAt = deal.clickedAt
     pendingBuys[deal.auctionID] = deal
-    AH.PlaceBid(deal.auctionID, deal.buyout)
+    local busy = AH.IsThrottledMessageSystemReady and not AH.IsThrottledMessageSystemReady()
+    if busy and not ns.db.buyResendBlocked then
+        deal.resend, deal.queued = true, true
+        ns.Log("purchase of %s: the auction house is busy, it goes out the moment it is ready", deal.link or deal.itemID)
+        C_Timer.After(1, function() Scanner.SendWaiting(true) end)   -- in case the "ready" event does not come
+    else
+        AH.PlaceBid(deal.auctionID, deal.buyout)
+    end
     ns.Fire("SALVAGER_DEALS")
 end
 
@@ -578,21 +588,28 @@ local function free(d, why)
     ns.Fire("SALVAGER_DEALS")
 end
 
-local function resendBuys()
-    for _, d in pairs(pendingBuys) do
-        if d.resend then
-            d.resend = nil
-            d.resends = (d.resends or 0) + 1
-            d.clickedAt = GetTime()
-            lastBuyAt = d.clickedAt
-            Scanner.resending = d
-            local ok, err = pcall(AH.PlaceBid, d.auctionID, d.buyout)
-            Scanner.resending = nil
-            ns.Log("purchase of %s sent again (%d of %d)%s", d.link or d.itemID, d.resends, MAX_BUY_RESENDS,
-                ok and "" or (": " .. tostring(err)))
-            if not ok then free(d, "the game refused the resend") end
-        end
+--- Sends the oldest purchase that waits for the auction house. One at a time: each purchase makes the
+--- auction house busy again, and the next one goes out when it is ready again.
+--- `force` = send even if the auction house does not say it is ready (its "ready" event did not come).
+function Scanner.SendWaiting(force)
+    local d
+    for _, x in pairs(pendingBuys) do
+        if x.resend and (not d or x.clickedAt < d.clickedAt) then d = x end
     end
+    if not d then return end
+    if not force and AH.IsThrottledMessageSystemReady and not AH.IsThrottledMessageSystemReady() then return end
+    d.resend = nil
+    if not d.queued then d.resends = (d.resends or 0) + 1 end
+    d.sentByAddon = true
+    d.clickedAt = GetTime()
+    lastBuyAt = d.clickedAt
+    local ok, err = pcall(AH.PlaceBid, d.auctionID, d.buyout)
+    ns.Log("purchase of %s sent%s%s", d.link or d.itemID, d.queued and " (it waited for the auction house)"
+        or string.format(" again (%d of %d)", d.resends, MAX_BUY_RESENDS), ok and "" or (": " .. tostring(err)))
+    d.queued = nil
+    if not ok then free(d, "the game refused it") end
+    -- More of them waiting: the next one after this one.
+    C_Timer.After(1, function() Scanner.SendWaiting(true) end)
 end
 
 ns.On("AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED", function()
@@ -606,12 +623,12 @@ ns.On("AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED", function()
                 ns.Log("purchase of %s dropped by the auction house: sending it again when it is ready",
                     d.link or d.itemID)
                 -- In case the "ready" event does not come.
-                C_Timer.After(1, resendBuys)
+                C_Timer.After(1, function() Scanner.SendWaiting(true) end)
             end
         end
     end
 end)
-ns.On("AUCTION_HOUSE_THROTTLED_SYSTEM_READY", resendBuys)
+ns.On("AUCTION_HOUSE_THROTTLED_SYSTEM_READY", function() Scanner.SendWaiting() end)
 
 -- The game refused an action of this addon. If that was a purchase sent again, never try that again.
 local function blocked(addon)
@@ -621,7 +638,7 @@ local function blocked(addon)
         ns.Log("the game does not allow a purchase without a click: purchases are not sent again from now on")
     end
     for _, d in pairs(pendingBuys) do
-        if (d.resends or 0) > 0 then free(d, "the game blocked the resend") end
+        if d.sentByAddon then free(d, "the game blocked a purchase sent without a click") end
     end
 end
 ns.On("ADDON_ACTION_BLOCKED", blocked)

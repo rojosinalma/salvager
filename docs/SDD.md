@@ -216,8 +216,11 @@ flipping is out of scope for now.
     and Sold (sales whose money is not collected yet, with a countdown). "History" lists the sales whose mail
     was taken. The game keeps a sold auction in its own list until the money is mailed; the addon shows it
     as a sale, not as an auction.
-65. **A Buy click always buys** (the user's rule: a deal is lost if it waits). The purchase is sent at once,
-    whatever the auction house is doing; nothing ever asks the player to wait or click again first. To keep
+65. **A Buy click always buys** (the user's rule: a deal is lost if it waits). Nothing ever asks the player to
+    wait or click again. With the auction house free the purchase is sent in the click. With it busy
+    (`IsThrottledMessageSystemReady` false) a purchase sent now is lost with no answer and no event (measured
+    2026-11-26, 03:17: five such clicks, "no answer in 10s"), so it is sent on the next
+    `AUCTION_HOUSE_THROTTLED_SYSTEM_READY`, ahead of the whole queue, one purchase per "ready". To keep
     the line free, the scan holds while the mouse is on a Buy button (`Scanner.Aim`, 4 s at most) and while a
     purchase is on its way. A purchase the auction house reports as dropped is sent again by the addon when the
     auction house is ready (`AUCTION_HOUSE_THROTTLED_SYSTEM_READY`), ahead of every search and page, up to 3
