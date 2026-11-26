@@ -49,6 +49,9 @@ reply must say so.
    a window with long lists is resizable in the direction that helps.
 3. Secondary views are subtabs of the view they belong to, the main one first.
 4. Live values (countdowns, gold) update while they show.
+5. Nothing overlaps, at the smallest size a window allows. A control row that is full moves controls to the
+   row of the view they belong to (Odds filters on its subtab row). A text that can grow either wraps and
+   pushes what is under it down, or is one line cut at the next control.
 
 ## Data
 

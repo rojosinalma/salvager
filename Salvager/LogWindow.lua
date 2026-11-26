@@ -87,8 +87,7 @@ function Window.Refresh()
     if list.atBottom ~= false then list.offset = math.huge end
     list:Refresh()
     filterButton:SetText(filter[2])
-    count:SetText(string.format("%d of %d lines, newest at the bottom. Hover a line to see its item. Saved to disk on "
-        .. "/reload or logout.", n, #log))
+    count:SetText(string.format("%d of %d lines", n, #log))
     ns.logChanged = false
     lastRefresh = GetTime()
 end
@@ -115,6 +114,10 @@ local function build()
     W.Tooltip(filterButton, "Lines shown", "Click to show all lines, only trades and gold, or only errors.")
     count = W.Label(f, "", "GameFontDisableSmall")
     count:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -36)
+    count:SetWordWrap(false)
+    count:SetPoint("RIGHT", filterButton, "LEFT", -8, 0)
+    W.HelpArea(f, count, "Log", "Newest at the bottom. Hover a line to see its item. The game saves the log to disk "
+        .. "on /reload or logout.")
     list = W.List(f, { rowHeight = 15, header = false, plain = true, fit = false })
     list:SetColumns({ { "", 300 } })
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -58)

@@ -361,7 +361,7 @@ local function recalc()
         .. (d.stale and "  |cffff8040(price not refreshed)|r" or "")
         .. (skipped > 0 and string.format("  |cff808080(%d cheaper left out: too few)|r", skipped) or ""))
     d.lines[2]:SetText("Your break-even: " .. (s.breakEven and ns.Money(s.breakEven) or "|cff808080cost not known|r"))
-    d.lines[3]:SetText("You get after the 5% cut: " .. ns.Money(o.net))
+    d.lines[3]:SetText(string.format("You get after the %d%% cut: ", math.floor(ns.Cut() * 100 + 0.5)) .. ns.Money(o.net))
     if o.profit then
         d.lines[4]:SetText("Profit: " .. (o.profit >= 0 and "|cff40ff40" or "|cffff4040") .. ns.Money(o.profit) .. "|r")
     else
@@ -442,9 +442,17 @@ local function build()
     d.duration:SetPoint("LEFT", dLabel, "LEFT", 76, 0)
 
     d.lines = {}
+    -- Each line under the one before, as wide as the left column: a long line wraps and pushes the rest
+    -- down, and never runs into the list on the right.
     for i = 1, 5 do
         local l = W.Label(d, "", "GameFontHighlightSmall")
-        l:SetPoint("TOPLEFT", dLabel, "BOTTOMLEFT", 0, -14 - (i - 1) * 16)
+        if i == 1 then
+            l:SetPoint("TOPLEFT", dLabel, "BOTTOMLEFT", 0, -14)
+        else
+            l:SetPoint("TOPLEFT", d.lines[i - 1], "BOTTOMLEFT", 0, -4)
+        end
+        l:SetWidth(350)
+        l:SetJustifyH("LEFT")
         d.lines[i] = l
     end
     -- An essence: is its other form (three lesser = one greater) worth more?
@@ -464,6 +472,9 @@ local function build()
     for i = 1, 2 do
         local l = W.Label(d, "", "GameFontHighlightSmall")
         l:SetPoint("TOPLEFT", d, "TOPLEFT", 384, -16 - i * 16)
+        l:SetPoint("RIGHT", d, "RIGHT", -14, 0)
+        l:SetJustifyH("LEFT")
+        l:SetWordWrap(false)
         d.marketLines[i] = l
     end
     d.list = W.List(d, { rowHeight = 20 })

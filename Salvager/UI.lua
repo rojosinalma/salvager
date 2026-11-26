@@ -65,7 +65,7 @@ local VIEWS = {
 
 local f, rows, headers, status, footer, minProfit, playButton, stopButton, gearChoice, tabs =
     nil, {}, {}, nil, nil, nil, nil, nil, nil, {}
-local maxPrice, capHint, cautious, bandDrop, ilvlMin, ilvlMax, levelHint, materialsOnly, scanOwned, gold, maxChecks
+local maxPrice, cautious, bandDrop, ilvlMin, ilvlMax, levelHint, materialsOnly, scanOwned, gold, maxChecks
 local qualityDrop, popOut, minReturn
 local headerHelp = {}
 local actionHeader
@@ -416,7 +416,7 @@ function UI.Refresh()
     minProfit:Set(ns.db.settings.minProfit)
     if not minReturn:HasFocus() then minReturn:SetText(tostring(ns.db.settings.minReturn)) end
     maxPrice:Set(ns.db.settings.maxPrice)
-    capHint:SetText(ns.db.settings.maxPrice > 0 and "" or "no limit")
+
     cautious:SetChecked(ns.db.settings.cautious)
     bandDrop:Update()
     local st = ns.db.settings
@@ -652,8 +652,7 @@ local function build()
         ns.Fire("SALVAGER_SETTINGS")
     end)
     maxPrice:SetPoint("LEFT", capLabel, "RIGHT", 4, 0)
-    capHint = W.Label(box, "", "GameFontDisableSmall")
-    capHint:SetPoint("LEFT", maxPrice:Right(), "RIGHT", 8, 0)
+    -- (No "no limit" text after the boxes: at the narrowest window it ran into Cautious. Its help says it.)
     cautious = W.Check(box, "Cautious", "Cautious pricing: the buy limit counts every material at its lowest amount "
         .. "(1 dust, not the average 1.5) and no Arcane Salvager bonus. You see fewer deals, and they lose less often. "
         .. "Value and Profit still show the average.", function(on)
