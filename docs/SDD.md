@@ -204,7 +204,13 @@ flipping is out of scope for now.
     purchase: Paid, Promised (value shown when bought), Got (value at the disenchant), Sold for (the same
     materials at the average price each really sold for; at the disenchant's price where none sold yet), and
     the planned and real profit. A second table per material: valued each against sold each. Sales are not
-    tied to items (pooled stock), so "Sold for" per band is an estimate.
+    tied to items (pooled stock), so "Sold for" per band is an estimate. Column names (0.3.115, the user):
+    By band `Band | Items | Paid | Expected value | Disenchant value | Drop luck | Sold value | Price change |
+    Expected profit | Actual profit | Profit vs expected`; By material `Material | Units | Disenchant value each |
+    Sold value each | Price change each | Price change | Units sold`. Drop luck = Disenchant value against
+    Expected value, Price change = Sold value against Disenchant value (the same name in both tables),
+    Profit vs expected = (Actual profit − Expected profit) / |Expected profit|, "-" where Expected profit is 0;
+    all in percent, "+" and green on a gain, red on a loss.
 62. **(Replaced 2026-11-26 by 65.) A Buy click while the auction house is busy is not sent** (`IsThrottledMessageSystemReady` false): it
     would be thrown away without an answer (measured 2026-11-26: four clicks during a browse, none answered).
     Everything else is held for 3 s and the player clicks again. A "request dropped" within 2 s of a Buy
@@ -384,8 +390,8 @@ flipping is out of scope for now.
     `oddsFilter` in `SalvagerDB.windows.ledger`). Odds lost its Armor/Weapons subtabs (the Gear filter does
     it; old settings move over once). Every heading of a grouped list opens and closes (`ns.GroupedRows`
     `opts.collapsed`); Odds cards too, each band on its own (`Widgets.CardList`: `heading`, `open`,
-    `onClick`, `indent`). Accuracy has a Profit difference column (Actual profit − Expected profit, "+" on a
-    gain), on the headings too, between Expected profit and Actual profit (0.3.110, the user). The odds window is 740 wide (0.3.101): "Only bands with my data" on a row of its own under
+    `onClick`, `indent`). Accuracy has a Profit vs expected column in percent (SDD 61), on the headings
+    too, after Actual profit (0.3.115, the user; it replaces the gold Profit difference of 0.3.99/0.3.110). The odds window is 740 wide (0.3.101): "Only bands with my data" on a row of its own under
     the filter row; the Odds cards sit in 12 px per level (22 in the other tables).
 84. **The Materials window fits its list** (0.3.100): as wide as its columns need, the Post column ending
     with its button (`list.neededWidth` from `Widgets.List`), at least 620 for the row above the list (help
@@ -436,14 +442,14 @@ flipping is out of scope for now.
     the free/total after taking them all, one slot each (gear does not stack): `12/26 → 4/26` (0.3.110, the
     user). Below 0 it is the slots missing as a negative (`-3/26`), red with the alert sign after it.
 91. **Tables show every column; the Ledger fits its tables** (0.3.110). `Widgets.List` made 10 cells a row,
-    so the 11th column of Accuracy, By band (Profit difference) was never drawn, while its width still counted
+    so the 11th column of Accuracy, By band (then Profit difference) was never drawn, while its width still counted
     and squeezed the first column ("Uncom..."). It now has 12, and `SetColumns` refuses more than it has (so
     does `Widgets.CardList`) instead of cutting them. `list.neededWidth` counts the first column at its full
     width even where the list cut it. The Ledger window is as wide as the tables on show need, at least 860
     (`f.FitWidth` of `Widgets.Window`: width and resize bounds); its height stays the player's. 0.3.114: the
     bounds are set first, then the width. 0.3.110 to 0.3.113 set the width first, while the bounds made at
     build still held it at 860; a client that keeps a frame inside its bounds on `SetWidth` leaves it there,
-    and the last columns of By band (Profit difference, Actual profit) do not fit and are left out. The
+    and the last columns of By band (then Profit difference, Actual profit) do not fit and are left out. The
     stand-in did not model the bounds. Not yet measured in the client: the layout dump (94) shows it.
 92. **The version in the title bar** (0.3.110, the user): every window made by `Widgets.Window`, and the main
     window, shows `v<version>` (`ns.VERSION`, from the TOC through `C_AddOns.GetAddOnMetadata`) at the left

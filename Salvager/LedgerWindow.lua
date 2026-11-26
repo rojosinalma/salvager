@@ -39,24 +39,27 @@ local COLUMNS = {
             .. "the average disenchant value at the material prices of that moment, after the auction house cut." } },
         { "Disenchant value", 70, "RIGHT", help = { "Disenchant value", "The market value of the materials you got, "
             .. "at the prices of the moment you disenchanted, after the auction house cut." } },
-        { "Diff", 46, "RIGHT", help = { "Disenchant value against Expected value", "How far the disenchant value is "
-            .. "from the expected value. The gap is drop luck, or drop rates that are not what the addon assumes." } },
+        { "Drop luck", 46, "RIGHT", help = { "Drop luck", "How far the disenchant value is from the expected "
+            .. "value, in percent: drop luck, or drop rates that differ from the table." } },
         { "Sold value", 70, "RIGHT", help = { "Sold value", "The same materials at the average price each one really "
             .. "sold for, after the auction house cut. Materials you have not sold yet count at their disenchant value." } },
-        { "Diff", 46, "RIGHT", help = { "Sold value against Disenchant value", "How far the sold value is from the "
-            .. "disenchant value. The gap is prices that moved, and undercutting. * = more than half of the row's "
-            .. "materials are not sold yet, so most of it is still the disenchant value." } },
+        { "Price change", 46, "RIGHT", help = { "Price change", "How far the sold value is from the disenchant value, "
+            .. "in percent: prices that moved, and undercutting. * = more than half of the row's materials are not "
+            .. "sold yet, so most of it is still the disenchant value." } },
         { "Expected profit", 70, "RIGHT", help = { "Expected profit", "Expected value minus Paid." } },
-        { "Profit difference", 70, "RIGHT", help = { "Profit difference", "Actual profit minus Expected profit: how "
-            .. "much more (+) or less (-) the items made than the Deals list said when you bought them." } },
-        { "Actual profit", 70, "RIGHT", help = { "Actual profit", "Sold value minus Paid." } } },
+        { "Actual profit", 70, "RIGHT", help = { "Actual profit", "Sold value minus Paid." } },
+        { "Profit vs expected", 46, "RIGHT", help = { "Profit vs expected", "How much more (+) or less (-) the items "
+            .. "made than the Deals list said when you bought them, in percent of the expected profit. "
+            .. "- = no expected profit to compare with." } } },
     accMats = { { "Material", 170 }, { "Units", 44, "CENTER" },
         { "Disenchant value each", 80, "RIGHT", help = { "Disenchant value each", "The average market price of one "
             .. "unit at the moment you disenchanted, after the auction house cut." } },
         { "Sold value each", 80, "RIGHT", help = { "Sold value each", "The average of what one unit really brought "
             .. "in your sales, after the auction house cut." } },
-        { "Difference", 80, "RIGHT", help = { "Difference", "Sold value each minus Disenchant value each." } },
-        { "Diff", 46, "RIGHT", help = { "Difference in percent", "The same difference as a share of the disenchant value." } },
+        { "Price change each", 80, "RIGHT", help = { "Price change each", "Sold value each minus Disenchant value "
+            .. "each." } },
+        { "Price change", 46, "RIGHT", help = { "Price change", "How far the sold value is from the disenchant value, "
+            .. "in percent: prices that moved, and undercutting." } },
         { "Units sold", 70, "CENTER" } },
     -- The Sales view is two tables: your auctions, and the sales already paid.
     listed = { { "Material", 150 }, { "Status", 110 },
@@ -213,10 +216,6 @@ local function money(c) return c and ns.Money(c) or "-" end
 local function signed(c)
     if not c then return "" end
     return (c >= 0 and GREEN or RED) .. ns.Money(c) .. "|r"
-end
---- A difference: as signed, with "+" before a gain.
-local function plus(c)
-    return (c > 0 and (GREEN .. "+" .. ns.Money(c) .. "|r")) or signed(c)
 end
 local function itemName(itemID, link)
     return link or (ns.GetItemInfo(itemID)) or ("item " .. tostring(itemID))
@@ -516,6 +515,14 @@ local function share(part, whole)
     return (pct > 0 and (GREEN .. "+") or pct < 0 and RED or GREY) .. pct .. "%|r"
 end
 
+--- Profit vs expected: how far the actual profit is from the expected one, in percent of the expected one
+--- (which can be a loss, so its size). "-" where nothing was expected.
+local function profitShare(actual, expected)
+    if not expected or expected == 0 then return GREY .. "-|r" end
+    local pct = math.floor((actual - expected) / math.abs(expected) * 100 + 0.5)
+    return (pct > 0 and (GREEN .. "+") or pct < 0 and RED or GREY) .. pct .. "%|r"
+end
+
 --- Accuracy, by band: what was promised, what the disenchants gave, what the sales brought.
 --- The Accuracy view's filters and closed headings (saved).
 local function accuracyFilter()
@@ -538,8 +545,8 @@ function Window.AccuracyBandRows()
         rows[#rows + 1] = { group = group, cells = { name, (few and GREY or "") .. b.n .. (few and "|r" or ""),
             ns.Money(b.paid), ns.Money(b.promised), ns.Money(b.got), share(b.got, b.promised), ns.Money(b.sold),
             share(b.sold, b.got) .. ((b.units > 0 and b.soldUnits < b.units / 2) and (GREY .. "*|r") or ""),
-            signed(b.promised - b.paid), plus(math.floor(b.sold + 0.5) - b.promised),
-            signed(math.floor(b.sold + 0.5) - b.paid) } }
+            signed(b.promised - b.paid), signed(math.floor(b.sold + 0.5) - b.paid),
+            profitShare(math.floor(b.sold + 0.5) - b.paid, b.promised - b.paid) } }
     end
     if acc.total.n == 0 then
         rows[1] = note("Nothing to compare yet, or nothing under these filters: it needs items you bought and then "
