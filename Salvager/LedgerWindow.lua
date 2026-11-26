@@ -265,7 +265,8 @@ local ODDS_COLUMNS = {
         .. "and how many, by the odds table the addon uses (Classic's table; not confirmed for Forever)." } },
     { "You got", 96, "CENTER", help = { "You got", "How often it came in your own disenchants in this band, and how "
         .. "many on average." } },
-    { "Price", 110, "RIGHT" },
+    { "Price now", 110, "RIGHT", help = { "Price now", "What one of this material costs on the auction house now, "
+        .. "from your last material scan. Value now is worked out from these prices." } },
 }
 local BAND_HELP = { "This band", "Disenchants: how many of yours are in this band.\n\n"
     .. "Value now: what ONE disenchant is worth on average over many, at today's material prices, after the 5% cut. "
