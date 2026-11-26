@@ -435,36 +435,52 @@ function Widgets.Tab(parent, text, onClick, tooltip)
     return b
 end
 
---- A subtab: a second level under a tab. Flat text with no box; the selected one white with a gold line under it,
---- the others gold text. Never looks like a tab or a button. subtab:SetSelected(on), subtab:SetText(text). Put
---- subtabs in a Widgets.Bar(parent, "subtabs").
+--- A subtab: a second level under a tab, drawn as one segment of a segmented control: a small box with an edge,
+--- so it reads as something to click, but flatter and smaller than a tab and never red like an action button.
+--- Unselected: dark fill, grey edge, gold text; under the pointer: lighter fill, white text; selected: gold fill
+--- and edge, white text. subtab:SetSelected(on), subtab:SetText(text). Put subtabs in a Widgets.Bar(parent,
+--- "subtabs").
 function Widgets.Subtab(parent, text, onClick, tooltip)
     local b = CreateFrame("Button", nil, parent)
     b.uiKind = "subtab"
     b:SetHeight(SUBTAB_H)
     local fill = b:CreateTexture(nil, "BACKGROUND")
     fill:SetAllPoints()
-    fill:SetColorTexture(1, 1, 1, 0.06)
-    local line = b:CreateTexture(nil, "ARTWORK")
-    line:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 0, 0)
-    line:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 0, 0)
-    line:SetHeight(2)
-    line:SetColorTexture(1, 0.82, 0, 1)
+    local edges = {}
+    for _, side in ipairs({ "TOP", "BOTTOM", "LEFT", "RIGHT" }) do
+        local e = b:CreateTexture(nil, "BORDER")
+        if side == "TOP" or side == "BOTTOM" then
+            e:SetPoint(side .. "LEFT", b, side .. "LEFT", 0, 0)
+            e:SetPoint(side .. "RIGHT", b, side .. "RIGHT", 0, 0)
+            e:SetHeight(1)
+        else
+            e:SetPoint("TOP" .. side, b, "TOP" .. side, 0, 0)
+            e:SetPoint("BOTTOM" .. side, b, "BOTTOM" .. side, 0, 0)
+            e:SetWidth(1)
+        end
+        edges[#edges + 1] = e
+    end
     local hl = b:CreateTexture(nil, "HIGHLIGHT")
-    hl:SetAllPoints()
-    hl:SetColorTexture(1, 1, 1, 0.06)
+    hl:SetPoint("TOPLEFT", b, "TOPLEFT", 1, -1)
+    hl:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -1, 1)
+    hl:SetColorTexture(1, 1, 1, 0.10)
     b:SetNormalFontObject("GameFontNormalSmall")
     b:SetHighlightFontObject("GameFontHighlightSmall")
     function b.SetSelected(self, on)
         self.selected = on and true or false
-        fill:SetShown(on and true or false)
-        line:SetShown(on and true or false)
+        if on then
+            fill:SetColorTexture(0.85, 0.68, 0.3, 0.35)
+            for _, e in ipairs(edges) do e:SetColorTexture(1, 0.82, 0, 0.9) end
+        else
+            fill:SetColorTexture(0.12, 0.12, 0.14, 0.9)
+            for _, e in ipairs(edges) do e:SetColorTexture(0.45, 0.45, 0.48, 0.9) end
+        end
         self:SetNormalFontObject(on and "GameFontHighlightSmall" or "GameFontNormalSmall")
     end
     local setText = b.SetText
     function b.SetText(self, t)
         setText(self, t)
-        self:SetWidth(math.ceil(textWidth(t)) + 16)
+        self:SetWidth(math.ceil(textWidth(t)) + 20)
     end
     b:SetText(text)
     b:SetSelected(false)

@@ -724,7 +724,7 @@ flipping is out of scope for now.
 101. **One order and one look for every window** (0.3.128, the user, 2026-11-26: "Menu tabs first, then subtabs,
     then filters"; UI.md Controls). From the top: title bar with the close button; tabs (`Widgets.Tab`: the game's
     `PanelTopTabButtonTemplate` where the client has it, else a flat tab, the selected one lighter with gold edges
-    and joined to the content); subtabs (`Widgets.Subtab`: text with a gold line under the selected one); the
+    and joined to the content); subtabs (`Widgets.Subtab`: segments of a segmented control, a box with a grey edge and dark fill, the selected one gold fill and edge, a lighter fill under the pointer; until 0.3.134 text with a gold line, which the user found did not read as clickable); the
     view's filter row (`Widgets.Dropdown`: `WowStyle1DropdownTemplate` where the client has it, else a dark field
     with the game's dropdown arrow; each with its label at its left); the content; the footer (status left,
     actions right, Cancel last). Rows are `Widgets.Bar`s; every control carries `uiKind`, which the layout dump

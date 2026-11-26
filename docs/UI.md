@@ -116,7 +116,8 @@ reply must say so.
 2. Windows remember their place, size, tab and filters. A window that only lists content fits it;
    a window with long lists is resizable in the direction that helps.
 3. Secondary views are subtabs of the view they belong to, the main one first. Two levels at most; subtabs look
-   different from tabs.
+   different from tabs: each is a segment of a segmented control (a small box with an edge, so it reads as
+   clickable; the selected one filled gold), smaller and flatter than a tab, never a red button.
 4. Live values (countdowns, gold) update while they show.
 5. The main window leads: the other windows close with it and come back with it. The game's auction
    house is one click away (Auction house button), and Salvager one click back (its button under the
