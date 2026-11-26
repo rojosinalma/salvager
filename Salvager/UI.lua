@@ -704,9 +704,14 @@ local function build()
             UI.offset = 0
             UI.Refresh()
         end)
-        b:SetPoint("TOPLEFT", f, "TOPLEFT", x, -159)
         tabs[t[1]] = b
-        x = x + 98
+        if t[1] == "limits" then
+            -- Limits is a setting more than a list: it sits at the right end of the row.
+            b:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -159)
+        else
+            b:SetPoint("TOPLEFT", f, "TOPLEFT", x, -159)
+            x = x + 98
+        end
         if t[1] == "materials" then
             -- Right next to the Materials tab: its list in a window of its own, and back.
             popOut = W.IconButton(f, 22, function()
@@ -733,9 +738,9 @@ local function build()
     W.Tooltip(tabs.limits, "Limits", "The most the addon lets you pay per item level band, for armor and for weapons. "
         .. "You can set your own.")
 
-    -- At the right end of the tab row, over the list: the gold you have now.
+    -- At the right end of the tab row, before the Limits tab: the gold you have now.
     gold = W.Label(f, "", "GameFontHighlight")
-    gold:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -164)
+    gold:SetPoint("RIGHT", tabs.limits, "LEFT", -12, 0)
     gold:SetJustifyH("RIGHT")
     -- In the Materials tab, after the tabs.
     scanOwned = ns.Materials.ScanOwnedButton(f)
