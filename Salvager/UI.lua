@@ -70,13 +70,14 @@ local VIEWS = {
         -- (The override columns are as wide as their gold, silver and copper boxes, title centered.)
         cols = { { 64, "LEFT" }, { 100, "RIGHT" }, { 184, "CENTER" }, { 100, "RIGHT" }, { 184, "CENTER" } },
         edit = { [3] = "armor", [5] = "weapon" },
+        indent = 28,   -- (room for the help button before the first title)
     },
 }
 
 local f, rows, headers, status, footer, minProfit, playButton, stopButton, gearChoice, tabs =
     nil, {}, {}, nil, nil, nil, nil, nil, nil, {}
 local maxPrice, cautious, bandDrop, ilvlMin, ilvlMax, levelHint, materialsOnly, scanOwned, gold, maxChecks
-local qualityDrop, popOut, minReturn, ahButton
+local qualityDrop, popOut, minReturn, ahButton, helpButton
 local headerHelp = {}
 local actionHeader
 local REFRESH_GAP, lastRefresh, refreshQueued = 0.25, 0, false
@@ -230,27 +231,33 @@ end
 --- What the list's columns and marks mean, one line each (for the "?" button).
 local function helpLines()
     if UI.view == "materials" then return ns.Materials.HelpLines() end
+    local cut = math.floor(ns.Cut() * 100 + 0.5) .. "%"
     if UI.view == "limits" then
         return {
-            ns.db.settings.cautious and "Recommended: the value with every material at its lowest amount, after the 5% cut, "
-                .. "minus your minimum profit (cautious pricing is on)."
-                or "Recommended: the disenchant value after the 5% cut, minus your minimum profit.",
-            "Buy below: the limit in use. Type gold, silver and copper to set your own; it then shows in yellow.",
-            "x: back to the recommended price.",
-            "Grey: a gear type the scan does not look at.",
+            "Armor and Weapons: each half has its own two columns. The rows are the bands of every quality.",
+            ns.db.settings.cautious and ("Recommended price threshold: the value with every material at its lowest "
+                .. "amount, after the " .. cut .. " cut, minus your min profit (cautious pricing is on).")
+                or ("Recommended price threshold: the disenchant value after the " .. cut .. " cut, minus your min "
+                    .. "profit, or minus your min return when that asks for more (a % after the amount)."),
+            "Override price threshold: the limit in use. Type gold, silver and copper to set your own; it then shows "
+                .. "in yellow. x: back to the recommended one.",
+            "Grey: a gear type or a quality the scan does not look at.",
             "?: a material of that band has no price yet.",
             "Max price, when set, still applies on top of these limits.",
         }
     end
+    local by = ns.db.settings.dealSort == "return" and "Return" or "Expected profit"
     return {
-        "Value: what one disenchant of the item is worth on average over many, after the 5% cut.",
-        "Profit: Value minus the buyout. An average, not what one item gives.",
+        "Sorted by: " .. by .. ", highest first (the title with the arrow). Click the Return or the Expected profit "
+            .. "title to sort by it. Each scan checks the items in this order too.",
+        "Expected value: what one disenchant of the item is worth on average over many, after the " .. cut .. " cut.",
+        "Expected profit: Expected value minus the buyout. An average, not what one item gives.",
+        "Return: Expected profit as a share of the buyout.",
         "Loss chance: the chance that one disenchant is worth less than its buyout.",
         "A name with x3 stands for three auctions of one item. Its numbers and its Buy are for the cheapest one.",
         "Click such a row to open it and see each auction.",
         "Buy needs one click per item. After a purchase the item is searched again.",
-        string.format("The list keeps the %d best of each round (Item checks, in the Levels row).",
-            ns.db.settings.maxChecks),
+        string.format("Each scan checks the %d best items (Item checks, in the Levels row).", ns.db.settings.maxChecks),
         "Hover a column title for more about that column.",
     }
 end
@@ -305,6 +312,10 @@ local function layout(view, data)
         if col then x = x + w[i] + 6 end
     end
     xs[#view.cols + 1] = x
+    if helpButton then
+        helpButton:ClearAllPoints()
+        helpButton:SetPoint("TOPLEFT", UI.list, "TOPLEFT", 3, -top - 2)
+    end
     -- Titles over groups of columns (Limits: Armor, Weapons), and vertical lines between groups.
     for i, gh in ipairs(view.groupHeader or {}) do
         local t = groupTitles[i]
@@ -413,7 +424,9 @@ function UI.Refresh()
             -- The title the list is ordered by has a mark.
             local sortKey = view.sortable and view.sortable[i]
             local title = view.header[i] or ""
-            if sortKey and sortKey == ns.db.settings.dealSort then title = title .. " v" end
+            if sortKey and sortKey == ns.db.settings.dealSort then
+                title = title .. " |TInterface\\Buttons\\Arrow-Down-Up:10|t"   -- the order of the list, highest first
+            end
             h:SetWidth(w[i]) h:SetJustifyH(col[2]) h:SetText(title) h:Show()
         else
             h:Hide()
@@ -604,14 +617,9 @@ local function build()
     options:SetIcon("Interface\\Buttons\\UI-OptionsButton", 16, 16)
     options:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -30)
     W.Tooltip(options, "Options", "Opens the addon's options.")
-    -- Before it: what the list's columns and marks mean.
-    local helpButton = W.HelpButton(f, function()
-        return UI.view == "materials" and "Materials" or UI.view == "limits" and "Limits" or "Deals"
-    end, helpLines)
-    helpButton:SetPoint("RIGHT", options, "LEFT", -4, 0)
     local log = W.Button(f, "Log", 80, function() ns.LogWindow.Toggle() end,
         "Opens the log in its own window: what the addon did, and any error. For debugging.")
-    log:SetPoint("RIGHT", helpButton, "LEFT", -6, 0)
+    log:SetPoint("RIGHT", options, "LEFT", -6, 0)
     local ledger = W.Button(f, "Ledger", 80, function() ns.LedgerWindow.Toggle() end,
         "Opens the ledger in its own window: what you bought, what each item was disenchanted into, "
         .. "your sales and their profit.")
@@ -899,6 +907,11 @@ local function build()
     end)
     UI.list = list
     if list.SetClipsChildren then list:SetClipsChildren(true) end
+    -- What the list's columns and marks mean: the first thing on the row of column titles.
+    helpButton = W.HelpButton(list, function()
+        return UI.view == "materials" and "Materials" or UI.view == "limits" and "Limits" or "Deals"
+    end, helpLines, { left = true })
+    helpButton:SetSize(20, 20)
 
     -- Scroll bar on the right, inside the panel.
     local bar = W.ScrollBar(inset, function(value)

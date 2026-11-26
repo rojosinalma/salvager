@@ -390,6 +390,10 @@ flipping is out of scope for now.
 84. **The Materials window fits its list** (0.3.100): as wide as its columns need, the Post column ending
     with its button (`list.neededWidth` from `Widgets.List`), at least 620 for the row above the list (help
     and check box from the right, the status cut before them).
+85. **Main window list** (0.3.102): the column the Deals list is sorted by has the arrow icon (as in the
+    Market and the Ledger), not "v"; the "?" help is the first thing on the row of column titles, and its
+    first line says what the list is sorted by and how to change it. Limits' and Deals' help say the column
+    names in use (Recommended / Override price threshold; Expected value, Expected profit, Return).
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

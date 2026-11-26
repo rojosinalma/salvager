@@ -37,7 +37,8 @@ function Widgets.HelpButton(parent, title, getLines, opts)
     local WIDTH = 470
     local panel = CreateFrame("Frame", nil, b, BackdropTemplateMixin and "BackdropTemplate" or nil)
     panel:SetFrameStrata("DIALOG")
-    panel:SetPoint("TOPRIGHT", b, "BOTTOMRIGHT", 0, -2)
+    -- Under the button, opening to the left; with `opts.left` (a button at a left edge), to the right.
+    if opts.left then panel:SetPoint("TOPLEFT", b, "BOTTOMLEFT", 0, -2) else panel:SetPoint("TOPRIGHT", b, "BOTTOMRIGHT", 0, -2) end
     panel:SetWidth(WIDTH)
     if panel.SetBackdrop then
         panel:SetBackdrop({
