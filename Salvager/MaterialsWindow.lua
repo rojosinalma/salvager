@@ -33,6 +33,9 @@ Materials.COLUMNS = {
 }
 for i, help in pairs(Materials.HELP) do Materials.COLUMNS[i].help = help end
 
+-- The window's own size: it fits its content and has no resize corner.
+local WIDTH, TOP, BOTTOM, ROW_H = 760, 58, 14, 24
+
 local function ago(seconds)
     if not seconds then return "-" end
     if seconds < 60 then return "now" end
@@ -162,6 +165,10 @@ function Materials.Refresh()
             end
         end
     end
+    -- The window is as tall as its rows need, up to the room on the screen; past that the list scrolls.
+    local room = (UIParent:GetHeight() or 768) - 120
+    local fit = math.max(1, math.min(#rows, math.floor((room - TOP - BOTTOM - ROW_H) / ROW_H)))
+    f:SetHeight(TOP + ROW_H * (fit + 1) + BOTTOM)
     list:SetSource(#rows, function(i) return rows[i] end)
     list:Refresh()
     dataOnly:SetChecked(ns.db.settings.materialsDataOnly)
@@ -184,7 +191,7 @@ local function requestRefresh()
 end
 
 local function build()
-    f = W.Window("SalvagerMaterialsFrame", "Salvager materials", "materials", 760, 520, 560, 220)
+    f = W.Window("SalvagerMaterialsFrame", "Salvager materials", "materials", WIDTH, 520, WIDTH, 120, true)
     local scan = W.Button(f, "Scan materials", 115, function() ns.Prices.Scan() end,
         "Searches each disenchanting material once (about 20 seconds) and stores its price.")
     scan:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -30)
@@ -194,13 +201,12 @@ local function build()
     status:SetPoint("LEFT", owned, "RIGHT", 10, 0)
     dataOnly = Materials.DataOnlyCheck(f)
     dataOnly:SetPoint("TOPRIGHT", f, "TOPRIGHT", -224, -29)
-    list = W.List(f, { rowHeight = 24, actionWidth = 96, actionTitle = "Post" })
+    list = W.List(f, { rowHeight = ROW_H, actionWidth = 96, actionTitle = "Post" })
     list:SetColumns(Materials.COLUMNS)
-    list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -58)
-    list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
+    list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -TOP)
+    list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, BOTTOM)
     local helpButton = W.HelpButton(f, "Materials", Materials.HelpLines)
     helpButton:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -30)
-    f.onResize = Materials.Refresh
     f:SetScript("OnShow", function()
         Materials.Refresh()
         ns.Fire("SALVAGER_SETTINGS")   -- the main window gives up its Materials tab

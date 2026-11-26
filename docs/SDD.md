@@ -147,6 +147,8 @@ flipping is out of scope for now.
 41. **Breakdown window**: a click on a material row opens where it came from, by item and by band, with cost per
     unit against the price now and the source's result as a whole (`Ledger.Breakdown`).
 42. **Help text** sits behind a "?" button (one line per explanation); the footer keeps only scan results.
+43. **Materials window fits its content**: fixed width, height = its rows (capped by the screen, then the list
+    scrolls); no resize corner.
 15. **UI redraws** from events are limited to four per second; the log panel is not rebuilt during a scan.
 
 ## Data
