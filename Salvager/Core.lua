@@ -384,6 +384,8 @@ ns.On("ADDON_LOADED", function(name)
     Util.Defaults(SalvagerDB, DEFAULTS)
     ns.db = SalvagerDB
     Ledger.Init(ns.db.ledger)
+    local doubles = Ledger.DropDoubleSales(ns.db.ledger)
+    if doubles > 0 then ns.Log("ledger: removed %d sale(s) that an older version booked twice", doubles) end
     -- Windows renamed in 0.3.4: keep their place and size.
     local w = ns.db.windows
     if w.results then w.ledger, w.results = w.ledger or w.results, nil end

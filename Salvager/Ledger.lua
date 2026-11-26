@@ -197,37 +197,73 @@ function Ledger.SalePaid(state, matID, count, gross, cutPaid, t)
 end
 
 --- Which of the sold auctions on screen are new. A listing sells in parts, and its parts share the
---- listing's auction ID, so a part is known by (auction ID, quantity, the moment its money is due).
---- Two parts of the same size are told apart by that moment. Remembers the new ones.
+--- listing's auction ID, so a part is known by (auction ID, quantity). The time its money is due only
+--- tells two parts of the same size apart: the game reports it loosely (it was seen to move by 36 s
+--- between two reads), so it is never used to decide that a part is new.
+--- A part stays known while it is on screen, and for a while after its money was due.
 --- @param rows table  { { auctionID, qty, due (clock time the money arrives), ... }, ... }
 --- @return table  the rows not seen before
 function Ledger.NewSold(state, rows, now)
-    -- A wide tolerance on purpose: a part taken for a known one is booked later from its mail, but a
-    -- known part taken for a new one would be booked twice.
-    local TOLERANCE, KEEP = 120, 3 * 3600
+    local KEEP = 600
     local seen = state.seenSold
-    for i = #seen, 1, -1 do
-        if seen[i].due < now - KEEP then table.remove(seen, i) end
-    end
     local used, fresh = {}, {}
     for _, row in ipairs(rows) do
         local match
         for i, s in ipairs(seen) do
-            if not used[i] and s.auctionID == row.auctionID and s.qty == row.qty and math.abs(s.due - row.due) <= TOLERANCE then
+            if not used[i] and s.auctionID == row.auctionID and s.qty == row.qty
+                and (not match or math.abs(s.due - row.due) < math.abs(seen[match].due - row.due)) then
                 match = i
-                break
             end
         end
         if match then
             used[match] = true
+            seen[match].due = row.due
         else
             fresh[#fresh + 1] = row
         end
+    end
+    -- Parts no longer on screen: forgotten once their money has been due for a while.
+    for i = #seen, 1, -1 do
+        if not used[i] and seen[i].due < now - KEEP then table.remove(seen, i) end
     end
     for _, row in ipairs(fresh) do
         seen[#seen + 1] = { auctionID = row.auctionID, qty = row.qty, due = row.due }
     end
     return fresh
+end
+
+--- Repairs what versions before 0.3.40 did: a sold part whose due time moved was booked a second time.
+--- Removes the second sale of each such pair and gives its units back to the stock. Runs once.
+--- @return number  sales removed
+function Ledger.DropDoubleSales(state)
+    if state.doubleSalesFixed then return 0 end
+    state.doubleSalesFixed = true
+    local seen, removed = state.seenSold, 0
+    for i = #seen, 2, -1 do
+        for j = i - 1, 1, -1 do
+            if seen[i] and seen[j].auctionID == seen[i].auctionID and seen[j].qty == seen[i].qty
+                and math.abs(seen[j].due - seen[i].due) <= 600 then
+                local qty = seen[i].qty
+                table.remove(seen, i)
+                -- The second of two unpaid sales of that size and price.
+                local first
+                for k, rec in ipairs(state.sales) do
+                    if rec.count == qty and rec.unpaid == qty and rec.each then
+                        if first and first.id == rec.id and first.each == rec.each then
+                            local tracked = rec.count - (rec.untracked or 0)
+                            if tracked > 0 then Ledger.AddStock(state, rec.id, tracked, rec.cost) end
+                            table.remove(state.sales, k)
+                            removed = removed + 1
+                            break
+                        end
+                        first = first or rec
+                    end
+                end
+                break
+            end
+        end
+    end
+    return removed
 end
 
 --- Records a disenchant and adds its materials to stock.

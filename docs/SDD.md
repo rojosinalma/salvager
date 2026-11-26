@@ -159,8 +159,9 @@ flipping is out of scope for now.
 46. **Play never stalls on a material scan:** a round that finds one running waits and tries again. "Scan
     owned" is let in during a gear scan; the full material scan is not.
 47. **Clear history keeps what later mails need:** auction house purchases whose mail has not come, and sales
-    whose money is due. A sold part is matched within 120 s on purpose: a missed part is booked from its mail,
-    a part booked twice is never corrected.
+    whose money is due. A sold part is known by its auction ID and quantity; the time its money is due only
+    tells two parts of the same size apart (measured 2026-11-26: that time moved by 36 s between two reads,
+    which booked a sale twice). A missed part is booked from its mail.
 48. **Quality names and colors** live in `Core.lua` (`ns.QUALITY_NAME`, `ns.QUALITY_COLOR`, `ns.BandName`).
     The tables (`Widgets.List`, `Widgets.CardList`) live in `Tables.lua`.
 49. **One place per setting:** what the main window sets (gear, quality, min profit, max price, cautious

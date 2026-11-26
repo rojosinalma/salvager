@@ -167,6 +167,27 @@ describe("Ledger", function()
         assert.are.equal(4 * 480, rest.gross)
     end)
 
+    it("does not book a sold part again when its due time moves, and repairs the old double sales", function()
+        Ledger.AddStock(state, 5, 1, 18000)
+        local fresh = Ledger.NewSold(state, { { auctionID = 9, qty = 1, due = 4000 } }, 1000)
+        Ledger.SaleSeen(state, 5, fresh[1].qty, 19699, 0.05, 1000)
+        assert.are.equal(0, #Ledger.NewSold(state, { { auctionID = 9, qty = 1, due = 4036 } }, 1600))
+        assert.are.equal(0, #Ledger.NewSold(state, { { auctionID = 9, qty = 1, due = 4500 } }, 4400))  -- still on screen
+        assert.are.equal(0, #Ledger.NewSold(state, {}, 4600))                  -- gone, but its money was due a moment ago
+        assert.are.equal(1, #state.seenSold)
+        assert.are.equal(0, #Ledger.NewSold(state, {}, 6000))                  -- long gone: forgotten
+        assert.are.equal(0, #state.seenSold)
+        -- What 0.3.39 and before left behind: the same part seen twice, and booked twice.
+        state.seenSold = { { auctionID = 9, qty = 1, due = 4000 }, { auctionID = 9, qty = 1, due = 4036 } }
+        Ledger.SaleSeen(state, 5, 1, 19699, 0.05, 1600)
+        assert.are.equal(2, #state.sales)
+        assert.are.equal(1, Ledger.DropDoubleSales(state))
+        assert.are.equal(1, #state.sales)
+        assert.are.equal(18000, state.sales[1].cost)
+        assert.are.equal(1, #state.seenSold)
+        assert.are.equal(0, Ledger.DropDoubleSales(state))                     -- once
+    end)
+
     it("keeps what later mails need when the history is cleared", function()
         Ledger.AuctionPurchase(state, 77, 1000, 1200, 1)            -- its "Auction won" mail has not come
         Ledger.AuctionPurchase(state, 78, 500, 600, 2)
