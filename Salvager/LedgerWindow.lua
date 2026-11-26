@@ -199,7 +199,7 @@ function Window.OddsRows()
                 local mine = by[string.format("%d:%s:%d", quality, c[2], up)]
                 local n = mine and mine.n or 0
                 local v = Model.Value(outcomes, ns.PriceOf, opts)
-                local limit = ns.BuyLimit(quality, classID, up, v.net)
+                local limit = ns.BuyLimit(quality, classID, up, ns.LimitBasis(v))
                 local first = #rows + 1
                 rows[first] = {
                     cells = { GOLD .. QUALITY_NAME[quality] .. c[3] .. ", item level " .. bandRange(quality, up) .. "|r",

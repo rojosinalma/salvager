@@ -36,7 +36,7 @@ local function addLines(tooltip, link)
     tooltip:AddDoubleLine(COLOR .. "Salvager disenchant value|r", text, 1, 1, 1, 1, 1, 1)
     tooltip:AddDoubleLine(COLOR .. "Salvager buy below|r",
         (function()
-            local limit, manual = ns.BuyLimit(ns.QualityOf(link), classID, outcomes and outcomes.band, v.net)
+            local limit, manual = ns.BuyLimit(ns.QualityOf(link), classID, outcomes and outcomes.band, ns.LimitBasis(v))
             return ns.Money(limit) .. (manual and " (set by hand)" or "")
                 .. (ns.SalvagerForBuy() and " (Arcane Salvager bonus)" or "")
         end)(),

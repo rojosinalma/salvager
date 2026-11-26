@@ -285,6 +285,15 @@ describe("Salvager window and options", function()
         wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
     end)
 
+    it("lowers the buy limits with cautious pricing, not the value", function()
+        local normal = ns.Limits()[5]
+        ns.db.settings.cautious = true
+        local careful = ns.Limits()[5]
+        ns.db.settings.cautious = false
+        assert.are.equal(normal.armor.value, careful.armor.value)
+        assert.is_true(careful.armor.recommended < normal.armor.recommended)
+    end)
+
     it("lists buy limits per band", function()
         local rows = ns.Limits()
         assert.are.equal(#ns.Data.GREEN, #rows)
@@ -450,13 +459,30 @@ describe("Salvager scan safety", function()
         assert.are.equal("cache", src)
     end)
 
-    it("starts every round with an empty deals list", function()
-        ns.Scanner.deals = { { auctionID = 9, itemID = 5001, buyout = 1, value = 2, profit = 1, keyString = "5001:28:0" } }
+    it("empties the deals list for a scan started by a click, and keeps it for Play's own rounds", function()
+        local function old()
+            return { { auctionID = 9, itemID = 5001, buyout = 1, value = 2, profit = 1, keyString = "5001:28:0" } }
+        end
         env.ah.fullBrowse = true
-        env.ah.browse = {}
+        env.ah.browse = { row(1) }
+        ns.Scanner.deals = old()
+        ns.Scanner.Scan()                                  -- a round Play starts by itself
+        assert.are.equal(1, #ns.Scanner.deals)             -- the list stays while the round loads
+        ns.Scanner.Stop()
+        ns.Scanner.deals = old()
+        ns.Scanner.Scan(true)                              -- the Scan gear button
+        assert.are.equal(0, #ns.Scanner.deals)
+        ns.Scanner.Stop()
+        ns.Scanner.deals = old()
+        ns.Scanner.Play()                                  -- the Play button
+        assert.are.equal(0, #ns.Scanner.deals)
+        ns.Scanner.Stop()
+        -- An item that is no longer under its limit leaves the list when the round has read the gear.
+        env.ah.browse = { row(999999) }
+        ns.Scanner.deals = old()
         ns.Scanner.Scan()
-        assert.are.equal(0, #ns.Scanner.deals)             -- cleared when the round starts, not when it ends
-        assert.are.equal("browsing", ns.Scanner.state)
+        wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
+        assert.are.equal(0, #ns.Scanner.deals)
         ns.Scanner.Stop()
     end)
 

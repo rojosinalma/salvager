@@ -10,6 +10,7 @@ local DEFAULTS = {
     settings = {
         minProfit = 1000,          -- copper; deals below this profit are hidden
         maxPrice = 0,              -- copper; the most to pay for one item, whatever it is worth (0 = no limit)
+        cautious = false,          -- buy limits count every material at its lowest amount (1 dust, not 1.5)
         salvager = "auto",         -- "auto" | "on" | "off": add the Arcane Salvager bonus when valuing buys
         salvagerChance = 0.5,      -- chance of one extra dust or essence with the Salvager
         cut = 0.05,                -- auction house cut on sales
@@ -221,10 +222,11 @@ function ns.Busy()
     return (ns.Prices and ns.Prices.scanning) or (ns.Scanner and ns.Scanner.state ~= "idle") or ns.scanBothPending or false
 end
 
---- Material prices first, then the gear scan.
-function ns.ScanBoth()
+--- Material prices first, then the gear scan. `clear` = asked for by a click: the Deals list starts empty.
+function ns.ScanBoth(clear)
     if not ns.Queue.open then ns.Print("open the auction house first") return end
     if ns.Busy() then return end
+    if clear then ns.Scanner.ClearDeals() end
     ns.scanBothPending = true
     ns.Log("scan both: materials, then gear")
     ns.Prices.Scan()
@@ -269,6 +271,12 @@ function ns.BandKey(quality, classID, band)
 end
 
 --- The recommended buy limit: value after cut minus the minimum profit.
+--- What a buy limit is measured from: the average value, or with cautious pricing the value with
+--- every material at its lowest amount.
+function ns.LimitBasis(v)
+    return ns.db.settings.cautious and v.low or v.net
+end
+
 function ns.RecommendedLimit(net)
     return Model.MaxBuy(net, ns.db.settings.minProfit)
 end
@@ -305,8 +313,9 @@ function ns.Limits()
         local o = Model.Outcomes(quality, classID, ilvl)
         if not o then return nil end
         local v = Model.Value(o, ns.PriceOf, { salvager = salv, salvagerChance = s.salvagerChance, cut = s.cut })
-        local limit, manual = ns.BuyLimit(quality, classID, o.band, v.net)
-        return { value = v.net, recommended = ns.RecommendedLimit(v.net), limit = limit, manual = manual,
+        local basis = ns.LimitBasis(v)
+        local limit, manual = ns.BuyLimit(quality, classID, o.band, basis)
+        return { value = v.net, recommended = ns.RecommendedLimit(basis), limit = limit, manual = manual,
             missing = #v.missing > 0, blocked = ns.MissingMajor(v, o), quality = quality, classID = classID,
             band = o.band }
     end

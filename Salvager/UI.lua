@@ -55,7 +55,7 @@ local VIEWS = {
 
 local f, rows, headers, status, footer, minProfit, playButton, stopButton, gearChoice, tabs =
     nil, {}, {}, nil, nil, nil, nil, nil, nil, {}
-local maxPrice, capHint
+local maxPrice, capHint, cautious
 local qualityDrop, popOut
 local headerHelp = {}
 local actionHeader
@@ -184,7 +184,9 @@ local function footerText()
     elseif UI.view == "materials" then
         return ns.Materials.Legend()
     end
-    return "Recommended = disenchant value after the 5% cut, minus your minimum profit. Type gold, silver and copper in "
+    return (ns.db.settings.cautious and "Cautious pricing is on: Recommended = value with every material at its lowest "
+            .. "amount, after the 5% cut, minus your minimum profit. "
+            or "Recommended = disenchant value after the 5% cut, minus your minimum profit. ") .. "Type gold, silver and copper in "
         .. "Buy below to set your own (yellow). x = back to the recommended price. Grey = type not scanned."
 end
 
@@ -339,6 +341,7 @@ function UI.Refresh()
     minProfit:Set(ns.db.settings.minProfit)
     maxPrice:Set(ns.db.settings.maxPrice)
     capHint:SetText(ns.db.settings.maxPrice > 0 and "" or "no limit")
+    cautious:SetChecked(ns.db.settings.cautious)
     gearChoice:Update()
     qualityDrop:Update()
     footer:SetText(footerText())
@@ -499,10 +502,10 @@ local function build()
         .. "or Nexus Crystals.", "Quality")
     qualityDrop:SetPoint("LEFT", qLabel, "RIGHT", 6, 0)
 
-    local scanBoth = W.Button(box, "Both", 58, function() ns.ScanBoth() end,
+    local scanBoth = W.Button(box, "Both", 58, function() ns.ScanBoth(true) end,
         "Once: scans the material prices first, then the gear.")
     scanBoth:SetPoint("TOPRIGHT", box, "TOPRIGHT", -8, -6)
-    local scanGear = W.Button(box, "Gear", 58, function() ns.Scanner.Scan() end,
+    local scanGear = W.Button(box, "Gear", 58, function() ns.Scanner.Scan(true) end,
         "Once: lists the gear on the auction house and checks each item that is below its buy limit.")
     scanGear:SetPoint("RIGHT", scanBoth, "LEFT", -4, 0)
     local scanMats = W.Button(box, "Materials", 84, function() ns.Prices.Scan() end,
@@ -536,6 +539,14 @@ local function build()
     maxPrice:SetPoint("LEFT", capLabel, "RIGHT", 4, 0)
     capHint = W.Label(box, "", "GameFontDisableSmall")
     capHint:SetPoint("LEFT", maxPrice:Right(), "RIGHT", 8, 0)
+    cautious = W.Check(box, "Cautious", "Cautious pricing: the buy limit counts every material at its lowest amount "
+        .. "(1 dust, not the average 1.5) and no Arcane Salvager bonus. You see fewer deals, and they lose less often. "
+        .. "Value and Profit still show the average.", function(on)
+        ns.db.settings.cautious = on
+        ns.Log("cautious pricing %s", on and "on" or "off")
+        ns.Fire("SALVAGER_SETTINGS")
+    end)
+    cautious:SetPoint("TOPRIGHT", box, "TOPRIGHT", -78, -34)
 
     ---------------------------------------------------------------- tabs, above the list they switch
     local x = 12

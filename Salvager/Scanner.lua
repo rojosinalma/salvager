@@ -66,15 +66,15 @@ local function readAuctions(task)
 end
 
 --- One round of Play: the material prices first when they are older than the setting, then the gear.
-local function startCycle()
+local function startCycle(clear)
     local every = ns.db.settings.priceRescan
     local age = ns.Prices.OldestAge()
     if every > 0 and age >= every * 60 and not ns.Busy() then
         ns.Log("material prices are %s old (limit %d min): scanning them first",
             age == math.huge and "missing or" or (math.floor(age / 60) .. " min"), every)
-        ns.ScanBoth()
+        ns.ScanBoth(clear)
     else
-        Scanner.Scan()
+        Scanner.Scan(clear)
     end
 end
 
@@ -194,6 +194,12 @@ local function queueChecks()
     table.sort(candidates, function(a, b) return a.margin > b.margin end)
     -- Each item search takes about 0.7 s: check the best ones first, at most maxChecks.
     for i = #candidates, ns.db.settings.maxChecks + 1, -1 do candidates[i] = nil end
+    -- Rows of items that are no longer under their limit go; the others are replaced as they are checked.
+    local live = {}
+    for _, c in ipairs(candidates) do live[c.keyString] = true end
+    for i = #Scanner.deals, 1, -1 do
+        if not live[Scanner.deals[i].keyString] and not Scanner.deals[i].pending then table.remove(Scanner.deals, i) end
+    end
     Scanner.toCheck = #candidates
     for _, c in ipairs(candidates) do
         ns.Queue.Add({
@@ -300,8 +306,16 @@ function nextPass()
     ns.Fire("SALVAGER_SCAN")
 end
 
+--- Empties the Deals list.
+function Scanner.ClearDeals()
+    wipe(Scanner.deals)
+    ns.Fire("SALVAGER_DEALS")
+end
+
 --- Starts a gear scan. Needs the auction house open and material prices.
-function Scanner.Scan()
+--- `clear` = asked for by a click: the Deals list starts empty and is filled again. A round that
+--- Play starts by itself keeps the list and only updates it.
+function Scanner.Scan(clear)
     if not ns.Queue.open then ns.Print("open the auction house first") return end
     if Scanner.state ~= "idle" then return end
     if ns.Prices.scanning then
@@ -317,9 +331,7 @@ function Scanner.Scan()
             levelDiffers = 0, best = nil },
     }
     Scanner.browsed = 0
-    -- A new round starts with an empty list: what it finds is listed again as it is checked.
-    wipe(Scanner.deals)
-    ns.Fire("SALVAGER_DEALS")
+    if clear then Scanner.ClearDeals() end
     local names = {}
     for _, p in ipairs(passes) do names[#names + 1] = p.name end
     local s = ns.db.settings
@@ -383,7 +395,7 @@ function Scanner.Play()
         lastBrowseAt = GetTime()
         advance()
     elseif Scanner.state == "idle" and not ns.Prices.scanning then
-        startCycle()
+        startCycle(not wasPaused)   -- a fresh Play click starts with an empty list; resuming does not
     end
     ns.Fire("SALVAGER_SCAN")
 end

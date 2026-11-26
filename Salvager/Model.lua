@@ -64,12 +64,12 @@ end
 --- @param outcomes table  from Model.Outcomes
 --- @param priceOf function(id) -> copper each or nil
 --- @param opts table|nil  { salvager = bool, salvagerChance = 0.5, cut = 0.05 }
---- @return table  { gross, net, missing = {ids}, parts = { {id, value} } }
+--- @return table  { gross, net, low, missing = {ids}, parts = { {id, value} } }
 function Model.Value(outcomes, priceOf, opts)
     opts = opts or {}
     local cut = opts.cut or Model.DEFAULT_CUT
     local bonusChance = opts.salvager and (opts.salvagerChance or 0.5) or 0
-    local gross, missing, parts = 0, {}, {}
+    local gross, low, missing, parts = 0, 0, {}, {}
     for _, r in ipairs(outcomes.results) do
         local price = priceOf(r.id)
         if not price then
@@ -79,10 +79,14 @@ function Model.Value(outcomes, priceOf, opts)
             if r.bonus then qty = qty + bonusChance end
             local v = r.chance * qty * price
             gross = gross + v
+            low = low + r.chance * r.min * price
             parts[#parts + 1] = { id = r.id, value = v }
         end
     end
-    return { gross = gross, net = math.floor(gross * (1 - cut) + 0.5), missing = missing, parts = parts }
+    -- net = the average over many disenchants. low = the same with every material at its lowest
+    -- amount and no Salvager bonus (cautious pricing).
+    return { gross = gross, net = math.floor(gross * (1 - cut) + 0.5), low = math.floor(low * (1 - cut) + 0.5),
+        missing = missing, parts = parts }
 end
 
 --- The chance that one disenchant is worth less than `paid`, after the cut.

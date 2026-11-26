@@ -112,9 +112,10 @@ flipping is out of scope for now.
     pay the full limit; "-" when the limit is 0). Titles: Expected (the table), You got, Value now, Buy below,
     Lose %, Your average. `Widgets.List` columns take `help = { title, text }`, shown over the column title.
     The lose colors are in one place (`ns.LoseText`), shared with the Deals list.
-32. **Each gear round starts with an empty Deals list** (the user's choice, 2026-11-26): the list is cleared
-    when a round starts and filled again as its candidates are checked, so it never shows auctions of an
-    earlier round.
+32. **The Deals list empties only for a scan started by a click** (Play, Scan gear, Scan both), and is then
+    filled again. A round that Play starts by itself keeps the list: when the round has read the gear, rows of
+    items no longer under their limit go, and the others are replaced as they are checked. (0.3.16 cleared at
+    every round; the user meant clicks only, 2026-11-26.)
 33. **Max price** (`maxPrice`, 0 = no limit): the most to pay for one item, whatever it is worth. The scan uses
     min(buy limit, max price) per band. It also keeps expensive items from taking the candidate checks.
 34. **Main window layout:** top bar (Play, Stop, status; Ledger, Log, Options), a settings box with a "Scan" row
@@ -125,6 +126,8 @@ flipping is out of scope for now.
     counted what was posted or sold but not paid. Listed and Sold come from the last read of the player's
     auctions. Every material has a Post button, switched off when none is in the bags; the button column
     has a title.
+36. **Cautious pricing** (`cautious`): the buy limit is measured from `Model.Value(...).low` (every material at
+    its lowest amount, no Salvager bonus) and not from the average. Value, Profit and Lose % are unchanged.
 15. **UI redraws** from events are limited to four per second; the log panel is not rebuilt during a scan.
 
 ## Data

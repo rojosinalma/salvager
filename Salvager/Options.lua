@@ -71,6 +71,13 @@ local function populate(panel, standalone)
     cap:SetPoint("LEFT", capLabel, "RIGHT", 12, 0)
     controls[#controls + 1] = { refresh = function() cap:Set(s.maxPrice) end }
 
+    local careful = W.Check(panel, "Cautious pricing: buy limits count every material at its lowest amount",
+        "The buy limit uses 1 dust where the average is 1.5, and no Arcane Salvager bonus. Fewer deals, and they "
+            .. "lose less often. Value and Profit still show the average.",
+        function(on) s.cautious = on changed("cautious", on) end)
+    at(careful, 20)
+    controls[#controls + 1] = { refresh = function() careful:SetChecked(s.cautious) end }
+
     local gearLabel = W.Label(panel, "Gear to scan", "GameFontHighlightSmall")
     at(gearLabel, 24)
     local gear = W.CheckDropdown(panel, 150, { { "weapons", "Weapons" }, { "armor", "Armor" } },
@@ -178,7 +185,7 @@ end
 --- Opens the addon's own options window. Nothing else closes.
 function Options.Open()
     if not ownWindow then
-        ownWindow = W.Window("SalvagerOptionsFrame", "Salvager options", "options", 560, 650, 560, 650, true)
+        ownWindow = W.Window("SalvagerOptionsFrame", "Salvager options", "options", 560, 680, 560, 680, true)
         populate(ownWindow, true)
     end
     ownWindow:SetShown(not ownWindow:IsShown())

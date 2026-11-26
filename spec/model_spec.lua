@@ -74,6 +74,16 @@ describe("Model", function()
         assert.is_true(math.abs(with - 0.1875) < 1e-9)
     end)
 
+    it("also gives the value with every material at its lowest amount", function()
+        local p = { [Data.DUST.soul] = 400, [Data.ESS.gastral] = 1600, [Data.SHARD.lglim] = 6000 }
+        local priceOf = function(id) return p[id] end
+        local o = Model.Outcomes(2, Data.CLASS_ARMOR, 29)
+        local v = Model.Value(o, priceOf, { salvager = true, salvagerChance = 0.5 })
+        -- lowest amounts, no bonus: 0.75 x 1 x 4s + 0.2 x 1 x 16s + 0.05 x 60s = 9s 20c, x 0.95
+        assert.are.equal(math.floor(920 * 0.95 + 0.5), v.low)
+        assert.is_true(v.low < v.net)
+    end)
+
     it("refuses non-gear and common items", function()
         assert.is_nil(Model.Outcomes(2, 15, 30))
         assert.is_nil(Model.Outcomes(1, Data.CLASS_ARMOR, 30))
