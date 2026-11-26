@@ -16,16 +16,17 @@ function Report.Lines()
     table.sort(keys, function(a, b)
         local qa, ca, ba = Ledger.BandOf(a)
         local qb, cb, bb = Ledger.BandOf(b)
-        if qa ~= qb then return qa < qb end
+        -- Gear type first, quality under it, then the band (the one grouping, SDD 80).
         if ca ~= cb then return ca > cb end
+        if qa ~= qb then return qa < qb end
         return ba < bb
     end)
     for _, k in ipairs(keys) do
         local b = by[k]
         local q, classID, band = Ledger.BandOf(k)
-        local head = string.format("%s %s, item level up to %d: %d disenchants (%d with Salvager). Planned %s, got %s each",
-            (ns.QUALITY_NAME[q] or ("quality " .. q)):lower(), classID == ns.Data.CLASS_WEAPON and "weapons" or "armor",
-            band, b.n, b.salvager, ns.Money(b.planned / b.n), ns.Money(b.value / b.n))
+        local head = string.format("%s, %s %s: %d disenchants (%d with Salvager). Planned %s, got %s each",
+            ns.CLASS_LABEL[classID] or "?", ns.QualityText(q), ns.BandRange(q, band),
+            b.n, b.salvager, ns.Money(b.planned / b.n), ns.Money(b.value / b.n))
         if b.costKnown > 0 then head = head .. string.format(", paid %s", ns.Money(b.cost / b.costKnown)) end
         lines[#lines + 1] = head
         local outcomes = Model.Outcomes(q, classID, band)

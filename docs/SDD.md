@@ -363,7 +363,12 @@ flipping is out of scope for now.
     it, with totals on the headings where the table has totals: Market's Disenchant value, Ledger's
     Accuracy, Reports' Profit, Breakdown's bands. Odds cards sit under the Armor/Weapons subtab and are titled
     "Uncommon 26-30". A sorted grouped list sorts inside each group (`section`, `head`). The main window's
-    Limits tab keeps Armor and Weapons as columns.
+    Limits tab too (0.3.96: one Recommended and one Buy below per band, grouped, no longer an Armor and a
+    Weapons column), and `/salv report` (Armor, Uncommon 26-30: ...).
+82. **Ledger Purchases** (0.3.96): one row per item (newest first) with its count and totals; a click opens it
+    to show each purchase with what it gave (`purchaseFilter().open`). A search box (any part of the name,
+    any case) and filters by gear type, quality and item level band sit on the row under the tabs; all kept
+    in `SalvagerDB.windows.ledger.purchaseFilter`.
 81. **Charts:** the mouse over a chart shows the values at the nearest moment that has one (a mark, a dot per
     line, a tooltip with the time, each line, the units listed and each level; `chart.Nearest`). Market's
     "By hour" is now "Time of day", with a mark at every hour and a label every 3 hours (`xTicks`).

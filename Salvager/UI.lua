@@ -11,7 +11,6 @@ local MAX_COLS = 10
 local WIDTH, HEIGHT = 800, 560
 local MIN_W, MIN_H = 800, 470
 local ROWS = 15          -- rows that fit now (set from the list height)
-local QUALITY_COLOR = ns.QUALITY_COLOR
 local CLASS_NAME = { [2] = "Weapon", [4] = "Armor" }
 
 local VIEWS = {
@@ -50,16 +49,17 @@ local VIEWS = {
     },
     limits = {
         icon = false,
-        header = { "Item level", "Armor recommended", "Armor buy below", "Weapon recommended", "Weapon buy below" },
+        -- Grouped the one way (ns.GroupedRows): gear type, quality, then each band by its range.
+        header = { "Band", "Recommended", "Buy below" },
         help = {
             [2] = { "Recommended", "The value after the cut, less the min profit, or less the min return when that "
                 .. "asks for more. A % after the amount: the min return sets it." },
-            [4] = { "Recommended", "The value after the cut, less the min profit, or less the min return when that "
-                .. "asks for more. A % after the amount: the min return sets it." },
+            [3] = { "Buy below", "The most the scan pays for one item of this band. Type your own; the X button next "
+                .. "to it goes back to the recommended one. Grey: the scan does not look at this gear type." },
         },
-        -- (The two "buy below" columns are as wide as their gold, silver and copper boxes, title centered.)
-        cols = { { 64, "LEFT" }, { 100, "RIGHT" }, { 184, "CENTER" }, { 100, "RIGHT" }, { 184, "CENTER" } },
-        edit = { [3] = "armor", [5] = "weapon" },
+        -- (The "buy below" column is as wide as its gold, silver and copper boxes, title centered.)
+        cols = { { 140, "LEFT" }, { 100, "RIGHT" }, { 184, "CENTER" } },
+        edit = { [3] = "limit" },
     },
 }
 
@@ -136,22 +136,31 @@ local function recommendedText(x, dim)
 end
 
 local function limitRows()
-    local out = {}
+    local entries = {}
     local classes = ns.GearClasses()
     for _, r in ipairs(ns.Limits()) do
-        local up = r.up >= 999 and "+" or ("-" .. r.up)
-        out[#out + 1] = {
-            cells = { (QUALITY_COLOR[r.quality] or "") .. r.lo .. up .. "|r",
-                recommendedText(r.armor, not classes[Data.CLASS_ARMOR]), "",
-                recommendedText(r.weapon, not classes[Data.CLASS_WEAPON]), "" },
-            limits = { armor = r.armor, weapon = r.weapon },
-            dim = { armor = not classes[Data.CLASS_ARMOR], weapon = not classes[Data.CLASS_WEAPON] },
-        }
+        for _, c in ipairs({ { Data.CLASS_ARMOR, r.armor }, { Data.CLASS_WEAPON, r.weapon } }) do
+            if c[2] then
+                entries[#entries + 1] = { quality = r.quality, classID = c[1], band = r.up, x = c[2],
+                    dim = not classes[c[1]] }
+            end
+        end
+    end
+    local pad = { [22] = "   ", [44] = "      " }
+    local out = ns.GroupedRows(entries, function(e)
+        return { cells = { "", recommendedText(e.x, e.dim), "" }, limits = { limit = e.x }, dim = { limit = e.dim } }
+    end, function(_, label) return { cells = { label, "", "" } } end)
+    -- This list has no indent of its own: the levels show as leading spaces.
+    for _, r in ipairs(out) do
+        if r.indent and pad[r.indent] then r.cells[1] = pad[r.indent] .. r.cells[1] end
     end
     return out
 end
 
 local SOURCES = { deals = dealRows, materials = function() return ns.Materials.Rows() end, limits = limitRows }
+
+--- The rows of a tab of the main window (for the tests).
+function UI.Rows(view) return SOURCES[view]() end
 
 ------------------------------------------------------------------ drawing
 
@@ -906,7 +915,7 @@ local function build()
             row.cells[i] = fs
         end
         row.edits = {}
-        for _, which in ipairs({ "armor", "weapon" }) do
+        for _, which in ipairs({ "limit" }) do
             local e
             e = W.Money(row, function(copper)
                 local lim = e.limit

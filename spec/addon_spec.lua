@@ -119,12 +119,25 @@ describe("Salvager in a simulated client", function()
 
     it("shows the purchase with its materials under it, and the sale with its profit", function()
         local rows = ns.LedgerWindow.PurchaseRows()
-        assert.are.equal(2, #rows)
-        assert.are.equal(BOOTS, rows[1].itemID)               -- the item, once
+        assert.are.equal(1, #rows)                            -- one row per item, closed
+        assert.are.equal(BOOTS, rows[1].itemID)
+        assert.is_truthy(rows[1].cells[1]:find("x1", 1, true))
         assert.is_truthy(rows[1].cells[3]:find("5", 1, true)) -- paid 5s
-        assert.are.equal(11083, rows[2].itemID)               -- what it gave, indented
-        assert.is_true(rows[2].indent > 0)
+        rows[1].onClick()                                     -- a click opens it
+        rows = ns.LedgerWindow.PurchaseRows()
+        assert.are.equal(2, #rows)
+        assert.is_true(rows[2].indent > 0)                    -- each purchase under it, with what it gave
         assert.is_truthy(rows[2].cells[1]:find("2x Soul Dust", 1, true))
+        local x = ns.LedgerWindow.PurchaseFilter()
+        x.search = "nothing like it"
+        assert.is_truthy(ns.LedgerWindow.PurchaseRows()[1].cells[1]:find("matches", 1, true))
+        x.search = "test"                                     -- the name, any case
+        assert.are.equal(BOOTS, ns.LedgerWindow.PurchaseRows()[1].itemID)
+        x.search = nil
+        x.classes[4] = nil                                    -- weapons only: the boots go
+        assert.is_nil(ns.LedgerWindow.PurchaseRows()[1].itemID)
+        x.classes[4] = true
+        x.open[BOOTS] = nil
         local accRows = ns.LedgerWindow.AccuracyBandRows()
         assert.is_true(#accRows >= 4)                              -- all bands, gear type, quality, a band
         assert.is_truthy(accRows[2].cells[1]:find("Armor", 1, true))
@@ -348,6 +361,13 @@ describe("Salvager window and options", function()
         end
         ns.UI.view = "limits"
         ns.UI.Refresh()
+        -- The Limits tab is grouped the one way: gear type, quality, then the range; one box per band.
+        local limitRows = ns.UI.Rows("limits")
+        assert.is_truthy(limitRows[1].cells[1]:find("Armor", 1, true))
+        assert.is_truthy(limitRows[2].cells[1]:find("Uncommon", 1, true))
+        assert.is_truthy(limitRows[3].cells[1]:find("^%s+1%-"))
+        assert.is_table(limitRows[3].limits.limit)
+        assert.is_nil(limitRows[1].limits)
         ns.LedgerWindow.Toggle()
         assert.is_true(#ns.LedgerWindow.AccuracyBandRows() >= 1)
         assert.is_true(#ns.LedgerWindow.AccuracyMaterialRows() >= 1)

@@ -73,6 +73,7 @@ local oddsView          -- the Odds view in the ledger window: its filters and o
 local oddsFrame, oddsOut -- the odds in a window of their own
 local popOut            -- the button next to the Odds tab that moves them there and back
 local salesParts = {}   -- title, table, title, table of the Sales view
+local purchaseControls = {} -- the Purchases view's search box and filters
 local salesTabs = {}    -- the Sales view's subtabs: open and sold, history
 
 --- Which bands the Odds view shows: { quality = { [2], [3], [4] }, type = { a, w } }, kept with the window.
@@ -100,34 +101,108 @@ local function note(text) return { cells = { GREY .. text .. "|r" } } end
 ------------------------------------------------------------------ rows
 
 --- Purchases: one row per item, its materials indented under it.
+-- The Purchases view's search and filters (in the window's saved data): text in the item's name, gear types,
+-- qualities, item level bands left out.
+local function purchaseFilter()
+    ns.db.windows.ledger = ns.db.windows.ledger or {}
+    local saved = ns.db.windows.ledger
+    saved.purchaseFilter = saved.purchaseFilter or {}
+    local x = saved.purchaseFilter
+    x.classes = x.classes or { [Data.CLASS_ARMOR] = true, [Data.CLASS_WEAPON] = true }
+    x.qualities = x.qualities or { [2] = true, [3] = true, [4] = true }
+    x.bandsOff = x.bandsOff or {}
+    x.open = x.open or {}
+    return x
+end
+Window.PurchaseFilter = purchaseFilter
+
+--- An entry's gear type, quality and item level: from its record, else from its link.
+local function describeEntry(e)
+    local classID = e.classID or (e.itemID and ns.ClassOf(e.itemID))
+    local quality = e.quality or (e.link and ns.QualityOf(e.link)) or (e.itemID and ns.Items.Quality(e.itemID))
+    local ilvl = e.ilvl or e.band or (e.link and ns.ItemLevelOf(e.link))
+    return classID, quality, ilvl
+end
+
+local function passes(e, x, search)
+    local classID, quality, ilvl = describeEntry(e)
+    if classID and not x.classes[classID] then return false end
+    if quality and not x.qualities[quality] then return false end
+    if ilvl then
+        for _, b in ipairs(ns.LevelBands()) do
+            if ilvl <= b.up then
+                if x.bandsOff[b.up] then return false end
+                break
+            end
+        end
+    end
+    if search ~= "" then
+        local name = (e.link and e.link:match("%[(.-)%]")) or (ns.GetItemInfo(e.itemID)) or ""
+        if not name:lower():find(search, 1, true) then return false end
+    end
+    return true
+end
+
+--- Every item bought, one row per item name (newest first), with its totals. A click opens it: each
+--- purchase under it, with what it gave. The search and the filters pick which items show.
 function Window.PurchaseRows()
-    local rows = {}
+    local x = purchaseFilter()
+    local search = (x.search or ""):lower()
+    local groups, order = {}, {}
     for _, e in ipairs(Ledger.History(ns.db.ledger)) do
-        local name = itemName(e.itemID, e.link) .. (e.salvager and "  |cff9370db[Salvager]|r" or "")
+        if passes(e, x, search) then
+            local key = tostring(e.itemID)
+            local g = groups[key]
+            if not g then
+                g = { itemID = e.itemID, link = e.link, list = {}, paid = 0, known = 0, expected = 0, got = 0, done = 0,
+                    result = 0, salvager = 0, last = e.boughtAt or e.t }
+                groups[key] = g
+                order[#order + 1] = g
+            end
+            g.list[#g.list + 1] = e
+            if e.paid then g.paid, g.known = g.paid + e.paid, g.known + 1 end
+            g.expected = g.expected + (e.expected or 0)
+            if e.done then g.got, g.done = g.got + (e.got or 0), g.done + 1 end
+            if e.result then g.result = g.result + e.result end
+            if e.salvager then g.salvager = g.salvager + 1 end
+        end
+    end
+    local rows = {}
+    for _, g in ipairs(order) do
+        local open = x.open[g.itemID] and true or false
+        local n = #g.list
         rows[#rows + 1] = {
-            itemID = e.itemID, link = e.link, group = #(e.mats or {}) > 0,
+            itemID = g.itemID, link = g.link, group = true,
+            onClick = function()
+                x.open[g.itemID] = (not open) or nil
+                Window.Refresh()
+            end,
             cells = {
-                name, when(e.boughtAt or (not e.done and e.t) or nil),
-                e.paid and ns.Money(e.paid) or (GREY .. "not recorded|r"), money(e.expected),
-                e.done and money(e.got)
-                    or (GREY .. (ns.NoDisenchant(e.itemID) and "cannot be disenchanted" or "not disenchanted") .. "|r"),
-                signed(e.result),
+                (open and "|cffffd100-|r " or "|cffffd100+|r ") .. itemName(g.itemID, g.link) .. GREY .. "  x" .. n .. "|r"
+                    .. (g.salvager > 0 and ("  |cff9370db[Salvager " .. g.salvager .. "]|r") or ""),
+                when(g.last), g.known > 0 and ns.Money(g.paid) or (GREY .. "not recorded|r"), money(g.expected),
+                g.done > 0 and money(g.got) or (GREY .. "not disenchanted|r"), g.known > 0 and signed(g.result) or "",
             },
         }
-        for _, m in ipairs(e.mats or {}) do
-            local value = m.value
-            if not value then
-                local p = ns.PriceOf(m.id)
-                value = p and math.floor(p * m.qty * (1 - ns.Cut()) + 0.5) or nil
+        if open then
+            for _, e in ipairs(g.list) do
+                local gave = {}
+                for _, m in ipairs(e.mats or {}) do gave[#gave + 1] = m.qty .. "x " .. ns.MaterialName(m.id) end
+                local what = e.done and table.concat(gave, ", ")
+                    or (GREY .. (ns.NoDisenchant(e.itemID) and "cannot be disenchanted" or "not disenchanted") .. "|r")
+                rows[#rows + 1] = {
+                    indent = INDENT, link = e.link,
+                    cells = { what .. (e.salvager and "  |cff9370db[Salvager]|r" or ""),
+                        when(e.boughtAt or (not e.done and e.t) or nil),
+                        e.paid and ns.Money(e.paid) or (GREY .. "not recorded|r"), money(e.expected),
+                        e.done and money(e.got) or "", signed(e.result) },
+                }
             end
-            rows[#rows + 1] = {
-                itemID = m.id, indent = INDENT,
-                cells = { m.qty .. "x " .. ns.MaterialName(m.id), "", m.share and ns.Money(m.share) or "", "", money(value), "" },
-            }
         end
     end
     if #rows == 0 then
-        rows[1] = note("Nothing yet. Buy from the Deals tab, or take your \"Auction won\" mail, then disenchant.")
+        rows[1] = note((search ~= "" or next(x.bandsOff)) and "No purchase matches the search and the filters."
+            or "Nothing yet. Buy from the Deals tab, or take your \"Auction won\" mail, then disenchant.")
     end
     return rows
 end
@@ -582,8 +657,13 @@ function Window.Refresh()
     local split = (sales and not history) or accuracy
     local odds = Window.view == "odds"
     list:SetShown(not split and not odds)
-    -- The Sales view has a row of subtabs, and its tables start under it.
-    local down = sales and SUBTABS or 0
+    -- The Sales view has a row of subtabs, the Purchases view its search and filters; the tables start under.
+    local purchases = Window.view == "purchases"
+    for _, c in ipairs(purchaseControls) do
+        c:SetShown(purchases)
+        if purchases and c.Update then c:Update() end
+    end
+    local down = (sales or purchases) and SUBTABS or 0
     for key, b in pairs(salesTabs) do
         b:SetShown(sales)
         if (key == "history") == history then b:LockHighlight() else b:UnlockHighlight() end
@@ -806,6 +886,73 @@ local function build()
             b:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98)
         end
         salesTabs[t[1]] = b
+    end
+    -- The Purchases view: a search box, and filters by gear type, quality and item level band.
+    do
+        local pf = purchaseFilter()
+        local function changed()
+            list.offset = 0
+            Window.Refresh()
+        end
+        local searchLabel = W.Label(f, "Search", "GameFontHighlightSmall")
+        searchLabel:SetPoint("LEFT", f, "TOPLEFT", 14, -109)
+        local search = W.Edit(f, 150)
+        search:SetPoint("LEFT", searchLabel, "RIGHT", 8, 0)
+        search:SetText(pf.search or "")
+        search:SetScript("OnTextChanged", function(self)
+            local text = self:GetText() or ""
+            if text ~= (pf.search or "") then
+                pf.search = text
+                changed()
+            end
+        end)
+        search:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+        search:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+        W.HelpArea(f, searchLabel, "Search", "Shows the items whose name has this text in it.")
+        purchaseControls = { searchLabel, search }
+        local function setOf(tbl, invert, all)
+            return function(key) if invert then return not tbl[key] end return tbl[key] and true or false end,
+                function(key, on)
+                    if invert then tbl[key] = (not on) or nil else tbl[key] = on or nil end
+                    local any = false
+                    for _, k in ipairs(all) do if (invert and not tbl[k]) or (not invert and tbl[k]) then any = true end end
+                    if not any then
+                        if invert then tbl[key] = nil else tbl[key] = true end
+                        ns.Print("at least one must stay ticked")
+                    end
+                    changed()
+                end
+        end
+        local function allOr(names, total) return #names == total and "All" or table.concat(names, ", ") end
+        local prev = search
+        local function add(label, drop, help)
+            local l = W.Label(f, label, "GameFontHighlightSmall")
+            l:SetPoint("LEFT", prev, "RIGHT", 14, 0)
+            drop:SetPoint("LEFT", l, "RIGHT", 6, 0)
+            W.HelpArea(f, l, label, help)
+            purchaseControls[#purchaseControls + 1] = l
+            purchaseControls[#purchaseControls + 1] = drop
+            prev = drop
+        end
+        local gGet, gSet = setOf(pf.classes, false, { Data.CLASS_ARMOR, Data.CLASS_WEAPON })
+        add("Gear", W.CheckDropdown(f, 100, { { Data.CLASS_ARMOR, "Armor" }, { Data.CLASS_WEAPON, "Weapons" } }, gGet, gSet,
+            "Which gear types show.", "Gear", allOr), "Armor, weapons, or both.")
+        local qGet, qSet = setOf(pf.qualities, false, { 2, 3, 4 })
+        add("Quality", W.CheckDropdown(f, 130, { { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" },
+            { 4, "|cffa335eeEpic|r" } }, qGet, qSet, "Which qualities show.", "Quality", allOr), "Uncommon, Rare, Epic.")
+        local bandOptions, bandKeys = {}, {}
+        for _, b in ipairs(ns.LevelBands()) do
+            bandOptions[#bandOptions + 1] = { b.up, b.label }
+            bandKeys[#bandKeys + 1] = b.up
+        end
+        local bGet, bSet = setOf(pf.bandsOff, true, bandKeys)
+        add("Bands", W.CheckDropdown(f, 130, bandOptions, bGet, bSet, "Which item level bands show.", "Bands",
+            function(names, total)
+                if #names == total then return "All" end
+                if #names > 3 then return #names .. " bands" end
+                return table.concat(names, ", ")
+            end), "Item level bands: a band is a range of item levels that disenchants into the same materials.")
+        for _, c in ipairs(purchaseControls) do c:Hide() end
     end
     if VIEWS[f.saved.view] then Window.view = f.saved.view end
     f.onResize = Window.Refresh

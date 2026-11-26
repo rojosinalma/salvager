@@ -546,7 +546,9 @@ function Ledger.History(state)
     local out = {}
     for itemID, list in pairs(state.purchases) do
         for _, p in ipairs(list) do
-            out[#out + 1] = { t = p.t or 0, itemID = itemID, link = p.link, paid = p.each, expected = p.ev, done = false }
+            local j = p.j or {}
+            out[#out + 1] = { t = p.t or 0, itemID = itemID, link = p.link, paid = p.each, expected = p.ev, done = false,
+                quality = j.q, classID = j.cls, ilvl = j.ilvl, band = j.band }
         end
     end
     for _, r in ipairs(state.disenchants) do
@@ -562,7 +564,7 @@ function Ledger.History(state)
         out[#out + 1] = {
             t = r.t or 0, boughtAt = r.boughtAt, itemID = r.itemID, link = r.link, paid = paid,
             expected = r.evAtBuy or r.planned, done = true, got = r.value, result = paid and ((r.value or 0) - paid) or nil,
-            salvager = r.salvager, mats = mats,
+            salvager = r.salvager, mats = mats, quality = r.quality, classID = r.classID, ilvl = r.ilvl, band = r.band,
         }
     end
     table.sort(out, function(a, b) return a.t > b.t end)
