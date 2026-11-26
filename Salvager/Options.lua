@@ -116,6 +116,32 @@ local function populate(panel, standalone)
         autoOpen:SetChecked(s.autoOpen) restore:SetChecked(s.restoreWindows) mini:SetChecked(not s.minimap.hide)
     end }
 
+    heading("Data")
+    -- How much the addon keeps on disk, and the history with its backups.
+    local size = W.Label(panel, "", "GameFontHighlightSmall")
+    size:SetWidth(520)
+    size:SetJustifyH("LEFT")
+    size:SetWordWrap(false)
+    at(size, 20)
+    local clear = W.Button(panel, "Clear history", 110, function() StaticPopup_Show("SALVAGER_CLEAR_LEDGER") end,
+        "Deletes every purchase, disenchant and sale record. Your stock and its costs stay, and so do purchases not "
+            .. "disenchanted yet. It asks first, and keeps a copy you can restore.")
+    at(clear, 28)
+    local restoreButton = W.Button(panel, "Restore backup", 120, function() ns.Backup.AskRestore() end,
+        "Puts the last copy of the ledger back (one is made before each clear). It asks first.")
+    restoreButton:SetPoint("LEFT", clear, "RIGHT", 8, 0)
+    restoreButton:SetMotionScriptsWhileDisabled(true)
+    local last = W.Label(panel, "", "GameFontDisableSmall")
+    last:SetPoint("LEFT", restoreButton, "RIGHT", 8, 0)
+    controls[#controls + 1] = { refresh = function()
+        local data, backups = ns.Backup.Sizes()
+        size:SetText(string.format("Saved data: about %s (log %d lines, gold journal %d changes). Backups: %s.",
+            ns.Util.FormatBytes(data), #ns.db.log, #(ns.db.money.entries or {}), ns.Util.FormatBytes(backups)))
+        local b = ns.Backup.Last()
+        restoreButton:SetEnabled(b ~= nil)
+        last:SetText(b and ("last copy: " .. date("%m-%d %H:%M", b.t)) or "no backup yet")
+    end }
+
     if not standalone then
         local open = W.Button(panel, "Open Salvager", 120, function() ns.UI.Show() end)
         at(open, 24, 8)

@@ -403,9 +403,17 @@ flipping is out of scope for now.
 87. **Main window status at the bottom** (0.3.105): the spinner and the status text (what the addon is doing
     now) sit at the bottom right under the list, as wide as the text and at most half the window; the
     footer takes the room on their left. The top row keeps Play, Stop and the window buttons.
+88. **Clear history lives in the options, with backups** (0.3.106, the user): Options, Data has Clear history,
+    Restore backup (with the date of the last copy; off when there is none) and the size of the saved data
+    (`Util.SavedSize`: within 0.3% of the real file, measured 2026-11-26). The confirmation says what is lost
+    (every purchase, disenchant and sale record; the Ledger, Reports, Accuracy and Odds start empty) and what
+    stays (stock and its costs, purchases not disenchanted yet). Before a clear or `/salv reset ledger`, the
+    whole ledger is copied into `SalvagerBackup`, a saved variable of its own (the game writes it into the same
+    file; an addon cannot write other files), last 3 kept. Restore (`/salv restore`, it asks) puts the last
+    copy back and keeps what it replaces as a backup, so it can be undone too.
 ## Data
 
-`SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),
+`SalvagerBackup` (account-wide): `list` of ledger copies (88). `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),
 `money` (gold journal), `quality` and `ilvl` (learned item data), `auraSeen` and `auraSnapshots` (to learn the Salvager's aura spell ID; matched by name until then).
 
 ## Open

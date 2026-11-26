@@ -276,7 +276,7 @@ describe("Salvager in a simulated client", function()
         ns.Ledger.AddStock(ns.db.ledger, 11137, 3, 900)
         ns.Ledger.AddPurchase(ns.db.ledger, 11287, 1, 150, 259, 1)   -- a wand: can never be disenchanted
         ns.Ledger.AddPurchase(ns.db.ledger, BOOTS, 1, 700, 900, 2)   -- still to disenchant
-        ns.LedgerWindow.Show()
+        ns.Options.Open()                                   -- the button is in the options
         local button
         for _, fr in ipairs(env.frames) do if fr.text == "Clear history" then button = fr end end
         button:Click()
@@ -288,6 +288,19 @@ describe("Salvager in a simulated client", function()
         assert.is_nil(ns.db.ledger.purchases[11287])
         assert.are.equal(1, #ns.db.ledger.purchases[BOOTS])
         assert.are.equal(3, ns.db.ledger.stock[11137].qty)
+        -- A copy was kept, outside the addon's data: Restore brings the history back.
+        local copy = ns.Backup.Last()
+        assert.is_true(#copy.ledger.disenchants > 0)
+        assert.is_true(ns.Backup.Sizes() > 0)
+        ns.Backup.AskRestore()
+        assert.are.equal("SALVAGER_RESTORE_LEDGER", env.popup)
+        StaticPopupDialogs.SALVAGER_RESTORE_LEDGER.OnAccept()
+        assert.is_true(#ns.db.ledger.disenchants > 0)
+        assert.are.equal(0, #ns.Backup.Last().ledger.disenchants)      -- what it replaced is a backup too
+        ns.Backup.Restore()                                           -- (and so it can be undone)
+        assert.are.equal(0, #ns.db.ledger.disenchants)
+        ns.Options.Refresh()
+        ns.Options.Open()
     end)
 
     it("adds tooltip lines without errors", function()

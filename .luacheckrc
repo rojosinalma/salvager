@@ -8,7 +8,7 @@ files["spec/**"] = {
     read_globals = { "TakeInboxItem", "TakeInboxMoney", "AutoLootMailItem", "RepairAllItems" },
 }
 
-globals = { "SalvagerDB", "SlashCmdList", "SLASH_SALVAGER1", "SLASH_SALVAGER2", "StaticPopupDialogs" }
+globals = { "SalvagerDB", "SalvagerBackup", "SlashCmdList", "SLASH_SALVAGER1", "SLASH_SALVAGER2", "StaticPopupDialogs" }
 
 read_globals = {
     "C_AddOns", "C_AuctionHouse", "C_Container", "C_Item", "C_Timer", "C_UnitAuras",

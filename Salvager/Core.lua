@@ -558,7 +558,8 @@ local HELP = {
     "/salv ledger - the ledger window (purchases, sales, odds)",
     "/salv breakdown <material> - where a material came from, e.g. /salv breakdown 11083",
     "/salv log - the log window; /salv log 20 prints the last 20 lines in chat",
-    "/salv reset ledger confirm - clear all purchases, stock and history",
+    "/salv reset ledger confirm - clear all purchases, stock and history (a backup is kept)",
+    "/salv restore - put the last ledger backup back (it asks first)",
 }
 
 SLASH_SALVAGER1, SLASH_SALVAGER2 = "/salv", "/salvager"
@@ -654,7 +655,10 @@ SlashCmdList.SALVAGER = function(msg)
         for i = math.max(1, #log - n + 1), #log do ns.Print(log[i]) end
     elseif cmd == "auras" then
         if ns.Disenchant then ns.Disenchant.PrintAuras() end
+    elseif cmd == "restore" then
+        ns.Backup.AskRestore()
     elseif cmd == "reset" and args[2] == "ledger" and args[3] == "confirm" then
+        ns.Backup.Save("before /salv reset ledger")
         ns.db.ledger = Ledger.Reset(ns.db.ledger)
         ns.Print("ledger cleared")
         ns.Fire("SALVAGER_LEDGER")

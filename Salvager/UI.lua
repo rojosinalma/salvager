@@ -485,7 +485,7 @@ function UI.Refresh()
     end
     status:SetText(statusText())
     -- As wide as its text, at most half the window: the footer keeps the rest.
-    local sw = tonumber(status:GetStringWidth()) or 0
+    local sw = tonumber((status:GetStringWidth())) or 0
     status:SetWidth(math.max(1, math.min(sw + 2, ((f:GetWidth() or 800) - 60) / 2)))
     if ns.Busy() then spinner:Start() else spinner:Stop() end
     local dealsBusy = UI.view == "deals" and (ns.Scanner.state ~= "idle" or ns.scanBothPending)

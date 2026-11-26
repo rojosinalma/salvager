@@ -925,10 +925,7 @@ local function build()
         .. "material comes and how many (the table the addon uses). You got = what your own disenchants gave. Value "
         .. "now = what one disenchant is worth on average at today's prices, after the cut. Buy below = the buy "
         .. "limit; Loss chance = the chance one disenchant is worth less than it. Point at a column title for more.")
-    local clear = W.Button(f, "Clear history", 110, function() StaticPopup_Show("SALVAGER_CLEAR_LEDGER") end,
-        "Removes the list of purchases, disenchants and sales, and with them the Odds. Your material stock and its "
-        .. "costs stay, and so do purchases you have not disenchanted yet. It asks first.")
-    clear:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -68)
+    -- (Clear history is in the options, with the backups.)
     cancelButton = W.Button(f, "Cancel undercut (0)", 150, function() ns.Listings.CancelNext() end,
         "Cancels one undercut listing per click (the game wants a click for each). The materials come back by mail, "
         .. "and the auction house keeps its deposit. Needs the auction house open, and a check first.")
@@ -1077,22 +1074,6 @@ local function build()
     f:SetScript("OnShow", Window.Refresh)
 end
 
-StaticPopupDialogs["SALVAGER_CLEAR_LEDGER"] = {
-    text = "Clear the Salvager ledger history?\n\nThis removes the list of purchases, disenchants and sales, and the Odds "
-        .. "learned from them. Your material stock and its costs stay, and so do purchases you have not disenchanted yet.",
-    button1 = "Clear history",
-    button2 = "Cancel",
-    OnAccept = function()
-        local n = Ledger.ClearHistory(ns.db.ledger, ns.NoDisenchant)
-        ns.Print("ledger history cleared (%d entries)", n)
-        ns.Log("ledger history cleared (%d entries)", n)
-        ns.Fire("SALVAGER_LEDGER")
-    end,
-    timeout = 0,
-    whileDead = true,
-    hideOnEscape = true,
-    preferredIndex = 3,
-}
 
 local function buildOdds()
     -- As wide as its tables need; the height is the player's (the corner sizes it up and down only).

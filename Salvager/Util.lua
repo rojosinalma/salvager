@@ -83,4 +83,39 @@ function Util.Cap(list, max)
     for _ = 1, extra do table.remove(list, 1) end
 end
 
+--- A copy of a table and every table in it (no shared parts). Other values are returned as they are.
+function Util.Copy(v, seen)
+    if type(v) ~= "table" then return v end
+    seen = seen or {}
+    if seen[v] then return seen[v] end
+    local out = {}
+    seen[v] = out
+    for k, x in pairs(v) do out[Util.Copy(k, seen)] = Util.Copy(x, seen) end
+    return out
+end
+
+--- About how many bytes a value takes in the game's saved data file (each key and value as the game writes
+--- them: ["key"] = value, one per line).
+function Util.SavedSize(v, seen)
+    local t = type(v)
+    if t == "string" then return #v + 2 end
+    if t == "number" then return #tostring(v) end
+    if t == "boolean" then return v and 4 or 5 end
+    if t ~= "table" then return 3 end
+    seen = seen or {}
+    if seen[v] then return 0 end
+    seen[v] = true
+    local n = 4   -- "{", "}" and their line ends
+    for k, x in pairs(v) do
+        n = n + Util.SavedSize(k, seen) + 2 + 3 + Util.SavedSize(x, seen) + 2   -- [k] = x,
+    end
+    return n
+end
+
+--- "12.3 KB", "1.40 MB".
+function Util.FormatBytes(n)
+    if n >= 1024 * 1024 then return string.format("%.2f MB", n / 1024 / 1024) end
+    return string.format("%.1f KB", n / 1024)
+end
+
 return Util

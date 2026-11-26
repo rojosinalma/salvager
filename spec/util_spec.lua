@@ -43,4 +43,16 @@ describe("Util coins", function()
         assert.is_falsy(t:find("g ", 1, true))
         assert.are.equal("1g 2s 3c", Util.PlainMoney(t))
     end)
+
+    it("copies a table with no shared parts, and says about how much saved data it takes", function()
+        local t = { a = { 1, 2 }, b = "x" }
+        local c = Util.Copy(t)
+        assert.are.same(t, c)
+        c.a[1] = 9
+        assert.are.equal(1, t.a[1])
+        assert.is_true(Util.SavedSize({ x = "abc" }) > 10)
+        assert.is_true(Util.SavedSize({ x = string.rep("a", 1000) }) > 1000)
+        assert.are.equal("1.0 KB", Util.FormatBytes(1024))
+        assert.are.equal("2.00 MB", Util.FormatBytes(2 * 1024 * 1024))
+    end)
 end)
