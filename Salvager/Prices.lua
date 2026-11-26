@@ -59,8 +59,17 @@ local function stepDone()
     end
 end
 
---- Searches every material once. Needs the auction house open.
-function Prices.Scan()
+--- The materials you carry in your bags (the ones you can post).
+function Prices.Owned()
+    local ids = {}
+    for _, m in ipairs(Data.MATERIALS) do
+        if ns.Post.BagCount(m.id) > 0 then ids[#ids + 1] = m.id end
+    end
+    return ids
+end
+
+--- Searches every material once, or only `ids`. Needs the auction house open.
+function Prices.Scan(ids)
     if not ns.Queue.open then ns.Print("open the auction house first") return end
     if Prices.scanning then return end
     if ns.Scanner.state ~= "idle" then
@@ -71,12 +80,19 @@ function Prices.Scan()
         ns.Print("wait for the undercut check to finish")
         return
     end
-    Prices.scanning, Prices.done, Prices.total = true, 0, #Data.MATERIALS
-    ns.Log("material scan started")
-    for _, m in ipairs(Data.MATERIALS) do
+    if not ids then
+        ids = {}
+        for _, m in ipairs(Data.MATERIALS) do ids[#ids + 1] = m.id end
+    elseif #ids == 0 then
+        ns.Print("no disenchanting material in your bags")
+        return
+    end
+    Prices.scanning, Prices.done, Prices.total = true, 0, #ids
+    ns.Log("material scan started (%d materials)", #ids)
+    for _, id in ipairs(ids) do
         ns.Queue.Add({
-            commodity = m.id,
-            onResult = function() store(m.id) stepDone() end,
+            commodity = id,
+            onResult = function() store(id) stepDone() end,
             onFail = function() stepDone() end,
         })
     end

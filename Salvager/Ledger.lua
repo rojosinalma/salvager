@@ -23,6 +23,7 @@ function Ledger.Init(state)
     state.disenchants = state.disenchants or {}
     state.sales = state.sales or {}
     state.bought = state.bought or {}
+    state.seenSold = state.seenSold or {}
     -- Stock from before 0.2.7 kept unknown costs as 0: mark those units unknown.
     for _, s in pairs(state.stock) do
         if s.unknown == nil then s.unknown = (s.cost == 0) and s.qty or 0 end
@@ -162,6 +163,71 @@ function Ledger.Sell(state, matID, count, gross, cutPaid, t)
     return rec
 end
 
+--- A sale seen on the auction house (the listing shows as sold; its money comes by mail later).
+--- It is booked now, at the average cost of this moment. `unpaid` counts the units whose mail has not
+--- been taken yet, so that mail does not book them again (Ledger.SalePaid).
+function Ledger.SaleSeen(state, matID, count, each, cutRate, t)
+    local gross = count * each
+    local rec = Ledger.Sell(state, matID, count, gross, math.floor(gross * (cutRate or 0.05) + 0.5), t)
+    rec.each, rec.unpaid = each, count
+    return rec
+end
+
+--- An "Auction successful" mail was taken: `count` units for `gross`, `cutPaid` kept by the house.
+--- One mail can cover several part sales of a listing. Units already booked when they were seen as sold
+--- (same material, same price each) are marked paid; only the rest is booked as a new sale.
+--- @return table|nil the new sale record (nil when everything was booked before), number units matched
+function Ledger.SalePaid(state, matID, count, gross, cutPaid, t)
+    local each = gross / count
+    local left = count
+    for _, rec in ipairs(state.sales) do
+        if left <= 0 then break end
+        if rec.id == matID and (rec.unpaid or 0) > 0 and rec.each and math.abs(rec.each - each) < 1 then
+            local take = math.min(rec.unpaid, left)
+            rec.unpaid = rec.unpaid - take
+            if rec.unpaid == 0 then rec.paidAt = t end
+            left = left - take
+        end
+    end
+    if left <= 0 then return nil, count end
+    local part = left / count
+    local rec = Ledger.Sell(state, matID, left, math.floor(gross * part + 0.5), math.floor((cutPaid or 0) * part + 0.5), t)
+    rec.each, rec.paidAt = each, t
+    return rec, count - left
+end
+
+--- Which of the sold auctions on screen are new. A listing sells in parts, and its parts share the
+--- listing's auction ID, so a part is known by (auction ID, quantity, the moment its money is due).
+--- Two parts of the same size are told apart by that moment. Remembers the new ones.
+--- @param rows table  { { auctionID, qty, due (clock time the money arrives), ... }, ... }
+--- @return table  the rows not seen before
+function Ledger.NewSold(state, rows, now)
+    local TOLERANCE, KEEP = 20, 3 * 3600
+    local seen = state.seenSold
+    for i = #seen, 1, -1 do
+        if seen[i].due < now - KEEP then table.remove(seen, i) end
+    end
+    local used, fresh = {}, {}
+    for _, row in ipairs(rows) do
+        local match
+        for i, s in ipairs(seen) do
+            if not used[i] and s.auctionID == row.auctionID and s.qty == row.qty and math.abs(s.due - row.due) <= TOLERANCE then
+                match = i
+                break
+            end
+        end
+        if match then
+            used[match] = true
+        else
+            fresh[#fresh + 1] = row
+        end
+    end
+    for _, row in ipairs(fresh) do
+        seen[#seen + 1] = { auctionID = row.auctionID, qty = row.qty, due = row.due }
+    end
+    return fresh
+end
+
 --- Records a disenchant and adds its materials to stock.
 --- @param rec table  { t, link, itemID, ilvl, quality, classID, band, salvager, got = {[id]=qty},
 ---                     planned = net EV now, evAtBuy = net EV at purchase or nil }
@@ -196,6 +262,7 @@ end
 function Ledger.ClearHistory(state, drop)
     local n = #state.disenchants + #state.sales
     state.disenchants, state.sales, state.bought = {}, {}, {}
+    -- (seenSold stays: the sold auctions still on screen must not be booked again.)
     for itemID, list in pairs(state.purchases) do
         if drop and drop(itemID) then
             n = n + #list
@@ -234,6 +301,68 @@ function Ledger.History(state)
         }
     end
     table.sort(out, function(a, b) return a.t > b.t end)
+    return out
+end
+
+--- Where a material came from: which items and which bands gave it, and what it cost from each.
+--- @return table {
+---   units, knownUnits (from disenchants with a recorded purchase), cost (the part of those purchases given to it),
+---   items = { source, ... }, bands = { source, ... } }
+--- source = {
+---   itemID, link (items) or quality, classID, band (bands),
+---   gave (disenchants that gave this material), all (all disenchants of that item or band),
+---   units, knownUnits, cost            -- of this material, from that source
+---   paid, got, known                   -- the source as a whole: what its disenchants cost and gave (all materials),
+---                                      -- over the `known` disenchants that have a recorded purchase
+--- }
+function Ledger.Breakdown(state, matID)
+    local out = { units = 0, knownUnits = 0, cost = 0, items = {}, bands = {} }
+    local byItem, byBand = {}, {}
+    local function source(map, list, key, make)
+        local s = map[key]
+        if not s then
+            s = make()
+            s.gave, s.all, s.units, s.knownUnits, s.cost, s.paid, s.got, s.known = 0, 0, 0, 0, 0, 0, 0, 0
+            map[key] = s
+            list[#list + 1] = s
+        end
+        return s
+    end
+    for _, r in ipairs(state.disenchants) do
+        local qty = r.got and r.got[matID]
+        local item = source(byItem, out.items, r.itemID or 0, function() return { itemID = r.itemID, link = r.link } end)
+        local band = source(byBand, out.bands, string.format("%d:%d:%d", r.quality or 0, r.classID or 0, r.band or 0),
+            function() return { quality = r.quality, classID = r.classID, band = r.band } end)
+        for _, s in ipairs({ item, band }) do
+            s.all = s.all + 1
+            if r.costKnown then
+                s.known = s.known + 1
+                s.paid = s.paid + (r.cost or 0)
+                s.got = s.got + (r.value or 0)
+            end
+            if qty then
+                s.gave = s.gave + 1
+                s.units = s.units + qty
+                if r.costKnown then
+                    s.knownUnits = s.knownUnits + qty
+                    s.cost = s.cost + ((r.shares and r.shares[matID]) or 0)
+                end
+            end
+        end
+        if qty then
+            out.units = out.units + qty
+            if r.costKnown then
+                out.knownUnits = out.knownUnits + qty
+                out.cost = out.cost + ((r.shares and r.shares[matID]) or 0)
+            end
+        end
+    end
+    -- Only the sources that gave this material.
+    for _, key in ipairs({ "items", "bands" }) do
+        local kept = {}
+        for _, s in ipairs(out[key]) do if s.gave > 0 then kept[#kept + 1] = s end end
+        out[key] = kept
+    end
     return out
 end
 

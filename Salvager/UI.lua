@@ -55,7 +55,7 @@ local VIEWS = {
 
 local f, rows, headers, status, footer, minProfit, playButton, stopButton, gearChoice, tabs =
     nil, {}, {}, nil, nil, nil, nil, nil, nil, {}
-local maxPrice, capHint, cautious, bandDrop, ilvlMin, ilvlMax, levelHint
+local maxPrice, capHint, cautious, bandDrop, ilvlMin, ilvlMax, levelHint, materialsOnly, scanOwned
 local qualityDrop, popOut
 local headerHelp = {}
 local actionHeader
@@ -159,6 +159,7 @@ local function statusText()
     return table.concat(parts, "  ·  ")
 end
 
+--- The line under the list: what the last scan found. (What the columns mean is behind the "?" button.)
 local function footerText()
     if UI.view == "deals" then
         local sum = ns.Scanner.summary
@@ -178,18 +179,40 @@ local function footerText()
                     ns.Money(sum.best.value), ns.Money(sum.best.margin))
             end
         else
-            text = text .. " No gear scan yet: click Scan both."
+            text = text .. " No gear scan yet: click Play, or Scan once: Both."
         end
-        text = text .. " Value = the average over many disenchants. Lose % = the chance that one disenchant is worth "
-            .. "less than the price. Hover a column title for more."
         return text
-    elseif UI.view == "materials" then
-        return ns.Materials.Legend()
+    elseif UI.view == "limits" and ns.db.settings.cautious then
+        return "Cautious pricing is on."
     end
-    return (ns.db.settings.cautious and "Cautious pricing is on: Recommended = value with every material at its lowest "
-            .. "amount, after the 5% cut, minus your minimum profit. "
-            or "Recommended = disenchant value after the 5% cut, minus your minimum profit. ") .. "Type gold, silver and copper in "
-        .. "Buy below to set your own (yellow). x = back to the recommended price. Grey = type not scanned."
+    return ""
+end
+
+--- What the list's columns and marks mean, one line each (for the "?" button).
+local function helpLines()
+    if UI.view == "materials" then return ns.Materials.HelpLines() end
+    if UI.view == "limits" then
+        return {
+            ns.db.settings.cautious and "Recommended: the value with every material at its lowest amount, after the 5% cut, "
+                .. "minus your minimum profit (cautious pricing is on)."
+                or "Recommended: the disenchant value after the 5% cut, minus your minimum profit.",
+            "Buy below: the limit in use. Type gold, silver and copper to set your own; it then shows in yellow.",
+            "x: back to the recommended price.",
+            "Grey: a gear type the scan does not look at.",
+            "?: a material of that band has no price yet.",
+            "Max price, when set, still applies on top of these limits.",
+        }
+    end
+    return {
+        "Value: what one disenchant of the item is worth on average over many, after the 5% cut.",
+        "Profit: Value minus the buyout. An average, not what one item gives.",
+        "Lose %: the chance that one disenchant is worth less than its buyout.",
+        "A name with x3 stands for three auctions of one item. Its numbers and its Buy are for the cheapest one.",
+        "Click such a row to open it and see each auction.",
+        "Buy needs one click per item. After a purchase the item is searched again.",
+        "The list keeps the 60 best of each round (Item checks per scan, in the options).",
+        "Hover a column title for more about that column.",
+    }
 end
 
 --- Column widths: the first column takes the room the window has over its default width.
@@ -264,6 +287,9 @@ function UI.Refresh()
     if out and UI.view == "materials" then UI.view, UI.offset = "deals", 0 end
     tabs.materials:SetAlpha(out and 0.5 or 1)
     if out then popOut:LockHighlight() else popOut:UnlockHighlight() end
+    materialsOnly:SetShown(UI.view == "materials")
+    scanOwned:SetShown(UI.view == "materials")
+    materialsOnly:SetChecked(ns.db.settings.materialsDataOnly)
     local view = VIEWS[UI.view]
     ROWS = fitRows()
     local w = layout(view)
@@ -391,6 +417,8 @@ local function rowTooltip(self)
     if not link then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:SetHyperlink(link)
+    local hint = UI.view == "materials" and ns.RowHint(item)
+    if hint then GameTooltip:AddLine(hint, 0.5, 0.8, 1) end
     GameTooltip:Show()
 end
 
@@ -653,6 +681,19 @@ local function build()
     W.Tooltip(tabs.limits, "Limits", "The most the addon lets you pay per item level band, for armor and for weapons. "
         .. "You can set your own.")
 
+    -- At the right end of the tab row: what the list's columns and marks mean.
+    local helpButton = W.HelpButton(f, function()
+        return UI.view == "materials" and "Materials" or UI.view == "limits" and "Limits" or "Deals"
+    end, helpLines)
+    helpButton:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -159)
+    -- In the Materials tab, next to it.
+    materialsOnly = ns.Materials.DataOnlyCheck(f)
+    materialsOnly:SetPoint("TOPRIGHT", f, "TOPRIGHT", -214, -158)
+    materialsOnly:Hide()
+    scanOwned = ns.Materials.ScanOwnedButton(f)
+    scanOwned:SetPoint("TOPRIGHT", f, "TOPRIGHT", -410, -158)
+    scanOwned:Hide()
+
     ---------------------------------------------------------------- the list, in its own sunken panel
     local inset = W.Panel(f, 0, 0, 0, 0.5)
     inset:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -184)
@@ -789,6 +830,8 @@ local function build()
             if item and item.group then
                 UI.expanded[item.group.name] = not UI.expanded[item.group.name] or nil
                 UI.Refresh()
+            elseif item and UI.view == "materials" then
+                ns.RowClick(item)
             end
         end)
         row.buy:SetPoint("RIGHT", row, "RIGHT", -4, 0)

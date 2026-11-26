@@ -128,7 +128,7 @@ flipping is out of scope for now.
     has a title.
 36. **Cautious pricing** (`cautious`): the buy limit is measured from `Model.Value(...).low` (every material at
     its lowest amount, no Salvager bonus) and not from the average. Value, Profit and Lose % are unchanged.
-37. **Level filter** (main window, "Levels" row): tick boxes for the 11 item level bands of green gear
+37. **Level filter** (main window, "Levels" row): tick boxes for the 11 item level bands of uncommon gear
     (`levelBandsOff`) and a custom item level range (`ilvlMin`, `ilvlMax`, 0 = none). An item must pass both.
     It is applied to each listing as its page arrives, by item level. It does not narrow what the auction house
     sends (that query filters by required level, which does not map exactly to item level), so it does not
@@ -141,6 +141,12 @@ flipping is out of scope for now.
 39. **Odds view: one table per band** (`Widgets.CardList`): a scrolling stack of cards, each a sunken panel
     with a gold title band (the band, then its facts: disenchants, value now, buy below, lose, your average),
     column titles and one striped row per material. Cards and rows are created as needed and reused.
+40. **Sales are booked when seen sold** (own-auctions list), not when the mail is taken: a sold part is known by
+    (auction ID, quantity, time the money is due ±20 s) in `ledger.seenSold`; the later mail marks those units
+    paid (`Ledger.SalePaid`) and books only units never seen.
+41. **Breakdown window**: a click on a material row opens where it came from, by item and by band, with cost per
+    unit against the price now and the source's result as a whole (`Ledger.Breakdown`).
+42. **Help text** sits behind a "?" button (one line per explanation); the footer keeps only scan results.
 15. **UI redraws** from events are limited to four per second; the log panel is not rebuilt during a scan.
 
 ## Data

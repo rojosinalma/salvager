@@ -51,6 +51,15 @@ function Materials.Rows()
         local t = r.sold and waiting or listed
         t[r.itemID] = (t[r.itemID] or 0) + r.qty
     end
+    -- "Only materials with my data": the ones you carry, have listed or sold, or ever got from a disenchant.
+    local only = ns.db.settings.materialsDataOnly
+    local seen = {}
+    if only then
+        for _, r in ipairs(ns.db.ledger.disenchants) do
+            for id in pairs(r.got or {}) do seen[id] = true end
+        end
+        for _, sale in ipairs(ns.db.ledger.sales) do seen[sale.id] = true end
+    end
     for _, m in ipairs(Data.MATERIALS) do
         local e = ns.db.prices[m.id]
         local price = ns.PriceOf(m.id)
@@ -70,7 +79,8 @@ function Materials.Rows()
         if price and be and price < be then priceText = "|cffff4040" .. priceText .. "|r" end
         local ageText = ago(age)
         if age and age > maxAge then ageText = "|cffff8040" .. ageText .. "|r" end
-        out[#out + 1] = {
+        local mine = bags > 0 or listed[m.id] or waiting[m.id] or (s and s.qty > 0) or seen[m.id]
+        if not only or mine then out[#out + 1] = {
             cells = { ns.MaterialName(m.id), priceText, ageText, bags > 0 and tostring(bags) or "-",
                 listed[m.id] and tostring(listed[m.id]) or "-",
                 waiting[m.id] and ("|cffffd100" .. waiting[m.id] .. "|r") or "-",
@@ -78,17 +88,47 @@ function Materials.Rows()
                     or (unknown > 0 and "|cff808080unknown|r" or "-"),
                 be and ns.Money(be) or "-" },
             itemID = m.id, post = true, canPost = bags > 0, suggest = suggest,
-        }
+        } end
+    end
+    if #out == 0 then
+        out[1] = { cells = { "|cff808080No material with your data yet. Untick \"Only materials with my data\" to see all.|r" } }
     end
     return out
 end
 
---- The line under the list.
-function Materials.Legend()
-    return string.format("Price = average of cheapest %d units. Red = below break-even. * = none listed, last price. "
-        .. "~ = other essence form. Unknown / +n? = units with no recorded purchase (/salv stock sets them). "
-        .. "Post = sell what is in your bags; the warning sign means the price is below your break-even.",
-        ns.db.settings.priceUnits)
+--- The "Scan owned" button (the tab and the window each have one).
+function Materials.ScanOwnedButton(parent)
+    return W.Button(parent, "Scan owned", 96, function() ns.Prices.Scan(ns.Prices.Owned()) end,
+        "Searches only the materials in your bags: a quick way to get fresh prices for what you can post.")
+end
+
+--- The "Only materials with my data" check box (the tab and the window each have one).
+function Materials.DataOnlyCheck(parent)
+    return W.Check(parent, "Only materials with my data",
+        "Lists only the materials you carry, have listed or sold, or ever got from a disenchant. "
+            .. "Untick it to see the price of every material.",
+        function(on)
+            ns.db.settings.materialsDataOnly = on
+            ns.Log("materials: only with data %s", on and "on" or "off")
+            ns.Fire("SALVAGER_SETTINGS")
+        end)
+end
+
+--- What the list's marks mean, one line each (for the "?" button).
+function Materials.HelpLines()
+    return {
+        string.format("Price: the average of the cheapest %d units on the auction house, without your own.",
+            ns.db.settings.priceUnits),
+        "A red price is below your break-even.",
+        "* before a price: none is listed now, so it is the last price seen.",
+        "~ before a price: worked out from the other essence form (3 lesser = 1 greater).",
+        "Bags: how many you carry. Listed: on the auction house, not sold. Sold: sold, money on its way.",
+        "Avg cost: what one cost you. \"unknown\" or \"+2?\": units with no recorded purchase (/salv stock sets them).",
+        "Break-even: the lowest price each at which a sale does not lose money.",
+        "Post: sells what is in your bags. The warning sign means the price is below your break-even.",
+        "Click a material to see which items and bands it came from, and what pays.",
+        "Hover a column title for more about that column.",
+    }
 end
 
 --- The text of the below-break-even warning for a row's suggestion.
@@ -100,7 +140,7 @@ end
 ------------------------------------------------------------------ the window
 
 local REFRESH_GAP = 0.25
-local f, list, legend, status
+local f, list, status, dataOnly
 local lastRefresh, queued = 0, false
 
 --- Is the list in its own window now?
@@ -124,7 +164,7 @@ function Materials.Refresh()
     end
     list:SetSource(#rows, function(i) return rows[i] end)
     list:Refresh()
-    legend:SetText(Materials.Legend())
+    dataOnly:SetChecked(ns.db.settings.materialsDataOnly)
     if ns.Prices.scanning then
         status:SetText(string.format("Scanning %d/%d", ns.Prices.done, ns.Prices.total))
     else
@@ -148,17 +188,18 @@ local function build()
     local scan = W.Button(f, "Scan materials", 115, function() ns.Prices.Scan() end,
         "Searches each disenchanting material once (about 20 seconds) and stores its price.")
     scan:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -30)
+    local owned = Materials.ScanOwnedButton(f)
+    owned:SetPoint("LEFT", scan, "RIGHT", 6, 0)
     status = W.Label(f, "", "GameFontHighlightSmall")
-    status:SetPoint("LEFT", scan, "RIGHT", 10, 0)
+    status:SetPoint("LEFT", owned, "RIGHT", 10, 0)
+    dataOnly = Materials.DataOnlyCheck(f)
+    dataOnly:SetPoint("TOPRIGHT", f, "TOPRIGHT", -224, -29)
     list = W.List(f, { rowHeight = 24, actionWidth = 96, actionTitle = "Post" })
     list:SetColumns(Materials.COLUMNS)
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -58)
-    list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 44)
-    legend = W.Label(f, "", "GameFontDisableSmall")
-    legend:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 14, 10)
-    legend:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -24, 10)
-    legend:SetJustifyH("LEFT")
-    legend:SetWordWrap(true)
+    list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
+    local helpButton = W.HelpButton(f, "Materials", Materials.HelpLines)
+    helpButton:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -30)
     f.onResize = Materials.Refresh
     f:SetScript("OnShow", function()
         Materials.Refresh()

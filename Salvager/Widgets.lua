@@ -15,6 +15,63 @@ function Widgets.Button(parent, text, width, onClick, tooltip)
     return b
 end
 
+--- A small "?" button. A click shows `getLines()` (a title, then one line per explanation) in a
+--- panel under it; a second click, or a click anywhere else, closes it.
+function Widgets.HelpButton(parent, title, getLines)
+    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    b:SetSize(22, 22)
+    b:SetText("?")
+    local WIDTH = 470
+    local panel = CreateFrame("Frame", nil, b, BackdropTemplateMixin and "BackdropTemplate" or nil)
+    panel:SetFrameStrata("DIALOG")
+    panel:SetPoint("TOPRIGHT", b, "BOTTOMRIGHT", 0, -2)
+    panel:SetWidth(WIDTH)
+    if panel.SetBackdrop then
+        panel:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 16, edgeSize = 16,
+            insets = { left = 4, right = 4, top = 4, bottom = 4 },
+        })
+        panel:SetBackdropColor(0, 0, 0, 0.95)
+        panel:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+    else
+        Widgets.Skin(panel, 0, 0, 0, 0.95)
+    end
+    panel:EnableMouse(true)
+    local head = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    head:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -10)
+    local body = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    body:SetPoint("TOPLEFT", head, "BOTTOMLEFT", 0, -8)
+    body:SetWidth(WIDTH - 24)
+    body:SetJustifyH("LEFT")
+    body:SetSpacing(4)
+    panel:Hide()
+    b.panel, b.body = panel, body
+    local function fill()
+        local lines = getLines()
+        head:SetText(type(title) == "function" and title() or title)
+        body:SetText(table.concat(lines, "\n"))
+        panel:SetHeight((tonumber(body:GetStringHeight()) or (#lines * 16)) + 44)
+    end
+    b:SetScript("OnClick", function()
+        if panel:IsShown() then panel:Hide() return end
+        fill()
+        panel:Show()
+    end)
+    b:SetScript("OnHide", function() panel:Hide() end)
+    Widgets.Tooltip(b, "Help", "Click to see what the columns and marks in this list mean.")
+    if pcall(panel.RegisterEvent, panel, "GLOBAL_MOUSE_DOWN") then
+        panel:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+        panel:SetScript("OnShow", function(self) self:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
+        panel:SetScript("OnHide", function(self) self:UnregisterEvent("GLOBAL_MOUSE_DOWN") end)
+        panel:SetScript("OnEvent", function(self)
+            if not self:IsMouseOver() and not b:IsMouseOver() then self:Hide() end
+        end)
+    end
+    return b
+end
+
 --- A flat panel: a filled background with a thin border. Used to set a list or a group of
 --- controls apart from the window behind it. Returns the frame (anchor it yourself).
 --- Draws the panel look (filled background, thin border) on an existing frame.
@@ -551,7 +608,12 @@ function Widgets.List(parent, opts)
             if not link then return end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetHyperlink(link)
+            local hint = ns.RowHint and ns.RowHint(data)
+            if hint then GameTooltip:AddLine(hint, 0.5, 0.8, 1) end
             GameTooltip:Show()
+        end)
+        row:SetScript("OnClick", function(self)
+            if self.data and ns.RowClick then ns.RowClick(self.data) end
         end)
         row:SetScript("OnLeave", function() GameTooltip:Hide() end)
         if ACTION_W > 0 then
@@ -820,7 +882,12 @@ function Widgets.CardList(parent)
             if not id then return end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetHyperlink("item:" .. id)
+            local hint = ns.RowHint and ns.RowHint(self.data)
+            if hint then GameTooltip:AddLine(hint, 0.5, 0.8, 1) end
             GameTooltip:Show()
+        end)
+        row:SetScript("OnClick", function(self)
+            if self.data and ns.RowClick then ns.RowClick(self.data) end
         end)
         row:SetScript("OnLeave", function() GameTooltip:Hide() end)
         return row

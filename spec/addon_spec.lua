@@ -1005,8 +1005,18 @@ describe("Salvager listings", function()
     it("splits the Sales view into two tables: your auctions, and the paid sales", function()
         local listed, paid = ns.LedgerWindow.ListingRows(), ns.LedgerWindow.PaidRows()
         assert.are.equal(3, #listed)                               -- the three auctions
-        assert.are.equal(1, #paid)                                 -- a note: nothing paid yet
-        assert.is_truthy(paid[1].cells[1]:find("No sales paid yet", 1, true))
+        -- The sold one is booked as a sale as soon as it is seen, before its mail is taken.
+        assert.are.equal(1, #paid)
+        assert.is_truthy(paid[1].cells[1]:find("5x Soul Dust", 1, true))
+        assert.is_truthy(paid[1].cells[2]:find("money due", 1, true))
+        local sale = ns.db.ledger.sales[1]
+        assert.are.equal(5, sale.count)
+        assert.are.equal(5, sale.unpaid)
+        assert.are.equal(2400, sale.gross)                         -- 5 x 4s 80c
+        assert.are.equal(2280 - 5 * 300, sale.profit)              -- after the 5% cut, minus 5 x 3s cost
+        assert.are.equal(20, ns.db.ledger.stock[DUST].qty)         -- and they have left the stock
+        wow.fire(ns, "OWNED_AUCTIONS_UPDATED")                     -- read again: the same sale is not booked twice
+        assert.are.equal(1, #ns.db.ledger.sales)
         ns.LedgerWindow.Show()
         ns.LedgerWindow.view = "sales"
         ns.LedgerWindow.Refresh()
@@ -1015,7 +1025,7 @@ describe("Salvager listings", function()
     end)
 
     it("shows them in the Sales view: listed, and sold with the wait for the money", function()
-        local rows = ns.LedgerWindow.SaleRows()
+        local rows = ns.LedgerWindow.ListingRows()
         local listed, sold
         for _, r in ipairs(rows) do
             if r.cells[1]:find("20x", 1, true) then listed = r end
@@ -1024,6 +1034,35 @@ describe("Salvager listings", function()
         assert.is_truthy(listed.cells[2]:find("listed", 1, true))          -- not checked yet
         assert.is_truthy(sold.cells[2]:find("money in 40 min", 1, true))
         assert.is_truthy(listed.cells[7]:find("35", 1, true))              -- 20 x 500 x 0.95 - 20 x 300 = 35s profit
+    end)
+
+    it("scans only the owned materials, lists only the materials with data, and breaks a material down", function()
+        local before = env.bags[DUST]
+        env.bags[DUST] = 7
+        local owned = ns.Prices.Owned()
+        assert.are.equal(1, #owned)
+        assert.are.equal(DUST, owned[1])
+        ns.Prices.Scan(owned)
+        assert.are.equal(1, ns.Prices.total)
+        answer()
+        assert.is_false(ns.Prices.scanning)
+        ns.db.settings.materialsDataOnly = true
+        local rows = ns.Materials.Rows()
+        local all = false
+        for _, r in ipairs(rows) do if r.itemID == DUST then all = true end end
+        assert.is_true(all)
+        ns.db.settings.materialsDataOnly = false
+        assert.is_true(#ns.Materials.Rows() > #rows)
+        env.bags[DUST] = before
+        assert.is_true(#ns.Materials.HelpLines() > 5)
+        assert.is_true(ns.Breakdown.Is(DUST))
+        assert.is_false(ns.Breakdown.Is(1))
+        ns.Breakdown.Open(DUST)
+        local b = ns.Ledger.Breakdown(ns.db.ledger, DUST)
+        local out = ns.Breakdown.Rows(b.items, DUST, function(s) return "x", s.itemID end)
+        assert.is_true(#out >= 1)
+        assert.is_string((ns.Breakdown.Summary(DUST)))
+        assert.is_string((ns.LedgerWindow.Summary()))
     end)
 
     it("finds the undercut listings", function()

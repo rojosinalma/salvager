@@ -20,8 +20,8 @@ local COLUMNS = {
     -- The Sales view is two tables: your auctions, and the sales already paid.
     listed = { { "Material", 170 }, { "Status", 132 }, { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
         { "You get", 76, "RIGHT" }, { "Cost", 84, "RIGHT" }, { "Profit", 76, "RIGHT" } },
-    paid = { { "Material", 170 }, { "Paid on", 132 }, { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
-        { "You got", 76, "RIGHT" }, { "Cost", 84, "RIGHT" }, { "Profit", 76, "RIGHT" } },
+    paid = { { "Material", 170 }, { "Sold", 132 }, { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
+        { "You get", 76, "RIGHT" }, { "Cost", 84, "RIGHT" }, { "Profit", 76, "RIGHT" } },
 }
 
 local f, list, summary, tabs = nil, nil, nil, {}
@@ -130,7 +130,8 @@ function Window.ListingRows()
     return rows
 end
 
---- The sales already paid, newest first. Profit = what you got after the cut - what those materials cost you.
+--- Every sale, newest first. Profit = what you get after the cut - what those materials cost you.
+--- A sale is booked when its listing is seen as sold; "money due" = its mail is not taken yet.
 function Window.PaidRows()
     local rows = {}
     local sales = ns.db.ledger.sales
@@ -146,12 +147,15 @@ function Window.PaidRows()
         end
         rows[#rows + 1] = {
             itemID = s.id,
-            cells = { s.count .. "x " .. ns.MaterialName(s.id), when(s.t), ns.Money(math.floor(s.gross / s.count + 0.5)),
+            cells = { s.count .. "x " .. ns.MaterialName(s.id),
+                when(s.t) .. ((s.unpaid or 0) > 0 and (GOLD .. "  money due|r") or ""),
+                ns.Money(math.floor(s.gross / s.count + 0.5)),
                 ns.Money(s.gross), ns.Money(s.net), cost, profit },
         }
     end
     if #sales == 0 then
-        rows[1] = note("No sales paid yet. A sale is recorded when you take the \"Auction successful\" mail.")
+        rows[1] = note("No sales yet. A sale is recorded when the addon sees it sold on the auction house, or when "
+            .. "you take its mail.")
     end
     return rows
 end
@@ -296,19 +300,35 @@ end
 --- The two lines above the list.
 function Window.Summary()
     local bought, spent, done, got, waiting, waitingCost = 0, 0, 0, 0, 0, 0
+    local waitingBy = {}
     for _, e in ipairs(Ledger.History(ns.db.ledger)) do
         if e.paid then bought, spent = bought + 1, spent + e.paid end
         if e.done then
             done, got = done + 1, got + (e.got or 0)
         else
             waiting, waitingCost = waiting + 1, waitingCost + (e.paid or 0)
+            if e.itemID then waitingBy[e.itemID] = (waitingBy[e.itemID] or 0) + 1 end
         end
     end
     local t = ns.Report.Totals()
     local line1 = string.format("%sBought|r %d items for %s    %sDisenchanted|r %d, materials worth %s after the cut",
         GOLD, bought, ns.Money(spent), GOLD, done, ns.Money(got))
     if waiting > 0 then
-        line1 = line1 .. string.format("    %sNot disenchanted yet|r %d (%s)", GOLD, waiting, ns.Money(waitingCost))
+        -- Where those items are: counted in the bags and the bank; the rest is taken to be in the mail.
+        local bags, bank = 0, 0
+        for id, n in pairs(waitingBy) do
+            local okA, inBags = pcall(ns.GetItemCount, id)
+            local okB, withBank = pcall(ns.GetItemCount, id, true)
+            inBags = math.min(n, okA and tonumber(inBags) or 0)
+            bags = bags + inBags
+            bank = bank + math.min(n - inBags, math.max(0, (okB and tonumber(withBank) or 0) - inBags))
+        end
+        local where = {}
+        if bags > 0 then where[#where + 1] = bags .. " in bags" end
+        if bank > 0 then where[#where + 1] = bank .. " in bank" end
+        if waiting - bags - bank > 0 then where[#where + 1] = (waiting - bags - bank) .. " in mail or gone" end
+        line1 = line1 .. string.format("    %sBought, not disenchanted yet|r %d (%s): %s", GOLD, waiting,
+            ns.Money(waitingCost), table.concat(where, ", "))
     end
     local line2 = string.format("%sSold|r %d materials for %s after the cut    %sProfit on sales|r %s",
         GOLD, t.sold, ns.Money(t.soldNet), GOLD, signed(t.soldProfit))
@@ -330,7 +350,7 @@ function Window.Refresh()
     if split then
         local l = ns.db.listings
         salesParts[1]:SetText(GOLD .. "On the auction house|r" .. (l.t and (GREY .. "  as of " .. date("%H:%M", l.t) .. "|r") or ""))
-        salesParts[3]:SetText(GOLD .. "Paid|r" .. GREY .. "  sales you have collected|r")
+        salesParts[3]:SetText(GOLD .. "Sold|r" .. GREY .. "  every sale, newest first; \"money due\" = its mail is not taken yet|r")
         -- The upper table takes a little under half of the room.
         local room = (f:GetHeight() or 0) - 98 - 14 - 2 * 20
         salesParts[2]:SetHeight(math.max(66, math.floor(room * 0.45)))
@@ -369,8 +389,11 @@ function Window.Refresh()
     cancelButton:SetShown(sales)
     if sales then
         local c, n = ns.Listings.checking, ns.Listings.CountUndercut()
-        checkButton:SetText(c and string.format("Checking %d/%d", c.done, c.total) or "Check undercuts")
-        checkButton:SetEnabled(ns.Queue.open and not c)
+        -- Only what is still for sale can be undercut: sold auctions are not checked.
+        local unsold = ns.Listings.CountUnsold()
+        checkButton:SetText(c and string.format("Checking %d/%d", c.done, c.total)
+            or string.format("Check undercuts (%d)", unsold))
+        checkButton:SetEnabled(ns.Queue.open and not c and unsold > 0)
         cancelButton:SetText(ns.Listings.Cancelling() and "Cancelling..." or string.format("Cancel undercut (%d)", n))
         cancelButton:SetEnabled(ns.Queue.open and n > 0 and not ns.Listings.Cancelling())
     end
@@ -416,8 +439,9 @@ local function build()
         "Cancels one undercut listing per click (the game wants a click for each). The materials come back by mail, "
         .. "and the auction house keeps its deposit. Needs the auction house open, and a check first.")
     cancelButton:SetPoint("RIGHT", clear, "LEFT", -6, 0)
-    checkButton = W.Button(f, "Check undercuts", 130, function() ns.Listings.Check() end,
-        "Searches each material you have listed and compares your price with the lowest listing that is not yours. "
+    checkButton = W.Button(f, "Check undercuts (0)", 150, function() ns.Listings.Check() end,
+        "Searches each material you still have for sale and compares your price with the lowest listing that is not "
+        .. "yours. Auctions that are sold are not checked. The number is how many listings are still for sale. "
         .. "About one second per material. Needs the auction house open.")
     checkButton:SetPoint("RIGHT", cancelButton, "LEFT", -6, 0)
     typeFilter = W.CheckDropdown(f, 150, { { "a", "Armor" }, { "w", "Weapons" } },

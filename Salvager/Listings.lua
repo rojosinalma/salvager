@@ -68,6 +68,26 @@ function Listings.Read()
         end
     end
     l.rows, l.t = rows, time()
+    -- A sale is known as soon as its listing shows as sold: book it now, not when the mail is taken.
+    local sold = {}
+    for _, r in ipairs(rows) do
+        if r.sold and Data.MATERIAL_BY_ID[r.itemID] then
+            sold[#sold + 1] = { auctionID = r.auctionID, qty = r.qty, due = l.t + (r.left or 0), itemID = r.itemID,
+                each = r.each, left = r.left }
+        end
+    end
+    local booked = false
+    for _, r in ipairs(ns.Ledger.NewSold(ns.db.ledger, sold, l.t)) do
+        local rec = ns.Ledger.SaleSeen(ns.db.ledger, r.itemID, r.qty, r.each, ns.Cut(), l.t)
+        booked = true
+        ns.Log("sold %dx %s at %s each: %s after cut, profit %s (money in %d min)", r.qty, ns.MaterialName(r.itemID),
+            ns.Money(r.each), ns.Money(rec.net), ns.Money(rec.profit), math.floor((r.left or 0) / 60 + 0.5))
+        ns.Print("sold %dx %s: %s after cut, profit %s%s. The money comes by mail in about %d min.", r.qty,
+            ns.MaterialName(r.itemID), ns.Money(rec.net), ns.Money(rec.profit),
+            rec.untracked > 0 and string.format(" (%d had no recorded cost)", rec.untracked) or "",
+            math.floor((r.left or 0) / 60 + 0.5))
+    end
+    if booked then ns.Fire("SALVAGER_LEDGER") end
     ns.Fire("SALVAGER_LISTINGS")
 end
 
@@ -99,6 +119,13 @@ function Listings.Lowest(row)
     local low = db().lowest[row.itemID]
     if not low then return nil end
     return low.lo or false
+end
+
+--- How many listings are still for sale (not sold).
+function Listings.CountUnsold()
+    local n = 0
+    for _, row in ipairs(db().rows) do if not row.sold and row.commodity then n = n + 1 end end
+    return n
 end
 
 function Listings.CountUndercut()

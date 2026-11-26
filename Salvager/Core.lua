@@ -13,6 +13,7 @@ local DEFAULTS = {
         levelBandsOff = {},        -- item level bands NOT scanned: { [upper item level of the band] = true }
         ilvlMin = 0,               -- item level range for the scan (0 = no limit)
         ilvlMax = 0,
+        materialsDataOnly = false, -- the materials list shows only the materials you hold, list, sold or got
         cautious = false,          -- buy limits count every material at its lowest amount (1 dust, not 1.5)
         salvager = "auto",         -- "auto" | "on" | "off": add the Arcane Salvager bonus when valuing buys
         salvagerChance = 0.5,      -- chance of one extra dust or essence with the Salvager
@@ -220,6 +221,20 @@ function ns.PriceOldAfter()
     return ns.db.settings.priceMaxAge
 end
 
+--- "Uncommon armor, item level 26-30", with the game's quality color.
+function ns.BandName(quality, classID, band)
+    local names = { [2] = "Uncommon", [3] = "Rare", [4] = "Epic" }
+    local colors = { [2] = "|cff1eff00", [3] = "|cff0070dd", [4] = "|cffa335ee" }
+    local list = quality == 2 and Data.GREEN or quality == 3 and Data.BLUE or quality == 4 and Data.PURPLE or {}
+    local lo = 1
+    for _, row in ipairs(list) do
+        if row.up == band then break end
+        lo = row.up + 1
+    end
+    return (colors[quality] or "") .. (names[quality] or "?") .. (classID == Data.CLASS_WEAPON and " weapons" or " armor")
+        .. "|r|cffffd100, item level " .. lo .. ((band or 0) >= 999 and "+" or ("-" .. tostring(band))) .. "|r"
+end
+
 --- The item level bands, as the scan's level filter offers them: { { up, label }, ... }.
 --- They are the bands of green gear: 1-15, 16-20, ... 61+.
 function ns.LevelBands()
@@ -396,6 +411,7 @@ local HELP = {
     "/salv auras - list your buffs (to find the Salvager's)",
     "/salv materials - the materials list in its own window (again: put it back)",
     "/salv ledger - the ledger window (purchases, sales, odds)",
+    "/salv breakdown <material> - where a material came from, e.g. /salv breakdown 11083",
     "/salv log - the log window; /salv log 20 prints the last 20 lines in chat",
     "/salv reset ledger confirm - clear all purchases, stock and history",
 }
@@ -467,6 +483,10 @@ SlashCmdList.SALVAGER = function(msg)
         if ns.Report then ns.Report.Print() end
     elseif cmd == "materials" then
         if ns.Materials.IsPoppedOut() then ns.Materials.PutBack() else ns.Materials.PopOut() end
+    elseif cmd == "breakdown" then
+        local id = parseItem(args[2])
+        if not (id and ns.Breakdown.Is(id)) then ns.Print("usage: /salv breakdown <material id or link>") return end
+        ns.Breakdown.Open(id)
     elseif cmd == "ledger" or cmd == "results" then
         ns.LedgerWindow.Toggle()
     elseif cmd == "log" and not tonumber(args[2]) or cmd == "activity" then

@@ -67,11 +67,17 @@ local function book(info)
         ns.Log("mail: bought %s for %s%s", info.link or info.itemID, ns.Money(info.bid),
             added and "" or " (already recorded at the auction house)")
     else
-        local rec = Ledger.Sell(ns.db.ledger, info.matID, info.count, info.bid, info.cut, time())
-        ns.Log("mail: sold %dx %s for %s, profit %s", info.count, ns.MaterialName(info.matID), ns.Money(rec.net),
-            ns.Money(rec.profit))
-        ns.Print("sold %dx %s: %s after cut, profit %s%s", info.count, ns.MaterialName(info.matID), ns.Money(rec.net),
-            ns.Money(rec.profit), rec.untracked > 0 and string.format(" (%d had no recorded cost)", rec.untracked) or "")
+        local rec, matched = Ledger.SalePaid(ns.db.ledger, info.matID, info.count, info.bid, info.cut, time())
+        if matched > 0 then
+            ns.Log("mail: money for %dx %s (%d already booked when they sold)", info.count, ns.MaterialName(info.matID),
+                matched)
+        end
+        if rec then
+            ns.Log("mail: sold %dx %s for %s, profit %s", rec.count, ns.MaterialName(info.matID), ns.Money(rec.net),
+                ns.Money(rec.profit))
+            ns.Print("sold %dx %s: %s after cut, profit %s%s", rec.count, ns.MaterialName(info.matID), ns.Money(rec.net),
+                ns.Money(rec.profit), rec.untracked > 0 and string.format(" (%d had no recorded cost)", rec.untracked) or "")
+        end
     end
     ns.Fire("SALVAGER_LEDGER")
 end

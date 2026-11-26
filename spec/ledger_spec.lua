@@ -129,6 +129,80 @@ describe("Ledger", function()
         assert.is_nil(h[3].result)
     end)
 
+    it("books a sale when it is seen sold, and does not book it again when its mail is taken", function()
+        Ledger.AddStock(state, 5, 36, 36 * 300)
+        -- A listing of 36 sells in four parts; they share the listing's auction ID.
+        local rows = {
+            { auctionID = 9, qty = 10, due = 4000 }, { auctionID = 9, qty = 3, due = 4026 },
+            { auctionID = 9, qty = 15, due = 4033 }, { auctionID = 9, qty = 8, due = 4035 },
+        }
+        local fresh = Ledger.NewSold(state, rows, 1000)
+        assert.are.equal(4, #fresh)
+        for _, r in ipairs(fresh) do Ledger.SaleSeen(state, 5, r.qty, 470, 0.05, 1000) end
+        assert.are.equal(4, #state.sales)
+        assert.is_nil(state.stock[5])                               -- all 36 left the stock
+        assert.are.equal(0, #Ledger.NewSold(state, rows, 1100))     -- read again: nothing new
+        -- Two more parts of the same size, seconds apart: both are new, and stay apart.
+        local more = { { auctionID = 9, qty = 8, due = 4035 }, { auctionID = 9, qty = 8, due = 5000 },
+            { auctionID = 9, qty = 8, due = 5003 } }
+        assert.are.equal(2, #Ledger.NewSold(state, more, 1200))
+        assert.are.equal(0, #Ledger.NewSold(state, more, 1300))
+        -- One mail pays all 36: nothing new is booked, and the four sales are marked paid.
+        local rec, matched = Ledger.SalePaid(state, 5, 36, 36 * 470, 846, 5000)
+        assert.is_nil(rec)
+        assert.are.equal(36, matched)
+        assert.are.equal(4, #state.sales)
+        for _, s in ipairs(state.sales) do assert.are.equal(0, s.unpaid) end
+        -- A mail for a sale that was never seen is booked from the mail, as before.
+        Ledger.AddStock(state, 5, 4, 1200)
+        local late = Ledger.SalePaid(state, 5, 4, 4 * 500, 100, 6000)
+        assert.are.equal(4, late.count)
+        assert.are.equal(1900 - 1200, late.profit)
+        -- A mail that covers a seen part and an unseen one: only the unseen units are booked.
+        Ledger.AddStock(state, 5, 10, 3000)
+        Ledger.SaleSeen(state, 5, 6, 480, 0.05, 7000)
+        local rest, already = Ledger.SalePaid(state, 5, 10, 10 * 480, 240, 8000)
+        assert.are.equal(6, already)
+        assert.are.equal(4, rest.count)
+        assert.are.equal(4 * 480, rest.gross)
+    end)
+
+    it("breaks a material down by the items and bands it came from", function()
+        local prices = { [1] = 400, [2] = 1600 }
+        local priceOf = function(id) return prices[id] end
+        local function de(itemID, band, paid, got)
+            Ledger.AddPurchase(state, itemID, 1, paid, nil, 1)
+            Ledger.Disenchant(state, { t = 2, itemID = itemID, quality = 2, classID = 4, band = band, got = got },
+                Ledger.TakePurchase(state, itemID), priceOf, 0.05)
+        end
+        de(77, 30, 1000, { [1] = 2 })          -- hood: 2 dust for 10s
+        de(77, 30, 1000, { [1] = 1 })          -- hood: 1 dust for 10s
+        de(77, 30, 1000, { [2] = 1 })          -- hood: an essence
+        de(88, 35, 300, { [1] = 3 })           -- another item, another band: 3 dust for 3s
+        Ledger.Disenchant(state, { t = 3, itemID = 99, quality = 2, classID = 4, band = 30, got = { [1] = 5 } },
+            nil, priceOf, 0.05)                -- no recorded purchase
+        local b = Ledger.Breakdown(state, 1)
+        assert.are.equal(11, b.units)
+        assert.are.equal(6, b.knownUnits)
+        assert.are.equal(2300, b.cost)
+        assert.are.equal(3, #b.items)
+        local hood
+        for _, s in ipairs(b.items) do if s.itemID == 77 then hood = s end end
+        assert.are.equal(2, hood.gave)          -- two of its three disenchants gave dust
+        assert.are.equal(3, hood.all)
+        assert.are.equal(3, hood.units)
+        assert.are.equal(2000, hood.cost)       -- the dust took the whole price of those two hoods
+        assert.are.equal(3000, hood.paid)       -- the item as a whole: three hoods
+        assert.are.equal(math.floor(800 * 0.95) + math.floor(400 * 0.95) + math.floor(1600 * 0.95), hood.got)
+        assert.are.equal(2, #b.bands)
+        local band30
+        for _, s in ipairs(b.bands) do if s.band == 30 then band30 = s end end
+        assert.are.equal(8, band30.units)       -- the hoods' 3 and the 5 with no purchase
+        assert.are.equal(3, band30.knownUnits)
+        assert.are.equal(4, band30.all)
+        assert.are.equal(0, #Ledger.Breakdown(state, 12345).items)
+    end)
+
     it("summarises disenchants by band", function()
         local priceOf = function() return 100 end
         Ledger.Disenchant(state, { t = 1, quality = 2, classID = 4, band = 30, planned = 90, got = { [11083] = 2 } }, nil, priceOf)
