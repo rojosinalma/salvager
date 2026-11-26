@@ -989,6 +989,18 @@ describe("Salvager listings", function()
         assert.is_true(rows[1].commodity)
     end)
 
+    it("splits the Sales view into two tables: your auctions, and the paid sales", function()
+        local listed, paid = ns.LedgerWindow.ListingRows(), ns.LedgerWindow.PaidRows()
+        assert.are.equal(3, #listed)                               -- the three auctions
+        assert.are.equal(1, #paid)                                 -- a note: nothing paid yet
+        assert.is_truthy(paid[1].cells[1]:find("No sales paid yet", 1, true))
+        ns.LedgerWindow.Show()
+        ns.LedgerWindow.view = "sales"
+        ns.LedgerWindow.Refresh()
+        ns.LedgerWindow.view = "purchases"
+        ns.LedgerWindow.Refresh()
+    end)
+
     it("shows them in the Sales view: listed, and sold with the wait for the money", function()
         local rows = ns.LedgerWindow.SaleRows()
         local listed, sold

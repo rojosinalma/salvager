@@ -133,6 +133,11 @@ flipping is out of scope for now.
     It is applied to each listing as its page arrives, by item level. It does not narrow what the auction house
     sends (that query filters by required level, which does not map exactly to item level), so it does not
     shorten the loading of the gear list; the required-level range in the options does that.
+38. **Tables look the same everywhere** (`Widgets.List`, unless `plain`): a sunken dark panel with a thin
+    border, a title band, every second row shaded (zebra striping), the scroll bar inside. A row with
+    `group = true` (an item with its materials under it, a band with its materials) gets a gold band. A view
+    with sections is one table per section: the Ledger's Sales view is "On the auction house" and "Paid", each
+    with its own title, columns and scroll bar. The Log stays a plain text list.
 15. **UI redraws** from events are limited to four per second; the log panel is not rebuilt during a scan.
 
 ## Data

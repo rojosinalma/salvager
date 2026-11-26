@@ -16,8 +16,11 @@ local QUALITY_NAME = { [2] = "Green", [3] = "Blue", [4] = "Epic" }
 local COLUMNS = {
     purchases = { { "Item", 220 }, { "Bought", 82 }, { "Paid", 84, "RIGHT" }, { "Expected", 84, "RIGHT" },
         { "Got", 96, "RIGHT" }, { "Result", 84, "RIGHT" } },
-    sales = { { "Material", 170 }, { "Status", 132 }, { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
+    -- The Sales view is two tables: your auctions, and the sales already paid.
+    listed = { { "Material", 170 }, { "Status", 132 }, { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
         { "You get", 76, "RIGHT" }, { "Cost", 84, "RIGHT" }, { "Profit", 76, "RIGHT" } },
+    paid = { { "Material", 170 }, { "Paid on", 132 }, { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
+        { "You got", 76, "RIGHT" }, { "Cost", 84, "RIGHT" }, { "Profit", 76, "RIGHT" } },
     odds = { { "Band / material", 230 }, { "Count", 46, "CENTER" },
         { "Expected", 84, "CENTER", help = { "Expected", "How often this material comes from one disenchant in this "
             .. "band, and how many, by the odds table the addon uses (Classic's table; not confirmed for Forever)." } },
@@ -36,6 +39,7 @@ local COLUMNS = {
 
 local f, list, summary, tabs = nil, nil, nil, {}
 local checkButton, cancelButton, qualityFilter, typeFilter, dataOnly
+local salesParts = {}   -- title, table, title, table of the Sales view
 
 --- Which bands the Odds view shows: { quality = { [2], [3], [4] }, type = { a, w } }, kept with the window.
 local function oddsFilter()
@@ -65,7 +69,7 @@ function Window.PurchaseRows()
     for _, e in ipairs(Ledger.History(ns.db.ledger)) do
         local name = itemName(e.itemID, e.link) .. (e.salvager and "  |cff9370db[Salvager]|r" or "")
         rows[#rows + 1] = {
-            itemID = e.itemID, link = e.link,
+            itemID = e.itemID, link = e.link, group = #(e.mats or {}) > 0,
             cells = {
                 name, when(e.boughtAt or (not e.done and e.t) or nil),
                 e.paid and ns.Money(e.paid) or (GREY .. "not recorded|r"), money(e.expected),
@@ -99,14 +103,13 @@ local function duration(seconds)
 end
 
 --- Your auctions as last read: what is listed, what is sold and waiting for its money.
-local function listingRows(rows)
+function Window.ListingRows()
+    local rows = {}
     local l = ns.db.listings
     local mine = l.rows or {}
-    rows[#rows + 1] = { cells = { GOLD .. "On the auction house|r",
-        l.t and (GREY .. "as of " .. date("%H:%M", l.t) .. "|r") or "" } }
     if #mine == 0 then
-        rows[#rows + 1] = note(l.t and "   Nothing listed." or "   Not read yet: open the auction house.")
-        return
+        rows[1] = note(l.t and "Nothing listed." or "Not read yet: open the auction house.")
+        return rows
     end
     for _, r in ipairs(mine) do
         local gross = r.qty * r.each
@@ -136,15 +139,12 @@ local function listingRows(rows)
                 cost and signed(net - cost) or "" },
         }
     end
+    return rows
 end
 
---- Sales: your auctions first (listed, and sold with the money on its way), then the sales
---- already paid, newest first. Profit = what you get after the cut - what those materials cost you.
-function Window.SaleRows()
+--- The sales already paid, newest first. Profit = what you got after the cut - what those materials cost you.
+function Window.PaidRows()
     local rows = {}
-    listingRows(rows)
-    rows[#rows + 1] = { cells = { " " } }
-    rows[#rows + 1] = { cells = { GOLD .. "Paid|r" } }
     local sales = ns.db.ledger.sales
     for i = #sales, 1, -1 do
         local s = sales[i]
@@ -163,8 +163,15 @@ function Window.SaleRows()
         }
     end
     if #sales == 0 then
-        rows[#rows + 1] = note("   No sales paid yet. A sale is recorded when you take the \"Auction successful\" mail.")
+        rows[1] = note("No sales paid yet. A sale is recorded when you take the \"Auction successful\" mail.")
     end
+    return rows
+end
+
+--- Both tables of the Sales view, one after the other (your auctions, then the paid sales).
+function Window.SaleRows()
+    local rows = Window.ListingRows()
+    for _, r in ipairs(Window.PaidRows()) do rows[#rows + 1] = r end
     return rows
 end
 
@@ -202,6 +209,7 @@ function Window.OddsRows()
                 local limit = ns.BuyLimit(quality, classID, up, ns.LimitBasis(v))
                 local first = #rows + 1
                 rows[first] = {
+                    group = true,
                     cells = { GOLD .. QUALITY_NAME[quality] .. c[3] .. ", item level " .. bandRange(quality, up) .. "|r",
                         n > 0 and tostring(n) or (GREY .. "0|r"), "", "",
                         ns.Money(v.net) .. (#v.missing > 0 and (GREY .. "?|r") or ""),
@@ -275,10 +283,28 @@ local SOURCES = { purchases = Window.PurchaseRows, sales = Window.SaleRows, odds
 
 function Window.Refresh()
     if not f or not f:IsShown() then return end
-    local rows = SOURCES[Window.view]()
-    list:SetColumns(COLUMNS[Window.view])
-    list:SetSource(#rows, function(i) return rows[i] end)
-    list:Refresh()
+    -- Sales is two tables, each in its own panel; the other views are one.
+    local split = Window.view == "sales"
+    list:SetShown(not split)
+    for _, part in ipairs(salesParts) do part:SetShown(split) end
+    if split then
+        local l = ns.db.listings
+        salesParts[1]:SetText(GOLD .. "On the auction house|r" .. (l.t and (GREY .. "  as of " .. date("%H:%M", l.t) .. "|r") or ""))
+        salesParts[3]:SetText(GOLD .. "Paid|r" .. GREY .. "  sales you have collected|r")
+        -- The upper table takes a little under half of the room.
+        local room = (f:GetHeight() or 0) - 98 - 14 - 2 * 20
+        salesParts[2]:SetHeight(math.max(66, math.floor(room * 0.45)))
+        local listed, paid = Window.ListingRows(), Window.PaidRows()
+        salesParts[2]:SetSource(#listed, function(i) return listed[i] end)
+        salesParts[2]:Refresh()
+        salesParts[4]:SetSource(#paid, function(i) return paid[i] end)
+        salesParts[4]:Refresh()
+    else
+        local rows = SOURCES[Window.view]()
+        list:SetColumns(COLUMNS[Window.view])
+        list:SetSource(#rows, function(i) return rows[i] end)
+        list:Refresh()
+    end
     local a, b = Window.Summary()
     summary[1]:SetText(a)
     summary[2]:SetText(b)
@@ -378,6 +404,21 @@ local function build()
     list = W.List(f, { rowHeight = 22 })
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98)
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
+    -- The Sales view: a title and a table for your auctions, a title and a table for the paid sales.
+    local titleA = W.Label(f, "", "GameFontNormal")
+    titleA:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -100)
+    local listA = W.List(f, { rowHeight = 22 })
+    listA:SetColumns(COLUMNS.listed)
+    listA:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -118)
+    listA:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -118)
+    listA:SetHeight(120)
+    local titleB = W.Label(f, "", "GameFontNormal")
+    titleB:SetPoint("TOPLEFT", listA, "BOTTOMLEFT", 2, -6)
+    local listB = W.List(f, { rowHeight = 22 })
+    listB:SetColumns(COLUMNS.paid)
+    listB:SetPoint("TOPLEFT", listA, "BOTTOMLEFT", 0, -24)
+    listB:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
+    salesParts = { titleA, listA, titleB, listB }
     if SOURCES[f.saved.view] then Window.view = f.saved.view end
     f.onResize = Window.Refresh
     f:SetScript("OnShow", Window.Refresh)

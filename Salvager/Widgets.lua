@@ -17,8 +17,8 @@ end
 
 --- A flat panel: a filled background with a thin border. Used to set a list or a group of
 --- controls apart from the window behind it. Returns the frame (anchor it yourself).
-function Widgets.Panel(parent, r, g, b, a)
-    local p = CreateFrame("Frame", nil, parent)
+--- Draws the panel look (filled background, thin border) on an existing frame.
+function Widgets.Skin(p, r, g, b, a)
     local bg = p:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     bg:SetColorTexture(r or 0, g or 0, b or 0, a or 0.4)
@@ -34,6 +34,10 @@ function Widgets.Panel(parent, r, g, b, a)
     edge("TOPLEFT", "BOTTOMLEFT", false)
     edge("TOPRIGHT", "BOTTOMRIGHT", false)
     return p
+end
+
+function Widgets.Panel(parent, r, g, b, a)
+    return Widgets.Skin(CreateFrame("Frame", nil, parent), r, g, b, a)
 end
 
 --- Help text for a label: an invisible area over `region` that shows a tooltip.
@@ -457,7 +461,9 @@ end
 ---   list:SetSource(count, getRow)                         getRow(i) -> row, only called for rows on screen
 ---   list:Refresh()
 --- row = { cells = { text, ... }, itemID = icon and tooltip, link = tooltip, indent = pixels }
---- opts = { rowHeight = 22, header = true }
+--- row.group = true marks the first row of a group (an item with its materials under it): it gets a band.
+--- opts = { rowHeight = 22, header = true, plain = false }
+--- Unless `plain`, the list is drawn as a sunken table: dark panel, title band, every second row shaded.
 function Widgets.List(parent, opts)
     opts = opts or {}
     local ROW_H = opts.rowHeight or 22
@@ -470,6 +476,17 @@ function Widgets.List(parent, opts)
     list.offset, list.count, list.columns = 0, 0, {}
     local headers, helps, helpText, rows = {}, {}, {}, {}
     list.headers, list.helps, list.rows = headers, helps, rows
+    local SKIN = not opts.plain
+    if SKIN then
+        Widgets.Skin(list, 0, 0, 0, 0.5)
+        if HEAD_H > 0 then
+            local band = list:CreateTexture(nil, "BACKGROUND", nil, 1)
+            band:SetPoint("TOPLEFT", list, "TOPLEFT", 1, -1)
+            band:SetPoint("TOPRIGHT", list, "TOPRIGHT", -1, -1)
+            band:SetHeight(HEAD_H)
+            band:SetColorTexture(1, 1, 1, 0.07)
+        end
+    end
 
     if ACTION_W > 0 and HEAD_H > 0 and opts.actionTitle then
         -- The title over the rows' buttons.
@@ -508,6 +525,17 @@ function Widgets.List(parent, opts)
         local hl = row:CreateTexture(nil, "HIGHLIGHT")
         hl:SetAllPoints()
         hl:SetColorTexture(1, 1, 1, 0.08)
+        if SKIN then
+            if r % 2 == 0 then
+                local stripe = row:CreateTexture(nil, "BACKGROUND")
+                stripe:SetAllPoints()
+                stripe:SetColorTexture(1, 1, 1, 0.035)
+            end
+            row.groupBand = row:CreateTexture(nil, "BACKGROUND", nil, 1)
+            row.groupBand:SetAllPoints()
+            row.groupBand:SetColorTexture(1, 0.82, 0, 0.07)
+            row.groupBand:Hide()
+        end
         row.icon = row:CreateTexture(nil, "ARTWORK")
         row.icon:SetSize(ROW_H - 4, ROW_H - 4)
         row.cells = {}
@@ -561,8 +589,8 @@ function Widgets.List(parent, opts)
             list:Refresh()
         end
     end)
-    bar:SetPoint("TOPRIGHT", list, "TOPRIGHT", 0, -HEAD_H)
-    bar:SetPoint("BOTTOMRIGHT", list, "BOTTOMRIGHT", 0, 0)
+    bar:SetPoint("TOPRIGHT", list, "TOPRIGHT", SKIN and -3 or 0, -HEAD_H - (SKIN and 3 or 0))
+    bar:SetPoint("BOTTOMRIGHT", list, "BOTTOMRIGHT", SKIN and -3 or 0, SKIN and 3 or 0)
     local function wheel(_, delta)
         list.offset = math.max(0, list.offset - delta * 3)
         list:Refresh()
@@ -614,6 +642,7 @@ function Widgets.List(parent, opts)
             local row = rows[r]
             local data = r <= fit and (r + self.offset) <= self.count and self.getRow(r + self.offset) or nil
             row.data = data
+            if SKIN then row.groupBand:SetShown(data ~= nil and data.group == true) end
             if ACTION_W > 0 then
                 local a = data and data.action
                 row.action:SetShown(a ~= nil)
