@@ -171,6 +171,8 @@ function Widgets.List(parent, opts)
 
     function list:Refresh()
         local cols = self.columns
+        -- A table shown before it has columns (a window drawing its views) has nothing to draw yet.
+        if not cols or #cols == 0 then return end
         local fit = math.max(1, math.min(MAX_ROWS, math.floor(((self:GetHeight() or 0) - HEAD_H) / ROW_H)))
         self.offset = math.max(0, math.min(self.offset, self.count - fit))
         self.atBottom = self.offset >= self.count - fit   -- (a log follows its last line while this is true)
@@ -423,6 +425,7 @@ function Widgets.CardList(parent)
 
     function stack:Refresh()
         local cols = self.columns
+        if not cols or #cols == 0 then return end
         -- Every column is as wide as its widest text over all cards, and no wider, so the cards line up.
         -- Where the client cannot measure text, the widths given are used.
         local titles, samples, all = {}, {}, {}

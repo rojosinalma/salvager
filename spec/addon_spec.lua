@@ -362,6 +362,15 @@ describe("Salvager window and options", function()
         for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
     end)
 
+    it("draws nothing, and no error, for a table shown before it has columns", function()
+        local real = ns.Widgets.TextWidth
+        ns.Widgets.TextWidth = function(text) return text and #text * 6 or 0 end
+        local list = ns.Widgets.List(_G.UIParent, {})
+        list:SetSource(0, function() return nil end)
+        assert.has_no.errors(function() list:Refresh() end)
+        ns.Widgets.TextWidth = real
+    end)
+
     it("makes every column as wide as its widest text, where the client can measure text", function()
         local real = ns.Widgets.TextWidth
         ns.Widgets.TextWidth = function(text) return text and #text * 6 or 0 end
