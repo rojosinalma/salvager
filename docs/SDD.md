@@ -195,6 +195,10 @@ flipping is out of scope for now.
     browsed in full and the item is no longer under its limit. A browse that did not load in full (measured
     2026-11-26: "0 items in 0 pages, no page for 4s, given up") leaves that pass's deals as they are. A browse
     with no first page is sent again (twice) before it is given up.
+60. **Market views:** Materials, Disenchant value (the band's value at each moment a material price was seen,
+    with the last known price of each material, against the buy limit now), Profit (sales with a known cost,
+    added up, and per day), Essences (3 lesser against 1 greater), By hour (average price per hour of the day).
+    The history is filled once from older data (`Prices.SeedHistory`): last scans, log, disenchants, posts.
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

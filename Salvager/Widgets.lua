@@ -370,6 +370,7 @@ function Widgets.CheckDropdown(parent, width, options, get, set, tooltip, title,
     end
     b:SetScript("OnClick", function() list:SetShown(not list:IsShown()) end)
     b:SetScript("OnHide", function() list:Hide() end)
+    function b.Close() list:Hide() end
     -- A click anywhere else closes the list. The click still does what it was aimed at.
     local watching = pcall(list.RegisterEvent, list, "GLOBAL_MOUSE_DOWN")
     if watching then

@@ -64,6 +64,11 @@ function Widgets.List(parent, opts)
             GameTooltip:Show()
         end)
         area:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        -- A click on a title sorts by that column, where the list's owner asked for it (list.onSort).
+        area:SetScript("OnMouseUp", function()
+            local onSort = rawget(list, "onSort")
+            if onSort and list.columns[i] then onSort(i) end
+        end)
         area:Hide()
         helps[i] = area
     end
@@ -192,7 +197,7 @@ function Widgets.List(parent, opts)
                 h:Hide()
             end
             helpText[i] = on and col.help or nil
-            helps[i]:SetShown(helpText[i] ~= nil)
+            helps[i]:SetShown(on and (helpText[i] ~= nil or rawget(list, "onSort") ~= nil) or false)
         end
         for r = 1, MAX_ROWS do
             local row = rows[r]

@@ -1271,19 +1271,47 @@ describe("Salvager listings", function()
         ns.db.history[DUST] = { { t = time() - 7200, p = 400, lo = 390, n = 100 }, { t = time() - 3600, p = 500, lo = 480, n = 80 },
             { t = time() - 60, p = 440, lo = 430, n = 120 } }
         ns.Market.Toggle()
+        ns.Market.view = "material"
         ns.Market.Select(DUST)
-        local data, pts = ns.Market.ChartData(DUST)
-        assert.are.equal(3, #pts)
+        local data, name, text = ns.Market.VIEWS.material.Chart(DUST)
+        assert.are.equal("Soul Dust", name)
         assert.are.equal(2, #data.lines)
         assert.are.equal(3, #data.bars.points)
-        assert.is_truthy(ns.Market.Facts(pts):find("+10%", 1, true))
+        assert.is_truthy(text:find("+10%", 1, true))
         local row
         for _, r in ipairs(ns.Market.Rows()) do if r.itemID == DUST then row = r end end
         assert.is_true(row.group)                                  -- the picked one
         assert.is_truthy(row.cells[3]:find("+10%", 1, true))
-        ns.Market.range = "hours"
-        ns.Market.Refresh()
-        ns.Market.range = "day"
+        -- Every view draws, with and without data.
+        for _, view in ipairs({ "value", "profit", "essence", "hour", "material" }) do
+            ns.Market.view = view
+            ns.Market.Refresh()
+            local rows = ns.Market.Rows()
+            assert.is_true(#rows >= 1)
+        end
+        -- The value of one disenchant over time follows the material prices.
+        for _, res in ipairs(ns.Model.Outcomes(2, ns.Data.CLASS_ARMOR, 30).results) do
+            if res.id ~= DUST then ns.db.history[res.id] = { { t = time() - 5000, p = 900 } } end
+        end
+        local series = ns.Market.ValueSeries(2, ns.Data.CLASS_ARMOR, 30)
+        assert.is_true(#series >= 1)
+        assert.is_number(series[#series].p)
+        -- By hour: the average per hour of the day.
+        local byHour = ns.History.ByHour({ { t = 1, p = 100 }, { t = 2, p = 300 }, { t = 3, p = 50 } },
+            function(t) return t == 3 and 5 or 2 end)
+        assert.are.same({ { 2, 200 }, { 5, 50 } }, byHour)
+        assert.are.equal(500, ns.History.At(ns.db.history, DUST, time() - 100))
+        -- Sorting by a column, and every time range.
+        ns.Market.view = "material"
+        ns.Market.sort.material = { col = 2, desc = true }
+        local sorted = ns.Market.Rows()
+        assert.is_true(sorted[1].sort[2] >= sorted[#sorted].sort[2])
+        ns.Market.sort.material = nil
+        for _, range in ipairs({ "1m", "1h", "90d", "all" }) do
+            ns.Market.range = range
+            ns.Market.Refresh()
+        end
+        ns.Market.range = "24h"
         ns.db.history[DUST] = points
         ns.Market.Toggle()
     end)

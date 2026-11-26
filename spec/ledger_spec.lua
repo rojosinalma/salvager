@@ -192,7 +192,7 @@ describe("Ledger", function()
         local History = ns.History
         local h = {}
         History.Add(h, 5, 1000, 400, 390, 50)
-        History.Add(h, 5, 1100, 410, 400, 60)                       -- the same slot: the later scan stays
+        History.Add(h, 5, 1040, 410, 400, 60)                       -- the same slot: the later scan stays
         assert.are.equal(1, #h[5])
         assert.are.equal(410, h[5][1].p)
         History.Add(h, 5, 2000, 500, 480, 70)
@@ -208,11 +208,13 @@ describe("Ledger", function()
         -- Older observations are merged in, in time order.
         History.Merge(h, { { id = 5, t = 200, p = 380 }, { id = 5, t = 2600, p = 470 }, { id = 7, t = 50, p = 9 } })
         assert.are.equal(380, h[5][1].p)
-        assert.are.equal(5, #h[5])                               -- 2600 and 3000 share a slot
+        assert.are.equal(6, #h[5])
         assert.are.equal(1, #h[7])
         for i = 1, History.MAX_POINTS + 20 do History.Add(h, 6, i * 1000, i, i, 1) end
-        assert.are.equal(History.MAX_POINTS, #h[6])
-        assert.are.equal(21, h[6][1].p)                             -- the oldest went
+        assert.is_true(#h[6] <= History.MAX_POINTS)
+        assert.are.equal(1, h[6][1].p)                              -- the oldest stay, thinner: every second one
+        assert.are.equal(3, h[6][2].p)
+        assert.are.equal(History.MAX_POINTS + 20, h[6][#h[6]].p)
     end)
 
     it("keeps what later mails need when the history is cleared", function()

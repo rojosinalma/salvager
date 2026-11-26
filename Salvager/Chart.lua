@@ -6,6 +6,8 @@
 --     levels = { { value = v, color = { r, g, b }, label = text }, ... },
 --     bars   = { points = { { t, value }, ... }, label = text },
 --     format = function(value) -> text      (the scale's labels; default: money)
+--     xFormat = function(x) -> text         (the labels under the two ends; default: date and time)
+--     negative = true                       (the scale may go below zero)
 --     empty  = text shown when there is nothing to draw
 --   })
 local _, ns = ...
@@ -100,7 +102,7 @@ function Widgets.Chart(parent)
         for _, level in ipairs(data.levels or {}) do see(level.value) end
         if not lo then return nil end
         local pad = math.max(1, (hi - lo) * 0.08)
-        return math.max(0, lo - pad), hi + pad
+        return data.negative and (lo - pad) or math.max(0, lo - pad), hi + pad
     end
 
     function chart:Refresh()
@@ -132,8 +134,9 @@ function Widgets.Chart(parent)
             grid[i]:SetPoint("BOTTOMRIGHT", plot, "BOTTOMRIGHT", 0, y(v))
             grid[i]:Show()
         end
-        times[1]:SetText(date("%m-%d %H:%M", from))
-        times[2]:SetText(date("%m-%d %H:%M", to))
+        local xFormat = data.xFormat or function(t) return date("%m-%d %H:%M", t) end
+        times[1]:SetText(xFormat(from))
+        times[2]:SetText(xFormat(to))
         local names = {}
         if bars then
             local top = 0
