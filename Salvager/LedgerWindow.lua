@@ -16,7 +16,11 @@ local COLUMNS = {
     purchases = { { "Item", 220 }, { "Bought", 82 }, { "Paid", 84, "RIGHT" }, { "Expected", 84, "RIGHT" },
         { "Got", 96, "RIGHT" }, { "Result", 84, "RIGHT" } },
     -- The Sales view is two tables: your auctions, and the sales already paid.
-    listed = { { "Material", 170 }, { "Status", 132 }, { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
+    listed = { { "Material", 150 }, { "Status", 110 },
+        { "Time", 62, "RIGHT", help = { "Time", "A sold auction: the time until its money arrives by mail. "
+            .. "An auction still for sale: the time until it ends. It counts down from the last time the addon read "
+            .. "your auctions (see \"as of\" above)." } },
+        { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
         { "You get", 76, "RIGHT" }, { "Cost", 84, "RIGHT" }, { "Profit", 76, "RIGHT" } },
     paid = { { "Material", 170 }, { "Sold", 132 }, { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
         { "You get", 76, "RIGHT" }, { "Cost", 84, "RIGHT" }, { "Profit", 76, "RIGHT" } },
@@ -84,10 +88,13 @@ function Window.PurchaseRows()
     return rows
 end
 
-local function duration(seconds)
-    if not seconds then return "?" end
-    if seconds < 3600 then return math.max(1, math.floor(seconds / 60 + 0.5)) .. " min" end
-    return string.format("%.0f h", seconds / 3600)
+--- A countdown: "44:05", or "23:10:42" from one hour up.
+local function countdown(seconds)
+    if not seconds then return GREY .. "?|r" end
+    seconds = math.max(0, math.floor(seconds))
+    local h, m, sec = math.floor(seconds / 3600), math.floor(seconds % 3600 / 60), seconds % 60
+    if h > 0 then return string.format("%d:%02d:%02d", h, m, sec) end
+    return string.format("%d:%02d", m, sec)
 end
 
 --- Your auctions as last read: what is listed, what is sold and waiting for its money.
@@ -121,22 +128,23 @@ function Window.ListingRows()
         local left = ns.Listings.TimeLeft(r)
         local status
         if r.sold then
-            status = GOLD .. "sold|r, money in " .. duration(left)
+            status = GOLD .. "sold|r"
         else
             local under, lowest = ns.Listings.Undercut(r), ns.Listings.Lowest(r)
             if under then
                 status = RED .. "undercut by " .. ns.Money(under) .. "|r"
             elseif lowest == false then
-                status = GREEN .. "only yours|r, " .. duration(left) .. " left"
+                status = GREEN .. "only yours|r"
             elseif lowest then
-                status = GREEN .. "lowest|r, " .. duration(left) .. " left"
+                status = GREEN .. "lowest|r"
             else
-                status = "listed, " .. duration(left) .. " left"
+                status = "listed"
             end
         end
         rows[#rows + 1] = {
             itemID = r.itemID, link = r.link,
             cells = { r.qty .. "x " .. ((r.link and r.link:match("%[(.-)%]")) or ns.MaterialName(r.itemID)), status,
+                (r.sold and GOLD or "") .. countdown(left) .. (r.sold and "|r" or ""),
                 ns.Money(r.each), ns.Money(gross), ns.Money(net), cost and ns.Money(cost) or (GREY .. "not known|r"),
                 cost and signed(net - cost) or "" },
         }
@@ -596,6 +604,15 @@ function Window.Restore()
         oddsFrame:Show()
     end
 end
+
+-- The countdowns of the Sales view run: once a second while it shows.
+local lastCount = 0
+ns.OnTick(function()
+    if f and f:IsShown() and Window.view == "sales" and GetTime() - lastCount >= 1 then
+        lastCount = GetTime()
+        Window.Refresh()
+    end
+end)
 
 for _, e in ipairs({ "SALVAGER_LEDGER", "SALVAGER_PRICES_DONE", "SALVAGER_SETTINGS", "SALVAGER_LISTINGS",
     "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED" }) do

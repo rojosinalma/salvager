@@ -1068,10 +1068,12 @@ describe("Salvager listings", function()
             if r.cells[1]:find("5x", 1, true) then sold = r end
         end
         assert.is_truthy(listed.cells[2]:find("listed", 1, true))          -- not checked yet
-        assert.is_truthy(sold.cells[2]:find("money in 40 min", 1, true))
-        assert.is_nil(sold.cells[6]:find("not known", 1, true))            -- its cost is the booked sale's: 5 x 3s
-        assert.is_truthy(sold.cells[6]:find("15", 1, true))
-        assert.is_truthy(listed.cells[7]:find("35", 1, true))              -- 20 x 500 x 0.95 - 20 x 300 = 35s profit
+        assert.is_truthy(sold.cells[2]:find("sold", 1, true))
+        assert.is_nil(sold.cells[2]:find("money", 1, true))                -- the status and the timer are apart
+        assert.is_truthy(sold.cells[3]:find("%d+:%d%d"))                   -- a running timer, minutes:seconds
+        assert.is_nil(sold.cells[7]:find("not known", 1, true))            -- its cost is the booked sale's: 5 x 3s
+        assert.is_truthy(sold.cells[7]:find("15", 1, true))
+        assert.is_truthy(listed.cells[8]:find("35", 1, true))              -- 20 x 500 x 0.95 - 20 x 300 = 35s profit
     end)
 
     it("scans only the owned materials, lists only the materials with data, and breaks a material down", function()
