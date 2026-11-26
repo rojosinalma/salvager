@@ -176,6 +176,9 @@ flipping is out of scope for now.
     first, read from the search Post just made, with "Your price" and "Your break-even" in their place, the
     units ahead of your price and the units under your break-even. Two buttons set the price: Undercut lowest,
     Break-even. The game gives one line per price, not per auction.
+54. **Combine or split** (`Post.Convert`): for an essence, the Post window compares its undercut price with
+    the other form's (3 lesser = 1 greater, both ways, free) and says which form sells for more. Post searches
+    the other form's price too. Classic's rule; not confirmed for Forever.
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

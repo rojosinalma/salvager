@@ -856,6 +856,23 @@ describe("Salvager posting", function()
     end)
 
     it("works out what the post brings", function()
+        -- An essence: is the other form worth more?
+        local greater = 11082
+        local lesser = ns.Data.ESSENCE_PAIR[greater].other
+        local keep = { ns.db.prices[greater], ns.db.prices[lesser] }
+        ns.db.prices[greater] = { p = 1700, lo = 1700, t = 0 }
+        ns.db.prices[lesser] = { p = 700, lo = 700, t = 0 }          -- three lesser: 20s 97c, a greater: 16s 99c
+        local c = ns.Post.Convert(greater)
+        assert.is_true(c.better)
+        assert.are.equal(3 * 699 - 1699, c.gain)
+        assert.is_truthy(ns.Post.ConvertText(greater, 2):find("split each into 3", 1, true))
+        assert.is_false(ns.Post.Convert(lesser).better)
+        assert.is_truthy(ns.Post.ConvertText(lesser, 6):find("keep it as it is", 1, true))
+        ns.db.prices[lesser] = { p = 500, lo = 500, t = 0 }          -- now the greater pays more
+        assert.is_truthy(ns.Post.ConvertText(lesser, 7):find("Your 7 make 2", 1, true))
+        assert.is_nil(ns.Post.Convert(DUST))                         -- not an essence
+        assert.are.equal("", ns.Post.ConvertText(DUST, 5))
+        ns.db.prices[greater], ns.db.prices[lesser] = keep[1], keep[2]
         -- The other sellers, against a price and a break-even.
         local saved = env.ah.commodities[DUST]
         env.ah.commodities[DUST] = { { unitPrice = 400, quantity = 30, numOwnerItems = 0 },

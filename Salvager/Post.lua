@@ -125,6 +125,41 @@ function Post.MarketRows(market, price, breakEven)
     return rows, c
 end
 
+--- An essence has two forms: three lesser combine into one greater, and one greater splits into three
+--- lesser (a right-click in the bags, free). Which form sells for more now?
+--- @return table|nil { other (item ID of the other form), lesser (this one is the lesser form),
+---   mine (price each of this form), same (what one of these is worth in the other form: a third of a
+---   greater, or three lesser), gain (same - mine, per one of these), better (the other form pays more) }
+---   nil when the material is not an essence or a price is missing.
+function Post.Convert(itemID)
+    local pair = Data.ESSENCE_PAIR[itemID]
+    if not pair then return nil end
+    local mine, other = Post.Suggest(itemID).price, Post.Suggest(pair.other).price
+    if not (ns.db.prices[itemID] and ns.db.prices[pair.other]) or mine <= 0 or other <= 0 then return nil end
+    local same = other * pair.factor
+    return { other = pair.other, lesser = pair.factor < 1, mine = mine, same = same, gain = same - mine,
+        better = same - mine >= 1 }
+end
+
+--- The line of the Post window that says it.
+function Post.ConvertText(itemID, quantity)
+    local c = Post.Convert(itemID)
+    if not c then return "" end
+    local otherName = ns.MaterialName(c.other)
+    if not c.better then
+        return "|cff808080This form pays more than " .. otherName .. " now: keep it as it is.|r"
+    end
+    local pct = math.floor(c.gain / c.mine * 100 + 0.5)
+    if c.lesser then
+        local n = math.floor(quantity / 3)
+        return string.format("|cff40ff40Better: combine 3 into 1 %s.|r One sells for %s, three of these for %s "
+            .. "(+%d%%).%s", otherName, ns.Money(c.same * 3), ns.Money(c.mine * 3), pct,
+            n > 0 and string.format(" Your %d make %d.", quantity, n) or " You need 3.")
+    end
+    return string.format("|cff40ff40Better: split each into 3 %s.|r Three sell for %s, one of these for %s (+%d%%).",
+        otherName, ns.Money(c.same), ns.Money(c.mine), pct)
+end
+
 --- What a post brings: after the cut, and against your cost.
 --- @return table { gross, net, cost (nil when unknown), profit (nil when unknown), deposit }
 function Post.Outcome(itemID, quantity, unitPrice, duration)
@@ -214,6 +249,7 @@ local function recalc()
         d.lines[4]:SetText("Profit: |cff808080cost not known|r")
     end
     d.lines[5]:SetText("Deposit: " .. (o.deposit and ns.Money(o.deposit) or "-") .. " (returned when it sells)")
+    d.convert:SetText(Post.ConvertText(id, qty))
     if s.breakEven and price < s.breakEven then
         d.warn:SetText("|TInterface\\DialogFrame\\UI-Dialog-Icon-AlertNew:16|t Below your break-even: you lose "
             .. ns.Money(s.breakEven - price) .. " on each one.")
@@ -238,7 +274,7 @@ end
 
 local function build()
     -- A window of its own: drag it where you want it, and it opens there the next time.
-    d = W.Window("SalvagerPostFrame", "Post on the auction house", "post", 760, 340, 760, 340, true)
+    d = W.Window("SalvagerPostFrame", "Post on the auction house", "post", 760, 370, 760, 370, true)
     d:SetFrameStrata("DIALOG")
 
     d.icon = d:CreateTexture(nil, "ARTWORK")
@@ -280,6 +316,11 @@ local function build()
         l:SetPoint("TOPLEFT", dLabel, "BOTTOMLEFT", 0, -14 - (i - 1) * 16)
         d.lines[i] = l
     end
+    -- An essence: is its other form (three lesser = one greater) worth more?
+    d.convert = W.Label(d, "", "GameFontHighlightSmall")
+    d.convert:SetPoint("TOPLEFT", d.lines[5], "BOTTOMLEFT", 0, -8)
+    d.convert:SetWidth(350)
+    d.convert:SetJustifyH("LEFT")
     d.warn = W.Label(d, "", "GameFontHighlightSmall")
     d.warn:SetPoint("BOTTOMLEFT", d, "BOTTOMLEFT", 16, 44)
     d.warn:SetTextColor(1, 0.3, 0.3)
@@ -361,6 +402,13 @@ function Post.Open(itemID)
         if not ok then ns.Log("post: no fresh price for %s, using the last one", ns.MaterialName(itemID)) end
         show(itemID, not ok)
         ns.Fire("SALVAGER_LEDGER")
+        -- An essence: get the price of its other form too, for the "combine or split" line.
+        local pair = Data.ESSENCE_PAIR[itemID]
+        if pair then
+            ns.Prices.Refresh(pair.other, function()
+                if d and d:IsShown() and d.itemID == itemID then recalc() end
+            end)
+        end
     end)
 end
 
