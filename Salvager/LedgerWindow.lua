@@ -43,7 +43,10 @@ local COLUMNS = {
             .. "your auctions (see \"as of\" above)." } },
         { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
         { "You get", 76, "RIGHT" }, { "Cost", 84, "RIGHT" }, { "Profit", 76, "RIGHT" } },
-    paid = { { "Material", 170 }, { "Sold", 132 }, { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
+    paid = { { "Material", 150 }, { "Sold", 110 },
+        { "Time", 62, "RIGHT", help = { "Time", "The time until the money of this sale arrives by mail. "
+            .. "\"paid\" = you have taken its mail." } },
+        { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
         { "You get", 76, "RIGHT" }, { "Cost", 84, "RIGHT" }, { "Profit", 76, "RIGHT" } },
 }
 
@@ -183,10 +186,21 @@ function Window.ListingRows()
 end
 
 --- Every sale, newest first. Profit = what you get after the cut - what those materials cost you.
---- A sale is booked when its listing is seen as sold; "money due" = its mail is not taken yet.
+--- A sale is booked when its listing is seen as sold; Time counts down to its money, "paid" = mail taken.
 function Window.PaidRows()
     local rows = {}
     local sales = ns.db.ledger.sales
+    -- A sale booked before the due time was kept: its time is the one of the sold auction it came from.
+    local used = {}
+    local function dueOf(s)
+        if s.due then return s.due - time() end
+        for _, r in ipairs(ns.db.listings.rows or {}) do
+            if not used[r] and r.sold and r.itemID == s.id and r.qty == s.count and s.each and math.abs(s.each - r.each) < 1 then
+                used[r] = true
+                return ns.Listings.TimeLeft(r)
+            end
+        end
+    end
     for i = #sales, 1, -1 do
         local s = sales[i]
         local tracked = s.count - (s.untracked or 0)
@@ -200,7 +214,8 @@ function Window.PaidRows()
         rows[#rows + 1] = {
             itemID = s.id,
             cells = { s.count .. "x " .. ns.MaterialName(s.id),
-                when(s.t) .. ((s.unpaid or 0) > 0 and (GOLD .. "  money due|r") or ""),
+                when(s.t),
+                (s.unpaid or 0) > 0 and (GOLD .. countdown(dueOf(s)) .. "|r") or (GREY .. "paid|r"),
                 ns.Money(math.floor(s.gross / s.count + 0.5)),
                 ns.Money(s.gross), ns.Money(s.net), cost, profit },
         }
@@ -543,7 +558,7 @@ function Window.Refresh()
     elseif split then
         local l = ns.db.listings
         salesParts[1]:SetText(GOLD .. "On the auction house|r" .. (l.t and (GREY .. "  as of " .. date("%H:%M", l.t) .. "|r") or ""))
-        salesParts[3]:SetText(GOLD .. "Sold|r" .. GREY .. "  every sale, newest first; \"money due\" = its mail is not taken yet|r")
+        salesParts[3]:SetText(GOLD .. "Sold|r" .. GREY .. "  every sale, newest first|r")
         local listed, paid = Window.ListingRows(), Window.PaidRows()
         salesParts[2]:SetColumns(COLUMNS.listed)
         salesParts[4]:SetColumns(COLUMNS.paid)

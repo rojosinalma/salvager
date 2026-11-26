@@ -1242,7 +1242,8 @@ describe("Salvager listings", function()
         -- The sold one is booked as a sale as soon as it is seen, before its mail is taken.
         assert.are.equal(1, #paid)
         assert.is_truthy(paid[1].cells[1]:find("5x Soul Dust", 1, true))
-        assert.is_truthy(paid[1].cells[2]:find("money due", 1, true))
+        assert.is_nil(paid[1].cells[2]:find("money due", 1, true))
+        assert.is_truthy(paid[1].cells[3]:find("%d+:%d%d"))        -- the time until its money, as a timer
         local sale = ns.db.ledger.sales[1]
         assert.are.equal(5, sale.count)
         assert.are.equal(5, sale.unpaid)

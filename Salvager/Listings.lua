@@ -79,6 +79,7 @@ function Listings.Read()
     local booked = false
     for _, r in ipairs(ns.Ledger.NewSold(ns.db.ledger, sold, l.t)) do
         local rec = ns.Ledger.SaleSeen(ns.db.ledger, r.itemID, r.qty, r.each, ns.Cut(), l.t)
+        rec.due = r.due   -- when its money arrives, for the countdown in the Ledger
         booked = true
         ns.Log("sold %dx %s at %s each: %s after cut, profit %s (money in %d min)", r.qty, ns.MaterialName(r.itemID),
             ns.Money(r.each), ns.Money(rec.net), ns.Money(rec.profit), math.floor((r.left or 0) / 60 + 0.5))
