@@ -20,7 +20,8 @@ reply must say so.
 
 1. One value per cell. A number and its percentage, or a rate and a quantity, are two columns.
 2. A column is as wide as its widest content, title included. No fixed spare width, the button
-   column included.
+   column included. A column of live values (a countdown) is as wide as its widest possible value
+   (`sample = "00:00:00"`), so it does not shrink while it counts.
 3. A table with sections is one inset per section, or a heading row per section with its own
    totals. A value that is the same for every row of a section goes in the heading, not in the rows.
 4. Rows the player acts on first come first (open before sold, newest before oldest).

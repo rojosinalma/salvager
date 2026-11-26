@@ -11,6 +11,8 @@ ns.LedgerWindow = Window
 
 local GREY, GOLD, GREEN, RED = "|cff808080", "|cffffd100", "|cff40ff40", "|cffff4040"
 local INDENT = 22
+-- The longest countdown (an auction runs up to 48 hours): the Time columns keep this width while they count.
+local COUNTDOWN_MAX = "00:00:00"
 
 local COLUMNS = {
     purchases = { { "Item", 220 }, { "Bought", 82 }, { "Paid", 84, "RIGHT" },
@@ -46,7 +48,7 @@ local COLUMNS = {
         { "Units sold", 70, "CENTER" } },
     -- The Sales view is two tables: your auctions, and the sales already paid.
     listed = { { "Material", 150 }, { "Status", 110 },
-        { "Time", 62, "RIGHT", help = { "Time", "A sold auction: the time until its money arrives by mail. "
+        { "Time", 62, "RIGHT", sample = COUNTDOWN_MAX, help = { "Time", "A sold auction: the time until its money arrives by mail. "
             .. "An auction still for sale: the time until it ends. It counts down from the last time the addon read "
             .. "your auctions (see \"as of\" above)." } },
         { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
@@ -56,7 +58,7 @@ local COLUMNS = {
         { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
         { "You got", 76, "RIGHT" }, { "Cost", 84, "RIGHT" }, { "Profit", 76, "RIGHT" } },
     paid = { { "Material", 150 }, { "Sold", 110 },
-        { "Time", 62, "RIGHT", help = { "Time", "The time until the money of this sale arrives by mail." } },
+        { "Time", 62, "RIGHT", sample = COUNTDOWN_MAX, help = { "Time", "The time until the money of this sale arrives by mail." } },
         { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
         { "You get", 76, "RIGHT" }, { "Cost", 84, "RIGHT" }, { "Profit", 76, "RIGHT" } },
 }

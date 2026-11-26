@@ -5,9 +5,10 @@ local _, ns = ...
 local Widgets = ns.Widgets
 
 --- A scrolling table. The caller anchors the returned frame.
----   list:SetColumns({ { title, width, justify, help = { title, text } }, ... })
+---   list:SetColumns({ { title, width, justify, help = { title, text }, sample = text }, ... })
 ---                                                         the first column takes the spare width; help shows
----                                                         on the column title
+---                                                         on the column title; sample = the widest text the
+---                                                         column can hold ("00:00:00"), so it keeps its width
 ---   list:SetSource(count, getRow)                         getRow(i) -> row, only called for rows on screen
 ---   list:Refresh()
 --- row = { cells = { text, ... }, itemID = icon and tooltip, link = tooltip, indent = pixels }
@@ -180,13 +181,13 @@ function Widgets.List(parent, opts)
         -- Every column is as wide as its widest text (title or cell), and no wider; the room that is left
         -- stays empty at the right. Where the client cannot measure text, the widths given are used and
         -- the first column takes the room that is left.
-        local titles = {}
-        for i, col in ipairs(cols) do titles[i] = col[1] end
+        local titles, samples = {}, {}
+        for i, col in ipairs(cols) do titles[i], samples[i] = col[1], col.sample end
         local need = opts.fit ~= false and Widgets.FitColumns(titles, self.count, function(r)
             local data = self.getRow(r)
             if not data then return nil end
             return data.cells, (data.indent or 0) + (data.itemID and ROW_H or 0)
-        end) or nil
+        end, nil, samples) or nil
         local fixed = 0
         for i = 2, #cols do fixed = fixed + (need and need[i] or cols[i][2]) + GAP end
         local first = math.max(MIN_FIRST, avail - fixed)
@@ -424,12 +425,12 @@ function Widgets.CardList(parent)
         local cols = self.columns
         -- Every column is as wide as its widest text over all cards, and no wider, so the cards line up.
         -- Where the client cannot measure text, the widths given are used.
-        local titles, all = {}, {}
-        for i, col in ipairs(cols) do titles[i] = col[1] end
+        local titles, samples, all = {}, {}, {}
+        for i, col in ipairs(cols) do titles[i], samples[i] = col[1], col.sample end
         for _, data in ipairs(self.data) do
             for _, row in ipairs(data.rows or {}) do all[#all + 1] = row.cells end
         end
-        local need = Widgets.FitColumns(titles, #all, function(r) return all[r] end)
+        local need = Widgets.FitColumns(titles, #all, function(r) return all[r] end, nil, samples)
         self.widths = {}
         for i, col in ipairs(cols) do self.widths[i] = need and need[i] or col[2] end
         content:SetWidth(math.max(10, (scroll:GetWidth() or 0)))

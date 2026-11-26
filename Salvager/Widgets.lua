@@ -543,16 +543,33 @@ function Widgets.TextWidth(text)
     return w
 end
 
+--- A sample text with every digit made the widest digit of the font: "00:00:00" -> the widest countdown.
+--- @return string|nil  nil when the client cannot measure text
+function Widgets.WidestDigits(sample)
+    local digit, most = nil, -1
+    for d = 0, 9 do
+        local w = Widgets.TextWidth(tostring(d))
+        if not w then return nil end
+        if w > most then digit, most = tostring(d), w end
+    end
+    return (sample:gsub("%d", digit))
+end
+
 --- The widths a table's columns need: the widest of the title and the texts of each column, plus `pad`.
 --- @param titles table  the column titles
 --- @param count number, cellsOf function(i) -> cells, extra (pixels before the first column's text)
+--- @param samples table|nil  per column, the widest text it can hold (digits count as the widest digit),
+---                           so a column whose values change (a countdown) keeps its width
 --- @return table|nil  widths per column; nil when the client cannot measure text
-function Widgets.FitColumns(titles, count, cellsOf, pad)
+function Widgets.FitColumns(titles, count, cellsOf, pad, samples)
     local need = {}
     for i, title in ipairs(titles) do
         local w = Widgets.TextWidth(title)
         if not w then return nil end
-        need[i] = w
+        local sample = samples and samples[i] and Widgets.WidestDigits(samples[i])
+        local s = sample and Widgets.TextWidth(sample) or 0
+        if not s then return nil end
+        need[i] = math.max(w, s)
     end
     for r = 1, math.min(count, 400) do
         local cells, extra = cellsOf(r)

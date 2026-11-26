@@ -375,6 +375,15 @@ describe("Salvager window and options", function()
         list.headers[2].SetWidth = function(_, w) width = w end
         list:Refresh()
         assert.are.equal(6 * 6 + 10, width)                        -- "1g 20s", not the 84 written in the code
+        -- A column with a sample keeps the sample's width, with the widest digit, while its values shrink.
+        local digits = ns.Widgets.TextWidth
+        ns.Widgets.TextWidth = function(text) return text and (#text * 6 + (text:find("8") and 4 or 0)) or 0 end
+        assert.are.equal("88:88", ns.Widgets.WidestDigits("00:00"))
+        list:SetColumns({ { "Item", 220 }, { "Time", 62, "RIGHT", sample = "00:00:00" } })
+        rows = { { cells = { "Boots", "1:05" } } }
+        list:Refresh()
+        assert.are.equal(8 * 6 + 4 + 10, width)                    -- "88:88:88", not "1:05"
+        ns.Widgets.TextWidth = digits
         -- Every window draws with fitted columns.
         for _, v in ipairs({ "deals", "materials", "limits" }) do
             ns.UI.view = v
