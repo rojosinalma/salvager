@@ -850,9 +850,9 @@ end
 -- The Sales view's two tables share the height under the tabs; the bar between them moves the border.
 local SPLIT_DEFAULT, SPLIT_MIN, SPLIT_MAX, TABLE_MIN = 0.45, 0.1, 0.9, 66
 -- From the top (UI.md Controls 1): the tabs (24 to 54 px), the view's subtabs, its filter row, the tables; the
--- footer (FOOT px) has the totals and the view's actions.
-local TABS_TOP, FOOT = 24, 40
-local bars = {}          -- the rows: tabs, sales and purchases (subtabs), purchaseFilters, accuracyFilters, footer
+-- footer (FOOT px) has two lines: the totals (one line of the whole width), and under them the view's actions.
+local TABS_TOP, FOOT = 24, 70
+local bars = {}          -- the rows: tabs, sales and purchases (subtabs), purchaseFilters, accuracyFilters, totals, footer
 local contentTop = 86    -- where the tables of the view on show start (set by Window.Refresh)
 local function salesRoom()
     return (f:GetHeight() or 0) - contentTop - FOOT - 2 * 20
@@ -995,13 +995,11 @@ function Window.Refresh()
     end
     summary:SetText((Window.Summary()))
     for name, button in pairs(tabs) do button:SetSelected(name == Window.view) end
-    -- The two listing buttons belong to the Sales view; the bag space to the Purchases view. The totals take the
-    -- footer's room left of them.
+    -- The two listing buttons belong to the Sales view; the bag space to the Purchases view. The totals have a
+    -- line of their own above them, so no view's controls cut them.
     checkButton:SetShown(sales)
     cancelButton:SetShown(sales)
     popOut:SetShown(odds)
-    local right = (sales and checkButton) or (purchases and bagLabel) or (odds and popOut) or nil
-    summary:SetPoint("RIGHT", right or bars.footer, right and "LEFT" or "RIGHT", -12, 0)
     if sales then
         local c, n = ns.Listings.checking, ns.Listings.CountUndercut()
         -- Only what is still for sale can be undercut: sold auctions are not checked.
@@ -1020,15 +1018,17 @@ end
 local function build()
     -- As wide as its tables need; the height is the player's.
     f = W.Window("SalvagerLedgerFrame", "Salvager Ledger", "ledger", WIDTH, 480, WIDTH, 260, "vertical")
-    -- The footer: the ledger's totals at the left (one short line, all of them behind the chart button before
-    -- it), the view's actions or its bag space at the right.
+    -- The footer, two lines: the ledger's totals (one short line of the whole width, all of them behind the chart
+    -- button before it), and under them the view's actions or its bag space at the right.
     bars.footer = W.Bar(f, "footer"):PlaceBottom(8, 12, 24)
-    local details = W.HelpButton(bars.footer, "Totals", function() return select(2, Window.Summary()) end, {
+    bars.totals = W.Bar(f, "footer"):PlaceBottom(8 + W.BAR_H.footer + 4, 12, 24)
+    local details = W.HelpButton(bars.totals, "Totals", function() return select(2, Window.Summary()) end, {
         glyph = "chart", left = true, up = true,
         tooltip = { "Totals", "Click to see every total of the ledger, one per line." } })
-    bars.footer:Add(details, 22)
-    summary = W.Label(bars.footer, "", "GameFontHighlightSmall")
-    bars.footer:Add(summary, 300)
+    bars.totals:Add(details, 22)
+    summary = W.Label(bars.totals, "", "GameFontHighlightSmall")
+    bars.totals:Add(summary, 300)
+    summary:SetPoint("RIGHT", bars.totals, "RIGHT", -2, 0)
     summary:SetJustifyH("LEFT")
     summary:SetWordWrap(false)
     bars.tabs = W.Bar(f, "tabs"):Place(TABS_TOP, 12, 12)

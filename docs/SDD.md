@@ -741,8 +741,9 @@ flipping is out of scope for now.
        cells); footer: cautious pricing note at the left, "?" at the right. Kept open with the others (24).
     c. Ledger: tabs; subtabs (Sales: Open and sold, History; Purchases: All purchases, Not picked up); the filter
        row (Purchases' first subtab: Search, Gear, Quality, Bands, Not disenchanted; Accuracy and Odds: Gear,
-       Quality, Bands, Salvager; Odds also "Only bands with my data"); the tables; footer: the totals line with its
-       chart button at the left; at the right the view's part: Check undercuts and Cancel undercut (Sales), the bag
+       Quality, Bands, Salvager; Odds also "Only bands with my data"); the tables; footer, two lines (0.3.130: one line
+       cut the totals in Sales): the totals line with its chart button, the whole width; under it, at the right, the
+       view's part: Check undercuts and Cancel undercut (Sales), the bag
        space (Purchases), Pop out (Odds). The totals line was above the tabs, the pop-out next to the Odds tab, the
        undercut buttons and the bag space on the subtab row.
     d. Odds window: two filter rows under the title bar (the filters; "Only bands with my data"), then the cards.
