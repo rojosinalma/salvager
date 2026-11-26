@@ -157,9 +157,12 @@ local function judge(r, pass, sum)
     end
     if not band or band.blocked then sum.noValue = sum.noValue + 1 return end
     local margin = band.net - price
-    if not sum.best or margin > sum.best.margin then
+    -- The closest item is the one nearest to its buy limit (the limit is what decides, not the value).
+    local room = band.limit - price
+    if not sum.best or room > sum.best.room then
         local best = sum.best or {}
-        best.margin, best.itemID, best.ilvl, best.price, best.value = margin, key.itemID, ilvl, price, band.net
+        best.room, best.margin, best.itemID, best.ilvl, best.price, best.value, best.limit =
+            room, margin, key.itemID, ilvl, price, band.net, band.limit
         sum.best = best
     end
     if price > band.limit then sum.overLimit = sum.overLimit + 1 return end
@@ -183,8 +186,9 @@ local function queueChecks()
         sum.candidates, sum.overLimit, sum.noDisenchant, sum.learning, sum.levelOut, sum.noValue, sum.noPrice,
         ns.Money(ns.db.settings.minProfit))
     if sum.best then
-        ns.Log("closest: item %d ilvl %s at %s, value %s, margin %s", sum.best.itemID, tostring(sum.best.ilvl),
-            ns.Money(sum.best.price), ns.Money(sum.best.value), ns.Money(sum.best.margin))
+        ns.Log("closest: item %d ilvl %s at %s, buy limit %s, value %s, margin %s", sum.best.itemID,
+            tostring(sum.best.ilvl), ns.Money(sum.best.price), ns.Money(sum.best.limit), ns.Money(sum.best.value),
+            ns.Money(sum.best.margin))
     end
     if sum.levelDiffers > 0 then
         ns.Log("item levels: %d listings differ from the game's data (%s)", sum.levelDiffers, sum.levelExample)

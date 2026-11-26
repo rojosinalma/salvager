@@ -174,9 +174,12 @@ local function footerText()
                 text = text .. string.format(" %d skipped while their item level loads (next scan has them).", sum.learning)
             end
             if sum.best then
-                text = text .. string.format(" Closest: %s at %s, value %s (%s).",
-                    (ns.GetItemInfo(sum.best.itemID)) or ("item " .. sum.best.itemID), ns.Money(sum.best.price),
-                    ns.Money(sum.best.value), ns.Money(sum.best.margin))
+                local b = sum.best
+                local room = b.room or (b.margin or 0)
+                text = text .. string.format(" Closest: %s at %s, buy limit %s (%s).",
+                    (ns.GetItemInfo(b.itemID)) or ("item " .. b.itemID), ns.Money(b.price),
+                    ns.Money(b.limit or b.value), room >= 0 and (ns.Money(room) .. " under it")
+                        or (ns.Money(-room) .. " over it"))
             end
         else
             text = text .. " No gear scan yet: click Play, or Scan once: Both."
