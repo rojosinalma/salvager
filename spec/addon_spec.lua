@@ -2429,6 +2429,8 @@ describe("Salvager layout dump", function()
         for _, line in ipairs(log.regions) do if line:find(long, 1, true) then full = true end end
         assert.is_true(full)
         for _, rec in pairs(layout.windows) do assert.is_table(rec.lists) end
+    end)
+end)
 
 describe("The cost of disenchanted gear in a simulated client", function()
     local env, ns
