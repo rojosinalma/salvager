@@ -1,4 +1,4 @@
-.agents/tmp/
-.agents/plans/
+AGENTS.md
+.agents/
 .env
 dist/

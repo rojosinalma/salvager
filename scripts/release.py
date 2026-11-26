@@ -2,7 +2,7 @@
 """Builds the addon zip and uploads it to CurseForge.
 
   release.py package   dist/Salvager-<version>.zip (the Salvager folder and LICENSE)
-  release.py release   package, upload to CurseForge, tag v<version>
+  release.py release   package, upload to CurseForge, tag v<version>, push the tag to GitHub
 
 release reads from the environment (the Makefile loads .env):
   CURSEFORGE_TOKEN       API token (CurseForge Authors > API Tokens)
@@ -146,6 +146,10 @@ def release(fields):
     if code != 0:
         fail(f"uploaded, but could not create tag {tag}")
     print(f"tagged: {tag}")
+    code, _ = git("push", "origin", tag)
+    if code != 0:
+        fail(f"uploaded and tagged {tag}, but the push failed; push it by hand: git push origin {tag}")
+    print(f"pushed: {tag}")
 
 
 def main():

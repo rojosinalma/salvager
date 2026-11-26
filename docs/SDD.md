@@ -414,7 +414,7 @@ flipping is out of scope for now.
 89. **Published on CurseForge** (2026-11-26, the user): MIT license (`LICENSE`, also in the zip). `make release`
     (`scripts/release.py`, Python standard library only) zips the `Salvager` folder, uploads it through the
     CurseForge upload API for the game version named after the TOC's interface (16001 = 1.60.1, Forever),
-    and tags `v<version>`; the changelog is the commit subjects since the last tag. Each upload is a new
+    tags `v<version>` and pushes the tag to GitHub (`origin`); the changelog is the commit subjects since the last tag. Each upload is a new
     version: it refuses a dirty tree or a version already tagged. Local settings (install host, AddOns
     folder, CurseForge token and project) live in `.env`, never in the repo.
 ## Data

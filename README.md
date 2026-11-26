@@ -1,5 +1,7 @@
 # Salvager
 
+<img src="docs/logo.png" alt="Salvager logo" width="128">
+
 A WoW Forever addon for disenchant trading. It does three things:
 
 1. Prices the disenchanting materials (dust, essences, shards) at the auction house.
@@ -61,7 +63,7 @@ settings from `.env` (copy `.env.example`):
 2. `make package` builds `dist/Salvager-<version>.zip`.
 3. `make release` uploads that zip to CurseForge as the TOC's version (`CURSEFORGE_TOKEN`,
    `CURSEFORGE_PROJECT_ID`, `RELEASE_TYPE`), with the commit subjects since the last release as the
-   changelog, and tags `v<version>`. The working tree must be committed.
+   changelog, tags `v<version>` and pushes the tag to GitHub. The working tree must be committed.
 
 ## License
 

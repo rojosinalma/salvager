@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="42%" r="70%">
+      <stop offset="0" stop-color="#3b1f6e"/>
+      <stop offset="0.6" stop-color="#1c1036"/>
+      <stop offset="1" stop-color="#0d0819"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#c79bff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#c79bff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="left" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e9d7ff"/>
+      <stop offset="1" stop-color="#9b5cff"/>
+    </linearGradient>
+    <linearGradient id="right" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b484ff"/>
+      <stop offset="1" stop-color="#5a24c7"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffe7a0"/>
+      <stop offset="0.5" stop-color="#f2b937"/>
+      <stop offset="1" stop-color="#b07413"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <rect x="10" y="10" width="492" height="492" rx="86" fill="none" stroke="#7d4fd1" stroke-opacity="0.45" stroke-width="4"/>
+  <circle cx="256" cy="220" r="190" fill="url(#glow)"/>
+
+  <!-- shard -->
+  <g transform="translate(256 214)">
+    <polygon points="0,-160 -92,-30 0,150" fill="url(#left)"/>
+    <polygon points="0,-160 92,-30 0,150" fill="url(#right)"/>
+    <polygon points="0,-160 -92,-30 0,-8 92,-30" fill="#f4eaff" fill-opacity="0.55"/>
+    <polyline points="-92,-30 0,-8 92,-30" fill="none" stroke="#ffffff" stroke-opacity="0.7" stroke-width="3"/>
+    <line x1="0" y1="-8" x2="0" y2="150" stroke="#ffffff" stroke-opacity="0.35" stroke-width="3"/>
+    <polygon points="0,-160 -92,-30 0,150 92,-30" fill="none" stroke="#2a0f5c" stroke-width="6" stroke-linejoin="round"/>
+  </g>
+
+  <!-- dust breaking off -->
+  <g fill="#d9bfff">
+    <polygon points="372,120 386,134 372,148 358,134"/>
+    <polygon points="112,214 119,221 112,228 105,221" fill-opacity="0.6"/>
+    <polygon points="300,330 306,336 300,342 294,336" fill-opacity="0.5"/>
+  </g>
+  <path d="M352 82 l6 18 18 6 -18 6 -6 18 -6 -18 -18 -6 18 -6z" fill="#ffffff"/>
+
+  <!-- coins raining -->
+  <defs>
+    <linearGradient id="streak" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd866" stop-opacity="0"/>
+      <stop offset="1" stop-color="#ffd866" stop-opacity="0.6"/>
+    </linearGradient>
+  </defs>
+  <polygon points="78,122 122,122 100,52" fill="url(#streak)"/>
+  <g transform="translate(100 122) rotate(-20)" stroke="#6b4508" stroke-width="3.9">
+    <ellipse cy="5.7" rx="26" ry="15" fill="#8a5a0e"/>
+    <ellipse rx="26" ry="15" fill="url(#gold)"/>
+    <ellipse rx="14.3" ry="8.2" fill="none" stroke="#fff3c4" stroke-opacity="0.75" stroke-width="2.7"/>
+  </g>
+  <polygon points="128,290 168,290 148,210" fill="url(#streak)"/>
+  <g transform="translate(148 290) rotate(15)" stroke="#6b4508" stroke-width="3.6">
+    <ellipse cy="5.3" rx="24" ry="19" fill="#8a5a0e"/>
+    <ellipse rx="24" ry="19" fill="url(#gold)"/>
+    <ellipse rx="13.2" ry="10.5" fill="none" stroke="#fff3c4" stroke-opacity="0.75" stroke-width="2.5"/>
+  </g>
+  <polygon points="55,344 85,344 70,294" fill="url(#streak)"/>
+  <g transform="translate(70 344) rotate(-10)" stroke="#6b4508" stroke-width="2.7">
+    <ellipse cy="4.0" rx="18" ry="8" fill="#8a5a0e"/>
+    <ellipse rx="18" ry="8" fill="url(#gold)"/>
+    <ellipse rx="9.9" ry="4.4" fill="none" stroke="#fff3c4" stroke-opacity="0.75" stroke-width="1.9"/>
+  </g>
+  <polygon points="177,70 203,70 190,30" fill="url(#streak)"/>
+  <g transform="translate(190 70) rotate(25)" stroke="#6b4508" stroke-width="2.5">
+    <ellipse cy="3.3" rx="15" ry="10" fill="#8a5a0e"/>
+    <ellipse rx="15" ry="10" fill="url(#gold)"/>
+    <ellipse rx="8.2" ry="5.5" fill="none" stroke="#fff3c4" stroke-opacity="0.75" stroke-width="1.8"/>
+  </g>
+  <polygon points="409,132 443,132 426,72" fill="url(#streak)"/>
+  <g transform="translate(426 132) rotate(20)" stroke="#6b4508" stroke-width="3.0">
+    <ellipse cy="4.4" rx="20" ry="10" fill="#8a5a0e"/>
+    <ellipse rx="20" ry="10" fill="url(#gold)"/>
+    <ellipse rx="11.0" ry="5.5" fill="none" stroke="#fff3c4" stroke-opacity="0.75" stroke-width="2.1"/>
+  </g>
+  <polygon points="354,298 398,298 376,213" fill="url(#streak)"/>
+  <g transform="translate(376 298) rotate(-15)" stroke="#6b4508" stroke-width="3.9">
+    <ellipse cy="5.7" rx="26" ry="18" fill="#8a5a0e"/>
+    <ellipse rx="26" ry="18" fill="url(#gold)"/>
+    <ellipse rx="14.3" ry="9.9" fill="none" stroke="#fff3c4" stroke-opacity="0.75" stroke-width="2.7"/>
+  </g>
+  <polygon points="432,362 460,362 446,307" fill="url(#streak)"/>
+  <g transform="translate(446 362) rotate(10)" stroke="#6b4508" stroke-width="2.5">
+    <ellipse cy="3.7" rx="17" ry="12" fill="#8a5a0e"/>
+    <ellipse rx="17" ry="12" fill="url(#gold)"/>
+    <ellipse rx="9.4" ry="6.6" fill="none" stroke="#fff3c4" stroke-opacity="0.75" stroke-width="1.8"/>
+  </g>
+  <polygon points="402,222 422,222 412,186" fill="url(#streak)"/>
+  <g transform="translate(412 222) rotate(-25)" stroke="#6b4508" stroke-width="2.5">
+    <ellipse cy="3.0" rx="12" ry="6" fill="#8a5a0e"/>
+    <ellipse rx="12" ry="6" fill="url(#gold)"/>
+    <ellipse rx="6.6" ry="3.3" fill="none" stroke="#fff3c4" stroke-opacity="0.75" stroke-width="1.8"/>
+  </g>
+
+  <!-- coins -->
+  <g stroke="#6b4508" stroke-width="5">
+    <ellipse cx="256" cy="434" rx="118" ry="30" fill="#8a5a0e"/>
+    <ellipse cx="256" cy="418" rx="118" ry="30" fill="url(#gold)"/>
+    <ellipse cx="256" cy="398" rx="96" ry="24" fill="#c98b1c"/>
+    <ellipse cx="256" cy="384" rx="96" ry="24" fill="url(#gold)"/>
+  </g>
+  <ellipse cx="256" cy="384" rx="58" ry="12" fill="none" stroke="#fff3c4" stroke-opacity="0.7" stroke-width="4"/>
+</svg>
