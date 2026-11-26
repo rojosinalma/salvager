@@ -621,8 +621,8 @@ local function build()
         summary[i] = l
     end
     local x = 12
-    for _, t in ipairs({ { "sales", "Sales" }, { "purchases", "Purchases" }, { "odds", "Odds" },
-        { "accuracy", "Accuracy" } }) do
+    for _, t in ipairs({ { "sales", "Sales" }, { "purchases", "Purchases" }, { "accuracy", "Accuracy" },
+        { "odds", "Odds" } }) do
         local b = W.Button(f, t[2], 88, function()
             -- The Odds tab, while the odds are in their own window: put them back here.
             if t[1] == "odds" then Window.OddsPutBack() end

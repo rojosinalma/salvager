@@ -151,7 +151,7 @@ flipping is out of scope for now.
 42. **Help text** sits behind a "?" button (one line per explanation); the footer keeps only scan results.
 43. **Materials window fits its content**: fixed width, height = its rows (capped by the screen, then the list
     scrolls); no resize corner.
-44. **Ledger tabs**: Sales, Purchases, Odds (Sales is the default). The Odds view can pop out to a window of its
+44. **Ledger tabs**: Sales, Purchases, Accuracy, Odds (Sales is the default). The Odds view can pop out to a window of its
     own (`SalvagerOddsFrame`), as the Materials list does; both share the filters saved under `windows.ledger`.
 45. **Searches for the same thing are merged** (`Queue.Add`): one search goes out and every caller gets its
     answer; an urgent one (a click) takes the queued one's place at the front. Stop keeps urgent searches and
