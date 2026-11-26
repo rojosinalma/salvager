@@ -58,49 +58,9 @@ local function populate(panel, standalone)
         "GameFontHighlightSmall")
     at(sub, 16, -8)
 
-    heading("Buying")
-    local mpLabel = W.Label(panel, "Minimum profit per item", "GameFontHighlightSmall")
-    at(mpLabel, 24)
-    local money = W.Money(panel, function(c) s.minProfit = c changed("minProfit", c) end)
-    money:SetPoint("LEFT", mpLabel, "RIGHT", 12, 0)
-    controls[#controls + 1] = { refresh = function() money:Set(s.minProfit) end }
-
-    local capLabel = W.Label(panel, "Maximum price per item (0 = no limit)", "GameFontHighlightSmall")
-    at(capLabel, 24)
-    local cap = W.Money(panel, function(c) s.maxPrice = c changed("maxPrice", c) end)
-    cap:SetPoint("LEFT", capLabel, "RIGHT", 12, 0)
-    controls[#controls + 1] = { refresh = function() cap:Set(s.maxPrice) end }
-
-    local careful = W.Check(panel, "Cautious pricing: buy limits count every material at its lowest amount",
-        "The buy limit uses 1 dust where the average is 1.5, and no Arcane Salvager bonus. Fewer deals, and they "
-            .. "lose less often. Value and Profit still show the average.",
-        function(on) s.cautious = on changed("cautious", on) end)
-    at(careful, 20)
-    controls[#controls + 1] = { refresh = function() careful:SetChecked(s.cautious) end }
-
-    local gearLabel = W.Label(panel, "Gear to scan", "GameFontHighlightSmall")
-    at(gearLabel, 24)
-    local gear = W.CheckDropdown(panel, 150, { { "weapons", "Weapons" }, { "armor", "Armor" } },
-        ns.GearTypeOn, ns.SetGearType, "Armor gives mostly dust, weapons mostly essence.", "Gear")
-    gear:SetPoint("LEFT", gearLabel, "RIGHT", 12, 0)
-    controls[#controls + 1] = { refresh = function() gear:Update() end }
-
-    local qLabel = W.Label(panel, "Quality", "GameFontHighlightSmall")
-    at(qLabel, 24)
-    local green = W.Check(panel, "|cff1eff00Uncommon|r", "Uncommon gear: dust, essences and a small shard chance.",
-        function(on) s.qualities[2] = on changed("uncommon", on) end)
-    -- (The main window has the same choice as a drop-down.)
-    green:SetPoint("LEFT", qLabel, "RIGHT", 12, 0)
-    local blue = W.Check(panel, "|cff0070ddRare|r", "Rare gear: always one shard.",
-        function(on) s.qualities[3] = on changed("rare", on) end)
-    blue:SetPoint("LEFT", green.label, "RIGHT", 16, 0)
-    local purple = W.Check(panel, "|cffa335eeEpic|r", "Epic gear: 2-4 shards, or Nexus Crystals at the top levels.",
-        function(on) s.qualities[4] = on changed("epic", on) end)
-    purple:SetPoint("LEFT", blue.label, "RIGHT", 16, 0)
-    controls[#controls + 1] = { refresh = function()
-        green:SetChecked(s.qualities[2]) blue:SetChecked(s.qualities[3]) purple:SetChecked(s.qualities[4])
-    end }
-
+    -- (What the main window sets is not here: gear, quality, min profit, max price, cautious pricing,
+    -- item levels, item checks per scan.)
+    heading("Scanning")
     local minL, minE = numberBox(panel, "Required level from", 36,
         function() return s.minLevel end, function(n) s.minLevel = math.max(0, math.floor(n)) changed("minLevel", n) end,
         "0 and 0 = all levels. The auction house filters by required level.")
@@ -120,11 +80,6 @@ local function populate(panel, standalone)
         "While Play runs, the material prices are scanned again before a gear scan when they are older than this. "
             .. "A material scan takes about 20 seconds. 10 minutes suits prices that move a few percent per hour.")
     at(rescanL, 24)
-    local chkL = numberBox(panel, "Item checks per scan", 36,
-        function() return s.maxChecks end,
-        function(n) s.maxChecks = math.max(1, math.floor(n)) changed("maxChecks", s.maxChecks) end,
-        "Each item check is one auction house search (about 0.7 s). The best candidates go first.")
-    at(chkL, 24)
 
     heading("Arcane Salvager")
     local salvLabel = W.Label(panel, "Bonus in buy prices", "GameFontHighlightSmall")
@@ -187,6 +142,7 @@ function Options.Open()
     if not ownWindow then
         ownWindow = W.Window("SalvagerOptionsFrame", "Salvager options", "options", 560, 680, 560, 680, true)
         populate(ownWindow, true)
+        ownWindow:SetHeight(ownWindow.contentHeight + 44)   -- as tall as its content, plus the version line
     end
     ownWindow:SetShown(not ownWindow:IsShown())
     if ownWindow:IsShown() and ownWindow.Raise then ownWindow:Raise() end

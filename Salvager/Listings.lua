@@ -194,6 +194,7 @@ end
 function Listings.CancelNext()
     if not ns.Queue.open then ns.Print("open the auction house first") return false end
     if Listings.Cancelling() then return false end
+    if ns.Scanner.Buying() then ns.Print("wait for the purchase to finish") return false end
     for _, row in ipairs(db().rows) do
         if Listings.Undercut(row) then
             local ok, can = pcall(AH.CanCancelAuction, row.auctionID)

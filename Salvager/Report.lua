@@ -6,7 +6,6 @@ local Ledger, Model = ns.Ledger, ns.Model
 local Report = {}
 ns.Report = Report
 
-local QUALITY = { [2] = "uncommon", [3] = "rare", [4] = "epic" }
 
 --- Lines for the band summary: planned vs actual, cost, and observed odds vs the table.
 function Report.Lines()
@@ -26,7 +25,7 @@ function Report.Lines()
         local q, c, band = k:match("(%d+):(%a):(%d+)")
         q, band = tonumber(q), tonumber(band)
         local head = string.format("%s %s, item level up to %d: %d disenchants (%d with Salvager). Planned %s, got %s each",
-            QUALITY[q] or ("quality " .. q), c == "w" and "weapons" or "armor", band, b.n, b.salvager,
+            (ns.QUALITY_NAME[q] or ("quality " .. q)):lower(), c == "w" and "weapons" or "armor", band, b.n, b.salvager,
             ns.Money(b.planned / b.n), ns.Money(b.value / b.n))
         if b.costKnown > 0 then head = head .. string.format(", paid %s", ns.Money(b.cost / b.costKnown)) end
         lines[#lines + 1] = head

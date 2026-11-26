@@ -11,8 +11,6 @@ ns.LedgerWindow = Window
 
 local GREY, GOLD, GREEN, RED = "|cff808080", "|cffffd100", "|cff40ff40", "|cffff4040"
 local INDENT = 22
-local QUALITY_NAME = { [2] = "Uncommon", [3] = "Rare", [4] = "Epic" }
-local QUALITY_COLOR = { [2] = "|cff1eff00", [3] = "|cff0070dd", [4] = "|cffa335ee" }   -- the game's quality colors
 
 local COLUMNS = {
     purchases = { { "Item", 220 }, { "Bought", 82 }, { "Paid", 84, "RIGHT" }, { "Expected", 84, "RIGHT" },
@@ -176,23 +174,6 @@ function Window.PaidRows()
     return rows
 end
 
---- Both tables of the Sales view, one after the other (your auctions, then the paid sales).
-function Window.SaleRows()
-    local rows = Window.ListingRows()
-    for _, r in ipairs(Window.PaidRows()) do rows[#rows + 1] = r end
-    return rows
-end
-
-local function bandRange(quality, up)
-    local bands = quality == 2 and Data.GREEN or quality == 3 and Data.BLUE or Data.PURPLE
-    local lo = 1
-    for _, row in ipairs(bands) do
-        if row.up == up then break end
-        lo = row.up + 1
-    end
-    return lo .. (up >= 999 and "+" or ("-" .. up))
-end
-
 --- "75% · 1-2": how often a material comes and how many.
 local function oddsText(chance, min, max)
     return string.format("%d%% · %s", math.floor(chance * 100 + 0.5), min == max and tostring(min) or (min .. "-" .. max))
@@ -219,8 +200,7 @@ function Window.OddsBands()
                     local limit = ns.BuyLimit(quality, classID, up, ns.LimitBasis(v))
                     local entry = { rows = {}, head = {
                         group = true,
-                        cells = { QUALITY_COLOR[quality] .. QUALITY_NAME[quality] .. c[3] .. "|r" .. GOLD .. ", item level "
-                            .. bandRange(quality, up) .. "|r",
+                        cells = { ns.BandName(quality, classID, up),
                             n > 0 and tostring(n) or (GREY .. "0|r"), "", "",
                             ns.Money(v.net) .. (#v.missing > 0 and (GREY .. "?|r") or ""),
                             ns.Money(limit),
@@ -351,7 +331,7 @@ function Window.Summary()
     return line1, line2
 end
 
-local SOURCES = { purchases = Window.PurchaseRows, sales = Window.SaleRows, odds = Window.OddsRows }
+local VIEWS = { sales = true, purchases = true, odds = true }
 
 ------------------------------------------------------------------ the window
 
@@ -425,8 +405,8 @@ function Window.Refresh()
     elseif odds then
         oddsView:Refresh()
     else
-        local rows = SOURCES[Window.view]()
-        list:SetColumns(COLUMNS[Window.view])
+        local rows = Window.PurchaseRows()
+        list:SetColumns(COLUMNS.purchases)
         list:SetSource(#rows, function(i) return rows[i] end)
         list:Refresh()
     end
@@ -539,7 +519,7 @@ local function build()
     listB:SetPoint("TOPLEFT", listA, "BOTTOMLEFT", 0, -24)
     listB:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
     salesParts = { titleA, listA, titleB, listB }
-    if SOURCES[f.saved.view] then Window.view = f.saved.view end
+    if VIEWS[f.saved.view] then Window.view = f.saved.view end
     f.onResize = Window.Refresh
     f:SetScript("OnShow", Window.Refresh)
 end

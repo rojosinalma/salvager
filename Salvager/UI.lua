@@ -11,7 +11,7 @@ local MAX_COLS = 8
 local WIDTH, HEIGHT = 800, 560
 local MIN_W, MIN_H = 800, 470
 local ROWS = 15          -- rows that fit now (set from the list height)
-local QUALITY_COLOR = { [2] = "|cff1eff00", [3] = "|cff0070dd", [4] = "|cffa335ee" }
+local QUALITY_COLOR = ns.QUALITY_COLOR
 local CLASS_NAME = { [2] = "Weapon", [4] = "Armor" }
 
 local VIEWS = {
@@ -55,7 +55,7 @@ local VIEWS = {
 
 local f, rows, headers, status, footer, minProfit, playButton, stopButton, gearChoice, tabs =
     nil, {}, {}, nil, nil, nil, nil, nil, nil, {}
-local maxPrice, capHint, cautious, bandDrop, ilvlMin, ilvlMax, levelHint, materialsOnly, scanOwned, gold
+local maxPrice, capHint, cautious, bandDrop, ilvlMin, ilvlMax, levelHint, materialsOnly, scanOwned, gold, maxChecks
 local qualityDrop, popOut
 local headerHelp = {}
 local actionHeader
@@ -213,7 +213,8 @@ local function helpLines()
         "A name with x3 stands for three auctions of one item. Its numbers and its Buy are for the cheapest one.",
         "Click such a row to open it and see each auction.",
         "Buy needs one click per item. After a purchase the item is searched again.",
-        "The list keeps the 60 best of each round (Item checks per scan, in the options).",
+        string.format("The list keeps the %d best of each round (Item checks, in the Levels row).",
+            ns.db.settings.maxChecks),
         "Hover a column title for more about that column.",
     }
 end
@@ -379,6 +380,7 @@ function UI.Refresh()
     if not ilvlMin:HasFocus() then ilvlMin:SetText(tostring(st.ilvlMin)) end
     if not ilvlMax:HasFocus() then ilvlMax:SetText(tostring(st.ilvlMax)) end
     levelHint:SetText((st.ilvlMin > 0 or st.ilvlMax > 0) and "" or "0 = any")
+    if not maxChecks:HasFocus() then maxChecks:SetText(tostring(st.maxChecks)) end
     gearChoice:Update()
     qualityDrop:Update()
     footer:SetText(footerText())
@@ -649,8 +651,30 @@ local function build()
     toLabel:SetPoint("LEFT", ilvlMin, "RIGHT", 8, 0)
     ilvlMax = levelBox("ilvlMax")
     ilvlMax:SetPoint("LEFT", toLabel, "RIGHT", 10, 0)
+    -- At the right end of the row: how many items one scan checks.
+    maxChecks = W.Edit(box, 34, true)
+    maxChecks:SetMaxLetters(3)
+    maxChecks:SetJustifyH("RIGHT")
+    maxChecks:SetTextInsets(2, 4, 0, 0)
+    maxChecks:SetPoint("TOPRIGHT", box, "TOPRIGHT", -10, -63)
+    maxChecks:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    maxChecks:SetScript("OnEditFocusLost", function(self)
+        local n = math.max(1, math.floor(tonumber(self:GetText()) or 0))
+        if ns.db.settings.maxChecks ~= n then
+            ns.db.settings.maxChecks = n
+            ns.Log("maxChecks = %d", n)
+        end
+        ns.Fire("SALVAGER_SETTINGS")
+    end)
+    local checksLabel = W.Label(box, "Item checks", "GameFontHighlightSmall")
+    checksLabel:SetPoint("RIGHT", maxChecks, "LEFT", -8, 0)
+    W.HelpArea(box, checksLabel, "Item checks per scan", "How many items one scan checks, the best candidates first. "
+        .. "Each check is one auction house search (about 0.7 s), and the Deals list holds at most this many items.")
     levelHint = W.Label(box, "", "GameFontDisableSmall")
     levelHint:SetPoint("LEFT", ilvlMax, "RIGHT", 8, 0)
+    levelHint:SetPoint("RIGHT", checksLabel, "LEFT", -8, 0)
+    levelHint:SetJustifyH("LEFT")
+    levelHint:SetWordWrap(false)
 
     ---------------------------------------------------------------- tabs, above the list they switch
     local x = 12

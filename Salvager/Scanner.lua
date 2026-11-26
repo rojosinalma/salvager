@@ -19,7 +19,6 @@ local QUALITY_FILTER = {
     [2] = Enum.AuctionHouseFilter.UncommonQuality, [3] = Enum.AuctionHouseFilter.RareQuality,
     [4] = Enum.AuctionHouseFilter.EpicQuality,
 }
-local QUALITY_NAME = { [2] = "uncommon", [3] = "rare", [4] = "epic" }
 local CLASS_NAME = { [Data.CLASS_WEAPON] = "weapons", [Data.CLASS_ARMOR] = "armor" }
 
 local scan                 -- the scan in progress: { seq, passes, index, pass, candidates, seen, sum }
@@ -81,10 +80,14 @@ end
 local function scheduleNext()
     if not Scanner.auto then return end
     C_Timer.After(ns.db.settings.autoInterval, function()
-        if Scanner.auto and not Scanner.paused and Scanner.state == "idle" and ns.Queue.open
-            and not ns.Prices.scanning then
-            startCycle()
+        if not (Scanner.auto and ns.Queue.open) or Scanner.paused or Scanner.state ~= "idle" then return end
+        if ns.Prices.scanning then
+            -- A material scan is running: this round waits for it. (After "Scan both", the gear scan
+            -- that follows schedules the next round itself.)
+            if not ns.scanBothPending then scheduleNext() end
+            return
         end
+        startCycle()
     end)
 end
 
@@ -125,7 +128,7 @@ local function buildPlan()
                     if not b.blocked and b.limit > top then top = b.limit end
                 end
                 passes[#passes + 1] = { quality = quality, classID = classID, bands = bands[quality][classID], top = top,
-                    name = QUALITY_NAME[quality] .. " " .. CLASS_NAME[classID], got = 0, pages = 0, breaks = 0 }
+                    name = ns.QUALITY_NAME[quality]:lower() .. " " .. CLASS_NAME[classID], got = 0, pages = 0, breaks = 0 }
             end
         end
     end
@@ -419,12 +422,16 @@ end
 function Scanner.Stop()
     Scanner.auto, Scanner.paused = false, false
     ns.Queue.SetPaused(false)
-    ns.Queue.Clear()
+    ns.Queue.Clear(true)   -- a price the player just asked for (Post) still comes
     Scanner.browseSeq = (Scanner.browseSeq or 0) + 1
     scan = nil
     Scanner.state = "idle"
     ns.Prices.scanning = false
     ns.scanBothPending = false
+    if ns.Listings and ns.Listings.checking then
+        ns.Listings.checking = nil
+        ns.Fire("SALVAGER_LISTINGS")
+    end
     ns.Log("scanning stopped")
     ns.Fire("SALVAGER_SCAN")
 end
@@ -466,6 +473,8 @@ end
 --- Buys a deal. Must run from a click (the server needs a hardware event).
 function Scanner.Buy(deal)
     if deal.pending then return end
+    -- One at a time with a cancel: the auction house's error message does not say which one failed.
+    if ns.Listings and ns.Listings.Cancelling() then ns.Print("wait for the cancel to finish") return end
     if GetMoney() < deal.buyout then ns.Print("not enough money for %s", deal.link or "this item") return end
     deal.pending = true
     deal.clickedAt = GetTime()

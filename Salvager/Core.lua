@@ -221,10 +221,13 @@ function ns.PriceOldAfter()
     return ns.db.settings.priceMaxAge
 end
 
+-- The gear qualities, by the game's names and colors.
+ns.QUALITY_NAME = { [2] = "Uncommon", [3] = "Rare", [4] = "Epic" }
+ns.QUALITY_COLOR = { [2] = "|cff1eff00", [3] = "|cff0070dd", [4] = "|cffa335ee" }
+
 --- "Uncommon armor, item level 26-30", with the game's quality color.
 function ns.BandName(quality, classID, band)
-    local names = { [2] = "Uncommon", [3] = "Rare", [4] = "Epic" }
-    local colors = { [2] = "|cff1eff00", [3] = "|cff0070dd", [4] = "|cffa335ee" }
+    local names, colors = ns.QUALITY_NAME, ns.QUALITY_COLOR
     local list = quality == 2 and Data.GREEN or quality == 3 and Data.BLUE or quality == 4 and Data.PURPLE or {}
     local lo = 1
     for _, row in ipairs(list) do

@@ -36,15 +36,24 @@ local function ready()
 end
 
 --- Adds a search. task = { commodity = itemID } or { itemKey = key }, plus
---- onResult(task) and onFail(task). Duplicates of a queued task are dropped.
+--- onResult(task) and onFail(task). A search for the same thing as a queued one is not sent twice:
+--- the two become one search, and both get its answer.
 --- With `urgent`, the task goes first and is sent even while the queue is paused
 --- (something the player just clicked).
 function Queue.Add(task, urgent)
     for i, t in ipairs(Queue.items) do
         if (task.owned and t.owned) or (task.commodity and t.commodity == task.commodity)
             or (task.itemKey and t.itemKey and ns.KeyString(t.itemKey) == ns.KeyString(task.itemKey)) then
-            if not urgent then return end
+            if not urgent then
+                t.others = t.others or {}
+                t.others[#t.others + 1] = task
+                return
+            end
+            -- The urgent one takes the queued one's place at the front, and answers for it too.
             table.remove(Queue.items, i)
+            task.others = t.others or {}
+            t.others = nil
+            table.insert(task.others, 1, t)
             break
         end
     end
@@ -56,9 +65,17 @@ function Queue.Add(task, urgent)
     end
 end
 
-function Queue.Clear()
-    wipe(Queue.items)
-    Queue.current = nil
+--- Drops the searches. With `keepUrgent`, the ones the player just clicked (a Post price) stay.
+function Queue.Clear(keepUrgent)
+    if not keepUrgent then
+        wipe(Queue.items)
+        Queue.current = nil
+        return
+    end
+    for i = #Queue.items, 1, -1 do
+        if not Queue.items[i].urgent then table.remove(Queue.items, i) end
+    end
+    if Queue.current and not Queue.current.urgent then Queue.current = nil end
 end
 
 --- Holds the queue: nothing new goes out until resumed. An answer already on its way still counts.
@@ -119,12 +136,17 @@ local function finish(ok)
             return
         end
     end
-    local fn = ok and task.onResult or task.onFail
-    if fn then
-        local good, err = pcall(fn, task)
-        if not good then
-            ns.Print("search result error: %s", tostring(err))
-            ns.Log("ERROR reading %s: %s", describe(task), tostring(err))
+    -- The task, then the searches for the same thing that were merged into it.
+    local all = { task }
+    for _, other in ipairs(task.others or {}) do all[#all + 1] = other end
+    for _, t in ipairs(all) do
+        local fn = ok and t.onResult or t.onFail
+        if fn then
+            local good, err = pcall(fn, t)
+            if not good then
+                ns.Print("search result error: %s", tostring(err))
+                ns.Log("ERROR reading %s: %s", describe(task), tostring(err))
+            end
         end
     end
 end

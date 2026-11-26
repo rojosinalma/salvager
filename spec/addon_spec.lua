@@ -125,7 +125,7 @@ describe("Salvager in a simulated client", function()
         assert.are.equal(11083, rows[2].itemID)               -- what it gave, indented
         assert.is_true(rows[2].indent > 0)
         assert.is_truthy(rows[2].cells[1]:find("2x Soul Dust", 1, true))
-        local sales = ns.LedgerWindow.SaleRows()
+        local sales = ns.LedgerWindow.PaidRows()
         local paid
         for _, r in ipairs(sales) do if r.itemID == 11083 then paid = r end end
         assert.is_truthy(paid.cells[1]:find("2x Soul Dust", 1, true))
@@ -545,6 +545,42 @@ describe("Salvager scan safety", function()
         ns.Prices.Scan()
         assert.is_false(ns.Prices.scanning)
         ns.Scanner.state = "idle"
+    end)
+
+    it("lets a scan of a few materials in during a gear scan", function()
+        ns.Scanner.state = "checking"
+        ns.Prices.Scan({ 11083 })
+        assert.is_true(ns.Prices.scanning)
+        ns.Scanner.state = "idle"
+        ns.Scanner.Stop()
+        assert.is_false(ns.Prices.scanning)
+    end)
+
+    it("merges two searches for the same thing, and both get the answer", function()
+        ns.Queue.Clear()
+        local got = {}
+        ns.Queue.Add({ commodity = 11083, onResult = function() got[#got + 1] = "scan" end, onFail = function() end })
+        ns.Queue.Add({ commodity = 11082, onResult = function() got[#got + 1] = "other" end, onFail = function() end })
+        -- A click (urgent) for a material whose search is queued: one search, sent first, answers both.
+        ns.Queue.Add({ commodity = 11083, onResult = function() got[#got + 1] = "post" end, onFail = function() end }, true)
+        ns.Queue.Add({ commodity = 11082, onResult = function() got[#got + 1] = "again" end, onFail = function() end })
+        assert.are.equal(2, #ns.Queue.items)
+        wow.tick(ns, 0.2)
+        assert.are.equal(11083, ns.Queue.current.commodity)
+        wow.fire(ns, "COMMODITY_SEARCH_RESULTS_UPDATED", 11083)
+        assert.are.same({ "post", "scan" }, got)
+        -- Stop keeps what the player clicked, and drops the rest.
+        ns.Queue.Add({ commodity = 11084, onResult = function() end, onFail = function() end }, true)
+        ns.Scanner.Stop()
+        assert.are.equal(1, #ns.Queue.items)
+        assert.are.equal(11084, ns.Queue.items[1].commodity)
+        ns.Queue.Clear()
+    end)
+
+    it("ends a running undercut check on Stop", function()
+        ns.Listings.checking = { done = 0, total = 3 }
+        ns.Scanner.Stop()
+        assert.is_nil(ns.Listings.checking)
     end)
 
     it("sends a search again at once when the auction house drops it", function()
@@ -1093,7 +1129,7 @@ describe("Salvager listings", function()
         assert.is_nil(ns.Listings.Undercut(rows[2]))               -- nobody else lists it
         assert.is_false(ns.Listings.Lowest(rows[2]))
         assert.is_nil(ns.Listings.Undercut(rows[3]))               -- sold: nothing to cancel
-        local sale = ns.LedgerWindow.SaleRows()
+        local sale = ns.LedgerWindow.ListingRows()
         local found
         for _, r in ipairs(sale) do if r.cells[2] and r.cells[2]:find("undercut by", 1, true) then found = true end end
         assert.is_true(found)

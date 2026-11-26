@@ -202,7 +202,9 @@ end
 --- @param rows table  { { auctionID, qty, due (clock time the money arrives), ... }, ... }
 --- @return table  the rows not seen before
 function Ledger.NewSold(state, rows, now)
-    local TOLERANCE, KEEP = 20, 3 * 3600
+    -- A wide tolerance on purpose: a part taken for a known one is booked later from its mail, but a
+    -- known part taken for a new one would be booked twice.
+    local TOLERANCE, KEEP = 120, 3 * 3600
     local seen = state.seenSold
     for i = #seen, 1, -1 do
         if seen[i].due < now - KEEP then table.remove(seen, i) end
@@ -260,8 +262,13 @@ end
 --- those for which drop(itemID) is true (items that can never be disenchanted).
 --- @return number  entries removed
 function Ledger.ClearHistory(state, drop)
-    local n = #state.disenchants + #state.sales
-    state.disenchants, state.sales, state.bought = {}, {}, {}
+    -- What a later mail still needs stays, so that mail does not book it a second time: purchases made
+    -- at the auction house whose "Auction won" mail has not come, and sales whose money is still due.
+    local bought, sales = {}, {}
+    for _, b in ipairs(state.bought) do if not b.mail then bought[#bought + 1] = b end end
+    for _, s in ipairs(state.sales) do if (s.unpaid or 0) > 0 then sales[#sales + 1] = s end end
+    local n = #state.disenchants + #state.sales - #sales
+    state.disenchants, state.sales, state.bought = {}, sales, bought
     -- (seenSold stays: the sold auctions still on screen must not be booked again.)
     for itemID, list in pairs(state.purchases) do
         if drop and drop(itemID) then

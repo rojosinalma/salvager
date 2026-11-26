@@ -72,7 +72,9 @@ end
 function Prices.Scan(ids)
     if not ns.Queue.open then ns.Print("open the auction house first") return end
     if Prices.scanning then return end
-    if ns.Scanner.state ~= "idle" then
+    -- The full scan changes the prices a gear scan works with, so it waits. A scan of a few materials
+    -- (Scan owned) is let in: its searches take their turn in the queue.
+    if not ids and ns.Scanner.state ~= "idle" then
         ns.Print("wait for the gear scan to finish (or use Scan both)")
         return
     end

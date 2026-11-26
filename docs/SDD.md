@@ -48,6 +48,8 @@ flipping is out of scope for now.
     The post itself needs the player's click (`PostCommodity` is hardware-event restricted); when the game
     asks to confirm a low price, a second click calls `ConfirmPostCommodity`. A warning shows when the price
     is below the break-even (average cost ÷ 0.95); posting stays allowed.
+15. **UI redraws** from events are limited to four per second; the log panel is not rebuilt during a scan.
+
 16. **Ledger and Log** (`LedgerWindow.lua`, `LogWindow.lua`) are windows of their own (`Widgets.Window`: movable, resizable, place and size in
     `SalvagerDB.windows`). The Ledger window is built from `Ledger.History`: one entry per item (waiting purchases from
     the FIFO, finished ones from the disenchant records, which keep the purchase time, the cost given to each
@@ -151,8 +153,18 @@ flipping is out of scope for now.
     scrolls); no resize corner.
 44. **Ledger tabs**: Sales, Purchases, Odds (Sales is the default). The Odds view can pop out to a window of its
     own (`SalvagerOddsFrame`), as the Materials list does; both share the filters saved under `windows.ledger`.
-15. **UI redraws** from events are limited to four per second; the log panel is not rebuilt during a scan.
-
+45. **Searches for the same thing are merged** (`Queue.Add`): one search goes out and every caller gets its
+    answer; an urgent one (a click) takes the queued one's place at the front. Stop keeps urgent searches and
+    ends a running undercut check. A buy and a cancel never run together (one error message, no sender).
+46. **Play never stalls on a material scan:** a round that finds one running waits and tries again. "Scan
+    owned" is let in during a gear scan; the full material scan is not.
+47. **Clear history keeps what later mails need:** auction house purchases whose mail has not come, and sales
+    whose money is due. A sold part is matched within 120 s on purpose: a missed part is booked from its mail,
+    a part booked twice is never corrected.
+48. **Quality names and colors** live in `Core.lua` (`ns.QUALITY_NAME`, `ns.QUALITY_COLOR`, `ns.BandName`).
+    The tables (`Widgets.List`, `Widgets.CardList`) live in `Tables.lua`.
+49. **One place per setting:** what the main window sets (gear, quality, min profit, max price, cautious
+    pricing, item levels, item checks per scan) is not in the options window.
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

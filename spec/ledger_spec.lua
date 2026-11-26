@@ -167,6 +167,24 @@ describe("Ledger", function()
         assert.are.equal(4 * 480, rest.gross)
     end)
 
+    it("keeps what later mails need when the history is cleared", function()
+        Ledger.AuctionPurchase(state, 77, 1000, 1200, 1)            -- its "Auction won" mail has not come
+        Ledger.AuctionPurchase(state, 78, 500, 600, 2)
+        assert.is_false(Ledger.MailPurchase(state, 78, 1, 500, 600, 3))
+        Ledger.AddStock(state, 5, 10, 3000)
+        Ledger.SaleSeen(state, 5, 4, 480, 0.05, 4)                  -- money still due
+        Ledger.Sell(state, 5, 2, 900, 45, 5)                        -- paid
+        Ledger.ClearHistory(state)
+        assert.are.equal(1, #state.sales)
+        assert.are.equal(4, state.sales[1].unpaid)
+        assert.are.equal(1, #state.bought)
+        -- The mails that come later book nothing twice.
+        assert.is_false(Ledger.MailPurchase(state, 77, 1, 1000, 1200, 6))
+        assert.are.equal(1, #state.purchases[77])
+        assert.is_nil((Ledger.SalePaid(state, 5, 4, 4 * 480, 96, 7)))
+        assert.are.equal(1, #state.sales)
+    end)
+
     it("breaks a material down by the items and bands it came from", function()
         local prices = { [1] = 400, [2] = 1600 }
         local priceOf = function(id) return prices[id] end
