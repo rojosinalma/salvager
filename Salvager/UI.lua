@@ -55,7 +55,7 @@ local VIEWS = {
 
 local f, rows, headers, status, footer, minProfit, playButton, stopButton, gearChoice, tabs =
     nil, {}, {}, nil, nil, nil, nil, nil, nil, {}
-local maxPrice, capHint, cautious, bandDrop, ilvlMin, ilvlMax, levelHint, materialsOnly, scanOwned
+local maxPrice, capHint, cautious, bandDrop, ilvlMin, ilvlMax, levelHint, materialsOnly, scanOwned, gold
 local qualityDrop, popOut
 local headerHelp = {}
 local actionHeader
@@ -290,6 +290,7 @@ function UI.Refresh()
     if out and UI.view == "materials" then UI.view, UI.offset = "deals", 0 end
     tabs.materials:SetAlpha(out and 0.5 or 1)
     if out then popOut:LockHighlight() else popOut:UnlockHighlight() end
+    gold:SetText(ns.Money(GetMoney() or 0))
     materialsOnly:SetShown(UI.view == "materials")
     scanOwned:SetShown(UI.view == "materials")
     materialsOnly:SetChecked(ns.db.settings.materialsDataOnly)
@@ -485,11 +486,18 @@ local function build()
     spinner = W.Spinner(f, 22)
     spinner:SetPoint("LEFT", stopButton, "RIGHT", 12, 0)
 
-    local options = W.Button(f, "Options", 80, function() ns.Options.Open() end)
+    local options = W.IconButton(f, 22, function() ns.Options.Open() end)
+    options:SetIcon("Interface\\Buttons\\UI-OptionsButton", 16, 16)
     options:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -30)
+    W.Tooltip(options, "Options", "Opens the addon's options.")
+    -- Before it: what the list's columns and marks mean.
+    local helpButton = W.HelpButton(f, function()
+        return UI.view == "materials" and "Materials" or UI.view == "limits" and "Limits" or "Deals"
+    end, helpLines)
+    helpButton:SetPoint("RIGHT", options, "LEFT", -4, 0)
     local log = W.Button(f, "Log", 80, function() ns.LogWindow.Toggle() end,
         "Opens the log in its own window: what the addon did, and any error. For debugging.")
-    log:SetPoint("RIGHT", options, "LEFT", -6, 0)
+    log:SetPoint("RIGHT", helpButton, "LEFT", -6, 0)
     local ledger = W.Button(f, "Ledger", 80, function() ns.LedgerWindow.Toggle() end,
         "Opens the ledger in its own window: what you bought, what each item was disenchanted into, "
         .. "your sales and their profit.")
@@ -684,18 +692,17 @@ local function build()
     W.Tooltip(tabs.limits, "Limits", "The most the addon lets you pay per item level band, for armor and for weapons. "
         .. "You can set your own.")
 
-    -- At the right end of the tab row: what the list's columns and marks mean.
-    local helpButton = W.HelpButton(f, function()
-        return UI.view == "materials" and "Materials" or UI.view == "limits" and "Limits" or "Deals"
-    end, helpLines)
-    helpButton:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -159)
-    -- In the Materials tab, next to it.
-    materialsOnly = ns.Materials.DataOnlyCheck(f)
-    materialsOnly:SetPoint("TOPRIGHT", f, "TOPRIGHT", -214, -158)
-    materialsOnly:Hide()
+    -- At the right end of the tab row, over the list: the gold you have now.
+    gold = W.Label(f, "", "GameFontHighlight")
+    gold:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -164)
+    gold:SetJustifyH("RIGHT")
+    -- In the Materials tab, after the tabs.
     scanOwned = ns.Materials.ScanOwnedButton(f)
-    scanOwned:SetPoint("TOPRIGHT", f, "TOPRIGHT", -410, -158)
+    scanOwned:SetPoint("TOPLEFT", f, "TOPLEFT", x + 10, -159)
     scanOwned:Hide()
+    materialsOnly = ns.Materials.DataOnlyCheck(f)
+    materialsOnly:SetPoint("LEFT", scanOwned, "RIGHT", 8, 0)
+    materialsOnly:Hide()
 
     ---------------------------------------------------------------- the list, in its own sunken panel
     local inset = W.Panel(f, 0, 0, 0, 0.5)
@@ -917,3 +924,4 @@ end)
 ns.On("AUCTION_HOUSE_CLOSED", function() UI.Refresh() end)
 -- Bag counts (the Bags column, the Post buttons) follow the bags.
 ns.On("BAG_UPDATE_DELAYED", function() UI.RequestRefresh() end)
+ns.On("PLAYER_MONEY", function() UI.RequestRefresh() end)
