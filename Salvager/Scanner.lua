@@ -282,6 +282,7 @@ ns.On("AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED", function()
     C_Timer.After(0.8, function()
         if scan and scan.pass == pass and Scanner.state == "browsing" and not Scanner.paused then
             lastBrowseAt = GetTime()
+            if Scanner.Buying() then return advance() end   -- a purchase goes first; the page is asked for after it
             scan.askedAt = GetTime()
             AH.RequestMoreBrowseResults()
         end
@@ -562,20 +563,69 @@ local function removeDeal(auctionID)
 end
 
 -- The auction house says it threw a request away, just after a Buy click: the purchase did not go
--- through. The row is free again at once (not after 10 seconds), and the next click has a clear line.
+-- through. It is sent again by the addon the moment the auction house is ready, ahead of every search and
+-- browse page (they all wait while a purchase is on its way). The player does nothing.
+-- The game marks PlaceBid as restricted, so it may refuse a purchase that does not come straight from a
+-- click. If it does (it then reports a blocked action), that is remembered and the row is freed instead.
+local MAX_BUY_RESENDS = 3
+local function free(d, why)
+    pendingBuys[d.auctionID] = nil
+    dropped[d.auctionID] = d
+    d.pending, d.resend = false, nil
+    lastBuyAt = GetTime() + BUSY_HOLD
+    ns.Print("purchase of %s was dropped by the auction house: click Buy again", d.link or "the item")
+    ns.Log("purchase of %s dropped by the auction house, row freed (%s)", d.link or d.itemID, why)
+    ns.Fire("SALVAGER_DEALS")
+end
+
+local function resendBuys()
+    for _, d in pairs(pendingBuys) do
+        if d.resend then
+            d.resend = nil
+            d.resends = (d.resends or 0) + 1
+            d.clickedAt = GetTime()
+            lastBuyAt = d.clickedAt
+            Scanner.resending = d
+            local ok, err = pcall(AH.PlaceBid, d.auctionID, d.buyout)
+            Scanner.resending = nil
+            ns.Log("purchase of %s sent again (%d of %d)%s", d.link or d.itemID, d.resends, MAX_BUY_RESENDS,
+                ok and "" or (": " .. tostring(err)))
+            if not ok then free(d, "the game refused the resend") end
+        end
+    end
+end
+
 ns.On("AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED", function()
-    for id, d in pairs(pendingBuys) do
-        if GetTime() - d.clickedAt < DROP_WINDOW then
-            pendingBuys[id] = nil
-            dropped[id] = d
-            d.pending = false
-            lastBuyAt = GetTime() + BUSY_HOLD
-            ns.Print("purchase of %s was dropped by the auction house: the row is free, click Buy again", d.link or "the item")
-            ns.Log("purchase of %s dropped by the auction house (busy with another request)", d.link or d.itemID)
-            ns.Fire("SALVAGER_DEALS")
+    for _, d in pairs(pendingBuys) do
+        if GetTime() - d.clickedAt < DROP_WINDOW and not d.resend then
+            if ns.db.buyResendBlocked or (d.resends or 0) >= MAX_BUY_RESENDS then
+                free(d, ns.db.buyResendBlocked and "the game does not allow a resend" or "resent 3 times")
+            else
+                d.resend = true
+                d.clickedAt = GetTime()   -- (it stays "on its way": everything else keeps waiting)
+                ns.Log("purchase of %s dropped by the auction house: sending it again when it is ready",
+                    d.link or d.itemID)
+                -- In case the "ready" event does not come.
+                C_Timer.After(1, resendBuys)
+            end
         end
     end
 end)
+ns.On("AUCTION_HOUSE_THROTTLED_SYSTEM_READY", resendBuys)
+
+-- The game refused an action of this addon. If that was a purchase sent again, never try that again.
+local function blocked(addon)
+    if addon ~= "Salvager" then return end
+    if not ns.db.buyResendBlocked then
+        ns.db.buyResendBlocked = true
+        ns.Log("the game does not allow a purchase without a click: purchases are not sent again from now on")
+    end
+    for _, d in pairs(pendingBuys) do
+        if (d.resends or 0) > 0 then free(d, "the game blocked the resend") end
+    end
+end
+ns.On("ADDON_ACTION_BLOCKED", blocked)
+ns.On("ADDON_ACTION_FORBIDDEN", blocked)
 
 ns.On("AUCTION_HOUSE_PURCHASE_COMPLETED", function(auctionID)
     -- (A purchase given up as dropped that went through after all is still booked.)

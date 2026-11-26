@@ -219,7 +219,11 @@ flipping is out of scope for now.
 65. **A Buy click always buys** (the user's rule: a deal is lost if it waits). The purchase is sent at once,
     whatever the auction house is doing; nothing ever asks the player to wait or click again first. To keep
     the line free, the scan holds while the mouse is on a Buy button (`Scanner.Aim`, 4 s at most) and while a
-    purchase is on its way. A purchase the auction house reports as dropped frees its row at once.
+    purchase is on its way. A purchase the auction house reports as dropped is sent again by the addon when the
+    auction house is ready (`AUCTION_HOUSE_THROTTLED_SYSTEM_READY`), ahead of every search and page, up to 3
+    times. `PlaceBid` is documented as restricted, so the game may refuse a purchase that is not from a click:
+    on `ADDON_ACTION_BLOCKED`/`FORBIDDEN` for Salvager, `SalvagerDB.buyResendBlocked` is set, resends stop for
+    good, and a dropped purchase frees its row instead. Not yet measured in the game.
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

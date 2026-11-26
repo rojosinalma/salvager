@@ -675,8 +675,21 @@ describe("Salvager scan safety", function()
         env.ah.ready = true
         assert.are.equal(bids + 1, #env.ah.bids)
         assert.is_true(deal.pending)
-        wow.fire(ns, "AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED")    -- the auction house threw it away
+        -- The auction house threw it away: the addon sends it again as soon as the auction house is ready,
+        -- ahead of everything else. No second click.
+        ns.Queue.Add({ commodity = 11083, onResult = function() end, onFail = function() end })
+        local sent = #env.ah.sent
+        wow.fire(ns, "AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED")
+        assert.is_true(deal.pending)
+        wow.fire(ns, "AUCTION_HOUSE_THROTTLED_SYSTEM_READY")
+        assert.are.equal(bids + 2, #env.ah.bids)
+        assert.are.equal(sent, #env.ah.sent)                       -- the queued search still waits
+        -- The game refuses a purchase without a click: remembered, and the row is freed instead.
+        wow.fire(ns, "ADDON_ACTION_BLOCKED", "Salvager", "PlaceBid")
+        assert.is_true(ns.db.buyResendBlocked)
         assert.is_false(deal.pending)
+        ns.db.buyResendBlocked = nil
+        ns.Queue.Clear()
         wow.fire(ns, "AUCTION_HOUSE_PURCHASE_COMPLETED", 992)      -- it went through after all: still booked
         assert.is_table(ns.Ledger.TakePurchase(ns.db.ledger, 2001))
         table.remove(ns.db.ledger.bought)
