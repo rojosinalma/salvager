@@ -183,6 +183,13 @@ describe("Salvager in a simulated client", function()
         local few = ns.LedgerWindow.OddsRows()
         assert.are.equal(#ns.Data.BLUE * 2, #few)                  -- each band: its row and its one shard
         assert.is_truthy(few[1].cells[1]:find("Rare Weapons", 1, true))
+        -- The band filter: only item levels 26-30. Uncommon has that band; rare's 26-30 band too.
+        local off = {}
+        for _, range in ipairs(ns.LevelBands()) do if range.up ~= 30 then off[range.up] = true end end
+        ns.db.windows.ledger = { oddsBandsOff = off, oddsQuality = { [2] = true } }
+        local one = ns.LedgerWindow.OddsCards()
+        assert.are.equal(1, #one)
+        assert.is_truthy(one[1].title:find("item level 26-30", 1, true))
         ns.db.windows.ledger = nil
         local a, b = ns.LedgerWindow.Summary()
         assert.is_truthy(a:find("Bought", 1, true))

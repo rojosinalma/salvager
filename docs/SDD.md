@@ -164,10 +164,12 @@ flipping is out of scope for now.
     which booked a sale twice). A missed part is booked from its mail.
 48. **Quality names and colors** live in `Core.lua` (`ns.QUALITY_NAME`, `ns.QUALITY_COLOR`, `ns.BandName`).
     The tables (`Widgets.List`, `Widgets.CardList`) live in `Tables.lua`.
-50. **Odds subtabs:** Armor and Weapons, one at a time (`windows.ledger.oddsTab`); they replace the gear type
-    filter. Band names are written "Uncommon Armor", "Rare Weapons".
 49. **One place per setting:** what the main window sets (gear, quality, min profit, max price, cautious
     pricing, item levels, item checks per scan) is not in the options window.
+50. **Odds subtabs:** Armor and Weapons, one at a time (`windows.ledger.oddsTab`); they replace the gear type
+    filter. Band names are written "Uncommon Armor", "Rare Weapons".
+51. **Odds band filter:** the scan's item level bands as ranges (`windows.ledger.oddsBandsOff`); a rare or
+    epic band shows when it overlaps a ticked range.
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

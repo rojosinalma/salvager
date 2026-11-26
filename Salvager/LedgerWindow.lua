@@ -41,6 +41,7 @@ local function oddsFilter()
     saved.oddsQuality = saved.oddsQuality or { [2] = true, [3] = true, [4] = true }
     -- The gear type is a subtab: armor or weapons, one at a time.
     if saved.oddsTab ~= "w" then saved.oddsTab = "a" end
+    saved.oddsBandsOff = saved.oddsBandsOff or {}   -- item level ranges not shown, by their upper level
     return saved.oddsQuality, { [saved.oddsTab] = true }, saved
 end
 
@@ -189,6 +190,17 @@ local function oddsText(chance, min, max)
     return string.format("%d%% · %s", math.floor(chance * 100 + 0.5), min == max and tostring(min) or (min .. "-" .. max))
 end
 
+--- Is a band of item levels lo..up inside one of the ticked item level ranges? The ranges are the
+--- scan's level bands; a rare or epic band, which is wider, shows when it overlaps a ticked one.
+local function levelShown(lo, up, off)
+    local from = 1
+    for _, range in ipairs(ns.LevelBands()) do
+        if not off[range.up] and lo <= range.up and up >= from then return true end
+        from = range.up + 1
+    end
+    return false
+end
+
 --- Odds: every item level band of every quality and gear type that the filters show, with the table
 --- the addon uses and, where you have disenchanted, what you got.
 --- @return table  bands { head = the band's row, rows = its material rows }, in the flat list's cell order
@@ -200,12 +212,15 @@ function Window.OddsBands()
     local showQuality, showType, saved = oddsFilter()
     for _, q in ipairs({ { 2, Data.GREEN }, { 3, Data.BLUE }, { 4, Data.PURPLE } }) do
         for _, c in ipairs({ { Data.CLASS_ARMOR, "a", " armor" }, { Data.CLASS_WEAPON, "w", " weapons" } }) do
+            local lo = 1
             for _, band in ipairs((showQuality[q[1]] and showType[c[2]]) and q[2] or {}) do
                 local quality, classID, up = q[1], c[1], band.up
+                local inRange = levelShown(lo, up, saved.oddsBandsOff)
+                lo = up + 1
                 local outcomes = Model.Outcomes(quality, classID, up)
                 local mine = by[string.format("%d:%s:%d", quality, c[2], up)]
                 local n = mine and mine.n or 0
-                if n > 0 or not saved.oddsDataOnly then
+                if inRange and (n > 0 or not saved.oddsDataOnly) then
                     local v = Model.Value(outcomes, ns.PriceOf, opts)
                     local limit = ns.BuyLimit(quality, classID, up, ns.LimitBasis(v))
                     local entry = { rows = {}, head = {
@@ -253,7 +268,7 @@ end
 local function oddsNote()
     local _, _, saved = oddsFilter()
     return saved.oddsDataOnly and "No disenchants yet in the selected bands. Untick \"Only bands with my data\" "
-        .. "to see the tables." or "Nothing selected: pick a quality above."
+        .. "to see the tables." or "Nothing selected: pick a quality and an item level band above."
 end
 
 --- The same as one flat list: each band's row, then its material rows.
@@ -364,12 +379,26 @@ function newOddsView(parent)
         if view.tabs.a then b:SetPoint("LEFT", view.tabs.a, "RIGHT", 4, 0) end
         view.tabs[t[1]] = b
     end
-    view.qualityFilter = W.CheckDropdown(parent, 170, {
+    view.qualityFilter = W.CheckDropdown(parent, 150, {
         { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" }, { 4, "|cffa335eeEpic|r" },
     }, function(q) return (oddsFilter())[q] end, function(q, on)
         (oddsFilter())[q] = on
         changed()
     end, "Which qualities the odds list.", "Quality")
+    local bandOptions = {}
+    for _, band in ipairs(ns.LevelBands()) do bandOptions[#bandOptions + 1] = { band.up, band.label } end
+    view.bandFilter = W.CheckDropdown(parent, 150, bandOptions,
+        function(up) return not select(3, oddsFilter()).oddsBandsOff[up] end,
+        function(up, on)
+            select(3, oddsFilter()).oddsBandsOff[up] = (not on) or nil
+            changed()
+        end, "Which item levels the odds list. A rare or epic band covers more levels than these: it shows when "
+            .. "one of its levels is ticked.", "Bands",
+        function(names, total)
+            if #names == total then return "All" end
+            if #names > 2 then return #names .. " bands" end
+            return #names == 0 and "None" or table.concat(names, ", ")
+        end)
     view.dataOnly = W.Check(parent, "Only bands with my data",
         "Lists only the item level bands you have disenchanted in. Untick it to see the table of every band.",
         function(on)
@@ -382,12 +411,14 @@ function newOddsView(parent)
         self.tabs.a:SetShown(on)
         self.tabs.w:SetShown(on)
         self.qualityFilter:SetShown(on)
+        self.bandFilter:SetShown(on)
         self.dataOnly:SetShown(on)
         self.stack:SetShown(on)
     end
     function view:Refresh()
         self.dataOnly:SetChecked(select(3, oddsFilter()).oddsDataOnly and true or false)
         self.qualityFilter:Update()
+        self.bandFilter:Update()
         local tab = select(3, oddsFilter()).oddsTab
         for key, b in pairs(self.tabs) do
             if key == tab then b:LockHighlight() else b:UnlockHighlight() end
@@ -502,6 +533,7 @@ local function build()
     checkButton:SetPoint("RIGHT", cancelButton, "LEFT", -6, 0)
     oddsView = newOddsView(f)
     oddsView.qualityFilter:SetPoint("RIGHT", clear, "LEFT", -6, 0)
+    oddsView.bandFilter:SetPoint("RIGHT", oddsView.qualityFilter, "LEFT", -6, 0)
     oddsView.dataOnly:SetPoint("TOPRIGHT", f, "TOPRIGHT", -190, -38)
     oddsView.tabs.a:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98)
     oddsView.stack:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -126)
@@ -567,6 +599,7 @@ local function buildOdds()
     oddsOut = newOddsView(oddsFrame)
     oddsOut.dataOnly:SetPoint("TOPLEFT", oddsFrame, "TOPLEFT", 12, -29)
     oddsOut.qualityFilter:SetPoint("TOPRIGHT", oddsFrame, "TOPRIGHT", -12, -30)
+    oddsOut.bandFilter:SetPoint("RIGHT", oddsOut.qualityFilter, "LEFT", -6, 0)
     oddsOut.tabs.a:SetPoint("TOPLEFT", oddsFrame, "TOPLEFT", 12, -58)
     oddsOut.stack:SetPoint("TOPLEFT", oddsFrame, "TOPLEFT", 12, -86)
     oddsOut.stack:SetPoint("BOTTOMRIGHT", oddsFrame, "BOTTOMRIGHT", -12, 14)
