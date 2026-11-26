@@ -15,6 +15,27 @@ local INDENT = 22
 local COLUMNS = {
     purchases = { { "Item", 220 }, { "Bought", 82 }, { "Paid", 84, "RIGHT" }, { "Expected", 84, "RIGHT" },
         { "Got", 96, "RIGHT" }, { "Result", 84, "RIGHT" } },
+    -- The Accuracy view is two tables: by band, and by material.
+    accBands = { { "Band", 190 }, { "Items", 50, "CENTER", help = { "Items", "How many disenchants with a recorded "
+            .. "purchase are in the row. Grey = fewer than 20: too few to judge, one lucky shard moves it a lot." } },
+        { "Paid", 72, "RIGHT" },
+        { "Promised", 76, "RIGHT", help = { "Promised", "The Value the Deals list showed when you bought: what the "
+            .. "disenchants were worth on average, at the prices of that moment, after the cut." } },
+        { "Got", 112, "RIGHT", help = { "Got", "What the materials were worth when you disenchanted, after the cut, and "
+            .. "how far that is from Promised. The gap is drop luck, or odds that are not what the addon thinks." } },
+        { "Sold for", 112, "RIGHT", help = { "Sold for", "The same materials at the average price each one really sold "
+            .. "for, after the cut, and how far that is from Got. The gap is prices that moved, and undercutting. "
+            .. "Materials you have not sold yet count at their price at the disenchant; * marks a row where that is "
+            .. "more than half of it." } },
+        { "Plan", 76, "RIGHT", help = { "Plan", "The profit the Deals list promised: Promised minus Paid." } },
+        { "Real", 76, "RIGHT", help = { "Real", "The profit as it went: Sold for minus Paid." } } },
+    accMats = { { "Material", 190 }, { "Units", 50, "CENTER" },
+        { "Valued each", 96, "RIGHT", help = { "Valued each", "The average price of one unit when you disenchanted, "
+            .. "after the cut. This is what the Got column counts with." } },
+        { "Sold each", 96, "RIGHT", help = { "Sold each", "The average of what one unit really brought in your sales, "
+            .. "after the cut." } },
+        { "Difference", 90, "RIGHT" },
+        { "Units sold", 76, "CENTER" } },
     -- The Sales view is two tables: your auctions, and the sales already paid.
     listed = { { "Material", 150 }, { "Status", 110 },
         { "Time", 62, "RIGHT", help = { "Time", "A sold auction: the time until its money arrives by mail. "
@@ -182,6 +203,47 @@ function Window.PaidRows()
         rows[1] = note("No sales yet. A sale is recorded when the addon sees it sold on the auction house, or when "
             .. "you take its mail.")
     end
+    return rows
+end
+
+local function share(part, whole)
+    if not whole or whole == 0 then return "" end
+    local pct = math.floor((part - whole) / whole * 100 + 0.5)
+    return " " .. (pct > 0 and (GREEN .. "+") or pct < 0 and RED or GREY) .. pct .. "%|r"
+end
+
+--- Accuracy, by band: what was promised, what the disenchants gave, what the sales brought.
+function Window.AccuracyBandRows()
+    local acc = Ledger.Accuracy(ns.db.ledger)
+    local rows = {}
+    local function row(b, name, group)
+        local few = b.n < 20
+        rows[#rows + 1] = { group = group, cells = { name, (few and GREY or "") .. b.n .. (few and "|r" or ""),
+            ns.Money(b.paid), ns.Money(b.promised), ns.Money(b.got) .. share(b.got, b.promised),
+            ns.Money(b.sold) .. share(b.sold, b.got) .. ((b.units > 0 and b.soldUnits < b.units / 2) and (GREY .. " *|r") or ""),
+            signed(b.promised - b.paid), signed(math.floor(b.sold + 0.5) - b.paid) } }
+    end
+    if acc.total.n == 0 then
+        rows[1] = note("Nothing to compare yet: it needs items you bought and then disenchanted.")
+        return rows
+    end
+    row(acc.total, GOLD .. "All bands|r", true)
+    for _, b in ipairs(acc.bands) do row(b, ns.BandName(b.quality, b.classID, b.band)) end
+    return rows
+end
+
+--- Accuracy, by material: the price it was valued at when disenchanted against what it really sold for.
+function Window.AccuracyMaterialRows()
+    local rows = {}
+    for _, m in ipairs(Ledger.Accuracy(ns.db.ledger).mats) do
+        local valued = m.units > 0 and m.valued / m.units or nil
+        local sold = m.soldUnits > 0 and m.soldNet / m.soldUnits or nil
+        rows[#rows + 1] = { itemID = m.id, cells = { ns.MaterialName(m.id), tostring(m.units),
+            valued and ns.Money(valued) or (GREY .. "-|r"), sold and ns.Money(sold) or (GREY .. "not sold yet|r"),
+            (valued and sold) and (signed(sold - valued) .. share(sold, valued)) or "",
+            m.soldUnits > 0 and tostring(m.soldUnits) or (GREY .. "0|r") } }
+    end
+    if #rows == 0 then rows[1] = note("No disenchant with a recorded purchase yet.") end
     return rows
 end
 
@@ -356,7 +418,7 @@ function Window.Summary()
     return line1, line2
 end
 
-local VIEWS = { sales = true, purchases = true, odds = true }
+local VIEWS = { sales = true, purchases = true, odds = true, accuracy = true }
 
 ------------------------------------------------------------------ the window
 
@@ -436,9 +498,9 @@ local function salesRoom()
 end
 
 --- Sets how much of the room the upper Sales table takes (0.1 to 0.9), and remembers it.
-function Window.SetSalesSplit(share)
+function Window.SetSalesSplit(part)
     if not f then return end
-    f.saved.salesSplit = math.max(SPLIT_MIN, math.min(SPLIT_MAX, share))
+    f.saved.salesSplit = math.max(SPLIT_MIN, math.min(SPLIT_MAX, part))
     Window.Refresh()
 end
 
@@ -449,21 +511,36 @@ function Window.Refresh()
     if not f or not f:IsShown() then return end
     -- While the odds are in their own window, the ledger shows another view.
     if Window.view == "odds" and Window.OddsPoppedOut() then Window.view = "sales" end
-    -- Sales is two tables, each in its own panel; the other views are one.
-    local split = Window.view == "sales"
+    -- Sales and Accuracy are two tables, each in its own panel; the other views are one.
+    local accuracy = Window.view == "accuracy"
+    local split = Window.view == "sales" or accuracy
     local odds = Window.view == "odds"
     list:SetShown(not split and not odds)
     oddsView:SetShown(odds)
     for _, part in ipairs(salesParts) do part:SetShown(split) end
     if split then
+        -- The upper table takes the share of the room that the bar between the tables was dragged to.
+        local room = salesRoom()
+        local share_ = f.saved.salesSplit or SPLIT_DEFAULT
+        salesParts[2]:SetHeight(math.max(TABLE_MIN, math.min(room - TABLE_MIN, math.floor(room * share_))))
+    end
+    if accuracy then
+        salesParts[1]:SetText(GOLD .. "By band|r" .. GREY .. "  promised when bought, got at the disenchant, sold for|r")
+        salesParts[3]:SetText(GOLD .. "By material|r" .. GREY .. "  its price at the disenchant against your real sales|r")
+        local bands, mats = Window.AccuracyBandRows(), Window.AccuracyMaterialRows()
+        salesParts[2]:SetColumns(COLUMNS.accBands)
+        salesParts[2]:SetSource(#bands, function(i) return bands[i] end)
+        salesParts[2]:Refresh()
+        salesParts[4]:SetColumns(COLUMNS.accMats)
+        salesParts[4]:SetSource(#mats, function(i) return mats[i] end)
+        salesParts[4]:Refresh()
+    elseif split then
         local l = ns.db.listings
         salesParts[1]:SetText(GOLD .. "On the auction house|r" .. (l.t and (GREY .. "  as of " .. date("%H:%M", l.t) .. "|r") or ""))
         salesParts[3]:SetText(GOLD .. "Sold|r" .. GREY .. "  every sale, newest first; \"money due\" = its mail is not taken yet|r")
-        -- The upper table takes the share of the room that the bar between the tables was dragged to.
-        local room = salesRoom()
-        local share = f.saved.salesSplit or SPLIT_DEFAULT
-        salesParts[2]:SetHeight(math.max(TABLE_MIN, math.min(room - TABLE_MIN, math.floor(room * share))))
         local listed, paid = Window.ListingRows(), Window.PaidRows()
+        salesParts[2]:SetColumns(COLUMNS.listed)
+        salesParts[4]:SetColumns(COLUMNS.paid)
         salesParts[2]:SetSource(#listed, function(i) return listed[i] end)
         salesParts[2]:Refresh()
         salesParts[4]:SetSource(#paid, function(i) return paid[i] end)
@@ -513,8 +590,9 @@ local function build()
         summary[i] = l
     end
     local x = 12
-    for _, t in ipairs({ { "sales", "Sales" }, { "purchases", "Purchases" }, { "odds", "Odds" } }) do
-        local b = W.Button(f, t[2], 96, function()
+    for _, t in ipairs({ { "sales", "Sales" }, { "purchases", "Purchases" }, { "odds", "Odds" },
+        { "accuracy", "Accuracy" } }) do
+        local b = W.Button(f, t[2], 88, function()
             -- The Odds tab, while the odds are in their own window: put them back here.
             if t[1] == "odds" then Window.OddsPutBack() end
             Window.view = t[1]
@@ -525,8 +603,10 @@ local function build()
         end)
         b:SetPoint("TOPLEFT", f, "TOPLEFT", x, -68)
         tabs[t[1]] = b
-        x = x + 100
+        x = x + (t[1] == "odds" and 116 or 92)   -- (the Odds tab has its pop-out button after it)
     end
+    W.Tooltip(tabs.accuracy, "Accuracy", "How well the Deals list's promise held: what it promised when you bought, "
+        .. "what the materials were worth at the disenchant, and what they really sold for. By band and by material.")
     W.Tooltip(tabs.purchases, "Purchases", "Every item you bought, newest first. Under each one: what it was disenchanted "
         .. "into, the part of its price given to each material, and what each was worth then.")
     W.Tooltip(tabs.sales, "Sales", "Your auctions: what is listed, and what is sold with its money on the way. Below "

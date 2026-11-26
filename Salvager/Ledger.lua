@@ -432,6 +432,79 @@ function Ledger.Breakdown(state, matID)
     return out
 end
 
+--- How well the promise held, in three steps: what the Deals list promised at the purchase, what the
+--- materials were worth at the disenchant, and what materials really sold for.
+--- Only disenchants with a recorded purchase count.
+--- @return table {
+---   bands = { { quality, classID, band, n, paid, promised (value shown when bought), got (value of the
+---               materials at the disenchant, after the cut), sold (the same materials at the average price
+---               each material really sold for, after the cut; at the disenchant's price where none sold yet),
+---               units, soldUnits (units of materials that have a real sale price) }, ... },
+---   total = the same fields over all bands,
+---   mats = { { id, units (from these disenchants), valued (their value at the disenchants, after the cut),
+---              soldUnits, soldNet (all your sales of it) }, ... } }
+function Ledger.Accuracy(state)
+    -- What one unit of each material really sold for, after the cut.
+    local sold = {}
+    for _, s in ipairs(state.sales) do
+        local m = sold[s.id] or { units = 0, net = 0 }
+        sold[s.id] = m
+        m.units, m.net = m.units + s.count, m.net + s.net
+    end
+    local function blank(extra)
+        local b = extra or {}
+        b.n, b.paid, b.promised, b.got, b.sold, b.units, b.soldUnits = 0, 0, 0, 0, 0, 0, 0
+        return b
+    end
+    local out = { bands = {}, total = blank(), mats = {} }
+    local byBand, byMat = {}, {}
+    for _, r in ipairs(state.disenchants) do
+        if r.costKnown then
+            local key = string.format("%d:%d:%d", r.quality or 0, r.classID or 0, r.band or 0)
+            local b = byBand[key]
+            if not b then
+                b = blank({ quality = r.quality, classID = r.classID, band = r.band })
+                byBand[key] = b
+                out.bands[#out.bands + 1] = b
+            end
+            local soldValue, units, soldUnits = 0, 0, 0
+            for id, qty in pairs(r.got or {}) do
+                local at = r.vals and r.vals[id] or 0
+                local m = byMat[id]
+                if not m then
+                    m = { id = id, units = 0, valued = 0, soldUnits = sold[id] and sold[id].units or 0,
+                        soldNet = sold[id] and sold[id].net or 0 }
+                    byMat[id] = m
+                    out.mats[#out.mats + 1] = m
+                end
+                m.units, m.valued = m.units + qty, m.valued + at
+                units = units + qty
+                if sold[id] and sold[id].units > 0 then
+                    soldValue = soldValue + qty * sold[id].net / sold[id].units
+                    soldUnits = soldUnits + qty
+                else
+                    soldValue = soldValue + at
+                end
+            end
+            for _, x in ipairs({ b, out.total }) do
+                x.n = x.n + 1
+                x.paid = x.paid + (r.cost or 0)
+                x.promised = x.promised + (r.evAtBuy or r.planned or 0)
+                x.got = x.got + (r.value or 0)
+                x.sold = x.sold + soldValue
+                x.units, x.soldUnits = x.units + units, x.soldUnits + soldUnits
+            end
+        end
+    end
+    table.sort(out.bands, function(a, b)
+        if a.quality ~= b.quality then return (a.quality or 0) < (b.quality or 0) end
+        if a.classID ~= b.classID then return (a.classID or 0) > (b.classID or 0) end
+        return (a.band or 0) < (b.band or 0)
+    end)
+    table.sort(out.mats, function(a, b) return a.valued > b.valued end)
+    return out
+end
+
 --- Summary per disenchant band: counts, planned vs actual, observed odds.
 --- @return table  { [key] = { n, planned, value, cost, mats = { [id] = { hits, qty } }, salvager = n } }
 ---                key = "<quality>:<a|w>:<band>"

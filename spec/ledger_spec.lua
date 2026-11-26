@@ -217,6 +217,41 @@ describe("Ledger", function()
         assert.are.equal(History.MAX_POINTS + 20, h[6][#h[6]].p)
     end)
 
+    it("compares what was promised with what the disenchants gave and what the sales brought", function()
+        local prices = { [1] = 400, [2] = 1600 }
+        local priceOf = function(id) return prices[id] end
+        local function de(itemID, band, paid, ev, got)
+            Ledger.AddPurchase(state, itemID, 1, paid, ev, 1)
+            Ledger.Disenchant(state, { t = 2, itemID = itemID, quality = 2, classID = 4, band = band, got = got },
+                Ledger.TakePurchase(state, itemID), priceOf, 0.05)
+        end
+        de(77, 30, 1000, 1200, { [1] = 2 })                         -- promised 12s, gave 2 dust: 7s 60c
+        de(77, 30, 1000, 1200, { [2] = 1 })                         -- promised 12s, gave an essence: 15s 20c
+        de(88, 35, 500, 600, { [1] = 1 })
+        Ledger.Disenchant(state, { t = 3, itemID = 99, quality = 2, classID = 4, band = 30, got = { [1] = 5 } },
+            nil, priceOf, 0.05)                                     -- no recorded purchase: not counted
+        Ledger.Sell(state, 1, 2, 600, 30, 5)                        -- dust really sold for 2s 85c each after the cut
+        local acc = Ledger.Accuracy(state)
+        assert.are.equal(2, #acc.bands)
+        local b = acc.bands[1]
+        assert.are.equal(30, b.band)
+        assert.are.equal(2, b.n)
+        assert.are.equal(2000, b.paid)
+        assert.are.equal(2400, b.promised)
+        assert.are.equal(760 + 1520, b.got)
+        assert.are.equal(2 * 285 + 1520, b.sold)                    -- dust at its real price, the essence as valued
+        assert.are.equal(3, b.units)
+        assert.are.equal(2, b.soldUnits)
+        assert.are.equal(3, acc.total.n)
+        assert.are.equal(2500, acc.total.paid)
+        local dust
+        for _, m in ipairs(acc.mats) do if m.id == 1 then dust = m end end
+        assert.are.equal(3, dust.units)
+        assert.are.equal(760 + 380, dust.valued)
+        assert.are.equal(2, dust.soldUnits)
+        assert.are.equal(570, dust.soldNet)
+    end)
+
     it("keeps what later mails need when the history is cleared", function()
         Ledger.AuctionPurchase(state, 77, 1000, 1200, 1)            -- its "Auction won" mail has not come
         Ledger.AuctionPurchase(state, 78, 500, 600, 2)

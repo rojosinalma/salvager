@@ -25,6 +25,7 @@ local scan                 -- the scan in progress: { seq, passes, index, pass, 
 local lastBrowseAt = 0
 local ourSend = false
 local pendingBuys = {}     -- [auctionID] = deal, purchases on their way
+local dropped = {}         -- [auctionID] = deal: purchases given up as dropped (an answer may still come)
 
 local function setState(s)
     Scanner.state = s
@@ -478,6 +479,7 @@ end
 
 ns.On("AUCTION_HOUSE_CLOSED", function()
     wipe(pendingBuys)
+    wipe(dropped)
     Scanner.auto = false
     Scanner.paused = false
     scan = nil
@@ -489,6 +491,8 @@ end)
 
 local BUY_QUIET = 1.0      -- seconds after a Buy click in which searches wait (more clicks may follow)
 local BUY_EXPIRES = 10     -- seconds after which a purchase with no answer is given up
+local BUSY_HOLD = 2        -- extra seconds everything is held after a Buy click the busy auction house could not take
+local DROP_WINDOW = 2      -- a "request dropped" this soon after a Buy click is taken to be about the purchase
 local lastBuyAt = 0
 
 --- Is a purchase on its way, or was Buy clicked a moment ago? Then nothing else talks to the
@@ -511,6 +515,16 @@ function Scanner.Buy(deal)
     -- One at a time with a cancel: the auction house's error message does not say which one failed.
     if ns.Listings and ns.Listings.Cancelling() then ns.Print("wait for the cancel to finish") return end
     if GetMoney() < deal.buyout then ns.Print("not enough money for %s", deal.link or "this item") return end
+    -- The auction house takes one request at a time. While it is busy with one of ours (a browse page, a
+    -- search), a purchase sent now is thrown away without an answer. So it is not sent: everything else
+    -- is held, and the next click, a moment later, goes through.
+    if AH.IsThrottledMessageSystemReady and not AH.IsThrottledMessageSystemReady() then
+        lastBuyAt = GetTime() + BUSY_HOLD
+        ns.Print("the auction house is busy for a moment: click Buy again")
+        ns.Log("buy of %s not sent: the auction house was busy; searches held for %ds", deal.link or deal.itemID,
+            BUSY_HOLD + BUY_QUIET)
+        return
+    end
     deal.pending = true
     deal.clickedAt = GetTime()
     lastBuyAt = deal.clickedAt
@@ -547,9 +561,26 @@ local function removeDeal(auctionID)
     end
 end
 
+-- The auction house says it threw a request away, just after a Buy click: the purchase did not go
+-- through. The row is free again at once (not after 10 seconds), and the next click has a clear line.
+ns.On("AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED", function()
+    for id, d in pairs(pendingBuys) do
+        if GetTime() - d.clickedAt < DROP_WINDOW then
+            pendingBuys[id] = nil
+            dropped[id] = d
+            d.pending = false
+            lastBuyAt = GetTime() + BUSY_HOLD
+            ns.Print("the auction house dropped the purchase of %s (it was busy): click Buy again", d.link or "the item")
+            ns.Log("purchase of %s dropped by the auction house (busy with another request)", d.link or d.itemID)
+            ns.Fire("SALVAGER_DEALS")
+        end
+    end
+end)
+
 ns.On("AUCTION_HOUSE_PURCHASE_COMPLETED", function(auctionID)
-    local d = pendingBuys[auctionID]
-    pendingBuys[auctionID] = nil
+    -- (A purchase given up as dropped that went through after all is still booked.)
+    local d = pendingBuys[auctionID] or dropped[auctionID]
+    pendingBuys[auctionID], dropped[auctionID] = nil, nil
     removeDeal(auctionID)
     if d then
         ns.Print("bought %s for %s (expected profit %s)", d.link or "item", ns.Money(d.buyout), ns.Money(d.profit))

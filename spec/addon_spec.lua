@@ -339,7 +339,9 @@ describe("Salvager window and options", function()
         ns.UI.view = "limits"
         ns.UI.Refresh()
         ns.LedgerWindow.Toggle()
-        for _, v in ipairs({ "purchases", "sales", "odds" }) do
+        assert.is_true(#ns.LedgerWindow.AccuracyBandRows() >= 1)
+        assert.is_true(#ns.LedgerWindow.AccuracyMaterialRows() >= 1)
+        for _, v in ipairs({ "purchases", "sales", "odds", "accuracy" }) do
             ns.LedgerWindow.view = v
             ns.LedgerWindow.Refresh()
         end
@@ -615,6 +617,27 @@ describe("Salvager scan safety", function()
         ns.Queue.Clear()
         assert.is_table(ns.Ledger.TakePurchase(ns.db.ledger, 2000))   -- the purchase was recorded; undo it
         table.remove(ns.db.ledger.bought)
+    end)
+
+    it("does not send a purchase the busy auction house would throw away, and frees a dropped one at once", function()
+        ns.Scanner.Stop()
+        local bids = #env.ah.bids
+        local deal = { auctionID = 992, buyout = 100, itemID = 2001, value = 200, profit = 100 }
+        env.ah.ready = false
+        ns.Scanner.Buy(deal)
+        assert.are.equal(bids, #env.ah.bids)                       -- not sent
+        assert.is_nil(deal.pending)
+        assert.is_true(ns.Scanner.Buying())                        -- and everything else waits for the next click
+        env.ah.ready = true
+        ns.Scanner.Buy(deal)
+        assert.are.equal(bids + 1, #env.ah.bids)
+        assert.is_true(deal.pending)
+        wow.fire(ns, "AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED")    -- the auction house threw it away
+        assert.is_false(deal.pending)
+        wow.fire(ns, "AUCTION_HOUSE_PURCHASE_COMPLETED", 992)      -- it went through after all: still booked
+        assert.is_table(ns.Ledger.TakePurchase(ns.db.ledger, 2001))
+        table.remove(ns.db.ledger.bought)
+        wow.tick(ns, 5)
     end)
 
     it("lets a scan of a few materials in during a gear scan", function()

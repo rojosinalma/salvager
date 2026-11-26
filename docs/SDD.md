@@ -199,6 +199,15 @@ flipping is out of scope for now.
     with the last known price of each material, against the buy limit now), Profit (sales with a known cost,
     added up, and per day), Essences (3 lesser against 1 greater), By hour (average price per hour of the day).
     The history is filled once from older data (`Prices.SeedHistory`): last scans, log, disenchants, posts.
+61. **Accuracy view** (Ledger, `Ledger.Accuracy`): per band and in total, over disenchants with a recorded
+    purchase: Paid, Promised (value shown when bought), Got (value at the disenchant), Sold for (the same
+    materials at the average price each really sold for; at the disenchant's price where none sold yet), and
+    the planned and real profit. A second table per material: valued each against sold each. Sales are not
+    tied to items (pooled stock), so "Sold for" per band is an estimate.
+62. **A Buy click while the auction house is busy is not sent** (`IsThrottledMessageSystemReady` false): it
+    would be thrown away without an answer (measured 2026-11-26: four clicks during a browse, none answered).
+    Everything else is held for 3 s and the player clicks again. A "request dropped" within 2 s of a Buy
+    click frees the row at once; a late "purchase completed" for it is still booked.
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),
