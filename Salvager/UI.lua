@@ -1100,7 +1100,7 @@ end
 
 -- Every window of the addon besides the main one.
 local OTHERS = { "SalvagerLedgerFrame", "SalvagerLogFrame", "SalvagerMaterialsFrame", "SalvagerMarketFrame",
-    "SalvagerReportsFrame",
+    "SalvagerReportsFrame", "SalvagerStandFrame",
     "SalvagerBreakdownFrame", "SalvagerOddsFrame", "SalvagerPostFrame", "SalvagerOptionsFrame" }
 
 --- Hides the other windows, without changing what is remembered as open.

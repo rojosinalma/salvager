@@ -184,6 +184,25 @@ describe("Your auctions in a simulated client", function()
         assert.are.same({ "cancelled", -40, VISION }, { last().lost, last().profit, last().id })
     end)
 
+    it("shows where a listing stands: what is ahead of it, and whether a repost pays", function()
+        ns.Listings.Refresh(true)
+        wow.tick(ns, 0.5)
+        local row
+        for _, r in ipairs(ns.LedgerWindow.ListingRows()) do if r.itemID == DUST then row = r end end
+        assert.is_function(row.onClick)                         -- a click on a listing of yours for sale
+        row.onClick()
+        assert.is_true(_G.SalvagerStandFrame:IsShown())
+        assert.is_true(ns.Stand.loading)                        -- its material is searched first
+        answer()
+        assert.is_false(ns.Stand.loading)
+        local mine = ns.Stand.row
+        local facts = table.concat(ns.Stand.Facts(mine, ns.Post.Market(DUST)), "\n")
+        assert.is_truthy(facts:find("Ahead of you", 1, true))
+        assert.is_truthy(facts:find("50 units", 1, true))       -- the other seller's 50 at 4s 30c, under your 5s
+        assert.is_truthy(facts:find("To be first again", 1, true))
+        _G.SalvagerStandFrame:Hide()
+    end)
+
     it("does not take a sale for a cancel: the game sends the cancel event for both", function()
         local n = #ns.db.ledger.sales
         wow.fire(ns, "AUCTION_CANCELED", 4242)                 -- no cancel was asked for this auction

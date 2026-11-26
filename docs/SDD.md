@@ -394,6 +394,12 @@ flipping is out of scope for now.
     Market and the Ledger), not "v"; the "?" help is the first thing on the row of column titles, and its
     first line says what the list is sorted by and how to change it. Limits' and Deals' help say the column
     names in use (Recommended / Override price threshold; Expected value, Expected profit, Return).
+86. **Where a listing stands** (`StandWindow.lua`, 0.3.104): a click on an auction of yours for sale (Ledger,
+    Sales, Open auctions) searches its material and shows the other sellers' price lines (`Post.MarketRows`,
+    with your price and your break-even in their place), and above them: your listing, the units ahead of
+    it, and what being first again costs (the gap × your units, against the deposit lost and the new one,
+    `Listings.RepostCost`), with a hint: under break-even (wait), few units ahead (wait), many ahead (a
+    repost sells sooner if the gap pays its deposits).
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

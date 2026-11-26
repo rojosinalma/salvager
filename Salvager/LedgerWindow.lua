@@ -364,6 +364,8 @@ function Window.ListingRows()
         end
         rows[#rows + 1] = {
             itemID = r.itemID, link = r.link,
+            -- A click shows where it stands among the other sellers' listings.
+            onClick = r.commodity and function() ns.Stand.Show(r) end or nil,
             cells = { r.qty .. "x " .. ((r.link and r.link:match("%[(.-)%]")) or ns.MaterialName(r.itemID)), status,
                 countdown(left),
                 ns.Money(r.each), ns.Money(gross), ns.Money(net), cost and ns.Money(cost) or (GREY .. "not known|r"),
@@ -821,7 +823,8 @@ function Window.Refresh()
         salesParts[4]:Refresh()
     elseif split then
         local l = ns.db.listings
-        salesParts[1]:SetText(GOLD .. "Open auctions|r" .. (l.t and (GREY .. "  as of " .. date("%H:%M", l.t) .. "|r") or ""))
+        salesParts[1]:SetText(GOLD .. "Open auctions|r" .. (l.t and (GREY .. "  as of " .. date("%H:%M", l.t) .. "|r") or "")
+            .. GREY .. "  click one to see where it stands|r")
         salesParts[3]:SetText(GOLD .. "Sold|r" .. GREY .. "  the money is on its way, or waits in your mail|r")
         local listed, paid = Window.ListingRows(), Window.SoldRows(false)
         salesParts[2]:SetColumns(COLUMNS.listed)
