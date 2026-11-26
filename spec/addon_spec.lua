@@ -1825,3 +1825,130 @@ describe("Salvager log window", function()
         for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
     end)
 end)
+
+describe("Salvager Buy top", function()
+    local env, ns
+    local LOW, HIGH = 6001, 6002             -- uncommon armor: item level 28 (26-30) and 33 (31-35)
+    local function link(id, name, ilvl)
+        return "|cff1eff00|Hitem:" .. id .. "::::::::" .. ilvl .. ":::::|h[" .. name .. "]|h|r"
+    end
+    local function click(b) b.scripts.OnClick(b) end
+    local function bid() return env.ah.bids[#env.ah.bids] end
+    local function reason()
+        local b = ns.UI.buyTop
+        b.scripts.OnEnter(b)
+        local text = _G.GameTooltip.lines and table.concat(_G.GameTooltip.lines, "\n") or ""
+        b.scripts.OnLeave(b)
+        return text
+    end
+    -- A gear scan, answered through events until it is done.
+    local function scan()
+        ns.Scanner.Scan(true)
+        for _ = 1, 200 do
+            if ns.Scanner.state == "browsing" then wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED") end
+            local task = ns.Queue.current
+            if task and task.itemKey then wow.fire(ns, "ITEM_SEARCH_RESULTS_UPDATED", task.itemKey) end
+            wow.tick(ns, 0.2)
+            if ns.Scanner.state == "idle" then break end
+        end
+        ns.UI.Refresh()
+    end
+    local function value(ilvl)
+        for _, r in ipairs(ns.Limits(true)) do
+            if r.quality == 2 and ilvl >= r.lo and ilvl <= r.up then return r.armor.value end
+        end
+    end
+
+    setup(function()
+        env = wow.install()
+        env.items[LOW] = { name = "Low Boots", quality = 2, ilvl = 28, classID = 4 }
+        env.items[HIGH] = { name = "High Helm", quality = 2, ilvl = 33, classID = 4 }
+        -- The tooltip keeps what it shows, so a spec can read the reason.
+        _G.GameTooltip.SetText = function(self, t) rawset(self, "lines", { t }) end
+        _G.GameTooltip.AddLine = function(self, t) table.insert(self.lines, t) end
+        ns = wow.loadAddon()
+        wow.fire(ns, "ADDON_LOADED", "Salvager")
+        wow.fire(ns, "AUCTION_HOUSE_SHOW")
+        for _, m in ipairs(ns.Data.MATERIALS) do ns.db.prices[m.id] = { p = 1000, t = env.clock } end
+        local s = ns.db.settings
+        s.minProfit, s.minReturn, s.gearClasses, s.priceRescan = 0, 0, "armor", 0
+        s.qualities = { [2] = true, [3] = false, [4] = false }
+        s.dealSort = "profit"
+    end)
+
+    it("is off with the reason before any scan", function()
+        assert.is_false(ns.UI.buyTop:IsEnabled())
+        assert.is_truthy(reason():find("No gear scan yet", 1, true))
+        local bids = #env.ah.bids
+        click(ns.UI.buyTop)
+        assert.are.equal(bids, #env.ah.bids)
+    end)
+
+    it("buys the top deal by Expected profit, then by Return, each click the next one, never a pending one", function()
+        local vLow, vHigh = value(28), value(33)
+        assert.is_true(vHigh > vLow + 4)
+        -- Low Boots: tiny price, the best Return. High Helm: dearer, the best Expected profit.
+        local pHigh = math.floor((vHigh - vLow) / 2)
+        env.ah.browse = {
+            { itemKey = { itemID = LOW, itemLevel = 28, itemSuffix = 0 }, minPrice = 1 },
+            { itemKey = { itemID = HIGH, itemLevel = 33, itemSuffix = 0 }, minPrice = pHigh },
+        }
+        env.ah.itemResults[LOW] = {
+            { auctionID = 101, buyoutAmount = 1, itemLink = link(LOW, "Low Boots", 28) },
+            { auctionID = 102, buyoutAmount = 2, itemLink = link(LOW, "Low Boots", 28) },
+        }
+        env.ah.itemResults[HIGH] = {
+            { auctionID = 201, buyoutAmount = pHigh, itemLink = link(HIGH, "High Helm", 33) },
+            { auctionID = 202, buyoutAmount = pHigh + 1, itemLink = link(HIGH, "High Helm", 33) },
+        }
+        scan()
+        assert.are.equal(4, #ns.Scanner.deals)
+        local rows = ns.UI.Rows("deals")
+        assert.are.equal(HIGH, rows[1].itemID)               -- by Expected profit the helm comes first
+        assert.is_true(ns.UI.buyTop:IsEnabled())
+        local tip = reason()
+        assert.is_truthy(tip:find("High Helm", 1, true))     -- the tooltip says what the click buys
+        click(ns.UI.buyTop)
+        assert.are.same({ id = 201, amount = pHigh }, bid())
+        assert.is_true(ns.Scanner.Buying())                   -- the scan holds for the purchase, as for a row's Buy
+        -- By Return (a click on the Return title): the boots first; the pending helm is never bought twice.
+        local area
+        for _, fr in ipairs(env.frames) do if rawget(fr, "sortKey") == "return" then area = fr end end
+        area.scripts.OnMouseUp(area)
+        assert.are.equal("return", ns.db.settings.dealSort)
+        assert.are.equal(LOW, ns.UI.Rows("deals")[1].itemID)
+        click(ns.UI.buyTop)
+        assert.are.same({ id = 101, amount = 1 }, bid())
+        click(ns.UI.buyTop)                                  -- the next one: the other boots
+        assert.are.same({ id = 102, amount = 2 }, bid())
+        click(ns.UI.buyTop)                                  -- then the other helm
+        assert.are.same({ id = 202, amount = pHigh + 1 }, bid())
+        ns.UI.Refresh()
+        assert.is_false(ns.UI.buyTop:IsEnabled())            -- all on their way
+        assert.is_truthy(reason():find("being bought", 1, true))
+        local bids = #env.ah.bids
+        click(ns.UI.buyTop)
+        assert.are.equal(bids, #env.ah.bids)
+        for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
+    end)
+
+    it("shows the footer in two lines, the closest item on the second", function()
+        local lines = ns.UI.footerLines
+        assert.are.equal(2, #lines)
+        assert.is_truthy(lines[1]:GetText():find("^%d+ deals%."))
+        assert.is_nil(lines[1]:GetText():find("Closest", 1, true))
+        assert.is_truthy(lines[2]:GetText():find("^Closest: "))
+    end)
+
+    it("is off with the reason when the list is empty, or the auction house is closed", function()
+        for _, id in ipairs({ 101, 102, 201, 202 }) do wow.fire(ns, "AUCTION_HOUSE_PURCHASE_COMPLETED", id) end
+        ns.Queue.Clear()
+        assert.are.equal(0, #ns.Scanner.deals)
+        ns.UI.Refresh()
+        assert.is_false(ns.UI.buyTop:IsEnabled())
+        assert.is_truthy(reason():find("Deals list is empty", 1, true))
+        wow.fire(ns, "AUCTION_HOUSE_CLOSED")
+        assert.is_false(ns.UI.buyTop:IsEnabled())
+        assert.is_truthy(reason():find("Open the auction house first", 1, true))
+    end)
+end)

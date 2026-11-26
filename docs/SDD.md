@@ -400,9 +400,12 @@ flipping is out of scope for now.
     it, and what being first again costs (the gap × your units, against the deposit lost and the new one,
     `Listings.RepostCost`), with a hint: under break-even (wait), few units ahead (wait), many ahead (a
     repost sells sooner if the gap pays its deposits).
-87. **Main window status at the bottom** (0.3.105): the spinner and the status text (what the addon is doing
-    now) sit at the bottom right under the list, as wide as the text and at most half the window; the
-    footer takes the room on their left. The top row keeps Play, Stop and the window buttons.
+87. **Main window status at the bottom** (0.3.105; moved 0.3.111, 93): the spinner and the status text (what the
+    addon is doing now) sit at the bottom right under the list, left of the "Buy top" button, as wide as the text
+    and at most half the room left of the button. The footer takes the room on their left, in two lines, each one
+    line cut at the spinner: line 1 is what the last scan found (deals, items, limits, max price), line 2 the
+    item closest to its buy limit ("Closest: ..."). The list's bottom is one line higher for it. The top row keeps
+    Play, Stop and the window buttons.
 88. **Clear history lives in the options, with backups** (0.3.106, the user): Options, Data has Clear history,
     Restore backup (with the date of the last copy; off when there is none) and the size of the saved data
     (`Util.SavedSize`: within 0.3% of the real file, measured 2026-11-26). The confirmation says what is lost
@@ -442,6 +445,16 @@ flipping is out of scope for now.
     window, shows `v<version>` (`ns.VERSION`, from the TOC through `C_AddOns.GetAddOnMetadata`) at the left
     end of its title bar (`f.TitleBg`), small and dim (`GameFontDisableSmall`). Where it would come within
     12 px of the centered title at the window's smallest width, it is left out (`Widgets.TitleVersion`).
+93. **Buy top** (0.3.111, the user): a button at the bottom right of the main window, left of the resize grip,
+    on every tab. One click buys the auction the Buy button of the first row of the Deals list buys
+    (`UI.TopDeal`: the list's own rows and order, `dealRows` and `Scanner.Better`, by Expected profit or by
+    Return; for a row of several auctions, the cheapest one not being bought, `Scanner.Cheapest`). A row whose
+    auctions are all on their way is skipped, so each click buys the next one. It goes through `Scanner.Buy`, as
+    a row's Buy: the click is the hardware event, the scan holds, a busy auction house gets it as soon as it is
+    ready (65). The mouse on it holds the scan (`Scanner.Aim`). Off, with the reason in its tooltip: auction house
+    closed, no gear scan yet, the list empty, every deal being bought, not enough gold for the top one. Its
+    tooltip shows the item, the buyout, the Expected profit and the Return of what the click buys, and follows
+    the list while it shows.
 
 ## Data
 

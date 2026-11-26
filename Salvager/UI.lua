@@ -82,6 +82,7 @@ local headerHelp = {}
 local actionHeader
 local REFRESH_GAP, lastRefresh, refreshQueued = 0.25, 0, false
 local spinner, bigSpinner, bigSpinnerText
+local buyTop, footer2
 
 ------------------------------------------------------------------ rows per view
 
@@ -191,11 +192,12 @@ local function statusText()
     return table.concat(parts, "  ·  ")
 end
 
---- The line under the list: what the last scan found. (What the columns mean is behind the "?" button.)
+--- The two lines under the list: what the last scan found, then the item closest to its limit.
+--- (What the columns mean is behind the "?" button.)
 local function footerText()
     if UI.view == "deals" then
         local sum = ns.Scanner.summary
-        local text = string.format("%d deals.", #ns.Scanner.deals)
+        local text, closest = string.format("%d deals.", #ns.Scanner.deals), ""
         if sum then
             text = text .. string.format(" Last scan: %d items in %.0fs, %d under their limit.", sum.browsed,
                 sum.seconds or 0, sum.candidates)
@@ -208,7 +210,7 @@ local function footerText()
             if sum.best then
                 local b = sum.best
                 local room = b.room or (b.margin or 0)
-                text = text .. string.format(" Closest: %s at %s, buy limit %s (%s).",
+                closest = string.format("Closest: %s at %s, buy limit %s (%s).",
                     (ns.GetItemInfo(b.itemID)) or ("item " .. b.itemID), ns.Money(b.price),
                     ns.Money(b.limit or b.value), room >= 0 and (ns.Money(room) .. " under it")
                         or (ns.Money(-room) .. " over it"))
@@ -221,12 +223,34 @@ local function footerText()
         if cap > 0 then
             text = text .. string.format(" |cffff8040Max price %s is on: dearer items are never listed.|r", ns.Money(cap))
         end
-        return text
+        return text, closest
     elseif UI.view == "limits" and ns.db.settings.cautious then
-        return "Cautious pricing is on."
+        return "Cautious pricing is on.", ""
     end
-    return ""
+    return "", ""
 end
+
+--- The deal the "Buy top" button buys: the auction the Buy button of the first row of the Deals list buys
+--- (that list's order, by Expected profit or by Return), skipping rows whose auctions are all being bought.
+--- @return table|nil deal, string|nil why  (why: the reason there is none, for the button's tooltip)
+local function topDeal()
+    if not ns.Queue.open then return nil, "Open the auction house first." end
+    if #ns.Scanner.deals == 0 then
+        if not ns.Scanner.summary then return nil, "No gear scan yet: click Play, or Scan once: Gear." end
+        return nil, "The Deals list is empty: the next scan fills it."
+    end
+    for _, row in ipairs(dealRows()) do
+        local d = row.deal or (row.group and ns.Scanner.Cheapest(row.group.deals))
+        if d and not d.pending then
+            if (GetMoney() or 0) < d.buyout then
+                return nil, string.format("Not enough gold for %s (%s).", dealName(d), ns.Money(d.buyout))
+            end
+            return d
+        end
+    end
+    return nil, "Every deal in the list is being bought already."
+end
+UI.TopDeal = topDeal
 
 --- What the list's columns and marks mean, one line each (for the "?" button).
 local function helpLines()
@@ -401,6 +425,34 @@ function UI.UpdatePlay()
     end
 end
 
+--- The "Buy top" button's tooltip: what the click buys now, or why it is off.
+local function buyTopTooltip(self)
+    local d, why = topDeal()
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    GameTooltip:SetText("Buy top", 1, 1, 1)
+    if d then
+        local byReturn = ns.db.settings.dealSort == "return"
+        GameTooltip:AddLine("Buys the first deal of the Deals list (sorted by " .. (byReturn and "Return" or "Expected profit")
+            .. "). Each click buys the next one.", 1, 0.82, 0, true)
+        GameTooltip:AddLine(d.link or dealName(d), 1, 1, 1)
+        GameTooltip:AddDoubleLine("Buyout", ns.Money(d.buyout), 1, 0.82, 0, 1, 1, 1)
+        GameTooltip:AddDoubleLine("Expected profit", (d.profit >= 0 and "+" or "") .. ns.Money(d.profit), 1, 0.82, 0,
+            d.profit >= 0 and 0.25 or 1, d.profit >= 0 and 1 or 0.25, 0.25)
+        GameTooltip:AddDoubleLine("Return", string.format("%+d%%", math.floor(ns.Scanner.Return(d) * 100 + 0.5)),
+            1, 0.82, 0, d.profit >= 0 and 0.25 or 1, d.profit >= 0 and 1 or 0.25, 0.25)
+    else
+        GameTooltip:AddLine(why, 1, 0.3, 0.3, true)
+    end
+    GameTooltip:Show()
+end
+
+--- The "Buy top" button: on while there is a deal to buy; its tooltip follows the list while it shows.
+local function updateBuyTop()
+    local d = topDeal()
+    buyTop:SetEnabled(d ~= nil)
+    if buyTop.hover then buyTopTooltip(buyTop) end
+end
+
 function UI.Refresh()
     if not f or not f:IsShown() then return end
     -- The materials list is in its own window: this window does not show it too.
@@ -484,9 +536,9 @@ function UI.Refresh()
         if name == UI.view then b:LockHighlight() else b:UnlockHighlight() end
     end
     status:SetText(statusText())
-    -- As wide as its text, at most half the window: the footer keeps the rest.
+    -- As wide as its text, at most half the room left of "Buy top": the footer keeps the rest.
     local sw = tonumber((status:GetStringWidth())) or 0
-    status:SetWidth(math.max(1, math.min(sw + 2, ((f:GetWidth() or 800) - 60) / 2)))
+    status:SetWidth(math.max(1, math.min(sw + 2, ((f:GetWidth() or 800) - 150) / 2)))
     if ns.Busy() then spinner:Start() else spinner:Stop() end
     local dealsBusy = UI.view == "deals" and (ns.Scanner.state ~= "idle" or ns.scanBothPending)
     if dealsBusy and #data == 0 then
@@ -511,7 +563,10 @@ function UI.Refresh()
     if not maxChecks:HasFocus() then maxChecks:SetText(tostring(st.maxChecks)) end
     gearChoice:Update()
     qualityDrop:Update()
-    footer:SetText(footerText())
+    local line1, line2 = footerText()
+    footer:SetText(line1)
+    footer2:SetText(line2)
+    updateBuyTop()
     lastRefresh = GetTime()
 end
 
@@ -641,10 +696,29 @@ local function build()
     ahButton:HookScript("OnEnter", function(self)
         if self.reason then GameTooltip:AddLine(self.reason, 1, 0.3, 0.3, true) GameTooltip:Show() end
     end)
-    -- What the addon is doing now (scanning, searching): at the bottom right, under the list, the spinner
-    -- before it; the footer takes the room on the left.
+    -- At the bottom right, left of the resize grip: "Buy top" buys the first deal of the list (the click is the
+    -- hardware event the purchase needs). Left of it, what the addon is doing now (scanning, searching), the
+    -- spinner before it; the footer takes the room on the left.
+    buyTop = W.Button(f, "Buy top", 80, function()
+        local d = topDeal()
+        if d then ns.Scanner.Buy(d) end
+    end)
+    buyTop:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -24, 9)
+    buyTop:SetMotionScriptsWhileDisabled(true)
+    buyTop:SetScript("OnEnter", function(self)
+        self.hover = true
+        buyTopTooltip(self)
+        -- The mouse on a Buy button holds the scan, so the auction house is free when the click comes.
+        if self:IsEnabled() then ns.Scanner.Aim(true) end
+    end)
+    buyTop:SetScript("OnLeave", function(self)
+        self.hover = false
+        ns.Scanner.Aim(false)
+        GameTooltip:Hide()
+    end)
+    UI.buyTop = buyTop
     status = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    status:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 13)
+    status:SetPoint("RIGHT", buyTop, "LEFT", -10, 0)
     status:SetJustifyH("RIGHT")
     status:SetWordWrap(false)
     spinner:SetPoint("RIGHT", status, "LEFT", -6, 0)
@@ -895,7 +969,8 @@ local function build()
     ---------------------------------------------------------------- the list, in its own sunken panel
     local inset = W.Panel(f, 0, 0, 0, 0.5)
     inset:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -184)
-    inset:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, 40)
+    -- (Its bottom leaves room for the two footer lines and the "Buy top" button.)
+    inset:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, 54)
     titleBand = inset:CreateTexture(nil, "BACKGROUND", nil, 1)
     titleBand:SetPoint("TOPLEFT", inset, "TOPLEFT", 1, -1)
     titleBand:SetPoint("TOPRIGHT", inset, "TOPRIGHT", -1, -1)
@@ -1059,11 +1134,20 @@ local function build()
     bigSpinnerText = list:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     bigSpinnerText:SetPoint("TOP", bigSpinner, "BOTTOM", 0, -6)
 
+    -- Two lines under the list, each one line cut at the spinner: what the last scan found, then the item
+    -- closest to its limit. (Left and right ends on one height: the spinner's middle is the button's, 20 px
+    -- above the window's bottom; line 2 sits 3 px under it, line 1 14 px above line 2.)
+    footer2 = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    footer2:SetPoint("LEFT", f, "BOTTOMLEFT", 14, 17)
+    footer2:SetPoint("RIGHT", spinner, "LEFT", -12, -3)
+    footer2:SetJustifyH("LEFT")
+    footer2:SetWordWrap(false)
     footer = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    footer:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 14, 10)
-    footer:SetPoint("RIGHT", spinner, "LEFT", -12, 0)
+    footer:SetPoint("LEFT", f, "BOTTOMLEFT", 14, 31)
+    footer:SetPoint("RIGHT", spinner, "LEFT", -12, 11)
     footer:SetJustifyH("LEFT")
-    footer:SetWordWrap(true)
+    footer:SetWordWrap(false)
+    UI.footerLines = { footer, footer2 }
 
     -- Resize from the bottom right corner.
     f:SetResizable(true)
