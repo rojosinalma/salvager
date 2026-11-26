@@ -46,6 +46,7 @@ function Widgets.List(parent, opts)
         t:SetJustifyH("CENTER")
         t:SetPoint("TOPRIGHT", list, "TOPRIGHT", -BAR_W - 4, 0)
         t:SetText(opts.actionTitle)
+        list.actionTitle = t
     end
     for i = 1, MAX_COLS do
         local h = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -197,6 +198,13 @@ function Widgets.List(parent, opts)
             x = x + ws[i] + GAP
         end
         if not fits[2] and cols[1] then ws[1] = math.max(10, avail - 4) end
+        -- The buttons' column is a column like the others: right after the last one, as wide as its warning
+        -- sign and its button. (Where text cannot be measured, it stays at the right edge.)
+        local actionX = need and ACTION_W > 0 and math.min(x, avail + 4) or nil
+        if actionX and rawget(list, "actionTitle") then
+            list.actionTitle:ClearAllPoints()
+            list.actionTitle:SetPoint("TOPLEFT", self, "TOPLEFT", actionX + 22, 0)
+        end
         for i = 1, MAX_COLS do
             local h, col = headers[i], cols[i]
             local on = col and fits[i] and HEAD_H > 0
@@ -223,6 +231,12 @@ function Widgets.List(parent, opts)
                     row.action:SetEnabled(a.enabled and true or false)
                 end
                 row.warn:SetShown(data ~= nil and data.warn ~= nil)
+                if actionX then
+                    row.warn:ClearAllPoints()
+                    row.warn:SetPoint("LEFT", row, "LEFT", actionX, 0)
+                    row.action:ClearAllPoints()
+                    row.action:SetPoint("LEFT", row, "LEFT", actionX + 22, 0)
+                end
             end
             if not data then
                 row:Hide()

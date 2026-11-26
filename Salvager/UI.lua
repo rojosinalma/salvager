@@ -260,6 +260,18 @@ local function layout(view, data)
         end
         if col then x = x + w[i] + 6 end
     end
+    -- The buttons' column (Buy, Post) is a column like the others: right after the last one, as wide as its
+    -- warning sign and its button. (Where text cannot be measured, it stays at the right edge.)
+    if view.actionTitle and W.TextWidth("x") then
+        actionHeader:ClearAllPoints()
+        actionHeader:SetPoint("TOPLEFT", actionHeader:GetParent(), "TOPLEFT", x + 22, 0)
+        for _, row in ipairs(rows) do
+            row.warn:ClearAllPoints()
+            row.warn:SetPoint("LEFT", row, "LEFT", x, 0)
+            row.buy:ClearAllPoints()
+            row.buy:SetPoint("LEFT", row, "LEFT", x + 22, 0)
+        end
+    end
     return w
 end
 
