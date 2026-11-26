@@ -242,7 +242,30 @@ function Window.AccuracyBandRows()
         return rows
     end
     row(acc.total, GOLD .. "All bands|r", true)
-    for _, b in ipairs(acc.bands) do row(b, ns.BandShort(b.quality, b.classID, b.band)) end
+    -- One heading per quality and gear type, with its own totals; its bands under it, by item level only.
+    local groups, order = {}, {}
+    for _, b in ipairs(acc.bands) do
+        local key = (b.quality or 0) .. ":" .. (b.classID or 0)
+        local g = groups[key]
+        if not g then
+            g = { n = 0, paid = 0, promised = 0, got = 0, sold = 0, units = 0, soldUnits = 0, bands = {} }
+            g.name = ns.BandName(b.quality, b.classID, b.band):match("^(.-|r)") or "?"
+            groups[key] = g
+            order[#order + 1] = g
+        end
+        for _, field in ipairs({ "n", "paid", "promised", "got", "sold", "units", "soldUnits" }) do
+            g[field] = g[field] + b[field]
+        end
+        g.bands[#g.bands + 1] = b
+    end
+    for _, g in ipairs(order) do
+        row(g, g.name, true)
+        for _, b in ipairs(g.bands) do
+            local range = ns.BandName(b.quality, b.classID, b.band):match("item level (.-)|r$") or tostring(b.band)
+            row(b, range)
+            rows[#rows].indent = INDENT
+        end
+    end
     return rows
 end
 

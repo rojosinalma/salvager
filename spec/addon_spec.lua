@@ -125,6 +125,12 @@ describe("Salvager in a simulated client", function()
         assert.are.equal(11083, rows[2].itemID)               -- what it gave, indented
         assert.is_true(rows[2].indent > 0)
         assert.is_truthy(rows[2].cells[1]:find("2x Soul Dust", 1, true))
+        local accRows = ns.LedgerWindow.AccuracyBandRows()
+        assert.is_true(#accRows >= 3)                              -- all bands, a heading, a band
+        assert.is_truthy(accRows[2].cells[1]:find("Uncommon Armor", 1, true))
+        assert.is_true(accRows[2].group)
+        assert.is_nil(accRows[3].cells[1]:find("Uncommon", 1, true))   -- the band row: its item levels only
+        assert.is_truthy(accRows[3].cells[1]:find("^%d+[-+]"))
         local sales = ns.LedgerWindow.SoldRows(true)               -- booked from its mail: it is history at once
         local paid
         for _, r in ipairs(sales) do if r.itemID == 11083 then paid = r end end
