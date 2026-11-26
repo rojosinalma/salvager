@@ -2429,5 +2429,51 @@ describe("Salvager layout dump", function()
         for _, line in ipairs(log.regions) do if line:find(long, 1, true) then full = true end end
         assert.is_true(full)
         for _, rec in pairs(layout.windows) do assert.is_table(rec.lists) end
+
+describe("The cost of disenchanted gear in a simulated client", function()
+    local env, ns
+    local BOOTS_LINK = "|cff1eff00|Hitem:5001::::::::30:::::|h[Test Boots]|h|r"
+    local DUST, SHARD = 11083, 11084
+    local function disenchant(loot)
+        wow.fire(ns, "UNIT_SPELLCAST_SENT", "player", nil, "cast-guid", 13262)
+        wow.fire(ns, "ITEM_LOCK_CHANGED", 0, 1)
+        env.loot = loot
+        wow.fire(ns, "LOOT_READY")
+    end
+    setup(function()
+        env = wow.install()
+        env.items[5001] = { name = "Test Boots", quality = 2, ilvl = 28, req = 23, classID = 4 }
+        env.items[DUST] = { name = "Soul Dust", quality = 1, ilvl = 1, classID = 7 }
+        env.items[SHARD] = { name = "Large Glimmering Shard", quality = 1, ilvl = 1, classID = 7 }
+        env.bagLinks = { ["0:1"] = BOOTS_LINK }
+        ns = wow.loadAddon()
+        wow.fire(ns, "ADDON_LOADED", "Salvager")
+    end)
+
+    it("shares what two 11s boots cost over the dust and the shard they gave, by value", function()
+        ns.db.prices[DUST] = { p = 433, t = time() }
+        ns.db.prices[SHARD] = { p = 1800, t = time() }   -- the two boots were worth about what they cost
+        local L = ns.db.ledger
+        ns.Ledger.AddPurchase(L, 5001, 2, 2200, 2500, time())     -- two boots, 11s each
+        disenchant({ { id = DUST, qty = 1 } })
+        assert.are.equal(1100, L.stock[DUST].cost)                -- alone in its band so far
+        disenchant({ { id = SHARD, qty = 1 } })
+        assert.are.equal(2, #L.disenchants)
+        assert.are.equal(L.disenchants[1].band, L.disenchants[2].band)
+        -- The same cost for each copper of value: dust and shard get 22s in the ratio of 4.33s to 18s.
+        local dustCost, shardCost = L.stock[DUST].cost, L.stock[SHARD].cost
+        assert.are.equal(2200, dustCost + shardCost)
+        assert.are.same({ 426, 1774 }, { dustCost, shardCost })   -- by value after the cut: 411 and 1710
+        assert.is_true(math.abs(dustCost / 411 - shardCost / 1710) < 0.001)
+        -- So the dust's break-even sits near its market price, not near the 11s its boots cost.
+        local even = ns.Ledger.BreakEven(L, DUST, ns.Cut())
+        assert.are.equal(math.ceil(426 / (1 - ns.Cut())), even)
+        assert.is_true(even > 433 * 0.9 and even < 433 * 1.1, tostring(even))
+        -- The Materials list shows that break-even.
+        local found
+        for _, r in ipairs(ns.Materials.Rows()) do if r.itemID == DUST then found = r end end
+        assert.is_table(found)
+        assert.are.equal(ns.Money(even), found.cells[8])
+        for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
     end)
 end)

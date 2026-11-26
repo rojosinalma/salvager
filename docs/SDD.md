@@ -16,9 +16,29 @@ flipping is out of scope for now.
 3. **Material price** = average unit price of the cheapest 20 units, own listings excluded. When a scan
    finds none, the last price stays in use (marked `*`) for one day at most (67). A missing essence price is filled from the other
    form (3 lesser = 1 greater, marked `~`).
-4. **Cost split on disenchant:** by material value at the moment of the disenchant. Splits by quantity only
-   when no material has a price.
-5. **Stock valuation:** weighted average cost per material. Break-even = ceil(average ÷ (1 − cut)).
+4. **Cost of disenchanted gear, shared per band** (0.3.120, the user, 2026-11-26; replaces the split of each
+   item's price over what that one disenchant gave, which put the whole price on a lone dust and almost none on
+   a shard). A band is quality, gear type and item level band (`Ledger.BandKey`). Each band has a pool
+   (`ledger.pools`): the cost of its disenchants with a known cost, less what sales and conversions took, and per
+   material its unsold units and their value at the disenchants (`vals`, after the cut). The pool's cost is
+   shared over its materials by that value (largest remainder, so the parts add up to the copper); by units when
+   none has a value. So every material of a band has the same cost per copper of value, and a new disenchant
+   shares the band's cost again over all its unsold units. Units with a known cost outside the pools (opening
+   stock, conversions, units given back) keep their own cost: the stock's cost minus the pools' parts. A sale or
+   conversion takes its known units from each source in proportion to its units (whole units) and its cost at the
+   average (in proportion to each source's cost), so the cost per value of a band stays the same; a source that
+   gives up its last unit gives up all its cost. Sum of booked sale costs + cost of unsold units = what the known
+   disenchants cost (plus opening stock), to the copper. Opening stock set by hand replaces what the pools held of
+   that material, with its part of their cost. Breakdown and the Ledger's per-material share use the same rule over
+   the band's whole record (paid × value ÷ the band's value). Ledgers from before 0.3.120 are recalculated once at
+   load (`Ledger.Recost`, flag `ledger.jointCost`), after a backup (88): disenchants and sales replayed in time
+   order; each sale's known units from the pools at that moment's average, units the pools do not hold (no record:
+   opening stock, conversions) at their old cost; then units the pools hold beyond the stock go with their cost,
+   and known units outside the pools keep the old average cost. One log line says it was done. A restored backup
+   from before 0.3.120 is recalculated the same way.
+5. **Stock valuation:** weighted average cost per material over its known-cost units, in every band pool and
+   outside them (4). Break-even = ceil(average ÷ (1 − cut)). A sale is booked at that average and never changes
+   afterwards.
 6. **Purchases** are recorded when Salvager's Buy succeeds, and from the "Auction won" mail invoice (purchases
    from any addon). A mail that matches a purchase already recorded is not counted again. Matched to
    disenchants first in, first out per item ID. A disenchant with no recorded purchase adds its materials as
@@ -53,8 +73,8 @@ flipping is out of scope for now.
 
 16. **Ledger and Log** (`LedgerWindow.lua`, `LogWindow.lua`) are windows of their own (`Widgets.Window`: movable, resizable, place and size in
     `SalvagerDB.windows`). The Ledger window is built from `Ledger.History`: one entry per item (waiting purchases from
-    the FIFO, finished ones from the disenchant records, which keep the purchase time, the cost given to each
-    material and each material's value then).
+    the FIFO, finished ones from the disenchant records, which keep the purchase time and each material's value
+    then; each material's part of the cost follows the band's rule, 4).
 17. **Material price cadence:** while Play runs, the material prices are scanned again before a gear scan when
     the oldest is older than `priceRescan` (default 10 min, 0 = never). Basis, measured 2026-11-25 over about
     75 minutes (4 scans): all 24 materials moved under 3% in 7 minutes; over an hour several moved 5-12%; one
@@ -525,7 +545,7 @@ flipping is out of scope for now.
 
 ## Data
 
-`SalvagerBackup` (account-wide): `list` of ledger copies (88). `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),
+`SalvagerBackup` (account-wide): `list` of ledger copies (88). `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `pools`, `disenchants`, `sales`),
 `money` (gold journal), `quality` and `ilvl` (learned item data), `auraSeen` and `auraSnapshots` (to learn the Salvager's aura spell ID; matched by name until then).
 
 ## Open

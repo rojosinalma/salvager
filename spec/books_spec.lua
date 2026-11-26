@@ -337,5 +337,17 @@ describe("Old ledger records in a simulated client", function()
         assert.is_nil(l.purchases[1])
         assert.are.same({ 0, true }, { l.sales[1].unpaid, l.sales[1].unpaidExpired })
         assert.are.same({ 0, 190 }, { l.sales[1].profit, l.sales[1].netUntracked })   -- no known cost: no profit
+        -- The costs are shared per band once (SDD 4), after a backup, with one line in the log.
+        assert.are.equal(ns.Ledger.JOINT_COST, l.jointCost)
+        assert.are.equal("before sharing the costs per band", ns.Backup.Last().reason)
+        assert.is_nil(ns.Backup.Last().ledger.jointCost)
+        local lines = 0
+        for _, line in ipairs(ns.db.log) do if line:find("shared per band once", 1, true) then lines = lines + 1 end end
+        assert.are.equal(1, lines)
+        -- A second load does nothing again.
+        local backups = #ns.Backup.List()
+        ns = wow.loadAddon()
+        wow.fire(ns, "ADDON_LOADED", "Salvager")
+        assert.are.equal(backups, #ns.Backup.List())
     end)
 end)

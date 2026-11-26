@@ -42,6 +42,11 @@ function Backup.Restore()
     table.remove(list)
     Backup.Save("before restoring the backup of " .. date("%m-%d %H:%M", b.t))
     ns.db.ledger = Ledger.Init(Util.Copy(b.ledger))
+    -- A copy from before 0.3.120 has its costs shared per band once (what it replaces is kept above).
+    if Ledger.NeedsRecost(ns.db.ledger) then
+        local n, sold = Ledger.Recost(ns.db.ledger)
+        ns.Log("ledger: material costs shared per band once (%d disenchants, %d sales booked again)", n, sold)
+    end
     ns.Log("backup: the ledger of %s restored", date("%m-%d %H:%M", b.t))
     ns.Print("the ledger of %s is back", date("%m-%d %H:%M", b.t))
     ns.Fire("SALVAGER_LEDGER")

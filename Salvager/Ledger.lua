@@ -4,9 +4,17 @@
 -- state = {
 --   purchases = { [itemID] = { { each, ev, t, link, j = judged }, ... } }   -- oldest first (FIFO)
 --   stock     = { [matID] = { qty, cost, unknown } }      -- cost = total copper of the known-cost units
+--   pools     = { [bandKey] = { cost, mats = { [matID] = { qty, value, cost } } } }
 --   bought    = { { itemID, each, t, mail } }             -- purchases seen at the auction house
 --   disenchants = { record, ... }, sales = { record, ... }
 -- }
+--
+-- Joint cost (SDD 4): the known-cost units a band's disenchants gave and that are not sold yet sit in that
+-- band's pool, with their value at the disenchants. The pool's cost (what those disenchants cost, less what
+-- sales and conversions took) is shared over its materials by that value (by units when nothing has a value),
+-- so every material of a band carries the same cost per copper of value. A pool material's `cost` is its part,
+-- and it is counted in stock[matID].cost. The rest of a material's known units and cost (opening stock,
+-- conversions, units given back) sit outside the pools: stock minus what the pools hold.
 local _, ns = ...
 ns = ns or {}
 
@@ -38,11 +46,17 @@ function Ledger.BandOf(key)
     return tonumber(q), c == "w" and Data.CLASS_WEAPON or Data.CLASS_ARMOR, tonumber(band)
 end
 
+Ledger.JOINT_COST = 1   -- state.jointCost is this once the costs are shared per band (Ledger.Recost)
+
 function Ledger.Init(state)
-    -- A new ledger has no double sales from old versions to repair.
-    if next(state) == nil then state.doubleSalesFixed = Ledger.DOUBLES_REPAIR end
+    -- A new ledger has no double sales from old versions to repair, and no costs to share again.
+    if next(state) == nil then
+        state.doubleSalesFixed = Ledger.DOUBLES_REPAIR
+        state.jointCost = Ledger.JOINT_COST
+    end
     state.purchases = state.purchases or {}
     state.stock = state.stock or {}
+    state.pools = state.pools or {}
     state.disenchants = state.disenchants or {}
     state.sales = state.sales or {}
     state.bought = state.bought or {}
@@ -127,34 +141,146 @@ function Ledger.TakePurchase(state, itemID)
     return p
 end
 
---- Splits `cost` across the materials received, by their value now.
---- When no material has a price, splits by quantity.
---- @param got table  { [matID] = qty }
---- @return table  { [matID] = copper }
-function Ledger.Allocate(cost, got, priceOf)
-    local ids, weights, total = {}, {}, 0
-    for id, qty in pairs(got) do
-        local p = priceOf(id)
-        ids[#ids + 1] = id
-        weights[id] = (p or 0) * qty
-        total = total + weights[id]
+--- Splits `total` copper by `weight[key]` over `keys` so that the parts add up to it: each part rounded down,
+--- the copper left over going to the largest remainders (ties to the earlier key). The weights must add up to
+--- more than 0.
+local function split(total, keys, weight)
+    local sum = 0
+    for _, k in ipairs(keys) do sum = sum + weight[k] end
+    local out, given, rest = {}, 0, {}
+    for i, k in ipairs(keys) do
+        local exact = total * weight[k] / sum
+        out[k] = math.floor(exact)
+        given = given + out[k]
+        rest[i] = { k = k, i = i, f = exact - out[k] }
     end
-    table.sort(ids)
-    if total == 0 then
-        for _, id in ipairs(ids) do weights[id] = got[id] end
-        for _, id in ipairs(ids) do total = total + weights[id] end
+    table.sort(rest, function(a, b)
+        if a.f ~= b.f then return a.f > b.f end
+        return a.i < b.i
+    end)
+    for i = 1, total - given do
+        local r = rest[(i - 1) % #rest + 1]
+        out[r.k] = out[r.k] + 1
     end
-    local out, given, largest = {}, 0, nil
-    for _, id in ipairs(ids) do
-        out[id] = total > 0 and math.floor(cost * weights[id] / total) or 0
-        given = given + out[id]
-        if not largest or weights[id] > weights[largest] then largest = id end
-    end
-    if largest then out[largest] = out[largest] + (cost - given) end
     return out
 end
 
---- Adds units to stock. `cost` nil = units whose cost is not known.
+--- Shares a band pool's cost over its materials by their value at the disenchants (by units when none has a
+--- value), and moves each material's change of part into its stock cost. An empty pool goes.
+local function refresh(state, key)
+    local p = state.pools[key]
+    if not p then return end
+    local ids, weight, sum = {}, {}, 0
+    for id, m in pairs(p.mats) do
+        ids[#ids + 1] = id
+        weight[id] = m.value
+        sum = sum + m.value
+    end
+    if #ids == 0 then
+        state.pools[key] = nil
+        return
+    end
+    table.sort(ids)
+    if sum <= 0 then for _, id in ipairs(ids) do weight[id] = p.mats[id].qty end end
+    local part = split(p.cost, ids, weight)
+    for _, id in ipairs(ids) do
+        local m, s = p.mats[id], state.stock[id]
+        if s then s.cost = s.cost + part[id] - m.cost end
+        m.cost = part[id]
+    end
+end
+
+--- Where the known-cost units of a material sit: one source per band pool that holds some (in band key
+--- order), then the units outside the pools (stock minus the pools), last.
+--- @return table  { { key, qty, cost, m (the pool's material) }, ... }
+local function sources(state, matID)
+    local s = state.stock[matID]
+    local list, inPools, poolCost = {}, 0, 0
+    for key, p in pairs(state.pools) do
+        local m = p.mats[matID]
+        if m and m.qty > 0 then
+            list[#list + 1] = { key = key, qty = m.qty, cost = m.cost, m = m }
+            inPools, poolCost = inPools + m.qty, poolCost + m.cost
+        end
+    end
+    table.sort(list, function(a, b) return a.key < b.key end)
+    local outside = Ledger.KnownQty(state, matID) - inPools
+    if outside > 0 then list[#list + 1] = { qty = outside, cost = math.max(0, (s and s.cost or 0) - poolCost) } end
+    return list
+end
+
+--- Takes `n` known-cost units of a material out of where they sit, at the material's average cost: the cost
+--- leaves each source in proportion to its cost, the units in proportion to its units (rounded to whole
+--- units), so each source gives up the same share of its units, value and cost. A source that gives up its
+--- last unit gives up all its cost. A band pool loses the value and cost with them, and its other units are
+--- shared again. The stock's count is left to the caller.
+--- @return number  the cost of the units taken
+local function takeKnown(state, matID, n)
+    if n <= 0 then return 0 end
+    local s = state.stock[matID]
+    local list = sources(state, matID)
+    local keys, qty, costs, known, total = {}, {}, {}, 0, 0
+    for i, src in ipairs(list) do
+        keys[i], qty[i], costs[i] = i, src.qty, src.cost
+        known, total = known + src.qty, total + src.cost
+    end
+    if known <= 0 then return 0 end
+    n = math.min(n, known)
+    local units = split(n, keys, qty)
+    local parts = total > 0 and split(math.floor(total * n / known + 0.5), keys, costs) or {}
+    local cost, touched = 0, {}
+    for i, src in ipairs(list) do
+        local u = units[i]
+        local all = u == src.qty
+        local c = all and src.cost or (parts[i] or 0)
+        cost = cost + c
+        if src.m and (u > 0 or c > 0) then
+            local p = state.pools[src.key]
+            local v = all and src.m.value or math.min(src.m.value, math.floor(src.m.value * n / known + 0.5))
+            src.m.qty, src.m.value, src.m.cost = src.m.qty - u, src.m.value - v, src.m.cost - c
+            p.cost = p.cost - c
+            if src.m.qty <= 0 then p.mats[matID] = nil end   -- (its cost went with its last units)
+            touched[#touched + 1] = src.key
+        end
+    end
+    -- All the known units: all their cost, to the copper.
+    if n == known then cost = s.cost end
+    s.cost = s.cost - cost
+    for _, key in ipairs(touched) do refresh(state, key) end
+    return cost
+end
+
+--- Takes `count` units out of stock: known-cost units first, at their cost, then units of unknown cost.
+--- @return number cost of the known units taken, number known units taken
+local function withdraw(state, matID, count)
+    local s = state.stock[matID]
+    if not s then return 0, 0 end
+    local tracked = math.min(Ledger.KnownQty(state, matID), count)
+    local cost = takeKnown(state, matID, tracked)
+    local fromUnknown = math.min(s.unknown or 0, count - tracked)
+    s.unknown = (s.unknown or 0) - fromUnknown
+    s.qty = s.qty - tracked - fromUnknown
+    if s.qty <= 0 then state.stock[matID] = nil end
+    return cost, tracked
+end
+
+--- Puts what a disenchant with a known cost gave into its band's pool: its cost, its units and their value
+--- (`vals`, after the cut). The band's unsold units are shared again with it.
+local function pool(state, key, cost, got, vals)
+    if not next(got) then return end
+    local p = state.pools[key] or { cost = 0, mats = {} }
+    state.pools[key] = p
+    p.cost = p.cost + cost
+    for id, qty in pairs(got) do
+        Ledger.AddStock(state, id, qty, 0)   -- known units; their cost comes from the pool
+        local m = p.mats[id] or { qty = 0, value = 0, cost = 0 }
+        p.mats[id] = m
+        m.qty, m.value = m.qty + qty, m.value + ((vals and vals[id]) or 0)
+    end
+    refresh(state, key)
+end
+
+--- Adds units to stock outside the band pools. `cost` nil = units whose cost is not known.
 function Ledger.AddStock(state, matID, qty, cost)
     local s = state.stock[matID] or { qty = 0, cost = 0, unknown = 0 }
     state.stock[matID] = s
@@ -170,8 +296,19 @@ function Ledger.KnownQty(state, matID)
     return s.qty - (s.unknown or 0)
 end
 
---- Sets the stock of a material by hand (opening stock).
+--- Sets the stock of a material by hand (opening stock). It replaces what the band pools held of it: those
+--- units and their part of the pools' cost go (the other materials of those bands keep their parts).
 function Ledger.SetStock(state, matID, qty, each)
+    local touched = {}
+    for key, p in pairs(state.pools) do
+        local m = p.mats[matID]
+        if m then
+            p.cost = p.cost - m.cost
+            p.mats[matID] = nil
+            touched[#touched + 1] = key
+        end
+    end
+    for _, key in ipairs(touched) do refresh(state, key) end
     if qty <= 0 then state.stock[matID] = nil return end
     state.stock[matID] = { qty = qty, cost = qty * each, unknown = 0 }
 end
@@ -192,24 +329,12 @@ function Ledger.BreakEven(state, matID, cut)
 end
 
 --- A sale of `count` units for `gross` copper with `cutPaid` taken by the house.
---- Removes known-cost units first, at average cost. Units with no known cost, and units
---- beyond the stock, are "untracked": their net is in netUntracked, not in the profit.
+--- Removes known-cost units first, at the average cost of this moment (SDD 5), from each band pool in
+--- proportion to its units. Units with no known cost, and units beyond the stock, are "untracked": their net
+--- is in netUntracked, not in the profit. A booked cost never changes afterwards.
 --- @return table  sale record
 function Ledger.Sell(state, matID, count, gross, cutPaid, t)
-    local s = state.stock[matID]
-    local known = Ledger.KnownQty(state, matID)
-    local tracked = math.min(known, count)
-    local costBasis = 0
-    if s and tracked > 0 then
-        costBasis = math.floor(s.cost * tracked / known + 0.5)
-        s.cost = s.cost - costBasis
-    end
-    if s then
-        local fromUnknown = math.min(s.unknown or 0, count - tracked)
-        s.unknown = (s.unknown or 0) - fromUnknown
-        s.qty = s.qty - tracked - fromUnknown
-        if s.qty <= 0 then state.stock[matID] = nil end
-    end
+    local costBasis, tracked = withdraw(state, matID, count)
     local net = gross - (cutPaid or 0)
     local rec = {
         t = t, id = matID, count = count, gross = gross, cut = cutPaid or 0, net = net,
@@ -222,25 +347,13 @@ function Ledger.Sell(state, matID, count, gross, cutPaid, t)
 end
 
 --- Essences changed form (three lesser into one greater, or back): `fromQty` units of one material
---- became `toQty` of another. Their cost goes with them. Units with a known cost go first.
+--- became `toQty` of another. Their cost goes with them: out of the band pools, into units of the new form
+--- outside the pools. Units with a known cost go first.
 --- The new units have a known cost in the same share as the old ones (rounded up, so the cost always
 --- has units to sit on); the rest stay of unknown cost.
 --- @return number cost moved, number units that had no known cost
 function Ledger.Convert(state, fromID, fromQty, toID, toQty)
-    local s = state.stock[fromID]
-    local known = Ledger.KnownQty(state, fromID)
-    local tracked = math.min(known, fromQty)
-    local cost = 0
-    if s and tracked > 0 then
-        cost = math.floor(s.cost * tracked / known + 0.5)
-        s.cost = s.cost - cost
-    end
-    if s then
-        local fromUnknown = math.min(s.unknown or 0, fromQty - tracked)
-        s.unknown = (s.unknown or 0) - fromUnknown
-        s.qty = s.qty - tracked - fromUnknown
-        if s.qty <= 0 then state.stock[fromID] = nil end
-    end
+    local cost, tracked = withdraw(state, fromID, fromQty)
     local knownTo = math.min(toQty, math.ceil(toQty * tracked / fromQty))
     if knownTo > 0 then Ledger.AddStock(state, toID, knownTo, cost) end
     if toQty > knownTo then Ledger.AddStock(state, toID, toQty - knownTo, nil) end
@@ -371,7 +484,8 @@ function Ledger.DropDoubleSales(state)
     return removed
 end
 
---- Records a disenchant and adds its materials to stock.
+--- Records a disenchant and adds its materials to stock. With a known cost they go into the band's pool
+--- (SDD 4): the band's cost is shared again over all its unsold units by their value at the disenchants.
 --- @param rec table  { t, link, itemID, ilvl, quality, classID, band, salvager, got = {[id]=qty},
 ---                     planned = net EV now, evAtBuy = net EV at purchase or nil }
 --- @param purchase table|nil  from Ledger.TakePurchase
@@ -381,9 +495,6 @@ function Ledger.Disenchant(state, rec, purchase, priceOf, cut)
     rec.evAtBuy = purchase and purchase.ev or nil
     rec.boughtAt = purchase and purchase.t or nil
     rec.judged = purchase and purchase.j or nil
-    local shares = purchase and Ledger.Allocate(rec.cost, rec.got, priceOf) or {}
-    for id, qty in pairs(rec.got) do Ledger.AddStock(state, id, qty, purchase and (shares[id] or 0) or nil) end
-    rec.shares = purchase and shares or nil
     -- What each material was worth then, after the cut.
     local keep = 1 - (cut or 0.05)
     local value = 0
@@ -394,9 +505,83 @@ function Ledger.Disenchant(state, rec, purchase, priceOf, cut)
         value = value + v
     end
     rec.value = math.floor(value * keep)
+    if purchase then
+        pool(state, Ledger.BandKey(rec.quality, rec.classID, rec.band), rec.cost, rec.got, rec.vals)
+    else
+        for id, qty in pairs(rec.got) do Ledger.AddStock(state, id, qty, nil) end
+    end
     state.disenchants[#state.disenchants + 1] = rec
     Util.Cap(state.disenchants, Ledger.MAX_RECORDS)
     return rec
+end
+
+--- Whether the costs still have to be shared per band once (a ledger from before 0.3.120).
+function Ledger.NeedsRecost(state)
+    return state.jointCost ~= Ledger.JOINT_COST
+end
+
+--- Shares the costs per band once, for a ledger from before 0.3.120 (which split each item's price over what
+--- that one disenchant gave). Replays the disenchants with a known cost and the sales in time order (a
+--- disenchant before a sale of the same second) into new band pools:
+---   - each sale's cost is booked again: its known units from the pools at the average of that moment, as far
+---     as the pools hold them; the rest (units from opening stock or conversions, which have no record) keep
+---     their old cost each. Its profit follows.
+---   - then the stock is matched: the units the pools hold beyond a material's known units left without a
+---     record (conversions, stock set by hand, records dropped) and go with their cost; the known units the
+---     pools do not hold stay outside them at the material's old average cost.
+--- The stock's counts (known and unknown) do not change. Disenchant records lose `shares`.
+--- @return number disenchants pooled, number sales booked again
+function Ledger.Recost(state)
+    local old = state.stock
+    local work = { stock = {}, pools = {} }
+    local events = {}
+    for i, r in ipairs(state.disenchants) do
+        r.shares = nil
+        if r.costKnown and r.got then events[#events + 1] = { t = r.t or 0, kind = 0, i = i, r = r } end
+    end
+    for i, s in ipairs(state.sales) do
+        if not s.lost and (s.count or 0) > 0 then events[#events + 1] = { t = s.t or 0, kind = 1, i = i, r = s } end
+    end
+    table.sort(events, function(a, b)
+        if a.t ~= b.t then return a.t < b.t end
+        if a.kind ~= b.kind then return a.kind < b.kind end
+        return a.i < b.i
+    end)
+    local nd, nsales = 0, 0
+    for _, e in ipairs(events) do
+        local r = e.r
+        if e.kind == 0 then
+            pool(work, Ledger.BandKey(r.quality, r.classID, r.band), r.cost or 0, r.got, r.vals)
+            nd = nd + 1
+        else
+            local tracked = r.count - (r.untracked or 0)
+            if tracked > 0 then
+                local fromPools, n = withdraw(work, r.id, tracked)
+                local rest = tracked - n
+                r.cost = fromPools + math.floor((r.cost or 0) * rest / tracked + 0.5)
+                if r.net then splitNet(r) end
+                nsales = nsales + 1
+            end
+        end
+    end
+    -- Match the stock: units the pools hold beyond the known units go, with their cost.
+    for id in pairs(work.stock) do
+        local s = old[id]
+        local known = s and (s.qty - (s.unknown or 0)) or 0
+        local extra = Ledger.KnownQty(work, id) - math.max(0, known)
+        if extra > 0 then withdraw(work, id, extra) end
+    end
+    -- The known units outside the pools keep the material's old average cost.
+    for id, s in pairs(old) do
+        local known = s.qty - (s.unknown or 0)
+        local w = work.stock[id]
+        local inPools, poolCost = w and w.qty or 0, w and w.cost or 0
+        local outside = known - inPools
+        s.cost = poolCost + (known > 0 and math.floor((s.cost or 0) * outside / known + 0.5) or 0)
+    end
+    state.pools = work.pools
+    state.jointCost = Ledger.JOINT_COST
+    return nd, nsales
 end
 
 --- Clears the history: disenchants, sales and the record of auction purchases. The material stock and
@@ -566,12 +751,40 @@ function Ledger.Profits(state, from, keep)
     return out
 end
 
+--- The part of a band's cost that falls on each material of each disenchant, by the same rule as the pools
+--- (SDD 4) over the band's whole record: what the band's disenchants with a known cost were paid, shared by
+--- the value of what they gave at the disenchants (by units when nothing had a value).
+--- @return function(rec, matID) -> copper (not rounded), or nil when the disenchant's cost is not known
+local function bandShares(state)
+    local bands = {}
+    for _, r in ipairs(state.disenchants) do
+        if r.costKnown then
+            local key = Ledger.BandKey(r.quality, r.classID, r.band)
+            local b = bands[key] or { paid = 0, value = 0, units = 0 }
+            bands[key] = b
+            b.paid = b.paid + (r.cost or 0)
+            for id, qty in pairs(r.got or {}) do
+                b.value = b.value + ((r.vals and r.vals[id]) or 0)
+                b.units = b.units + qty
+            end
+        end
+    end
+    return function(r, id)
+        if not r.costKnown then return nil end
+        local b = bands[Ledger.BandKey(r.quality, r.classID, r.band)]
+        local qty = r.got and r.got[id] or 0
+        if b.value > 0 then return ((r.vals and r.vals[id]) or 0) * b.paid / b.value end
+        return b.units > 0 and qty * b.paid / b.units or 0
+    end
+end
+
 --- Every item bought or disenchanted, newest first: one entry per item, with what it gave.
 --- @return table  entries {
 ---   t, itemID, link, paid (nil = no purchase recorded), expected (value expected when bought, or at the
 ---   disenchant), done (disenchanted), got (value of what it gave), result (got - paid), salvager,
----   mats = { { id, qty, share (cost given to it), value }, ... }  best first }
+---   mats = { { id, qty, share (its part of the band's cost, SDD 4), value }, ... }  best first }
 function Ledger.History(state)
+    local shareOf = bandShares(state)
     local out = {}
     for itemID, list in pairs(state.purchases) do
         for _, p in ipairs(list) do
@@ -583,7 +796,9 @@ function Ledger.History(state)
     for _, r in ipairs(state.disenchants) do
         local mats = {}
         for id, qty in pairs(r.got or {}) do
-            mats[#mats + 1] = { id = id, qty = qty, share = r.shares and r.shares[id] or nil, value = r.vals and r.vals[id] or nil }
+            local share = shareOf(r, id)
+            mats[#mats + 1] = { id = id, qty = qty, share = share and math.floor(share + 0.5) or nil,
+                value = r.vals and r.vals[id] or nil }
         end
         table.sort(mats, function(a, b)
             if (a.value or 0) ~= (b.value or 0) then return (a.value or 0) > (b.value or 0) end
@@ -602,7 +817,7 @@ end
 
 --- Where a material came from: which items and which bands gave it, and what it cost from each.
 --- @return table {
----   units, knownUnits (from disenchants with a recorded purchase), cost (the part of those purchases given to it),
+---   units, knownUnits (from disenchants with a recorded purchase), cost (its part of those bands' cost, SDD 4),
 ---   items = { source, ... }, bands = { source, ... } }
 --- source = {
 ---   itemID, link (items) or quality, classID, band (bands),
@@ -612,6 +827,7 @@ end
 ---                                      -- over the `known` disenchants that have a recorded purchase
 --- }
 function Ledger.Breakdown(state, matID)
+    local shareOf = bandShares(state)
     local out = { units = 0, knownUnits = 0, cost = 0, items = {}, bands = {} }
     local byItem, byBand = {}, {}
     local function source(map, list, key, make)
@@ -641,7 +857,7 @@ function Ledger.Breakdown(state, matID)
                 s.units = s.units + qty
                 if r.costKnown then
                     s.knownUnits = s.knownUnits + qty
-                    s.cost = s.cost + ((r.shares and r.shares[matID]) or 0)
+                    s.cost = s.cost + shareOf(r, matID)
                 end
             end
         end
@@ -649,14 +865,18 @@ function Ledger.Breakdown(state, matID)
             out.units = out.units + qty
             if r.costKnown then
                 out.knownUnits = out.knownUnits + qty
-                out.cost = out.cost + ((r.shares and r.shares[matID]) or 0)
+                out.cost = out.cost + shareOf(r, matID)
             end
         end
     end
-    -- Only the sources that gave this material.
+    -- Only the sources that gave this material; costs to the copper.
+    out.cost = math.floor(out.cost + 0.5)
     for _, key in ipairs({ "items", "bands" }) do
         local kept = {}
-        for _, s in ipairs(out[key]) do if s.gave > 0 then kept[#kept + 1] = s end end
+        for _, s in ipairs(out[key]) do
+            s.cost = math.floor(s.cost + 0.5)
+            if s.gave > 0 then kept[#kept + 1] = s end
+        end
         out[key] = kept
     end
     return out

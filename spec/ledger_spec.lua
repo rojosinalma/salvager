@@ -8,14 +8,6 @@ describe("Ledger", function()
         state = Ledger.Init({})
     end)
 
-    it("splits an item's cost by material value", function()
-        -- Pay 30s, get dust worth 10s and an essence worth 30s.
-        local prices = { [1] = 1000, [2] = 3000 }
-        local out = Ledger.Allocate(3000, { [1] = 1, [2] = 1 }, function(id) return prices[id] end)
-        assert.are.equal(750, out[1])
-        assert.are.equal(2250, out[2])
-    end)
-
     it("sums the profit by quality and gear type, by band, by item and by material, for a time", function()
         local prices = { [11083] = 400, [11084] = 5000 }
         local function priceOf(id) return prices[id] end
@@ -45,17 +37,6 @@ describe("Ledger", function()
         assert.are.equal(4, Ledger.Profits(state).total.n)               -- all of it
         local rare = Ledger.Profits(state, nil, function(r) return r.quality == 3 end)
         assert.are.same({ 1, 18000 }, { rare.total.n, rare.total.paid })
-    end)
-
-    it("splits by quantity when nothing has a price", function()
-        local out = Ledger.Allocate(900, { [1] = 2, [2] = 1 }, function() return nil end)
-        assert.are.equal(600, out[1])
-        assert.are.equal(300, out[2])
-    end)
-
-    it("never loses a copper when splitting", function()
-        local out = Ledger.Allocate(1001, { [1] = 1, [2] = 1, [3] = 1 }, function() return 100 end)
-        assert.are.equal(1001, out[1] + out[2] + out[3])
     end)
 
     it("keeps an average cost and a break-even price", function()
@@ -434,14 +415,16 @@ describe("Ledger", function()
         local b = Ledger.Breakdown(state, 1)
         assert.are.equal(11, b.units)
         assert.are.equal(6, b.knownUnits)
-        assert.are.equal(2300, b.cost)
+        -- Band 30 paid 3000 for dust worth 760 + 380 and an essence worth 1520: the dust's part is 3000 * 1140 / 2660;
+        -- band 35's 300 is all on its dust.
+        assert.are.equal(math.floor(3000 * 1140 / 2660 + 300 + 0.5), b.cost)
         assert.are.equal(3, #b.items)
         local hood
         for _, s in ipairs(b.items) do if s.itemID == 77 then hood = s end end
         assert.are.equal(2, hood.gave)          -- two of its three disenchants gave dust
         assert.are.equal(3, hood.all)
         assert.are.equal(3, hood.units)
-        assert.are.equal(2000, hood.cost)       -- the dust took the whole price of those two hoods
+        assert.are.equal(math.floor(3000 * 1140 / 2660 + 0.5), hood.cost)   -- its part of the band's cost (SDD 4)
         assert.are.equal(3000, hood.paid)       -- the item as a whole: three hoods
         assert.are.equal(math.floor(800 * 0.95) + math.floor(400 * 0.95) + math.floor(1600 * 0.95), hood.got)
         assert.are.equal(2, #b.bands)

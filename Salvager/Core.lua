@@ -523,6 +523,11 @@ ns.On("ADDON_LOADED", function(name)
     Ledger.Init(ns.db.ledger)
     local doubles = Ledger.DropDoubleSales(ns.db.ledger)
     if doubles > 0 then ns.Log("ledger: removed %d sale(s) that an older version booked twice", doubles) end
+    if Ledger.NeedsRecost(ns.db.ledger) then
+        ns.Backup.Save("before sharing the costs per band")
+        local n, sold = Ledger.Recost(ns.db.ledger)
+        ns.Log("ledger: material costs shared per band once (%d disenchants, %d sales booked again)", n, sold)
+    end
     -- Windows renamed in 0.3.4: keep their place and size.
     local w = ns.db.windows
     if w.results then w.ledger, w.results = w.ledger or w.results, nil end

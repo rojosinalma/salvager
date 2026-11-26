@@ -17,9 +17,11 @@ local function addLines(tooltip, link)
             price and string.format("%s (%s min ago)", ns.Money(price), age or "?") or "not scanned", 1, 1, 1, 1, 1, 1)
         local s = ns.db.ledger.stock[id]
         if s and s.qty > 0 then
+            local avg = Ledger.AvgCost(ns.db.ledger, id)
             local be = Ledger.BreakEven(ns.db.ledger, id, ns.Cut())
-            tooltip:AddDoubleLine(COLOR .. "Salvager stock|r",
-                string.format("%d at %s, break-even %s", s.qty, ns.Money(s.cost / s.qty), ns.Money(be)), 1, 1, 1, 1, 1, 1)
+            tooltip:AddDoubleLine(COLOR .. "Salvager stock|r", avg
+                and string.format("%d at %s, break-even %s", s.qty, ns.Money(avg), ns.Money(be))
+                or string.format("%d, cost unknown", s.qty), 1, 1, 1, 1, 1, 1)
         end
         return
     end
