@@ -1,7 +1,7 @@
 -- Every Salvager window, every tab and subtab, at its smallest size and at its default size, with long data: no text
 -- is cut unless the code says it may be (UI.md Layout 6, Tables 2), no two controls of a row overlap, nothing is
 -- outside its window, and every table's last column ends at the table's right edge (UI.md Tables 2). The stand-in
--- models sizes, anchors and text widths for this (spec/wow.lua, layout mode; SDD 105).
+-- models sizes, anchors and text widths for this (spec/wow.lua, layout mode; SDD 106).
 local wow = require("spec.wow")
 
 local WINDOWS = { "SalvagerFrame", "SalvagerLedgerFrame", "SalvagerOddsFrame", "SalvagerMaterialsFrame",
@@ -217,7 +217,7 @@ local function seed(env, ns)
         env.ah.commodities[m.id] = { { unitPrice = BIG, quantity = 9999, numOwnerItems = 0 } }
         env.bags[m.id] = 999
     end
-    env.money = 99999999999                                  -- 9,999,999g 99s 99c
+    env.money = 2147483647                                   -- the gold cap: 214748g 36s 47c
     env.bagSize = { [0] = 16, [1] = 36, [2] = 36, [3] = 36, [4] = 36 }
     env.bagFree = { [0] = 0, [1] = 0, [2] = 0, [3] = 0, [4] = 1 }
     local slots = {}

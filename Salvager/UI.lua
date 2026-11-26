@@ -8,9 +8,9 @@ ns.UI = UI
 
 local MAX_ROWS, ROW_H = 40, 24
 local MAX_COLS = 11
--- (880: the footer's row holds the window buttons, the gold, the bag space, Play, Stop and Buy Top, SDD 101a.)
-local WIDTH, HEIGHT = 880, 560
-local MIN_W, MIN_H = 880, 470
+-- (940: the footer's row holds the window buttons, the gold, the bag space, Play, Stop and Buy Top, SDD 101a.)
+local WIDTH, HEIGHT = 940, 560
+local MIN_W, MIN_H = 940, 470
 -- Under the title bar: the tabs (24 to 54 px), then the view: the Gear view's settings block, or the Materials
 -- view's filter row; the list under it. The footer: two lines of text and the row of buttons (UI.md Controls 1).
 local TABS_TOP, SETTINGS_TOP, SETTINGS_H, FILTERS_TOP, LIST_BOTTOM = 24, 58, 108, 58, 68
@@ -779,7 +779,8 @@ local function build()
     bags.uiKind = "readout"
     P.footerBar:AddRight(bags, bagW, 12)
     W.HelpArea(P.footerBar, bags, "Bag space", ns.LedgerWindow.BAG_HELP)
-    local goldW = readout(ns.Money(9999 * 10000 + 9999), 100)
+    -- (the most gold a character can hold: 2^31 - 1 copper, 214748g 36s 47c)
+    local goldW = readout(ns.Money(2147483647), 100)
     gold = W.Label(P.footerBar, "", "GameFontHighlightSmall")
     gold:SetJustifyH("RIGHT")
     gold:SetWordWrap(false)

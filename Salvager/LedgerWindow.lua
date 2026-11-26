@@ -393,7 +393,7 @@ function Window.BagText()
 end
 
 --- The widest bag space text (a column of live values keeps the width of its widest one, UI.md Tables 2).
-Window.BAG_SAMPLE = string.format("%s 88/88 %s %s-88/88|r %s", BAG_ICON, ARROW_ICON, RED, ALERT_ICON)
+Window.BAG_SAMPLE = string.format("%s 888/888 %s %s-888/888|r %s", BAG_ICON, ARROW_ICON, RED, ALERT_ICON)
 --- The help on the bag space, wherever it shows (the Purchases view, the main window's footer).
 Window.BAG_HELP = "Free slots / all slots of your backpack and bags, now; after the arrow: the free slots once you take "
     .. "every purchase still in the mail (one slot each). Below 0, red with the alert sign: that many slots are missing. "

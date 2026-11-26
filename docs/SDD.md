@@ -742,7 +742,7 @@ flipping is out of scope for now.
        Buy Top at the right. 0.3.134 (the user): left of Play, two readouts (text, not buttons): the gold (coins,
        moved from the footer's upper line) and the bag space (`LedgerWindow.BagText`, the Purchases view's, with its
        help), each as wide as its widest value, live on `PLAYER_MONEY` and `BAG_UPDATE_DELAYED`. The smallest width
-       is 880 (was 800) so the row fits (`bar.used`). Nothing on the tab row but the tabs (the gold, the pop-out and the window buttons left
+       is 940 (880 in 0.3.134, 800 before; 0.3.135: the gold readout sized for the gold cap, 214748g 36s 47c, and the bag space for three digits) so the row fits (`bar.used`). Nothing on the tab row but the tabs (the gold, the pop-out and the window buttons left
        it).
     b. Limits window (`LimitsWindow.lua`, new): the table of the old Limits tab (columns "Armor: recommended",
        "Armor: limit used", "Weapons: recommended", "Weapons: limit used"; the limit boxes over the "limit used"
@@ -799,7 +799,7 @@ flipping is out of scope for now.
     (it drives Buy Top and the order) is green when it gains, red when it loses; since 0.3.133 the other too (0.3.132, the
     user: 0.3.129 made both grey). The same in the row's and Buy Top's tooltips. A click on the gear above Buy Top
     opens its Gear Details, as a click on its row does.
-105. **Specs that see a cut text** (0.3.135; UI.md Layout 6, Tables 2). The stand-in (`spec/wow.lua`, layout mode:
+106. **Specs that see a cut text** (0.3.135; UI.md Layout 6, Tables 2). The stand-in (`spec/wow.lua`, layout mode:
     `wow.install({ layout = true })`) models sizes, anchors, rects and text widths: a character is a share of the
     font size (Friz Quadrata, fitted to texts the client sized to their own text in the layout dump: 12 and 10 pt,
     within 8 %, each class rounded up about 4 %); color and link codes take no room, an inline texture is as wide as
