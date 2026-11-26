@@ -556,8 +556,8 @@ local function build()
         "Opens the market charts in their own window: the price of each material over time, from your scans.")
     market:SetPoint("RIGHT", ledger, "LEFT", -6, 0)
     ahButton = W.Button(f, "Auction house", 104, function() UI.ToAuctionHouse() end,
-        "Closes the Salvager windows and shows the game's auction house. Scans keep running. The Salvager button "
-        .. "under the auction house brings the windows back.")
+        "Closes the Salvager windows: only the auction house window stays. Scans keep running. The Salvager button "
+        .. "above the auction house window brings them back.")
     ahButton:SetPoint("RIGHT", market, "LEFT", -6, 0)
     ahButton:SetMotionScriptsWhileDisabled(true)
     ahButton:HookScript("OnEnter", function(self)
@@ -1038,21 +1038,54 @@ function UI.RestoreWindows()
     ns.Market.Restore()
 end
 
---- Only the game's auction house: the Salvager windows close, scans and checks go on.
+--- Only the auction house window (the game's, or another addon's): the Salvager windows close, scans and
+--- checks go on. (The auction house window is open already: it is not shown here, another addon may keep
+--- the game's one out of sight on purpose.)
 function UI.ToAuctionHouse()
     if f then f:Hide() end
-    local ah = _G.AuctionHouseFrame
-    if ah and not ah:IsShown() then ah:Show() end
 end
 
--- Under the game's auction house window: a button that brings the Salvager windows back.
-local ahFrameButton
-local function addAuctionHouseButton()
-    local ah = _G.AuctionHouseFrame
-    if ahFrameButton or not ah then return end
-    ahFrameButton = W.Button(ah, "Salvager", 90, function() UI.Toggle() end,
-        "Opens the Salvager windows over the auction house (and closes them again).")
-    ahFrameButton:SetPoint("TOPRIGHT", ah, "BOTTOMRIGHT", 0, -2)
+-- On the auction house window: a button that brings the Salvager windows back. On the game's window and on
+-- ForeverForge's (which hides the game's), above the top right corner: the space under the window holds the
+-- game's tabs and other addons' buttons. It can be dragged anywhere around the window; the place is kept.
+local AH_WINDOWS = { "AuctionHouseFrame", "ForeverForgeAuctionFrame" }
+local ahButtons = {}
+
+local function placeAhButton(b, host)
+    b:ClearAllPoints()
+    local p = ns.db.windows.ahButton
+    if type(p) == "table" and tonumber(p.x) and tonumber(p.y) then
+        b:SetPoint("BOTTOMRIGHT", host, "TOPRIGHT", p.x, p.y)
+    else
+        b:SetPoint("BOTTOMRIGHT", host, "TOPRIGHT", -30, 2)
+    end
+end
+
+local function addAuctionHouseButtons()
+    for _, name in ipairs(AH_WINDOWS) do
+        local host = _G[name]
+        if host and not ahButtons[name] then
+            local b = W.Button(host, "Salvager", 90, function() UI.Toggle() end,
+                "Opens the Salvager windows over the auction house (and closes them again). Drag it to move it; "
+                .. "it stays where you put it.")
+            if b.SetFrameLevel and host.GetFrameLevel then b:SetFrameLevel((host:GetFrameLevel() or 0) + 50) end
+            b:SetMovable(true)
+            b:RegisterForDrag("LeftButton")
+            b:SetScript("OnDragStart", function(self) self:StartMoving() end)
+            b:SetScript("OnDragStop", function(self)
+                self:StopMovingOrSizing()
+                -- Kept as an offset from the window's top right corner, for both windows.
+                local right, top = host:GetRight(), host:GetTop()
+                local bRight, bBottom = self:GetRight(), self:GetBottom()
+                if right and top and bRight and bBottom then
+                    ns.db.windows.ahButton = { x = math.floor(bRight - right + 0.5), y = math.floor(bBottom - top + 0.5) }
+                end
+                for n, other in pairs(ahButtons) do placeAhButton(other, _G[n]) end
+            end)
+            placeAhButton(b, host)
+            ahButtons[name] = b
+        end
+    end
 end
 
 function UI.Frame() return f end
@@ -1073,7 +1106,10 @@ for _, e in ipairs({ "SALVAGER_PRICES", "SALVAGER_PRICES_DONE", "SALVAGER_SCAN",
 end
 
 ns.On("AUCTION_HOUSE_SHOW", function()
-    addAuctionHouseButton()
+    addAuctionHouseButtons()
+    -- (Another addon may build its auction window a moment after this event.)
+    C_Timer.After(0.5, addAuctionHouseButtons)
+    C_Timer.After(2, addAuctionHouseButtons)
     if ns.db.settings.autoOpen then
         UI.Show()
         -- The layout of last time: the windows that were open, and the tab that was showing. (Also when the

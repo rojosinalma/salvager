@@ -340,8 +340,14 @@ flipping is out of scope for now.
     (hidden, not marked closed: `UI.HideOthers`), and they come back with it (`UI.RestoreWindows` on its
     OnShow and on `AUCTION_HOUSE_SHOW`). The "Auction house" button (top row, off while the auction house is
     closed) closes the Salvager windows and leaves the game's auction house showing; scans and checks go on.
-    A "Salvager" button under the game's auction house window (`AuctionHouseFrame`, bottom right) opens and
-    closes them again.
+    A "Salvager" button opens and closes them again. It sits above the top right corner of the auction house
+    window: under it are the game's tabs and ForeverForge's "ForeverForge AH" button (0.3.89 put it there and
+    they overlapped). It is on the game's window and on ForeverForge's (`ForeverForgeAuctionFrame`, which
+    keeps the game's one shown but invisible), can be dragged, and keeps its place (`windows.ahButton`).
+    The "Auction house" button only hides the Salvager windows: it never shows the game's window, since
+    ForeverForge hides that one on purpose. Facts read from ForeverForge Auction (no code taken): its
+    "ForeverForge AH" button hangs below the game's window, bottom right, and can be dragged (kept in its own
+    saved data), so its overlaps can be fixed by dragging it, with no patch.
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

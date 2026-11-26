@@ -1258,8 +1258,17 @@ describe("Salvager layout", function()
         button:Click()
         assert.is_true(_G.SalvagerFrame:IsShown())
         assert.is_true(_G.SalvagerLedgerFrame:IsShown())
+        -- ForeverForge's auction window, built a moment after the auction house opens, gets one too.
+        _G.ForeverForgeAuctionFrame = wow.widget("Frame")
+        wow.fire(ns, "AUCTION_HOUSE_SHOW")
+        wow.tick(ns, 0.6)
+        local ff
+        for _, fr in ipairs(env.frames) do
+            if fr.parent == _G.ForeverForgeAuctionFrame and fr.text == "Salvager" then ff = fr end
+        end
+        assert.is_table(ff)
         ns.Scanner.state = "idle"
-        _G.AuctionHouseFrame = nil
+        _G.AuctionHouseFrame, _G.ForeverForgeAuctionFrame = nil, nil
     end)
 
     it("leaves closed what the player closed on purpose", function()
