@@ -135,11 +135,18 @@ function M.install()
         -- env.guids["bag:slot"] = the item's GUID
         GetItemGUID = function(loc) return env.guids and env.guids[loc.bag .. ":" .. loc.slot] end,
     }
+    -- env.bagSize[bag] = slots (the backpack has 4 unless set), env.bagFree[bag] = free slots (all of them
+    -- unless set), env.bagFamily[bag] = the bag family (0 = holds anything; a profession bag is not 0).
+    env.bagSize, env.bagFree, env.bagFamily = { [0] = 4 }, {}, {}
     _G.C_Container = {
         GetContainerItemLink = function(bag, slot) return env.bagLinks and env.bagLinks[bag .. ":" .. slot] end,
-        GetContainerNumSlots = function(bag) return bag == 0 and 4 or 0 end,
+        GetContainerNumSlots = function(bag) return env.bagSize[bag] or 0 end,
+        GetContainerNumFreeSlots = function(bag)
+            return env.bagFree[bag] or env.bagSize[bag] or 0, env.bagFamily[bag] or 0
+        end,
         GetContainerItemID = function(_, slot) return env.bagSlots and env.bagSlots[slot] end,
     }
+    _G.NUM_BAG_SLOTS = 4
     _G.ItemLocation = { CreateFromBagAndSlot = function(_, bag, slot) return { bag = bag, slot = slot } end }
     _G.C_UnitAuras = { GetAuraDataByIndex = function(_, i) return env.auras[i] end }
     _G.GetNumLootItems = function() return #env.loot end

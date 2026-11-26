@@ -25,6 +25,12 @@ local COLUMNS = {
         { "Disenchant value", 96, "RIGHT", help = { "Disenchant value", "The market value of the materials you got, "
             .. "at the prices of the moment you disenchanted, after the auction house cut." } },
         { "Profit", 84, "RIGHT", help = { "Profit", "Disenchant value minus Paid." } } },
+    -- The Purchases view's second subtab: what waits in the mail.
+    waiting = { { "Item", 220 },
+        { "Item level", 60, "CENTER", help = { "Item level", "The item's level, as the Deals list judged it when you bought." } },
+        { "Bought", 82 }, { "Paid", 84, "RIGHT" },
+        { "Expected value", 84, "RIGHT", help = { "Expected value", "The value the Deals list showed when you "
+            .. "bought: the average disenchant value at the prices of that moment, after the auction house cut." } } },
     -- The Accuracy view is two tables: by band, and by material.
     accBands = { { "Band", 170 }, { "Items", 44, "CENTER", help = { "Items", "How many disenchants with a recorded "
             .. "purchase are in the row. Grey = fewer than 20: too few to judge, one lucky shard moves it a lot." } },
@@ -79,6 +85,8 @@ local salesParts = {}   -- title, table, title, table of the Sales view
 local purchaseControls = {} -- the Purchases view's search box and filters
 local accuracyControls = {} -- the Accuracy view's filters
 local salesTabs = {}    -- the Sales view's subtabs: open and sold, history
+local purchaseTabs = {} -- the Purchases view's subtabs: all purchases, not picked up
+local bagLabel, bagArea -- the Purchases view's bag space, on its subtab row
 
 --- Which bands the Odds view shows: { quality = { [2], [3], [4] }, type = { a, w } }, kept with the window.
 --- A filter set as every view keeps it: gear types, qualities, item level bands left out, Salvager
@@ -148,7 +156,8 @@ local function filterRow(parent, x, changed, point, salvager)
             l:SetPoint("LEFT", parent, "TOPLEFT", point[1], point[2])
         end
         drop:SetPoint("LEFT", l, "RIGHT", 6, 0)
-        W.HelpArea(parent, l, label, help)
+        -- (The help area hides with its label, so it never covers the table of another subtab or view.)
+        controls[#controls + 1] = W.HelpArea(parent, l, label, help)
         controls[#controls + 1] = l
         controls[#controls + 1] = drop
         prev = drop
@@ -322,6 +331,60 @@ function Window.PurchaseRows()
             or "Nothing yet. Buy from the Deals tab, or take your \"Auction won\" mail, then disenchant.")
     end
     return rows
+end
+
+--- The Purchases view's subtab: "all" (every purchase) or "mail" (not picked up), kept with the window.
+function Window.PurchaseTab()
+    local saved = ns.db.windows.ledger
+    return (saved and saved.purchaseTab == "mail") and "mail" or "all"
+end
+
+--- What waits in the mail: the count and the price paid of the purchases whose "Auction won" mail is not
+--- taken yet.
+--- @return number count, number paid
+function Window.NotPickedUpTotal()
+    local n, paid = 0, 0
+    for _, b in ipairs(Ledger.NotPickedUp(ns.db.ledger)) do n, paid = n + 1, paid + (b.each or 0) end
+    return n, paid
+end
+
+--- The purchases made at the auction house whose "Auction won" mail is not taken yet, oldest first (its
+--- mail came first, and goes first when the mail runs out of time). A heading row has the count and totals.
+function Window.NotPickedUpRows()
+    local rows, waiting = {}, Ledger.NotPickedUp(ns.db.ledger)
+    if #waiting == 0 then
+        rows[1] = note("Nothing waits in the mail. A purchase made with Buy shows here until you take its "
+            .. "\"Auction won\" mail.")
+        return rows
+    end
+    local paid, ev, evMissing = 0, 0, false
+    for _, b in ipairs(waiting) do
+        paid = paid + (b.each or 0)
+        if b.ev then ev = ev + b.ev else evMissing = true end
+    end
+    rows[1] = { group = true, cells = { GOLD .. #waiting .. (#waiting == 1 and " item" or " items") .. " in the mail|r", "", "",
+        ns.Money(paid), ns.Money(ev) .. (evMissing and (GREY .. "?|r") or "") } }
+    for _, b in ipairs(waiting) do
+        local ilvl = (b.j and b.j.ilvl) or (b.link and ns.ItemLevelOf(b.link)) or ns.db.ilvl[b.itemID]
+        rows[#rows + 1] = {
+            itemID = b.itemID, link = b.link,
+            cells = { itemName(b.itemID, b.link), ilvl and tostring(ilvl) or (GREY .. "-|r"), when(b.t),
+                ns.Money(b.each or 0), money(b.ev) },
+        }
+    end
+    return rows
+end
+
+--- The bag space for gear, and a warning in words when what waits in the mail does not fit.
+function Window.BagText()
+    local free, total = ns.Items.BagSpace()
+    local waiting = Window.NotPickedUpTotal()
+    local text = string.format("%sBag space|r %d free of %d", GOLD, free, total)
+    if waiting > free then
+        text = text .. string.format("  %snot enough for the %d %s in the mail|r", RED, waiting,
+            waiting == 1 and "item" or "items")
+    end
+    return text
 end
 
 --- A countdown: "44:05", or "23:10:42" from one hour up.
@@ -786,18 +849,31 @@ function Window.Refresh()
     list:SetShown(not split and not odds)
     -- The Sales view has a row of subtabs, the Purchases view its search and filters; the tables start under.
     local purchases = Window.view == "purchases"
+    local mailTab = purchases and Window.PurchaseTab() == "mail"
     for _, c in ipairs(purchaseControls) do
-        c:SetShown(purchases)
-        if purchases and c.Update then c:Update() end
+        c:SetShown(purchases and not mailTab)
+        if purchases and not mailTab and c.Update then c:Update() end
     end
     for _, c in ipairs(accuracyControls) do
         c:SetShown(accuracy)
         if accuracy and c.Update then c:Update() end
     end
+    -- (The Purchases view has its subtabs, then on the first one its search and filters under them.)
     local down = (sales or purchases or accuracy) and SUBTABS or 0
+    if purchases and not mailTab then down = 2 * SUBTABS end
     for key, b in pairs(salesTabs) do
         b:SetShown(sales)
         if (key == "history") == history then b:LockHighlight() else b:UnlockHighlight() end
+    end
+    for key, b in pairs(purchaseTabs) do
+        b:SetShown(purchases)
+        if (key == "mail") == mailTab then b:LockHighlight() else b:UnlockHighlight() end
+    end
+    bagLabel:SetShown(purchases)
+    bagArea:SetShown(purchases)
+    if purchases then
+        purchaseTabs.mail:SetText(string.format("Not picked up (%d)", (Window.NotPickedUpTotal())))
+        bagLabel:SetText(Window.BagText())
     end
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98 - down)
     salesParts[1]:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -100 - down)
@@ -839,6 +915,12 @@ function Window.Refresh()
         local rows = Window.SoldRows(true)
         list.onSort = nil
         list:SetColumns(COLUMNS.history)
+        list:SetSource(#rows, function(i) return rows[i] end)
+        list:Refresh()
+    elseif mailTab then
+        local rows = Window.NotPickedUpRows()
+        list.onSort = nil
+        list:SetColumns(COLUMNS.waiting)
         list:SetSource(#rows, function(i) return rows[i] end)
         list:Refresh()
     else
@@ -917,7 +999,8 @@ local function build()
     W.Tooltip(tabs.accuracy, "Accuracy", "Expected value when you bought, against the disenchant value of what you got, "
         .. "against the sold value. By band and by material.")
     W.Tooltip(tabs.purchases, "Purchases", "Every item you bought, newest first. Under each one: what it was disenchanted "
-        .. "into, the part of its price given to each material, and what each was worth then.")
+        .. "into, the part of its price given to each material, and what each was worth then. The Not picked up "
+        .. "subtab has what still waits in the mail, with your bag space.")
     W.Tooltip(tabs.sales, "Sales", "Your open auctions, and what is sold with its money still to collect. The History "
         .. "subtab has the sales you have collected. Profit = what you get after the cut, minus what those "
         .. "materials cost you.")
@@ -1025,6 +1108,32 @@ local function build()
         end
         salesTabs[t[1]] = b
     end
+    -- The subtabs of the Purchases view: every purchase; and what waits in the mail.
+    for _, t in ipairs({ { "all", "All purchases", "Every item you bought, with what it was disenchanted into." },
+        { "mail", "Not picked up", "The items you bought with Buy whose \"Auction won\" mail you have not taken "
+            .. "yet, the first bought first. The number is how many." } }) do
+        local b = W.Button(f, t[2], t[1] == "all" and 110 or 140, function()
+            f.saved.purchaseTab = t[1] == "mail" and "mail" or nil
+            list.offset = 0
+            Window.Refresh()
+        end, t[3])
+        if purchaseTabs.all then
+            b:SetPoint("LEFT", purchaseTabs.all, "RIGHT", 4, 0)
+        else
+            b:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -98)
+        end
+        purchaseTabs[t[1]] = b
+        b:Hide()
+    end
+    -- On the same row, at the right: the bag space, for both subtabs (do the mails fit?).
+    bagLabel = W.Label(f, "", "GameFontHighlightSmall")
+    bagLabel:SetPoint("RIGHT", f, "TOPRIGHT", -14, -109)
+    bagLabel:SetJustifyH("RIGHT")
+    bagArea = W.HelpArea(f, bagLabel, "Bag space", "Free slots in your backpack and bags, of all their slots, now. "
+        .. "Profession bags are left out: they do not hold gear. \"Not enough\" = the items in the mail do not fit.")
+    bagLabel:Hide()
+    bagArea:Hide()
+    Window.purchaseTabs, Window.bagLabel = purchaseTabs, bagLabel   -- (the specs click and read them)
     -- The Purchases view: a search box, and filters by gear type, quality and item level band.
     do
         local pf = purchaseFilter()
@@ -1033,7 +1142,7 @@ local function build()
             Window.Refresh()
         end
         local searchLabel = W.Label(f, "Search", "GameFontHighlightSmall")
-        searchLabel:SetPoint("LEFT", f, "TOPLEFT", 14, -109)
+        searchLabel:SetPoint("LEFT", f, "TOPLEFT", 14, -109 - SUBTABS)
         local search = W.Edit(f, 120)
         search:SetPoint("LEFT", searchLabel, "RIGHT", 8, 0)
         search:SetText(pf.search or "")
@@ -1046,8 +1155,8 @@ local function build()
         end)
         search:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
         search:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-        W.HelpArea(f, searchLabel, "Search", "Shows the items whose name has this text in it.")
-        purchaseControls = { searchLabel, search }
+        purchaseControls = { searchLabel, search,
+            W.HelpArea(f, searchLabel, "Search", "Shows the items whose name has this text in it.") }
         local row, last = filterRow(f, pf, changed, search, false)
         for _, c in ipairs(row) do purchaseControls[#purchaseControls + 1] = c end
         local prev = last
@@ -1144,3 +1253,5 @@ for _, e in ipairs({ "SALVAGER_LEDGER", "SALVAGER_PRICES_DONE", "SALVAGER_SETTIN
     "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED" }) do
     ns.On(e, function() Window.Refresh() end)
 end
+-- The bag space of the Purchases view is live while it shows.
+ns.On("BAG_UPDATE_DELAYED", function() if Window.view == "purchases" then Window.Refresh() end end)

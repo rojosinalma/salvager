@@ -419,6 +419,17 @@ flipping is out of scope for now.
     folder, CurseForge token and project) live in `.env`, never in the repo. Forever only: the file gets one
     game version, of the Forever type (`CURSEFORGE_GAME_VERSION_TYPE=88568`), and the TOC has only interface
     16001, so other clients do not load it. Blizzard's own Forever TOCs have no flavor suffix, so neither does ours.
+90. **Purchases view: two subtabs and the bag space** (0.3.108, the user). "All purchases" (first) is the list
+    as before, with its search and filters on the row under the subtabs. "Not picked up (n)" lists the
+    purchases made with Buy whose "Auction won" mail is not taken yet (`Ledger.NotPickedUp`: `ledger.bought`
+    without `mail`, with link, expected value and item level from the matching purchase record), oldest
+    first: its mail came first and runs out first. A heading row has the count, the total paid and the total
+    expected value. Purchases known only from their mail (other addons) are not in it: the addon sees them
+    when they are taken. No arrival countdown: the delay of a buyer's mail on Forever is not measured. On
+    the subtab row, at the right, for both subtabs: bag space, free of total slots of the backpack and the
+    bags of family 0 (`Items.BagSpace`, `C_Container.GetContainerNumFreeSlots`; profession bags left out),
+    live on `BAG_UPDATE_DELAYED`; red with "not enough for the n items in the mail" when fewer are free.
+
 ## Data
 
 `SalvagerBackup` (account-wide): `list` of ledger copies (88). `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

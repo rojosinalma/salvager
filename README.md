@@ -27,6 +27,7 @@ By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_foreve
    **Pop out** moves the materials list to a window of its own; close it to put the list back.
    **Limits** shows the buy limit per item level band for armor and weapons.
    **Ledger** opens a window of its own: what you bought with what each item was disenchanted into,
+   what you bought and have not picked up from the mail yet (with your free bag space),
    your auctions (listed, sold and waiting for the money, undercut) and the sales already paid with their
    profit, and the disenchant odds of every band with its buy limit and the chance to lose at that limit.
    Point at a column title for what it means. **Log** opens the activity log.

@@ -74,6 +74,39 @@ describe("Salvager in a simulated client", function()
         assert.are.equal(0, #ns.Scanner.deals)
     end)
 
+    it("lists the purchase as not picked up, with its total and the bag space", function()
+        local W = ns.LedgerWindow
+        W.Show()
+        W.view = "purchases"
+        ns.db.windows.ledger.purchaseTab = nil
+        W.Refresh()
+        assert.is_true(W.purchaseTabs.all:IsShown())          -- the main subtab first, and shown
+        assert.are.equal("Not picked up (1)", W.purchaseTabs.mail:GetText())
+        assert.is_truthy(W.bagLabel:GetText():find("4 free of 4", 1, true))   -- the stand-in's backpack
+        W.purchaseTabs.mail:Click()
+        assert.are.equal("mail", W.PurchaseTab())
+        local rows = W.NotPickedUpRows()
+        assert.are.equal(2, #rows)                            -- the heading with the totals, then the purchase
+        assert.is_true(rows[1].group)
+        assert.is_truthy(rows[1].cells[1]:find("1 item in the mail", 1, true))
+        assert.are.equal(ns.Money(500), rows[1].cells[4])
+        assert.are.equal(BOOTS, rows[2].itemID)
+        assert.are.equal("28", rows[2].cells[2])              -- the item level it was judged by
+        assert.are.equal(ns.Money(500), rows[2].cells[4])
+        assert.are.same({ 1, 500 }, { W.NotPickedUpTotal() })
+        -- Bags full (the profession bag's free slots do not count): the warning says it in words.
+        env.bagSize, env.bagFree, env.bagFamily = { [0] = 16, [1] = 10, [2] = 12 }, { [0] = 0, [1] = 0, [2] = 5 },
+            { [2] = 8 }
+        wow.fire(ns, "BAG_UPDATE_DELAYED")
+        assert.is_truthy(W.bagLabel:GetText():find("0 free of 26", 1, true))
+        assert.is_truthy(W.bagLabel:GetText():find("not enough for the 1 item in the mail", 1, true))
+        env.bagFree[1] = 3                                    -- room made: the label follows the bag event
+        wow.fire(ns, "BAG_UPDATE_DELAYED")
+        assert.is_truthy(W.bagLabel:GetText():find("3 free of 26", 1, true))
+        assert.is_nil(W.bagLabel:GetText():find("not enough", 1, true))
+        env.bagSize, env.bagFree, env.bagFamily = { [0] = 4 }, {}, {}
+    end)
+
     it("records the purchase from the Auction won mail", function()
         env.inbox[1] = { sender = "Auction House", subject = "Auction won: Test Boots", link = BOOTS_LINK,
             invoice = { "buyer", "Test Boots", "Seller", 500, 500, 0, 0, 0, 0, 0, 1 } }
@@ -84,6 +117,13 @@ describe("Salvager in a simulated client", function()
         wow.fire(ns, "MAIL_INBOX_UPDATE")
         assert.are.equal(1, #ns.db.ledger.purchases[BOOTS])   -- the mail matches the purchase: not counted again
         assert.are.equal(500, ns.db.ledger.purchases[BOOTS][1].each)
+        -- Its mail is taken: it leaves Not picked up, and the subtab says why it is empty.
+        assert.are.equal(0, (ns.LedgerWindow.NotPickedUpTotal()))
+        assert.are.equal("Not picked up (0)", ns.LedgerWindow.purchaseTabs.mail:GetText())
+        assert.is_truthy(ns.LedgerWindow.NotPickedUpRows()[1].cells[1]:find("Nothing waits in the mail", 1, true))
+        ns.db.windows.ledger.purchaseTab = nil
+        ns.LedgerWindow.view = "sales"
+        ns.LedgerWindow.Refresh()
     end)
 
     it("books a disenchant with the purchase cost", function()

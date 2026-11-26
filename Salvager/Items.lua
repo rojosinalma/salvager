@@ -3,7 +3,7 @@
 --   1. SalvagerDB.ilvl, learned from the game's own item data (kept between sessions);
 --   2. the item level that comes with the auction listing.
 -- Items not learned yet are asked for in the background, a few at a time, so a
--- scan never sends thousands of item requests at once.
+-- scan never sends thousands of item requests at once. Also the bag space for gear (Items.BagSpace).
 local _, ns = ...
 
 local Items = { queue = {}, pending = {}, waiting = {}, learned = 0 }
@@ -54,6 +54,22 @@ function Items.Quality(id)
 end
 
 function Items.Backlog() return #Items.queue end
+
+--- Bag space for gear: free and total slots of the backpack and the bags that hold anything (bag family
+--- 0). Profession bags are left out: their free slots do not hold gear.
+--- @return number free, number total
+function Items.BagSpace()
+    local free, total = 0, 0
+    if not (C_Container and C_Container.GetContainerNumFreeSlots) then return free, total end
+    for bag = 0, _G.NUM_BAG_SLOTS or 4 do
+        local n, family = C_Container.GetContainerNumFreeSlots(bag)
+        if (family or 0) == 0 then
+            free = free + (n or 0)
+            total = total + (C_Container.GetContainerNumSlots(bag) or 0)
+        end
+    end
+    return free, total
+end
 
 ns.OnTick(function()
     local q = Items.queue

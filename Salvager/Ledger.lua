@@ -89,6 +89,35 @@ function Ledger.MailPurchase(state, itemID, count, total, ev, t, link)
     return true
 end
 
+--- The purchases seen at the auction house whose "Auction won" mail has not been taken yet, oldest first.
+--- Each one has its link, expected value and judged data from the matching purchase record when it is
+--- still there (same item, time and price).
+--- @return table  { { itemID, each, t, link, ev, j }, ... }
+function Ledger.NotPickedUp(state)
+    local used, out = {}, {}
+    for _, b in ipairs(state.bought) do
+        if not b.mail then
+            local row = { itemID = b.itemID, each = b.each, t = b.t }
+            for _, p in ipairs(state.purchases[b.itemID] or {}) do
+                if not used[p] and p.t == b.t and p.each == b.each then
+                    used[p] = true
+                    row.link, row.ev, row.j = p.link, p.ev, p.j
+                    break
+                end
+            end
+            out[#out + 1] = row
+        end
+    end
+    -- (state.bought is in purchase order; a stable sort keeps two of the same second in that order.)
+    for i, r in ipairs(out) do r.index = i end
+    table.sort(out, function(a, b)
+        if (a.t or 0) ~= (b.t or 0) then return (a.t or 0) < (b.t or 0) end
+        return a.index < b.index
+    end)
+    for _, r in ipairs(out) do r.index = nil end
+    return out
+end
+
 --- The oldest recorded purchase of this item, removed. nil when none.
 function Ledger.TakePurchase(state, itemID)
     local list = state.purchases[itemID]
