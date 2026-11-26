@@ -48,7 +48,8 @@ local VIEWS = {
     limits = {
         icon = false,
         header = { "Item level", "Armor recommended", "Armor buy below", "Weapon recommended", "Weapon buy below" },
-        cols = { { 64, "LEFT" }, { 100, "RIGHT" }, { 210, "RIGHT" }, { 100, "RIGHT" }, { 210, "RIGHT" } },
+        -- (The two "buy below" columns are as wide as their gold, silver and copper boxes, title centered.)
+        cols = { { 64, "LEFT" }, { 100, "RIGHT" }, { 184, "CENTER" }, { 100, "RIGHT" }, { 184, "CENTER" } },
         edit = { [3] = "armor", [5] = "weapon" },
     },
 }

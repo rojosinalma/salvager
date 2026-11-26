@@ -215,14 +215,15 @@ end
 function Widgets.Money(parent, onChange)
     -- Layout: [box] coin  [box] coin  [box] coin. Each coin sits right after its own box, and the
     -- frame is as wide as all of it, so whatever comes next starts after the last coin.
-    local BOX_W, SMALL_W, COIN, COIN_GAP, NEXT_GAP, LEFT_PAD = 48, 30, 13, 3, 11, 6
+    -- (The gold box holds three digits: up to 999 gold.)
+    local BOX_W, SMALL_W, COIN, COIN_GAP, NEXT_GAP, LEFT_PAD = 36, 30, 13, 3, 11, 6
     local frame = CreateFrame("Frame", nil, parent)
     frame:SetSize(LEFT_PAD + BOX_W + 2 * SMALL_W + 3 * (COIN_GAP + COIN) + 2 * NEXT_GAP + 2, 20)
     local m = { boxes = {}, frame = frame }
     local prevCoin
     for i, icon in ipairs({ "UI-GoldIcon", "UI-SilverIcon", "UI-CopperIcon" }) do
         local e = Widgets.Edit(frame, i == 1 and BOX_W or SMALL_W, true)
-        e:SetMaxLetters(i == 1 and 6 or 2)
+        e:SetMaxLetters(i == 1 and 3 or 2)
         e:SetJustifyH("RIGHT")
         -- The template's border is drawn around the box: keep the digits inside it.
         e:SetTextInsets(2, 4, 0, 0)
@@ -262,7 +263,7 @@ function Widgets.Money(parent, onChange)
     function m:Set(copper)
         if self:HasFocus() then return end
         self.silent = true
-        copper = math.max(0, math.floor(copper or 0))
+        copper = math.min(9999999, math.max(0, math.floor(copper or 0)))
         self.boxes[1]:SetText(tostring(math.floor(copper / 10000)))
         self.boxes[2]:SetText(tostring(math.floor(copper % 10000 / 100)))
         self.boxes[3]:SetText(tostring(copper % 100))
