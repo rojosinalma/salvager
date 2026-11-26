@@ -353,6 +353,43 @@ describe("Salvager window and options", function()
         for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
     end)
 
+    it("makes every column as wide as its widest text, where the client can measure text", function()
+        local real = ns.Widgets.TextWidth
+        ns.Widgets.TextWidth = function(text) return text and #text * 6 or 0 end
+        local need = ns.Widgets.FitColumns({ "Name", "Qty" }, 2, function(r)
+            return ({ { "Soul Dust", "5" }, { "Large Glimmering Shard", "12" } })[r], 20
+        end)
+        assert.are.equal(22 * 6 + 20 + 10, need[1])                -- the longest name, its icon, the padding
+        assert.are.equal(3 * 6 + 10, need[2])                      -- the title "Qty" is wider than "12"
+        local list = ns.Widgets.List(_G.UIParent, {})
+        list:SetColumns({ { "Item", 220 }, { "Paid", 84, "RIGHT" } })
+        local rows = { { cells = { "Boots", "1g 20s" } } }
+        list:SetSource(1, function(i) return rows[i] end)
+        list.GetWidth = function() return 600 end
+        local width
+        list.headers[2].SetWidth = function(_, w) width = w end
+        list:Refresh()
+        assert.are.equal(6 * 6 + 10, width)                        -- "1g 20s", not the 84 written in the code
+        -- Every window draws with fitted columns.
+        for _, v in ipairs({ "deals", "materials", "limits" }) do
+            ns.UI.view = v
+            ns.UI.Refresh()
+        end
+        for _, v in ipairs({ "purchases", "sales", "odds", "accuracy" }) do
+            ns.LedgerWindow.view = v
+            ns.LedgerWindow.Refresh()
+        end
+        ns.Materials.PopOut()
+        ns.Materials.Refresh()
+        ns.Materials.PutBack()
+        ns.Market.Toggle()
+        ns.Market.Toggle()
+        ns.Breakdown.Open(11083)
+        ns.LogWindow.Refresh()
+        ns.Widgets.TextWidth = real
+        for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
+    end)
+
     it("reads gold, silver and copper boxes", function()
         local got
         local m = ns.Widgets.Money(_G.UIParent, function(c) got = c end)

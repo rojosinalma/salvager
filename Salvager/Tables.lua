@@ -18,7 +18,7 @@ function Widgets.List(parent, opts)
     opts = opts or {}
     local ROW_H = opts.rowHeight or 22
     local HEAD_H = opts.header == false and 0 or ROW_H
-    local MAX_ROWS, MAX_COLS, GAP, BAR_W = 60, 8, 6, 18
+    local MAX_ROWS, MAX_COLS, GAP, BAR_W = 60, 10, 6, 18
     local MIN_FIRST = 90       -- the first column never gets narrower than this
     local ACTION_W = opts.actionWidth or 0   -- room on the right for a row's button and warning sign
     local list = CreateFrame("Frame", nil, parent)
@@ -176,12 +176,23 @@ function Widgets.List(parent, opts)
         -- Column positions. The first column takes what is left of the width and shrinks with the
         -- window; a column that still does not fit is left out, from the right.
         local avail = (self:GetWidth() or 0) - BAR_W - 8 - ACTION_W
+        -- Every column is as wide as its widest text (title or cell), and no wider; the room that is left
+        -- stays empty at the right. Where the client cannot measure text, the widths given are used and
+        -- the first column takes the room that is left.
+        local titles = {}
+        for i, col in ipairs(cols) do titles[i] = col[1] end
+        local need = opts.fit ~= false and Widgets.FitColumns(titles, self.count, function(r)
+            local data = self.getRow(r)
+            if not data then return nil end
+            return data.cells, (data.indent or 0) + (data.itemID and ROW_H or 0)
+        end) or nil
         local fixed = 0
-        for i = 2, #cols do fixed = fixed + cols[i][2] + GAP end
+        for i = 2, #cols do fixed = fixed + (need and need[i] or cols[i][2]) + GAP end
         local first = math.max(MIN_FIRST, avail - fixed)
+        if need then first = math.max(40, math.min(need[1], first)) end
         local xs, ws, fits, x = {}, {}, {}, 4
         for i, col in ipairs(cols) do
-            xs[i], ws[i] = x, (i == 1 and first or col[2])
+            xs[i], ws[i] = x, (i == 1 and first or (need and need[i] or col[2]))
             fits[i] = i == 1 or (x + ws[i] <= avail + 4)
             x = x + ws[i] + GAP
         end
@@ -284,19 +295,18 @@ function Widgets.CardList(parent)
     bar:SetScript("OnMouseWheel", wheel)
 
     --- Where each column sits: the first from the left (after the icon), the others from the right edge.
+    -- Where each column sits: packed from the left, each as wide as stack.widths says (see Refresh).
     local function place(region, card, i, forTitle)
-        local cols = stack.columns
+        local cols, ws = stack.columns, stack.widths
+        local x = 30
+        for c = 1, i - 1 do x = x + ws[c] + 8 end
         region:ClearAllPoints()
-        if i == 1 then
-            local fixed = 12
-            for c = 2, #cols do fixed = fixed + cols[c][2] + 8 end
-            region:SetPoint("LEFT", card, "LEFT", forTitle and 8 or 30, 0)
-            region:SetPoint("RIGHT", card, "RIGHT", -fixed, 0)
+        if i == 1 and forTitle then
+            region:SetPoint("LEFT", card, "LEFT", 8, 0)
+            region:SetWidth(ws[1] + 22)
         else
-            local right = 12
-            for c = #cols, i + 1, -1 do right = right + cols[c][2] + 8 end
-            region:SetPoint("RIGHT", card, "RIGHT", -right, 0)
-            region:SetWidth(cols[i][2])
+            region:SetPoint("LEFT", card, "LEFT", x, 0)
+            region:SetWidth(ws[i])
         end
         region:SetJustifyH(cols[i][3] or "LEFT")
     end
@@ -398,6 +408,16 @@ function Widgets.CardList(parent)
 
     function stack:Refresh()
         local cols = self.columns
+        -- Every column is as wide as its widest text over all cards, and no wider, so the cards line up.
+        -- Where the client cannot measure text, the widths given are used.
+        local titles, all = {}, {}
+        for i, col in ipairs(cols) do titles[i] = col[1] end
+        for _, data in ipairs(self.data) do
+            for _, row in ipairs(data.rows or {}) do all[#all + 1] = row.cells end
+        end
+        local need = Widgets.FitColumns(titles, #all, function(r) return all[r] end)
+        self.widths = {}
+        for i, col in ipairs(cols) do self.widths[i] = need and need[i] or col[2] end
         content:SetWidth(math.max(10, (scroll:GetWidth() or 0)))
         local y = 0
         for n, data in ipairs(self.data) do

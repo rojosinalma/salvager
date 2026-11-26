@@ -524,6 +524,49 @@ function Widgets.Label(parent, text, template)
     return l
 end
 
+--- How wide a text is on screen (small font), in pixels; nil where the client cannot tell.
+--- Tables use it so a column is as wide as its widest text, and no wider.
+local meter, widthOf, cached = nil, {}, 0
+function Widgets.TextWidth(text)
+    if text == nil or text == "" then return 0 end
+    local w = widthOf[text]
+    if w ~= nil then return w or nil end
+    if not meter then
+        meter = UIParent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        meter:Hide()
+    end
+    meter:SetText(text)
+    local measure = meter.GetUnboundedStringWidth or meter.GetStringWidth
+    w = tonumber((measure(meter)))
+    if cached > 4000 then widthOf, cached = {}, 0 end
+    widthOf[text], cached = w or false, cached + 1
+    return w
+end
+
+--- The widths a table's columns need: the widest of the title and the texts of each column, plus `pad`.
+--- @param titles table  the column titles
+--- @param count number, cellsOf function(i) -> cells, extra (pixels before the first column's text)
+--- @return table|nil  widths per column; nil when the client cannot measure text
+function Widgets.FitColumns(titles, count, cellsOf, pad)
+    local need = {}
+    for i, title in ipairs(titles) do
+        local w = Widgets.TextWidth(title)
+        if not w then return nil end
+        need[i] = w
+    end
+    for r = 1, math.min(count, 400) do
+        local cells, extra = cellsOf(r)
+        for i = 1, #titles do
+            local w = cells and Widgets.TextWidth(cells[i]) or 0
+            if not w then return nil end
+            if i == 1 then w = w + (extra or 0) end
+            if w > need[i] then need[i] = w end
+        end
+    end
+    for i = 1, #titles do need[i] = math.ceil(need[i]) + (pad or 10) end
+    return need
+end
+
 --- Item icon texture file for an item ID.
 function Widgets.IconOf(itemID)
     if not itemID then return nil end

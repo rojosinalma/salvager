@@ -7,7 +7,7 @@ local UI = { view = "deals", offset = 0, expanded = {} }
 ns.UI = UI
 
 local MAX_ROWS, ROW_H = 40, 24
-local MAX_COLS = 8
+local MAX_COLS = 10
 local WIDTH, HEIGHT = 800, 560
 local MIN_W, MIN_H = 800, 470
 local ROWS = 15          -- rows that fit now (set from the list height)
@@ -40,9 +40,9 @@ local VIEWS = {
     materials = {
         icon = true,
         actionTitle = "Post",
-        header = { "Material", "Price", "Age", "Bags", "Listed", "Sold", "Avg cost", "Break-even" },
+        header = { "Material", "Price", "Age", "Bags", "Listed", "Sold", "Avg cost", "Break-even", "Profit" },
         cols = { { 160, "LEFT" }, { 80, "RIGHT" }, { 36, "CENTER" }, { 40, "CENTER" }, { 46, "CENTER" }, { 46, "CENTER" },
-            { 85, "RIGHT" }, { 85, "RIGHT" } },   -- (the same as Materials.COLUMNS)
+            { 85, "RIGHT" }, { 85, "RIGHT" }, { 85, "RIGHT" } },   -- (the same as Materials.COLUMNS)
         help = "materials",                        -- (the titles' help is Materials.HELP)
     },
     limits = {
@@ -226,16 +226,24 @@ local function helpLines()
 end
 
 --- Column widths: the first column takes the room the window has over its default width.
-local function widths(view)
-    local extra = math.max(0, math.floor((f:GetWidth() or WIDTH) - WIDTH))
+--- Every column is as wide as its widest text (title or cell), and no wider. The columns with input
+--- boxes keep the width of their boxes. Where the client cannot measure text, the widths given are used
+--- and the first column takes the room the window has over its default width.
+local function widths(view, data)
+    local need = data and W.FitColumns(view.header, #data, function(r) return data[r].cells end)
     local w = {}
+    if need then
+        for i, col in ipairs(view.cols) do w[i] = (view.edit and view.edit[i]) and col[1] or need[i] end
+        return w
+    end
+    local extra = math.max(0, math.floor((f:GetWidth() or WIDTH) - WIDTH))
     for i, col in ipairs(view.cols) do w[i] = col[1] + (i == 1 and extra or 0) end
     return w
 end
 
-local function layout(view)
+local function layout(view, data)
     local x = view.indent or (view.icon and 30 or 4)
-    local w = widths(view)
+    local w = widths(view, data)
     for i = 1, MAX_COLS do
         local col = view.cols[i]
         headers[i]:ClearAllPoints()
@@ -303,8 +311,8 @@ function UI.Refresh()
     materialsOnly:SetChecked(ns.db.settings.materialsDataOnly)
     local view = VIEWS[UI.view]
     ROWS = fitRows()
-    local w = layout(view)
     local data = SOURCES[UI.view]()
+    local w = layout(view, data)
     UI.offset = math.max(0, math.min(UI.offset, #data - ROWS))
     UI.UpdateScrollBar(#data)
     for i, h in ipairs(headers) do

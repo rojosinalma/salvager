@@ -208,6 +208,10 @@ flipping is out of scope for now.
     would be thrown away without an answer (measured 2026-11-26: four clicks during a browse, none answered).
     Everything else is held for 3 s and the player clicks again. A "request dropped" within 2 s of a Buy
     click frees the row at once; a late "purchase completed" for it is still booked.
+63. **Columns fit their content** (`Widgets.FitColumns`, `Widgets.TextWidth`): in every table (`Widgets.List`,
+    `Widgets.CardList`, the main window's list) a column is as wide as its widest title or cell over all rows,
+    plus 10 px; spare room stays at the right. The widths written in the code are the fallback where text
+    cannot be measured, and the width of columns with input boxes. The Log is left out.
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

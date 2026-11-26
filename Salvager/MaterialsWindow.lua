@@ -25,16 +25,19 @@ Materials.HELP = {
         .. "+2? = 2 more units with no recorded purchase." },
     [8] = { "Break-even", "The lowest price each at which a sale does not lose money: average cost with the 5% "
         .. "auction house cut added." },
+    [9] = { "Profit", "What one unit brings if you sell it at the price now: the price after the 5% cut, minus its "
+        .. "average cost. Red = a sale at this price loses money." },
 }
 
 Materials.COLUMNS = {
     { "Material", 160 }, { "Price", 80, "RIGHT" }, { "Age", 36, "CENTER" }, { "Bags", 40, "CENTER" },
     { "Listed", 46, "CENTER" }, { "Sold", 46, "CENTER" }, { "Avg cost", 85, "RIGHT" }, { "Break-even", 85, "RIGHT" },
+    { "Profit", 85, "RIGHT" },
 }
 for i, help in pairs(Materials.HELP) do Materials.COLUMNS[i].help = help end
 
 -- The window's own size: it fits its content and has no resize corner.
-local WIDTH, TOP, BOTTOM, ROW_H = 760, 58, 14, 24
+local WIDTH, TOP, BOTTOM, ROW_H = 800, 58, 14, 24
 
 local function ago(seconds)
     if not seconds then return "-" end
@@ -82,6 +85,7 @@ function Materials.Rows()
         if price and be and price < be then priceText = "|cffff4040" .. priceText .. "|r" end
         local ageText = ago(age)
         if age and age > maxAge then ageText = "|cffff8040" .. ageText .. "|r" end
+        local gain = (price and avg) and (math.floor(price * (1 - ns.Cut()) + 0.5) - math.floor(avg + 0.5)) or 0
         local mine = bags > 0 or listed[m.id] or waiting[m.id] or (s and s.qty > 0) or seen[m.id]
         if not only or mine then out[#out + 1] = {
             cells = { ns.MaterialName(m.id), priceText, ageText, bags > 0 and tostring(bags) or "-",
@@ -89,7 +93,8 @@ function Materials.Rows()
                 waiting[m.id] and ("|cffffd100" .. waiting[m.id] .. "|r") or "-",
                 avg and (ns.Money(avg) .. (unknown > 0 and " |cff808080+" .. unknown .. "?|r" or ""))
                     or (unknown > 0 and "|cff808080unknown|r" or "-"),
-                be and ns.Money(be) or "-" },
+                be and ns.Money(be) or "-",
+                (price and avg) and ((gain >= 0 and "|cff40ff40" or "|cffff4040") .. ns.Money(gain) .. "|r") or "-" },
             itemID = m.id, post = true, canPost = bags > 0, suggest = suggest,
         } end
     end
