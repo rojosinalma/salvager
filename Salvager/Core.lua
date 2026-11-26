@@ -39,11 +39,13 @@ local DEFAULTS = {
     auraSeen = {},                 -- [spellID] = name, auras whose name mentions the Salvager
     auraSnapshots = {},            -- helpful auras at the first disenchants (to find the Salvager's ID)
     ilvl = {},                     -- [itemID] = item level, learned from the game (see Items.lua)
+    quality = {},                  -- [itemID] = quality, learned with the item level
     log = {},                      -- what the addon did, newest last (written to disk on /reload or logout)
     window = {},
     windows = {},                  -- place and size of the Ledger and Log windows
     listings = {},                 -- your auctions as last read: { t, rows, lowest = { [itemID] = { lo, t } } }
     posted = {},                   -- posts made through Salvager: { auctionID, itemID, qty, each, t }
+    money = {},                    -- the gold journal, every change of gold with its cause (Journal.lua)
 }
 
 ------------------------------------------------------------------ output
@@ -55,15 +57,20 @@ end
 
 function ns.Money(copper) return Util.FormatMoney(copper, true) end
 
-local LOG_MAX = 600
+local LOG_MAX = 5000
 
---- Adds a line to the activity log (SalvagerDB.log).
+--- Adds a line to the activity log (SalvagerDB.log): "HH:MM:SS text". A line "== <date> ==" starts each day.
 function ns.Log(fmt, ...)
     if not ns.db then return end
     local ok, msg = pcall(string.format, fmt, ...)
     if not ok then msg = tostring(fmt) end
     msg = Util.PlainMoney(msg)
     local log = ns.db.log
+    local day = date("%Y-%m-%d")
+    if ns.db.logDay ~= day then
+        ns.db.logDay = day
+        log[#log + 1] = "== " .. date("%A %d %B %Y") .. " =="
+    end
     log[#log + 1] = date("%H:%M:%S") .. " " .. msg
     ns.logChanged = true
     Util.Cap(log, LOG_MAX)
@@ -110,6 +117,38 @@ frame:SetScript("OnUpdate", function(_, elapsed)
     end
 end)
 
+-- The auction house has one error event for every kind of request (buy, post, cancel): it belongs to the
+-- request sent last. Each module notes its request when it sends it and takes an error only when it is the owner.
+local lastRequest
+local REQUEST_ERROR_WINDOW = 10   -- seconds: an error later than this after the request is no answer to it
+
+function ns.NoteRequest(kind) lastRequest = { kind = kind, t = GetTime() } end
+
+function ns.ErrorIs(kind)
+    return lastRequest ~= nil and lastRequest.kind == kind and GetTime() - lastRequest.t <= REQUEST_ERROR_WINDOW
+end
+
+-- A click that cannot run now runs by itself as soon as it can (docs/UI.md, Actions 1).
+-- One waiting action per label; all are dropped when the auction house closes.
+local deferred = {}
+
+--- Runs fn when ready() is true. `what` names the action, `until_` what it waits for (both for the chat).
+function ns.Defer(label, ready, fn, what, until_)
+    deferred[label] = { ready = ready, fn = fn }
+    ns.Print("%s starts by itself when %s", what, until_)
+    ns.Log("%s waits until %s", what, until_)
+end
+
+ns.OnTick(function()
+    for label, d in pairs(deferred) do
+        if d.ready() then
+            deferred[label] = nil
+            d.fn()
+        end
+    end
+end)
+ns.On("AUCTION_HOUSE_CLOSED", function() wipe(deferred) end)
+
 ------------------------------------------------------------------ item helpers
 
 local GetItemInfo = (C_Item and C_Item.GetItemInfo) or _G.GetItemInfo
@@ -128,7 +167,20 @@ function ns.ClassOf(linkOrID)
     return classID
 end
 
+local LINK_COLOR_QUALITY = { ["9d9d9d"] = 0, ffffff = 1, ["1eff00"] = 2, ["0070dd"] = 3, a335ee = 4, ff8000 = 5 }
+
+--- The quality written in an item link: "|cnIQ2:" (Forever) or the quality color. nil when none.
+function ns.LinkQuality(link)
+    if type(link) ~= "string" then return nil end
+    local q = link:match("|cnIQ(%d+):")
+    if q then return tonumber(q) end
+    local hex = link:match("|cff(%x%x%x%x%x%x)")
+    return hex and LINK_COLOR_QUALITY[hex:lower()] or nil
+end
+
 function ns.QualityOf(linkOrID)
+    local fromLink = ns.LinkQuality(linkOrID)
+    if fromLink then return fromLink end
     if C_Item and C_Item.GetItemQualityByID then
         local ok, q = pcall(C_Item.GetItemQualityByID, linkOrID)
         if ok and q then return q end
@@ -155,10 +207,16 @@ end
 
 ------------------------------------------------------------------ prices and value
 
--- The last price seen stays in use when a scan finds no listings.
+-- The last price seen stays in use when a scan finds no listings, for a day at most. A price is never
+-- higher than its ceiling (History.Ceiling, worked out when it was scanned).
+local LAST_PRICE_MAX_AGE = 24 * 3600
 local function rawPrice(id)
     local e = ns.db and ns.db.prices[id]
-    return e and (e.p or e.last) or nil
+    if not e then return nil end
+    local p = e.p
+    if not p and e.last and e.lastT and time() - e.lastT <= LAST_PRICE_MAX_AGE then p = e.last end
+    if p and e.cap and p > e.cap then p = e.cap end
+    return p
 end
 
 --- Material price each (copper), filled from the other essence form when missing.
@@ -315,9 +373,7 @@ ns.On("SALVAGER_PRICES_DONE", function()
 end)
 ns.On("AUCTION_HOUSE_CLOSED", function() ns.scanBothPending = false end)
 
-function ns.BandKey(quality, classID, band)
-    return string.format("%d:%s:%d", quality, classID == Data.CLASS_WEAPON and "w" or "a", band)
-end
+ns.BandKey = Ledger.BandKey
 
 --- The recommended buy limit: value after cut minus the minimum profit.
 --- What a buy limit is measured from: the average value, or with cautious pricing the value with
@@ -332,9 +388,10 @@ end
 
 --- The buy limit in use: the one set by hand for this band, else the recommended one.
 --- @return number copper, boolean manual
+--- A limit set by hand is never above the value: when material prices fall, it does not buy at a loss.
 function ns.BuyLimit(quality, classID, band, net)
     local o = band and ns.db.settings.limitOverride[ns.BandKey(quality, classID, band)]
-    if o then return o, true end
+    if o then return (net and math.min(o, net) or o), true end
     return ns.RecommendedLimit(net), false
 end
 
@@ -419,6 +476,7 @@ local HELP = {
     "/salv rescan 10 - minutes after which Play scans the material prices again (0 = never)",
     "/salv stock <item> <quantity> <cost each> - opening stock, e.g. /salv stock 11137 40 6s",
     "/salv report - disenchant results by band",
+    "/salv gold 24 - what happened to your gold in the last 24 hours (or any number of hours)",
     "/salv auras - list your buffs (to find the Salvager's)",
     "/salv materials - the materials list in its own window (again: put it back)",
     "/salv ledger - the ledger window (purchases, sales, odds)",
@@ -490,6 +548,10 @@ SlashCmdList.SALVAGER = function(msg)
         Ledger.SetStock(ns.db.ledger, id, qty, each)
         ns.Print("%s: %d at %s each", ns.MaterialName(id), qty, ns.Money(each))
         ns.Fire("SALVAGER_LEDGER")
+    elseif cmd == "gold" then
+        local h = tonumber(args[2] or "24")
+        if not h or h <= 0 then ns.Print("usage: /salv gold 24 (hours)") return end
+        ns.Gold.Report(h)
     elseif cmd == "report" then
         if ns.Report then ns.Report.Print() end
     elseif cmd == "materials" then
@@ -509,7 +571,7 @@ SlashCmdList.SALVAGER = function(msg)
     elseif cmd == "auras" then
         if ns.Disenchant then ns.Disenchant.PrintAuras() end
     elseif cmd == "reset" and args[2] == "ledger" and args[3] == "confirm" then
-        ns.db.ledger = Ledger.Init({})
+        ns.db.ledger = Ledger.Reset(ns.db.ledger)
         ns.Print("ledger cleared")
         ns.Fire("SALVAGER_LEDGER")
     else

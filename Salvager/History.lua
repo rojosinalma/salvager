@@ -93,6 +93,27 @@ function History.Times(state, ids, since)
     return out
 end
 
+History.CEILING_WINDOW = 24 * 3600   -- seconds of history the ceiling looks at
+History.CEILING_POINTS = 3           -- points it needs
+History.CEILING_RISE = 1.25          -- how far over the median a price may go
+History.THIN_UNITS = 5               -- fewer units listed than this: the price is no more than the median
+
+--- The highest price each a material may be valued at now, from its own history: a thin market (one silly
+--- listing) cannot raise the value of a whole band. nil when the history is too short to say.
+--- @param units number|nil  units the price now rests on
+function History.Ceiling(state, matID, now, units)
+    local ps = {}
+    for _, pt in ipairs(state[matID] or {}) do
+        if pt.p and pt.t >= now - History.CEILING_WINDOW then ps[#ps + 1] = pt.p end
+    end
+    if #ps < History.CEILING_POINTS then return nil end
+    table.sort(ps)
+    local mid = math.floor((#ps + 1) / 2)
+    local median = (#ps % 2 == 1) and ps[mid] or (ps[mid] + ps[mid + 1]) / 2
+    if units and units < History.THIN_UNITS then return math.floor(median + 0.5) end
+    return math.floor(median * History.CEILING_RISE + 0.5)
+end
+
 --- The average price per hour of the day (0 to 23) of a list of points.
 --- @return table { { hour, average }, ... } for the hours that have a price, in order
 function History.ByHour(points, hourOf)

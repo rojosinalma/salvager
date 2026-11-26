@@ -14,7 +14,7 @@ flipping is out of scope for now.
    Applied to buy prices only when the player can use it (recipe spell 1263056 or item 279985), or by
    `/salv salvager on|off`.
 3. **Material price** = average unit price of the cheapest 20 units, own listings excluded. When a scan
-   finds none, the last price stays in use (marked `*`). A missing essence price is filled from the other
+   finds none, the last price stays in use (marked `*`) for one day at most (67). A missing essence price is filled from the other
    form (3 lesser = 1 greater, marked `~`).
 4. **Cost split on disenchant:** by material value at the moment of the disenchant. Splits by quantity only
    when no material has a price.
@@ -43,6 +43,7 @@ flipping is out of scope for now.
     wago.tools: Forever's table, plus Classic Era's for items Forever's client table lacks (Forever's client
     holds only part of its items). Rerun after each Forever patch.
 13. **Buy limits** per band and type can be set by hand (Limits tab); the recommended limit stays visible.
+    A hand-set limit is never above the band's value (67).
 14. **Posting materials:** Post (Materials tab) first searches the material for its price now, then opens a
     window: price = 1 copper under the lowest listing that is not yours, quantity = what is in the bags.
     The post itself needs the player's click (`PostCommodity` is hardware-event restricted); when the game
@@ -234,10 +235,63 @@ flipping is out of scope for now.
     quality, gear type or item level band than the one it was valued with. A search answer is matched to
     its task by item ID and suffix. Rule: data that arrives later (pages, search answers) is checked
     against the thing it is used for, never trusted for the context it arrives in.
+67. **Fail closed on what is not known** (0.3.79, after the review of 2026-11-26).
+    - a. `readAuctions` lists an auction only when its own link gives quality, gear type and item level band
+       (unknown = left out, logged). The quality comes from the link first (`ns.LinkQuality`: Forever's
+       `|cnIQ<q>:` or the quality color). `judge` reads quality from `SalvagerDB.quality` (learned with the item
+       level, `Items.Quality`), never from `GetItemInfo`, so a page sends no burst of item requests.
+    - b. Thin markets: each scanned price gets a ceiling from the history of the last 24 h before the scan
+       (`History.Ceiling`: 1.25 × median with 3+ points; the median itself when under 5 units are listed).
+       `ns.PriceOf` never goes over it. One silly listing cannot raise a band's value.
+    - c. A last price (scan found none) is used for one day at most; then the material counts as missing.
+    - d. A hand-set buy limit is capped at the value (a falling market never buys at a loss).
+    - e. The auction house's single error event is taken only by the module that sent the last request
+       (`ns.NoteRequest` / `ns.ErrorIs`: buy, post, cancel). A purchase given up (error or no answer) stays
+       in `dropped`, so a late `PURCHASE_COMPLETED` is still booked.
+    - f. An auction being bought is never listed twice; a group row shows the auction its Buy button buys.
+       A recheck and a settings change use the limits of now.
+68. **Gold journal** (`Journal.lua` pure, `Gold.lua` glue; `SalvagerDB.money`): every change of a
+    character's gold (`PLAYER_MONEY`), with its balance and kind, at most 20 000 entries. Kinds come from
+    what the addon itself did (purchase −buyout, deposit, cancel fee, mail money taken: auction sale or
+    other mail) matched by exact amount, else from the window open (vendor, merchant, repair, trade, mail,
+    flight, training, auction house), else "other". A change found at login is "unseen" (the addon was off).
+    `/salv gold <hours>`: start, now, money in the mail (unpaid sales), after pickup, by kind, and the buys
+    that lost, marking those that were valued as something they were not. Each purchase keeps its judgment
+    (`j` = quality, gear type, band, item level, version), copied to the disenchant as `judged`.
+69. **Activity log:** 5000 lines; a `== <date> ==` line starts each day; session lines at login and logout
+    (character, gold, version). The Log window filters all lines, trades and gold, or errors (remembered).
+70. **Books, after the review of 2026-11-26** (0.3.79):
+    - a. `PostCommodity` and `CancelAuction` are restricted (they need the click): they cannot wait for a
+       purchase and go out later, so Post and Cancel undercut are off while a purchase is on its way, with
+       the reason in the tooltip.
+    - b. A sale's profit counts only units with a known cost; the net of the others is `netUntracked`
+       (old records are split at load). The mail's real cut replaces the estimate when the sale is paid.
+    - c. A sold part matches a known one only when its due time is within 120 s, the closest first
+       (replaces 47's "due time only tells parts apart").
+    - d. A lost deposit (auction cancelled or expired) is a `sales` record with `lost`, `count = 0`, `qty`,
+       and the deposit as its loss: in the profit and totals, not in Accuracy or Breakdown. The deposit of
+       each post is kept in `SalvagerDB.posted`. An expiry is seen on `AUCTION_HOUSE_AUCTIONS_EXPIRED`, or
+       between two reads less than 1 h apart.
+    - e. Cancel undercut is offered only when the undercut gap × quantity covers the cancel cost plus the
+       new deposit; lowest prices older than 2 min are ignored.
+    - f. Post's suggested price skips a thin outlier: a listing under 70% of the average of the cheapest
+       N units with fewer than 10% of N units. Selling below break-even stays allowed (14), with its warning.
+    - g. A conversion is not read within 2 s of loot, mail or a post; the new units keep the known-cost
+       share (rounded up), the rest stay unknown. A disenchant books materials only; the loot source is
+       checked when the client gives it (`GetLootSourceInfo`).
+    - h. Records waiting more than 30 days (an unmatched purchase mail, a purchase never disenchanted, a sale
+       never paid) are dropped or counted as paid at load. A reset keeps `seenSold`; a new ledger starts
+       with `doubleSalesFixed`.
+71. **A click that cannot run now runs by itself** (`ns.Defer`): a gear scan clicked during a material scan,
+    a material scan during a gear scan or an undercut check, and an undercut check during a material scan
+    start when the other is done (dropped if the auction house closes). The chat says when it starts.
+72. **Gold view** (Ledger window, last tab): the last 24 h of `Gold.Period`: start, now, change, money in
+    the mail and after you collect it, each kind, the buys that lost and the part valued wrong; under it
+    every change of gold, newest first.
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),
-`auraSeen` and `auraSnapshots` (to learn the Salvager's aura spell ID; matched by name until then).
+`money` (gold journal), `quality` and `ilvl` (learned item data), `auraSeen` and `auraSnapshots` (to learn the Salvager's aura spell ID; matched by name until then).
 
 ## Open
 

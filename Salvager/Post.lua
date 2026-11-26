@@ -11,6 +11,12 @@ local Post = { loading = {} }
 ns.Post = Post
 
 local DURATION_LABELS = { "Short", "Medium", "Long" }
+local PENDING_WAIT = 10   -- seconds a post may take before it is given up
+
+-- A listing much cheaper than the market and too small to matter is not followed down:
+-- under THIN_PRICE of the average of the cheapest N units, with fewer than THIN_SHARE of N units.
+Post.THIN_PRICE = 0.7
+Post.THIN_SHARE = 0.1
 
 ------------------------------------------------------------------ logic
 
@@ -32,13 +38,42 @@ function Post.FindLocation(itemID)
     end
 end
 
+--- The first listing with real volume: listings far under the average of the cheapest N units, with
+--- only a few units, are skipped (one cheap unit should not pull the price down).
+--- @param rows table  Post.Market(...).rows, cheapest first
+--- @return table|nil the listing to undercut, table the listings skipped
+function Post.Floor(rows, n)
+    n = n or ns.db.settings.priceUnits or 20
+    local units, sum = 0, 0
+    for _, r in ipairs(rows) do
+        local take = math.min(r.qty, n - units)
+        units, sum = units + take, sum + take * r.price
+        if units >= n then break end
+    end
+    if units == 0 then return nil, {} end
+    local avg, skipped = sum / units, {}
+    for _, r in ipairs(rows) do
+        if r.price >= Post.THIN_PRICE * avg or r.qty >= Post.THIN_SHARE * n then return r, skipped end
+        skipped[#skipped + 1] = r
+    end
+    return nil, skipped
+end
+
 --- The price Post suggests for one unit, and what it rests on.
---- @return table { price, lowest, breakEven, below }
----   lowest = the cheapest listing that is not yours (nil when none is known)
+--- @return table { price, lowest, breakEven, below, skipped }
+---   lowest = the cheapest listing that is not yours with real volume (nil when none is known)
+---   skipped = the cheaper listings left out (Post.Floor), when the client holds the search
 ---   below = the suggested price is under your break-even
 function Post.Suggest(itemID)
     local e = ns.db.prices[itemID]
     local lowest = e and e.lo
+    local skipped
+    -- When the client holds the search the lowest price came from, its thin outliers are skipped.
+    local rows = Post.Market(itemID).rows
+    if lowest and rows[1] and rows[1].price == lowest then
+        local floor, left = Post.Floor(rows)
+        if floor and #left > 0 then lowest, skipped = floor.price, left end
+    end
     local breakEven = Ledger.BreakEven(ns.db.ledger, itemID, ns.Cut())
     local price
     if lowest then
@@ -46,7 +81,8 @@ function Post.Suggest(itemID)
     else
         price = (e and (e.p or e.last)) or breakEven or 0
     end
-    return { price = price, lowest = lowest, breakEven = breakEven, below = breakEven ~= nil and price < breakEven }
+    return { price = price, lowest = lowest, breakEven = breakEven, below = breakEven ~= nil and price < breakEven,
+        skipped = skipped }
 end
 
 --- The other sellers' listings of a material, as the client holds them now (after a search), cheapest
@@ -220,50 +256,85 @@ function Post.Outcome(itemID, quantity, unitPrice, duration)
     return { gross = gross, net = net, cost = cost, profit = cost and (net - cost) or nil, deposit = deposit }
 end
 
+--- The post on its way, or nil. One older than PENDING_WAIT got no answer and is dropped.
+function Post.Pending()
+    local p = Post.pending
+    if p and GetTime() - p.t > PENDING_WAIT then
+        Post.pending = nil
+        ns.Log("post: no answer for %dx %s", p.quantity, ns.MaterialName(p.itemID))
+        return nil
+    end
+    return p
+end
+
+--- Why the Post button cannot post now, or nil. (PostCommodity needs the click itself, so a post
+--- cannot wait for a purchase and go out later: the button is off while one is on its way.)
+function Post.Blocked()
+    if not ns.Queue.open then return "The auction house is closed." end
+    if ns.Scanner.Buying() then return "A purchase is on its way: Post comes back as soon as it is done." end
+    if Post.Pending() then return "Your post is on its way." end
+    return nil
+end
+
 --- Sends the post. Must run from a click. Returns true when the auction house took it,
 --- "confirm" when it wants a second click (its low-price warning), or false and why.
 function Post.Send(itemID, quantity, unitPrice, duration, confirmed)
-    if not ns.Queue.open then return false, "the auction house is closed" end
+    local blocked = Post.Blocked()
+    if blocked then return false, blocked end
     if quantity < 1 or unitPrice < 1 then return false, "quantity and price must be at least 1" end
     local loc = Post.FindLocation(itemID)
     if not loc then return false, "none in your bags" end
     local fn = confirmed and AH.ConfirmPostCommodity or AH.PostCommodity
+    ns.NoteRequest("post")
     local ok, needsConfirm = pcall(fn, loc, duration, quantity, unitPrice)
     if not ok then
         ns.Log("ERROR posting %s: %s", ns.MaterialName(itemID), tostring(needsConfirm))
         return false, tostring(needsConfirm)
     end
-    Post.pending = { itemID = itemID, quantity = quantity, unitPrice = unitPrice, t = GetTime() }
+    -- The low-price warning: nothing was posted, the game waits for the second click.
+    if not confirmed and needsConfirm then
+        ns.Log("post: the auction house asks to confirm %dx %s at %s each", quantity, ns.MaterialName(itemID),
+            ns.Money(unitPrice))
+        return "confirm"
+    end
+    local deposit = Post.Outcome(itemID, quantity, unitPrice, duration).deposit
+    Post.pending = { itemID = itemID, quantity = quantity, unitPrice = unitPrice, t = GetTime(), deposit = deposit }
+    ns.Gold.Expect("deposit", deposit and -deposit or nil, ns.MaterialName(itemID), 15, -1)
+    if ns.Convert then ns.Convert.Busy() end
     ns.Log("post sent: %dx %s at %s each, duration %d%s", quantity, ns.MaterialName(itemID), ns.Money(unitPrice),
         duration, confirmed and " (confirmed)" or "")
-    if not confirmed and needsConfirm then return "confirm" end
     return true
 end
 
+local d    -- the dialog frame, built on first use
+
 ns.On("AUCTION_HOUSE_AUCTION_CREATED", function(auctionID)
-    local p = Post.pending
+    local p = Post.Pending()
     if not p then return end
     Post.pending = nil
-    if auctionID then ns.Listings.NotePost(auctionID, p.itemID, p.quantity, p.unitPrice) end
+    if auctionID then ns.Listings.NotePost(auctionID, p.itemID, p.quantity, p.unitPrice, p.deposit) end
     ns.Listings.Refresh()
     ns.Print("posted %dx %s at %s each", p.quantity, ns.MaterialName(p.itemID), ns.Money(p.unitPrice))
-    ns.Log("posted %dx %s at %s each", p.quantity, ns.MaterialName(p.itemID), ns.Money(p.unitPrice))
+    ns.Log("posted %dx %s at %s each%s", p.quantity, ns.MaterialName(p.itemID), ns.Money(p.unitPrice),
+        p.deposit and (", deposit " .. ns.Money(p.deposit)) or "")
+    if d and d:IsShown() and d.itemID == p.itemID then d:Hide() end
     ns.Fire("SALVAGER_LEDGER")
 end)
 
 local function postFailed(why)
-    local p = Post.pending
-    if not p or GetTime() - p.t > 10 then return end
+    local p = Post.Pending()
+    if not p then return end
     Post.pending = nil
     ns.Print("could not post %s (%s)", ns.MaterialName(p.itemID), why)
     ns.Log("post failed: %s (%s)", ns.MaterialName(p.itemID), why)
 end
 ns.On("AUCTION_HOUSE_POST_ERROR", function() postFailed("the auction house refused it") end)
-ns.On("AUCTION_HOUSE_SHOW_ERROR", function(err) postFailed("auction house error " .. tostring(err)) end)
+-- The auction house's one error event: ours only when the last request was a post.
+ns.On("AUCTION_HOUSE_SHOW_ERROR", function(err)
+    if ns.ErrorIs("post") then postFailed("auction house error " .. tostring(err)) end
+end)
 
 ------------------------------------------------------------------ the window
-
-local d    -- the dialog frame, built on first use
 
 local function durationLabels()
     return {
@@ -284,8 +355,11 @@ local function recalc()
     local s = Post.Suggest(id)
     local o = Post.Outcome(id, qty, price, ns.db.settings.postDuration)
     d.bags:SetText("of " .. bags .. " in your bags")
+    local skipped = 0
+    for _, r in ipairs(s.skipped or {}) do skipped = skipped + r.qty end
     d.lines[1]:SetText("Lowest listing now: " .. (s.lowest and ns.Money(s.lowest) or "none listed")
-        .. (d.stale and "  |cffff8040(price not refreshed)|r" or ""))
+        .. (d.stale and "  |cffff8040(price not refreshed)|r" or "")
+        .. (skipped > 0 and string.format("  |cff808080(%d cheaper left out: too few)|r", skipped) or ""))
     d.lines[2]:SetText("Your break-even: " .. (s.breakEven and ns.Money(s.breakEven) or "|cff808080cost not known|r"))
     d.lines[3]:SetText("You get after the 5% cut: " .. ns.Money(o.net))
     if o.profit then
@@ -323,7 +397,9 @@ local function recalc()
     d.list:Refresh()
     d.toEven:SetEnabled(s.breakEven ~= nil)
     d.toLowest:SetEnabled(s.lowest ~= nil)
-    d.post:SetEnabled(ns.Queue.open and qty >= 1 and qty <= bags and price >= 1)
+    local blocked = Post.Blocked()
+    d.post.reason = blocked
+    d.post:SetEnabled(not blocked and qty >= 1 and qty <= bags and price >= 1)
     d.post:SetText(d.confirm and "Confirm" or "Post")
 end
 
@@ -419,7 +495,8 @@ local function build()
             ns.Print("the auction house asks you to confirm this price: click Confirm")
             recalc()
         elseif result then
-            d:Hide()
+            -- The window closes when the auction house says the auction is created.
+            recalc()
         else
             ns.Print("could not post: %s", tostring(why))
         end
@@ -429,8 +506,31 @@ local function build()
     local cancel = W.Button(d, "Cancel", 90, function() d:Hide() end)
     cancel:SetPoint("BOTTOMRIGHT", d, "BOTTOMLEFT", 366, 12)
     d.post:SetPoint("RIGHT", cancel, "LEFT", -6, 0)
+    -- A switched-off Post button says why.
+    d.post:SetMotionScriptsWhileDisabled(true)
+    d.post:SetScript("OnEnter", function(self)
+        if not self.reason then return end
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Post", 1, 1, 1)
+        GameTooltip:AddLine(self.reason, 1, 0.82, 0, true)
+        GameTooltip:Show()
+    end)
+    d.post:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- A post not answered yet is no longer followed once the window is gone.
+    d:HookScript("OnHide", function() Post.pending = nil end)
     d:Hide()
 end
+
+-- The Post button follows a purchase on its way, and a post that got no answer.
+local lastBlocked
+ns.OnTick(function()
+    if not (d and d:IsShown()) then return end
+    local blocked = Post.Blocked()
+    if blocked ~= lastBlocked then
+        lastBlocked = blocked
+        recalc()
+    end
+end)
 
 local function show(itemID, stale)
     if not d then build() end

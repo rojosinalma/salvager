@@ -5,7 +5,7 @@ exclude_files = { "test/**", ".agents/**" }
 files["spec/**"] = {
     std = "+busted",
     globals = { "GameTooltip" },
-    read_globals = { "TakeInboxItem", "TakeInboxMoney", "AutoLootMailItem" },
+    read_globals = { "TakeInboxItem", "TakeInboxMoney", "AutoLootMailItem", "RepairAllItems" },
 }
 
 globals = { "SalvagerDB", "SlashCmdList", "SLASH_SALVAGER1", "SLASH_SALVAGER2", "StaticPopupDialogs" }
@@ -17,5 +17,6 @@ read_globals = {
     "GetMoney", "GetNumLootItems", "GetTime", "IsPlayerSpell", "IsShiftKeyDown", "ItemRefTooltip",
     "TooltipDataProcessor", "UIParent", "UISpecialFrames", "ATTACHMENTS_MAX_RECEIVE",
     "BackdropTemplateMixin", "StaticPopup_Show", "ItemLocation", "Settings", "InterfaceOptions_AddCategory", "InterfaceOptionsFrame_OpenToCategory", "GetCursorPosition",
+    "UnitName", "GetRealmName",
     "date", "hooksecurefunc", "time", "tinsert", "wipe",
 }

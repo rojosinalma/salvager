@@ -100,22 +100,44 @@ ns.On("ITEM_LOCK_CHANGED", function(bag, slot)
     local link = C_Container.GetContainerItemLink(bag, slot)
     if not link then return end
     local classID = ns.ClassOf(link)
-    if classID == Data.CLASS_WEAPON or classID == Data.CLASS_ARMOR then pending.link = link end
+    if classID == Data.CLASS_WEAPON or classID == Data.CLASS_ARMOR then
+        pending.link = link
+        -- The item's GUID, to check that the loot comes from it (when the client tells the loot's source).
+        local GetItemGUID = C_Item and C_Item.GetItemGUID
+        if GetItemGUID and ItemLocation then
+            local ok, guid = pcall(GetItemGUID, ItemLocation:CreateFromBagAndSlot(bag, slot))
+            if ok then pending.guid = guid end
+        end
+    end
 end)
+
+--- Does loot slot `i` come from another source than the item disenchanted? Only when the client says so
+--- (GetLootSourceInfo may not exist on Forever); unknown = it does not.
+local function otherSource(i, guid)
+    local GetLootSourceInfo = _G.GetLootSourceInfo
+    if not (guid and GetLootSourceInfo) then return false end
+    local ok, source = pcall(GetLootSourceInfo, i)
+    return ok and type(source) == "string" and source ~= guid
+end
 
 ns.On("LOOT_READY", function()
     local p = pending
     pending = nil
     if not (p and p.link and GetTime() - p.t < WINDOW) then return end
+    -- Only disenchanting materials, from the item itself: other loot open at the same time is not its result.
     local got, any = {}, false
     for i = 1, GetNumLootItems() do
         local link = GetLootSlotLink(i)
         local id = ns.ItemID(link)
         local _, _, qty = GetLootSlotInfo(i)
-        if id and qty and qty > 0 then
+        if id and qty and qty > 0 and Data.MATERIAL_BY_ID[id] and not otherSource(i, p.guid) then
             got[id] = (got[id] or 0) + qty
             any = true
         end
     end
-    if any then book(p, got) end
+    if any then
+        book(p, got)
+    else
+        ns.Log("disenchant of %s: the loot holds no disenchanting material, not booked", p.link)
+    end
 end)

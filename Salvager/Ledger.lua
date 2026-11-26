@@ -2,7 +2,7 @@
 -- Pure functions on a state table (SalvagerDB.ledger), no game API.
 --
 -- state = {
---   purchases = { [itemID] = { { each, ev, t }, ... } }   -- oldest first (FIFO)
+--   purchases = { [itemID] = { { each, ev, t, link, j = judged }, ... } }   -- oldest first (FIFO)
 --   stock     = { [matID] = { qty, cost, unknown } }      -- cost = total copper of the known-cost units
 --   bought    = { { itemID, each, t, mail } }             -- purchases seen at the auction house
 --   disenchants = { record, ... }, sales = { record, ... }
@@ -10,20 +10,47 @@
 local _, ns = ...
 ns = ns or {}
 
-local Util = ns.Util
+local Util, Data = ns.Util, ns.Data
 local Ledger = {}
 ns.Ledger = Ledger
 
 Ledger.MAX_PURCHASES_PER_ITEM = 50
 Ledger.MAX_RECORDS = 5000
 
+--- Profit counts only the units with a known cost: their part of the net, minus their cost.
+--- The net of the other units is kept apart (netUntracked).
+local function splitNet(rec)
+    local tracked = rec.count - (rec.untracked or 0)
+    local netKnown = rec.count > 0 and math.floor(rec.net * tracked / rec.count + 0.5) or 0
+    rec.netUntracked = rec.net - netKnown
+    rec.profit = netKnown - (rec.cost or 0)
+end
+
+--- Same key as ns.BandKey: "<quality>:<a|w>:<band>".
+function Ledger.BandKey(quality, classID, band)
+    return string.format("%d:%s:%d", quality or 0, classID == Data.CLASS_WEAPON and "w" or "a", band or 0)
+end
+
+--- quality, classID, band from a Ledger.BandKey.
+function Ledger.BandOf(key)
+    local q, c, band = tostring(key):match("^(%d+):(%a):(%d+)$")
+    if not q then return nil end
+    return tonumber(q), c == "w" and Data.CLASS_WEAPON or Data.CLASS_ARMOR, tonumber(band)
+end
+
 function Ledger.Init(state)
+    -- A new ledger has no double sales from old versions to repair.
+    if next(state) == nil then state.doubleSalesFixed = true end
     state.purchases = state.purchases or {}
     state.stock = state.stock or {}
     state.disenchants = state.disenchants or {}
     state.sales = state.sales or {}
     state.bought = state.bought or {}
     state.seenSold = state.seenSold or {}
+    -- Older sales counted the net of units with no known cost as profit: count it apart.
+    for _, rec in ipairs(state.sales) do
+        if rec.netUntracked == nil and not rec.lost and rec.net and rec.count then splitNet(rec) end
+    end
     -- Stock from before 0.2.7 kept unknown costs as 0: mark those units unknown.
     for _, s in pairs(state.stock) do
         if s.unknown == nil then s.unknown = (s.cost == 0) and s.qty or 0 end
@@ -32,19 +59,20 @@ function Ledger.Init(state)
 end
 
 --- A purchase of `count` items for `total` copper. `ev` = expected net value each at that time.
-function Ledger.AddPurchase(state, itemID, count, total, ev, t, link)
+--- `judged` = what the item was valued as: { q = quality, cls = class, band, ilvl, v = addon version } or nil.
+function Ledger.AddPurchase(state, itemID, count, total, ev, t, link, judged)
     count = math.max(1, count or 1)
     local list = state.purchases[itemID] or {}
     state.purchases[itemID] = list
     local each = math.floor(total / count + 0.5)
-    for _ = 1, count do list[#list + 1] = { each = each, ev = ev, t = t, link = link } end
+    for _ = 1, count do list[#list + 1] = { each = each, ev = ev, t = t, link = link, j = judged } end
     Util.Cap(list, Ledger.MAX_PURCHASES_PER_ITEM)
 end
 
 --- A purchase seen at the auction house. The "Auction won" mail for it comes later
 --- and is matched by Ledger.MailPurchase, so nothing counts twice.
-function Ledger.AuctionPurchase(state, itemID, total, ev, t, link)
-    Ledger.AddPurchase(state, itemID, 1, total, ev, t, link)
+function Ledger.AuctionPurchase(state, itemID, total, ev, t, link, judged)
+    Ledger.AddPurchase(state, itemID, 1, total, ev, t, link, judged)
     state.bought[#state.bought + 1] = { itemID = itemID, each = total, t = t }
     Util.Cap(state.bought, Ledger.MAX_RECORDS)
 end
@@ -136,7 +164,7 @@ end
 
 --- A sale of `count` units for `gross` copper with `cutPaid` taken by the house.
 --- Removes known-cost units first, at average cost. Units with no known cost, and units
---- beyond the stock, count at zero cost and as "untracked".
+--- beyond the stock, are "untracked": their net is in netUntracked, not in the profit.
 --- @return table  sale record
 function Ledger.Sell(state, matID, count, gross, cutPaid, t)
     local s = state.stock[matID]
@@ -156,8 +184,9 @@ function Ledger.Sell(state, matID, count, gross, cutPaid, t)
     local net = gross - (cutPaid or 0)
     local rec = {
         t = t, id = matID, count = count, gross = gross, cut = cutPaid or 0, net = net,
-        cost = costBasis, profit = net - costBasis, untracked = count - tracked,
+        cost = costBasis, untracked = count - tracked,
     }
+    splitNet(rec)
     state.sales[#state.sales + 1] = rec
     Util.Cap(state.sales, Ledger.MAX_RECORDS)
     return rec
@@ -165,7 +194,8 @@ end
 
 --- Essences changed form (three lesser into one greater, or back): `fromQty` units of one material
 --- became `toQty` of another. Their cost goes with them. Units with a known cost go first.
---- When some of them had no known cost, the new units still count as known, at the cost that was known.
+--- The new units have a known cost in the same share as the old ones (rounded up, so the cost always
+--- has units to sit on); the rest stay of unknown cost.
 --- @return number cost moved, number units that had no known cost
 function Ledger.Convert(state, fromID, fromQty, toID, toQty)
     local s = state.stock[fromID]
@@ -182,7 +212,9 @@ function Ledger.Convert(state, fromID, fromQty, toID, toQty)
         s.qty = s.qty - tracked - fromUnknown
         if s.qty <= 0 then state.stock[fromID] = nil end
     end
-    Ledger.AddStock(state, toID, toQty, tracked > 0 and cost or nil)
+    local knownTo = math.min(toQty, math.ceil(toQty * tracked / fromQty))
+    if knownTo > 0 then Ledger.AddStock(state, toID, knownTo, cost) end
+    if toQty > knownTo then Ledger.AddStock(state, toID, toQty - knownTo, nil) end
     return cost, fromQty - tracked
 end
 
@@ -208,7 +240,15 @@ function Ledger.SalePaid(state, matID, count, gross, cutPaid, t)
         if rec.id == matID and (rec.unpaid or 0) > 0 and rec.each and math.abs(rec.each - each) < 1 then
             local take = math.min(rec.unpaid, left)
             rec.unpaid = rec.unpaid - take
-            if rec.unpaid == 0 then rec.paidAt = t end
+            -- The cut was estimated when the sale was seen: the mail has the real one.
+            rec.paidCut = (rec.paidCut or 0) + (cutPaid or 0) * take / count
+            if rec.unpaid == 0 then
+                rec.paidAt = t
+                rec.cut = math.floor(rec.paidCut + 0.5)
+                rec.net = rec.gross - rec.cut
+                rec.paidCut = nil
+                splitNet(rec)
+            end
             left = left - take
         end
     end
@@ -220,22 +260,24 @@ function Ledger.SalePaid(state, matID, count, gross, cutPaid, t)
 end
 
 --- Which of the sold auctions on screen are new. A listing sells in parts, and its parts share the
---- listing's auction ID, so a part is known by (auction ID, quantity). The time its money is due only
---- tells two parts of the same size apart: the game reports it loosely (it was seen to move by 36 s
---- between two reads), so it is never used to decide that a part is new.
+--- listing's auction ID, so a part is known by (auction ID, quantity) and the time its money is due.
+--- The game reports that time loosely (it was seen to move by 36 s between two reads), so a part
+--- matches a known one whose due time is within SOLD_DUE_SLACK, the closest first.
 --- A part stays known while it is on screen, and for a while after its money was due.
 --- @param rows table  { { auctionID, qty, due (clock time the money arrives), ... }, ... }
 --- @return table  the rows not seen before
+Ledger.SOLD_DUE_SLACK = 120
 function Ledger.NewSold(state, rows, now)
     local KEEP = 600
     local seen = state.seenSold
     local used, fresh = {}, {}
     for _, row in ipairs(rows) do
-        local match
+        local match, best
         for i, s in ipairs(seen) do
-            if not used[i] and s.auctionID == row.auctionID and s.qty == row.qty
-                and (not match or math.abs(s.due - row.due) < math.abs(seen[match].due - row.due)) then
-                match = i
+            local gap = math.abs(s.due - row.due)
+            if not used[i] and s.auctionID == row.auctionID and s.qty == row.qty and gap < Ledger.SOLD_DUE_SLACK
+                and (not best or gap < best) then
+                match, best = i, gap
             end
         end
         if match then
@@ -298,6 +340,7 @@ function Ledger.Disenchant(state, rec, purchase, priceOf, cut)
     rec.costKnown = purchase ~= nil
     rec.evAtBuy = purchase and purchase.ev or nil
     rec.boughtAt = purchase and purchase.t or nil
+    rec.judged = purchase and purchase.j or nil
     local shares = purchase and Ledger.Allocate(rec.cost, rec.got, priceOf) or {}
     for id, qty in pairs(rec.got) do Ledger.AddStock(state, id, qty, purchase and (shares[id] or 0) or nil) end
     rec.shares = purchase and shares or nil
@@ -336,6 +379,53 @@ function Ledger.ClearHistory(state, drop)
         end
     end
     return n
+end
+
+--- A new, empty ledger for `/salv reset ledger`. What the auction house still shows as sold stays
+--- known (seenSold), so those sales are not booked again on the next read.
+function Ledger.Reset(state)
+    local fresh = Ledger.Init({})
+    fresh.seenSold = state and state.seenSold or {}
+    return fresh
+end
+
+Ledger.EXPIRE_AFTER = 30 * 86400
+
+--- Drops what waits for something that will not come any more, `EXPIRE_AFTER` after it was booked:
+--- purchases whose "Auction won" mail never matched, purchases never disenchanted (sold or kept as
+--- they were), and sales whose money was never seen taken (they count as paid).
+--- @return number bought, number purchases, number sales
+function Ledger.Expire(state, now)
+    local cutoff = now - Ledger.EXPIRE_AFTER
+    local nb, np, ns_ = 0, 0, 0
+    for i = #state.bought, 1, -1 do
+        local b = state.bought[i]
+        if not b.mail and (b.t or 0) < cutoff then table.remove(state.bought, i) nb = nb + 1 end
+    end
+    for itemID, list in pairs(state.purchases) do
+        for i = #list, 1, -1 do
+            if (list[i].t or 0) < cutoff then table.remove(list, i) np = np + 1 end
+        end
+        if #list == 0 then state.purchases[itemID] = nil end
+    end
+    for _, s in ipairs(state.sales) do
+        if (s.unpaid or 0) > 0 and (s.t or 0) < cutoff then
+            s.unpaid, s.unpaidExpired = 0, true
+            ns_ = ns_ + 1
+        end
+    end
+    return nb, np, ns_
+end
+
+--- The deposit of an auction that expired or was cancelled: the auction house keeps it.
+--- Booked as a sale record of no units with the deposit as its loss (`lost` = "expired" | "cancelled"),
+--- so the sales history, the totals and the Profit view count it. Accuracy leaves it out.
+function Ledger.DepositLost(state, matID, qty, amount, why, t)
+    local rec = { t = t, id = matID, count = 0, qty = qty, gross = 0, cut = 0, net = -amount, cost = 0,
+        untracked = 0, netUntracked = 0, profit = -amount, lost = why, paidAt = t }
+    state.sales[#state.sales + 1] = rec
+    Util.Cap(state.sales, Ledger.MAX_RECORDS)
+    return rec
 end
 
 --- Every item bought or disenchanted, newest first: one entry per item, with what it gave.
@@ -397,7 +487,7 @@ function Ledger.Breakdown(state, matID)
     for _, r in ipairs(state.disenchants) do
         local qty = r.got and r.got[matID]
         local item = source(byItem, out.items, r.itemID or 0, function() return { itemID = r.itemID, link = r.link } end)
-        local band = source(byBand, out.bands, string.format("%d:%d:%d", r.quality or 0, r.classID or 0, r.band or 0),
+        local band = source(byBand, out.bands, Ledger.BandKey(r.quality, r.classID, r.band),
             function() return { quality = r.quality, classID = r.classID, band = r.band } end)
         for _, s in ipairs({ item, band }) do
             s.all = s.all + 1
@@ -447,9 +537,11 @@ function Ledger.Accuracy(state)
     -- What one unit of each material really sold for, after the cut.
     local sold = {}
     for _, s in ipairs(state.sales) do
-        local m = sold[s.id] or { units = 0, net = 0 }
-        sold[s.id] = m
-        m.units, m.net = m.units + s.count, m.net + s.net
+        if not s.lost then
+            local m = sold[s.id] or { units = 0, net = 0 }
+            sold[s.id] = m
+            m.units, m.net = m.units + s.count, m.net + s.net
+        end
     end
     local function blank(extra)
         local b = extra or {}
@@ -460,7 +552,7 @@ function Ledger.Accuracy(state)
     local byBand, byMat = {}, {}
     for _, r in ipairs(state.disenchants) do
         if r.costKnown then
-            local key = string.format("%d:%d:%d", r.quality or 0, r.classID or 0, r.band or 0)
+            local key = Ledger.BandKey(r.quality, r.classID, r.band)
             local b = byBand[key]
             if not b then
                 b = blank({ quality = r.quality, classID = r.classID, band = r.band })
@@ -512,7 +604,7 @@ function Ledger.Report(state, since)
     local out = {}
     for _, r in ipairs(state.disenchants) do
         if not since or (r.t or 0) >= since then
-            local key = string.format("%d:%s:%d", r.quality or 0, r.classID == 2 and "w" or "a", r.band or 0)
+            local key = Ledger.BandKey(r.quality, r.classID, r.band)
             local b = out[key]
             if not b then
                 b = { n = 0, planned = 0, value = 0, cost = 0, costKnown = 0, salvager = 0, mats = {} }

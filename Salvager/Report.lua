@@ -14,22 +14,21 @@ function Report.Lines()
     local keys = {}
     for k in pairs(by) do keys[#keys + 1] = k end
     table.sort(keys, function(a, b)
-        local qa, ca, ba = a:match("(%d+):(%a):(%d+)")
-        local qb, cb, bb = b:match("(%d+):(%a):(%d+)")
+        local qa, ca, ba = Ledger.BandOf(a)
+        local qb, cb, bb = Ledger.BandOf(b)
         if qa ~= qb then return qa < qb end
-        if ca ~= cb then return ca < cb end
-        return tonumber(ba) < tonumber(bb)
+        if ca ~= cb then return ca > cb end
+        return ba < bb
     end)
     for _, k in ipairs(keys) do
         local b = by[k]
-        local q, c, band = k:match("(%d+):(%a):(%d+)")
-        q, band = tonumber(q), tonumber(band)
+        local q, classID, band = Ledger.BandOf(k)
         local head = string.format("%s %s, item level up to %d: %d disenchants (%d with Salvager). Planned %s, got %s each",
-            (ns.QUALITY_NAME[q] or ("quality " .. q)):lower(), c == "w" and "weapons" or "armor", band, b.n, b.salvager,
-            ns.Money(b.planned / b.n), ns.Money(b.value / b.n))
+            (ns.QUALITY_NAME[q] or ("quality " .. q)):lower(), classID == ns.Data.CLASS_WEAPON and "weapons" or "armor",
+            band, b.n, b.salvager, ns.Money(b.planned / b.n), ns.Money(b.value / b.n))
         if b.costKnown > 0 then head = head .. string.format(", paid %s", ns.Money(b.cost / b.costKnown)) end
         lines[#lines + 1] = head
-        local outcomes = Model.Outcomes(q, c == "w" and 2 or 4, band)
+        local outcomes = Model.Outcomes(q, classID, band)
         local expected = {}
         if outcomes then for _, r in ipairs(outcomes.results) do expected[r.id] = r end end
         for id, m in pairs(b.mats) do
@@ -43,17 +42,26 @@ function Report.Lines()
 end
 
 --- Totals: disenchants, cost, value, and realised sales.
+--- soldProfit counts only units with a known cost (and the deposits lost); the net of the other units
+--- is in untrackedNet, the deposits lost in depositsLost.
 function Report.Totals()
     local l = ns.db.ledger
-    local t = { n = #l.disenchants, cost = 0, value = 0, sold = 0, soldNet = 0, soldProfit = 0 }
+    local t = { n = #l.disenchants, cost = 0, value = 0, sold = 0, soldNet = 0, soldProfit = 0, untracked = 0,
+        untrackedNet = 0, depositsLost = 0 }
     for _, r in ipairs(l.disenchants) do
         t.cost = t.cost + (r.cost or 0)
         t.value = t.value + (r.value or 0)
     end
     for _, s in ipairs(l.sales) do
-        t.sold = t.sold + s.count
-        t.soldNet = t.soldNet + s.net
-        t.soldProfit = t.soldProfit + s.profit
+        if s.lost then
+            t.depositsLost = t.depositsLost - s.net
+        else
+            t.sold = t.sold + s.count
+            t.soldNet = t.soldNet + s.net
+            t.untracked = t.untracked + (s.untracked or 0)
+            t.untrackedNet = t.untrackedNet + (s.netUntracked or 0)
+        end
+        t.soldProfit = t.soldProfit + (s.profit or 0)
     end
     return t
 end
@@ -62,5 +70,10 @@ function Report.Print()
     local t = Report.Totals()
     ns.Print("%d disenchants: paid %s, materials worth %s now. Sold %d materials for %s, profit %s.",
         t.n, ns.Money(t.cost), ns.Money(t.value), t.sold, ns.Money(t.soldNet), ns.Money(t.soldProfit))
+    if t.untracked > 0 then
+        ns.Print("Not in the profit: %d sold with no recorded cost, %s after the cut.", t.untracked,
+            ns.Money(t.untrackedNet))
+    end
+    if t.depositsLost > 0 then ns.Print("Deposits lost (expired or cancelled): %s, in the profit.", ns.Money(t.depositsLost)) end
     for _, line in ipairs(Report.Lines()) do ns.Print(line) end
 end

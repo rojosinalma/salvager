@@ -264,7 +264,7 @@ describe("Salvager window and options", function()
         ns = wow.loadAddon()
         wow.fire(ns, "ADDON_LOADED", "Salvager")
         wow.fire(ns, "AUCTION_HOUSE_SHOW")
-        for _, id in ipairs({ 11082, 11084 }) do ns.db.prices[id] = { p = 1700, t = 0 } end
+        for _, id in ipairs({ 11082, 11084 }) do ns.db.prices[id] = { p = 1700, t = env.clock } end
     end)
 
     it("registers the options panel and a minimap button", function()
@@ -301,7 +301,7 @@ describe("Salvager window and options", function()
     it("sends only the chosen gear type to the auction house", function()
         ns.db.settings.gearClasses = "weapons"
         ns.db.settings.minProfit = 0
-        ns.db.prices[10939] = { p = 1700, t = 0 }   -- Greater Magic Essence: what low green weapons give
+        ns.db.prices[10939] = { p = 1700, t = env.clock }   -- Greater Magic Essence: what low green weapons give
         ns.Scanner.Scan()
         local q
         for _, s in ipairs(env.ah.sent) do if s.kind == "browse" then q = s.query end end
@@ -425,7 +425,7 @@ describe("Salvager scan safety", function()
         ns = wow.loadAddon()
         wow.fire(ns, "ADDON_LOADED", "Salvager")
         wow.fire(ns, "AUCTION_HOUSE_SHOW")
-        for _, id in ipairs({ 11083, 11082, 11084 }) do ns.db.prices[id] = { p = 433, t = 0 } end
+        for _, id in ipairs({ 11083, 11082, 11084 }) do ns.db.prices[id] = { p = 433, t = env.clock } end
         ns.db.settings.minProfit = 0
         ns.db.settings.gearClasses = "armor"
         ns.db.settings.priceRescan = 0
@@ -438,8 +438,7 @@ describe("Salvager scan safety", function()
         assert.are.equal("idle", ns.Scanner.state)
         ns.Scanner.Stop()
         for _, m in ipairs(ns.Data.MATERIALS) do
-            ns.db.prices[m.id] = ns.db.prices[m.id] or { p = 433 }
-            ns.db.prices[m.id].t = env.clock - 60         -- one minute old
+            ns.db.prices[m.id] = { p = 433, t = env.clock - 60 }   -- one minute old
         end
         ns.Scanner.Play()
         assert.is_false(ns.Prices.scanning)               -- fresh enough: straight to the gear
@@ -581,7 +580,7 @@ describe("Salvager scan safety", function()
         round()
         assert.are.equal(1, #ns.Scanner.deals)
         ns.Scanner.round = 2
-        for id in pairs(ns.db.prices) do ns.db.prices[id].t = 0 end      -- old prices: the next round scans them first
+        for id in pairs(ns.db.prices) do ns.db.prices[id].t = env.clock - 3600 end      -- old prices: the next round scans them first
         wow.tick(ns, ns.db.settings.autoInterval + 1)
         assert.is_true(ns.scanBothPending)
         round()
@@ -608,7 +607,7 @@ describe("Salvager scan safety", function()
         local q = ns.db.settings.qualities
         local was = q[3]
         q[3] = true                                                -- the uncommon pass, then the rare pass
-        ns.db.prices[11084] = { p = 433, t = 0 }
+        ns.db.prices[11084] = { p = 433, t = env.clock }
         for _, band in ipairs(ns.Data.BLUE) do ns.db.prices[band.shard] = ns.db.prices[band.shard] or { p = 90000, t = 0, test = true } end
         env.ah.fullBrowse = true
         env.ah.browse = { row(1) }                                 -- the uncommon boots
@@ -838,6 +837,7 @@ describe("Salvager deals list", function()
         head.buy.scripts.OnClick(head.buy)                -- Buy 1st
         assert.are.equal(1, env.ah.bids[#env.ah.bids].id)
         assert.are.equal(500, env.ah.bids[#env.ah.bids].amount)
+        for _, id in ipairs({ 11083, 11082, 11084 }) do ns.db.prices[id] = { p = 433, t = env.clock } end   -- a band with a value
         local queued = #ns.Queue.items
         wow.fire(ns, "AUCTION_HOUSE_PURCHASE_COMPLETED", 1)
         assert.are.equal(queued + 1, #ns.Queue.items)    -- searched again for price changes
@@ -890,7 +890,7 @@ describe("Salvager deals list", function()
     end)
 
     it("plays, pauses and stops", function()
-        for _, id in ipairs({ 11083, 11082, 11084 }) do ns.db.prices[id] = { p = 433, t = 0 } end
+        for _, id in ipairs({ 11083, 11082, 11084 }) do ns.db.prices[id] = { p = 433, t = env.clock } end
         ns.db.settings.minProfit = 0
         ns.db.settings.priceRescan = 0
         ns.Scanner.Play()
@@ -1017,8 +1017,8 @@ describe("Salvager posting", function()
         local lesser = ns.Data.ESSENCE_PAIR[greater].other
         local keep = { ns.db.prices[greater], ns.db.prices[lesser] }
         local function listed(price, qty) return { rows = { { price = price, qty = qty, mine = 0 } } } end
-        ns.db.prices[greater] = { p = 1700, lo = 1700, t = 0 }
-        ns.db.prices[lesser] = { p = 700, lo = 700, t = 0 }          -- three lesser: 20s 97c, a greater: 16s 99c
+        ns.db.prices[greater] = { p = 1700, lo = 1700, t = env.clock }
+        ns.db.prices[lesser] = { p = 700, lo = 700, t = env.clock }          -- three lesser: 20s 97c, a greater: 16s 99c
         local c = ns.Post.Convert(greater, 1, listed(1700, 10), listed(700, 40))
         assert.are.equal("convert", c.verdict)
         assert.are.equal(3 * 699 - 1699, c.gain)
@@ -1026,12 +1026,12 @@ describe("Salvager posting", function()
         assert.is_truthy(ns.Post.ConvertText(greater, 2, listed(1700, 10), listed(700, 40)):find("split each into 3", 1, true))
         -- The same gain (23%) holds even against a crowded market; a small gain does not.
         assert.are.equal("convert", ns.Post.Convert(greater, 1, listed(1700, 10), listed(700, 4000)).verdict)
-        ns.db.prices[lesser] = { p = 600, lo = 600, t = 0 }          -- three lesser: 17s 97c, +6%
+        ns.db.prices[lesser] = { p = 600, lo = 600, t = env.clock }          -- three lesser: 17s 97c, +6%
         assert.are.equal("convert", ns.Post.Convert(greater, 1, listed(1700, 10), listed(600, 50)).verdict)
         assert.are.equal("crowded", ns.Post.Convert(greater, 1, listed(1700, 10), listed(600, 4000)).verdict)
         assert.is_truthy(ns.Post.ConvertText(greater, 1, listed(1700, 10), listed(600, 4000)):find("Far more is listed", 1, true))
         assert.are.equal("keep", ns.Post.Convert(lesser, 6).verdict)
-        ns.db.prices[lesser] = { p = 500, lo = 500, t = 0 }          -- now the greater pays more
+        ns.db.prices[lesser] = { p = 500, lo = 500, t = env.clock }          -- now the greater pays more
         assert.is_truthy(ns.Post.ConvertText(lesser, 7):find("Your 7 make 2", 1, true))
         assert.is_nil(ns.Post.Convert(lesser, 2))                    -- fewer than three: nothing to combine
         assert.are.equal("", ns.Post.ConvertText(lesser, 2))

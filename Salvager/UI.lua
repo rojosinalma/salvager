@@ -71,7 +71,8 @@ end
 
 local function dealCells(d, label)
     return { label, CLASS_NAME[d.classID or ns.ClassOf(d.itemID)] or "", tostring(d.ilvl or ""), ns.Money(d.buyout),
-        ns.Money(d.value), "|cff40ff40" .. ns.Money(d.profit) .. "|r", ns.LoseText(d.lose) }
+        ns.Money(d.value), (d.profit >= 0 and "|cff40ff40+" or "|cffff4040") .. ns.Money(d.profit) .. "|r",
+        ns.LoseText(d.lose) }
 end
 
 --- Deals grouped by item name, best profit first. A group with more than one
@@ -96,14 +97,14 @@ local function dealRows()
     table.sort(order, function(a, b) return a.best > b.best end)
     local out = {}
     for _, g in ipairs(order) do
-        local first = g.deals[1]
+        -- The row's numbers are those of the auction its Buy button buys: the cheapest not being bought.
+        local first = ns.Scanner.Cheapest(g.deals) or g.deals[1]
         if #g.deals == 1 then
             out[#out + 1] = { cells = dealCells(first, first.link or g.name), link = first.link, itemID = first.itemID,
                 deal = first }
         else
             local open = UI.expanded[g.name]
             local head = dealCells(first, (first.link or g.name) .. " |cffffd100x" .. #g.deals .. "|r")
-            -- The row's numbers are those of its cheapest auction: the one its Buy button buys.
             out[#out + 1] = { cells = head, link = first.link, itemID = first.itemID, group = g, open = open }
             if open then
                 for _, d in ipairs(g.deals) do

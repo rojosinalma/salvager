@@ -37,6 +37,12 @@ local function store(itemID)
     ns.Log("price %s (%d): %s, %d results", ns.MaterialName(itemID), itemID,
         e and (ns.Money(e.p) .. " over " .. e.units .. " units") or "none listed",
         AH.GetNumCommoditySearchResults(itemID) or 0)
+    -- The ceiling comes from the history before this scan, so a spike now does not raise it.
+    local cap = e and ns.History.Ceiling(ns.db.history, itemID, time(), e.units)
+    if e and cap and e.p > cap then
+        ns.Log("price %s: %s over %d units is far over its recent prices: valued at %s at most", ns.MaterialName(itemID),
+            ns.Money(e.p), e.units, ns.Money(cap))
+    end
     -- For the charts: this scan's price, lowest listing and units listed by others.
     local listed = 0
     for i = 1, (AH.GetNumCommoditySearchResults(itemID) or 0) do
@@ -45,7 +51,7 @@ local function store(itemID)
     end
     ns.History.Add(ns.db.history, itemID, time(), e and e.p, e and e.lo, listed)
     if e then
-        e.t = time()
+        e.t, e.cap = time(), cap
         ns.db.prices[itemID] = e
     else
         local old = ns.db.prices[itemID]
@@ -82,11 +88,13 @@ function Prices.Scan(ids)
     -- The full scan changes the prices a gear scan works with, so it waits. A scan of a few materials
     -- (Scan owned) is let in: its searches take their turn in the queue.
     if not ids and ns.Scanner.state ~= "idle" then
-        ns.Print("wait for the gear scan to finish (or use Scan both)")
+        ns.Defer("prices", function() return ns.Scanner.state == "idle" end, Prices.Scan, "The material scan",
+            "the gear scan is done")
         return
     end
     if ns.Listings and ns.Listings.checking then
-        ns.Print("wait for the undercut check to finish")
+        ns.Defer("prices", function() return not ns.Listings.checking end, function() Prices.Scan(ids) end,
+            "The material scan", "the undercut check is done")
         return
     end
     if not ids then

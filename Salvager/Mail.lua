@@ -17,16 +17,21 @@ ns.Mail = Mail
 
 local watch = {}   -- [key] = { info, holding = mails of this kind that still hold their item/money, asked, booked }
 
+-- Material by name: the English name and the client's own. Built once; built again on a miss,
+-- since the client's names come in as its item data loads.
 local nameToMaterial
-local function materialByName(name)
-    if not nameToMaterial then
-        nameToMaterial = {}
-        for _, m in ipairs(Data.MATERIALS) do nameToMaterial[m.name] = m.id end
-    end
+local function buildNames()
+    nameToMaterial = {}
     for _, m in ipairs(Data.MATERIALS) do
+        nameToMaterial[m.name] = m.id
         local local_ = ns.MaterialName(m.id)
         if local_ then nameToMaterial[local_] = m.id end
     end
+end
+local function materialByName(name)
+    if not name then return nil end
+    if not nameToMaterial then buildNames() end
+    if not nameToMaterial[name] then buildNames() end
     return nameToMaterial[name]
 end
 
@@ -51,13 +56,14 @@ local function describe(index)
     return key, holds, { type = invoiceType, itemName = itemName, bid = bid or 0, cut = consignment or 0, count = count }
 end
 
-local function holding(key)
-    local n = 0
+--- How many mails of each kind still hold their item or money: one pass over the inbox.
+local function holdingAll()
+    local out = {}
     for i = 1, (GetInboxNumItems() or 0) do
         local k, holds = describe(i)
-        if k == key and holds then n = n + 1 end
+        if k and holds then out[k] = (out[k] or 0) + 1 end
     end
-    return n
+    return out
 end
 
 local function book(info)
@@ -98,7 +104,7 @@ local function asked(index)
     end
     local w = watch[key]
     if not w then
-        w = { holding = holding(key), asked = 0, booked = 0 }
+        w = { holding = holdingAll()[key] or 0, asked = 0, booked = 0 }
         watch[key] = w
     end
     w.info = info
@@ -107,8 +113,10 @@ end
 
 --- The mailbox changed: book the watched mails that no longer hold their item or money.
 local function settle()
+    if not next(watch) then return end
+    local counts = holdingAll()
     for key, w in pairs(watch) do
-        local now = holding(key)
+        local now = counts[key] or 0
         local gone = math.min(w.holding - now, w.asked - w.booked)
         for _ = 1, gone do
             book(w.info)
@@ -135,6 +143,16 @@ if hooksecurefunc then
 end
 
 ns.On("MAIL_INBOX_UPDATE", function() safe(settle) end)
+
+-- Old records that wait for a mail or a disenchant that will not come (Ledger.Expire), once per login.
+ns.On("ADDON_LOADED", function(name)
+    if name ~= ns.NAME or not ns.db then return end
+    local bought, purchases, sales = Ledger.Expire(ns.db.ledger, time())
+    if bought + purchases + sales > 0 then
+        ns.Log("ledger: dropped after %d days: %d purchases with no mail, %d never disenchanted; %d sales counted "
+            .. "as paid", Ledger.EXPIRE_AFTER / 86400, bought, purchases, sales)
+    end
+end)
 ns.On("MAIL_CLOSED", function()
     for _, w in pairs(watch) do
         if w.asked > w.booked then

@@ -14,6 +14,8 @@ ns.Listings = Listings
 
 local CANCEL_WAIT = 5      -- seconds a cancel may take before it is given up
 local MAX_POSTED = 300     -- posts remembered (their unit prices are known for sure)
+local LOWEST_MAX_AGE = 120 -- seconds a checked lowest price counts: older, the listing counts as not checked
+local MAIL_DELAY = 3600    -- a sold auction stays in the list (as sold) about this long, until its money is mailed
 
 local function db()
     local l = ns.db.listings
@@ -31,16 +33,57 @@ local function isCommodity(itemID)
     return false
 end
 
---- A post made through Salvager: its price each is known for sure.
-function Listings.NotePost(auctionID, itemID, quantity, each)
+--- A post made through Salvager: its price each is known for sure, and so is its deposit.
+function Listings.NotePost(auctionID, itemID, quantity, each, deposit)
     local posted = ns.db.posted
-    posted[#posted + 1] = { auctionID = auctionID, itemID = itemID, qty = quantity, each = each, t = time() }
+    posted[#posted + 1] = { auctionID = auctionID, itemID = itemID, qty = quantity, each = each, t = time(),
+        deposit = deposit }
     ns.Util.Cap(posted, MAX_POSTED)
 end
 
-local function postedPrice(auctionID)
+local function postedEntry(auctionID)
     for i = #ns.db.posted, 1, -1 do
-        if ns.db.posted[i].auctionID == auctionID then return ns.db.posted[i].each end
+        if ns.db.posted[i].auctionID == auctionID then return ns.db.posted[i] end
+    end
+end
+
+local function postedPrice(auctionID)
+    local p = postedEntry(auctionID)
+    return p and p.each
+end
+
+--- The auction house keeps the deposit of an auction that expires or is cancelled: a loss in the ledger.
+--- `qty` = the units that did not sell; the deposit counts in proportion. Booked once per auction.
+--- `fallback` = what to book when the post was not made through Salvager (its deposit is not known).
+local function depositLost(auctionID, itemID, qty, why, fallback)
+    local p = postedEntry(auctionID)
+    if p and p.lost then return end
+    local amount = fallback
+    if p and p.deposit then amount = math.floor(p.deposit * math.min(qty, p.qty) / math.max(1, p.qty) + 0.5) end
+    if p then p.lost = why end
+    if not amount or amount <= 0 or not Data.MATERIAL_BY_ID[itemID] then return end
+    ns.Ledger.DepositLost(ns.db.ledger, itemID, qty, amount, why, time())
+    ns.Log("listings: %dx %s %s, deposit lost %s", qty, ns.MaterialName(itemID), why, ns.Money(amount))
+    ns.Fire("SALVAGER_LEDGER")
+end
+
+--- Auctions of ours that ended unsold between two reads: the previous read showed them for sale, and
+--- now no row for sale is left, past their end time, and not all of it shows as sold. Only judged when
+--- the reads are less than MAIL_DELAY apart: a part sold since then would still show as sold.
+local function findExpired(prev, prevT, rows, now)
+    if not prevT or now - prevT >= MAIL_DELAY then return end
+    local open, soldNow, soldBefore = {}, {}, {}
+    for _, r in ipairs(rows) do
+        if r.sold then soldNow[r.auctionID] = (soldNow[r.auctionID] or 0) + r.qty else open[r.auctionID] = true end
+    end
+    for _, r in ipairs(prev) do
+        if r.sold then soldBefore[r.auctionID] = (soldBefore[r.auctionID] or 0) + r.qty end
+    end
+    for _, r in ipairs(prev) do
+        if not r.sold and not open[r.auctionID] and r.left and now >= prevT + r.left - 60 then
+            local unsold = r.qty - math.max(0, (soldNow[r.auctionID] or 0) - (soldBefore[r.auctionID] or 0))
+            if unsold > 0 then depositLost(r.auctionID, r.itemID, unsold, "expired") end
+        end
     end
 end
 
@@ -48,6 +91,7 @@ end
 function Listings.Read()
     local l = db()
     local rows = {}
+    local prev, prevT = l.rows, l.t
     for i = 1, (AH.GetNumOwnedAuctions() or 0) do
         local info = AH.GetOwnedAuctionInfo(i)
         if info and info.itemKey then
@@ -68,6 +112,7 @@ function Listings.Read()
         end
     end
     l.rows, l.t = rows, time()
+    findExpired(prev, prevT, rows, l.t)
     -- A sale is known as soon as its listing shows as sold: book it now, not when the mail is taken.
     local sold = {}
     for _, r in ipairs(rows) do
@@ -90,13 +135,24 @@ function Listings.Read()
     end
     if booked then ns.Fire("SALVAGER_LEDGER") end
     ns.Fire("SALVAGER_LISTINGS")
+    -- Someone waits for this read (the queue answers before this list is read).
+    local after = Listings.afterRead
+    Listings.afterRead = nil
+    if after then after(true) end
 end
 
 --- Asks the auction house for your auctions. `now` = ahead of everything else (the player asked).
-function Listings.Refresh(now)
+--- `after(ok)` runs once the answer has been read into the list (ok = false: no answer, the last list stays).
+function Listings.Refresh(now, after)
     if not ns.Queue.open then return false end
+    if after then Listings.afterRead = after end
     ns.Queue.Add({ owned = true, once = true, onResult = function() end,
-        onFail = function() ns.Log("listings: the auction house did not send your auctions") end }, now)
+        onFail = function()
+            ns.Log("listings: the auction house did not send your auctions")
+            local cb = Listings.afterRead
+            Listings.afterRead = nil
+            if cb then cb(false) end
+        end }, now)
     return true
 end
 
@@ -106,18 +162,47 @@ function Listings.TimeLeft(row)
     return math.max(0, row.left - (time() - (db().t or time())))
 end
 
---- How far a row is undercut: copper each below your price, or nil (not undercut, or not checked).
-function Listings.Undercut(row)
-    if row.sold or not row.commodity then return nil end
-    local low = db().lowest[row.itemID]
-    if not (low and low.lo) then return nil end
-    if low.lo < row.each then return row.each - low.lo end
-    return nil
+local function freshLowest(itemID)
+    local low = db().lowest[itemID]
+    if not low or not low.t or time() - low.t > LOWEST_MAX_AGE then return nil end
+    return low
 end
 
---- "checked" state of a row: nil = not checked, false = nobody else lists it, number = lowest other price.
+--- What a cancel and a new post of a row cost: the deposit the auction house keeps (the cancel cost the
+--- game names, else the deposit recorded at the post) and the deposit of the new post.
+function Listings.RepostCost(row)
+    local lost
+    if AH.GetCancelCost then
+        local ok, c = pcall(AH.GetCancelCost, row.auctionID)
+        if ok then lost = tonumber(c) end
+    end
+    if not lost then
+        local p = postedEntry(row.auctionID)
+        lost = p and p.deposit and math.floor(p.deposit * row.qty / math.max(1, p.qty) + 0.5)
+    end
+    local again
+    if AH.CalculateCommodityDeposit then
+        local ok, d = pcall(AH.CalculateCommodityDeposit, row.itemID, ns.db.settings.postDuration, row.qty)
+        if ok then again = tonumber(d) end
+    end
+    return (lost or 0) + (again or 0)
+end
+
+--- How far a row is undercut: copper each below your price, or nil (not undercut, not checked in the last
+--- LOWEST_MAX_AGE seconds, or undercut by less in all than a cancel and a new post would cost in deposits).
+function Listings.Undercut(row)
+    if row.sold or not row.commodity then return nil end
+    local low = freshLowest(row.itemID)
+    if not (low and low.lo) or low.lo >= row.each then return nil end
+    local gap = row.each - low.lo
+    if gap * row.qty < Listings.RepostCost(row) then return nil end
+    return gap
+end
+
+--- "checked" state of a row: nil = not checked (or too long ago), false = nobody else lists it, number = lowest
+--- other price.
 function Listings.Lowest(row)
-    local low = db().lowest[row.itemID]
+    local low = freshLowest(row.itemID)
     if not low then return nil end
     return low.lo or false
 end
@@ -135,12 +220,25 @@ function Listings.CountUndercut()
     return n
 end
 
---- Searches every listed commodity for its lowest price that is not yours.
+--- Searches every listed commodity for its lowest price that is not yours. Your auctions are read
+--- first; the searches go out once that answer is in.
 function Listings.Check()
     if not ns.Queue.open then ns.Print("open the auction house first") return end
     if Listings.checking then return end
-    if ns.Prices.scanning then ns.Print("wait for the material scan to finish") return end
-    Listings.Refresh(true)
+    if ns.Prices.scanning then
+        ns.Defer("check", function() return not ns.Prices.scanning end, Listings.Check, "The undercut check",
+            "the material scan is done")
+        return
+    end
+    local check = { done = 0, total = 0 }
+    Listings.checking = check
+    ns.Fire("SALVAGER_LISTINGS")
+    Listings.Refresh(true, function() Listings.CheckRows(check) end)
+end
+
+--- The searches of a check, from the rows just read.
+function Listings.CheckRows(check)
+    if Listings.checking ~= check then return end   -- stopped meanwhile
     local ids, seen = {}, {}
     for _, row in ipairs(db().rows) do
         if not row.sold and row.commodity and not seen[row.itemID] then
@@ -149,14 +247,16 @@ function Listings.Check()
         end
     end
     if #ids == 0 then
-        ns.Print("nothing listed to check (if you just posted, try again in a moment)")
+        Listings.checking = nil
+        ns.Print("nothing listed to check")
+        ns.Fire("SALVAGER_LISTINGS")
         return
     end
-    Listings.checking = { done = 0, total = #ids }
+    check.total = #ids
     ns.Log("listings: checking %d listed materials for undercuts", #ids)
     local function step()
         local c = Listings.checking
-        if not c then return end
+        if c ~= check then return end
         c.done = c.done + 1
         if c.done >= c.total then
             Listings.checking = nil
@@ -195,7 +295,8 @@ end
 function Listings.CancelNext()
     if not ns.Queue.open then ns.Print("open the auction house first") return false end
     if Listings.Cancelling() then return false end
-    if ns.Scanner.Buying() then ns.Print("wait for the purchase to finish") return false end
+    -- (The button is off while a purchase is on its way: CancelAuction needs the click, it cannot wait.)
+    if ns.Scanner.Buying() then return false end
     for _, row in ipairs(db().rows) do
         if Listings.Undercut(row) then
             local ok, can = pcall(AH.CanCancelAuction, row.auctionID)
@@ -206,6 +307,8 @@ function Listings.CancelNext()
                     cost = okCost and c or nil
                 end
                 Listings.pending = { row = row, t = GetTime(), cost = cost }
+                if cost and cost > 0 then ns.Gold.Expect("cancel", -cost, ns.MaterialName(row.itemID), 15) end
+                ns.NoteRequest("cancel")
                 AH.CancelAuction(row.auctionID)
                 ns.Log("listings: cancelling %dx %s at %s each%s", row.qty, ns.MaterialName(row.itemID), ns.Money(row.each),
                     cost and (", cost " .. ns.Money(cost)) or "")
@@ -222,7 +325,13 @@ ns.On("AUCTION_CANCELED", function(auctionID)
     local p = Listings.pending
     local rows = db().rows
     for i = #rows, 1, -1 do
-        if rows[i].auctionID == auctionID then table.remove(rows, i) end
+        local r = rows[i]
+        if r.auctionID == auctionID then
+            if not r.sold then
+                depositLost(auctionID, r.itemID, r.qty, "cancelled", p and p.row.auctionID == auctionID and p.cost or nil)
+            end
+            table.remove(rows, i)
+        end
     end
     if p and p.row.auctionID == auctionID then
         Listings.pending = nil
@@ -233,9 +342,17 @@ ns.On("AUCTION_CANCELED", function(auctionID)
     ns.Fire("SALVAGER_LISTINGS")
 end)
 
+-- An auction that ran out while the auction house is open.
+ns.On("AUCTION_HOUSE_AUCTIONS_EXPIRED", function(auctionID)
+    for _, r in ipairs(db().rows) do
+        if r.auctionID == auctionID and not r.sold then depositLost(auctionID, r.itemID, r.qty, "expired") end
+    end
+end)
+
+-- The auction house's one error event: ours only when the last request was a cancel.
 ns.On("AUCTION_HOUSE_SHOW_ERROR", function()
     local p = Listings.pending
-    if not p then return end
+    if not p or not ns.ErrorIs("cancel") then return end
     Listings.pending = nil
     ns.Print("could not cancel %s", ns.MaterialName(p.row.itemID))
     ns.Log("listings: could not cancel %s", ns.MaterialName(p.row.itemID))
@@ -250,5 +367,5 @@ end)
 
 ns.On("AUCTION_HOUSE_SHOW", function() Listings.Refresh() end)
 ns.On("AUCTION_HOUSE_CLOSED", function()
-    Listings.checking, Listings.pending = nil, nil
+    Listings.checking, Listings.pending, Listings.afterRead = nil, nil, nil
 end)

@@ -85,6 +85,8 @@ function M.install()
     _G.IsPlayerSpell = function() return false end
     _G.IsShiftKeyDown = function() return false end
     _G.GetMoney = function() return env.money end
+    _G.UnitName = function() return "Tester" end
+    _G.GetRealmName = function() return "Realm" end
     _G.TooltipDataProcessor = { AddTooltipPostCall = function(_, fn) env.tooltipPost = fn end }
     _G.ATTACHMENTS_MAX_RECEIVE = 16
     _G.Minimap = widget("Minimap")
@@ -122,6 +124,8 @@ function M.install()
         GetDetailedItemLevelInfo = function(x) local it = item(x) return it and it.ilvl end,
         GetItemNameByID = function(x) local it = item(x) return it and it.name end,
         GetItemCount = function(id) return env.bags[id] or 0 end,
+        -- env.guids["bag:slot"] = the item's GUID
+        GetItemGUID = function(loc) return env.guids and env.guids[loc.bag .. ":" .. loc.slot] end,
     }
     _G.C_Container = {
         GetContainerItemLink = function(bag, slot) return env.bagLinks and env.bagLinks[bag .. ":" .. slot] end,
@@ -133,6 +137,8 @@ function M.install()
     _G.GetNumLootItems = function() return #env.loot end
     _G.GetLootSlotLink = function(i) return env.loot[i] and ("|Hitem:" .. env.loot[i].id .. "|h") end
     _G.GetLootSlotInfo = function(i) return nil, nil, env.loot[i] and env.loot[i].qty end
+    -- env.loot[i].source = the GUID the loot comes from (nil: the client does not say)
+    _G.GetLootSourceInfo = function(i) return env.loot[i] and env.loot[i].source end
 
     -- Mail: env.inbox[i] = { header = {...}, invoice = {...}, link = ... }
     _G.GetInboxHeaderInfo = function(i)
@@ -145,6 +151,7 @@ function M.install()
     _G.TakeInboxItem = function() end
     _G.TakeInboxMoney = function() end
     _G.AutoLootMailItem = function() end
+    _G.RepairAllItems = function() end
 
     local ah = env.ah
     _G.C_AuctionHouse = {

@@ -36,36 +36,73 @@ local function sortDeals()
     table.sort(Scanner.deals, function(a, b) return a.profit > b.profit end)
 end
 
+--- Queues the search of one item. `c` = { keyString, net, limit, ilvl, quality, classID }.
+local function checkItem(c, itemKey, onResult, onFail)
+    ns.Queue.Add({
+        itemKey = itemKey, keyString = c.keyString, net = c.net, ilvl = c.ilvl, quality = c.quality,
+        classID = c.classID, limit = c.limit, onResult = onResult, onFail = onFail,
+    })
+end
+
+--- The value and buy limit of a quality, gear type and item level now. nil when the band is blocked.
+local function currentBand(quality, classID, ilvl)
+    local s = ns.db.settings
+    local cap = s.maxPrice > 0 and s.maxPrice or math.huge
+    for _, row in ipairs(ns.Limits()) do
+        if row.quality == quality and ilvl >= row.lo and ilvl <= row.up then
+            local x = classID == Data.CLASS_WEAPON and row.weapon or row.armor
+            if not x or x.blocked then return nil end
+            return { net = x.value, limit = math.min(x.limit, cap) }
+        end
+    end
+    return nil
+end
+
+local function removeKey(keyString)
+    for i = #Scanner.deals, 1, -1 do
+        local d = Scanner.deals[i]
+        if d.keyString == keyString and not d.pending then table.remove(Scanner.deals, i) end
+    end
+end
+
 local function readAuctions(task)
     local key = task.itemKey
     local maxBuy = task.limit
-    -- Drop the old rows of this item, then add what is listed now.
+    -- Drop the old rows of this item, then add what is listed now. A row being bought stays, and the same
+    -- auction is not added again (a second row would send a second purchase).
+    local buying = {}
     for i = #Scanner.deals, 1, -1 do
-        if Scanner.deals[i].keyString == task.keyString and not Scanner.deals[i].pending then
-            table.remove(Scanner.deals, i)
-        end
+        local d = Scanner.deals[i]
+        if d.pending then buying[d.auctionID] = true
+        elseif d.keyString == task.keyString then table.remove(Scanner.deals, i) end
     end
     local n = AH.GetNumItemSearchResults(key) or 0
     local before = #Scanner.deals
     local outcomes = ns.Model.Outcomes(task.quality, task.classID, task.ilvl)
     local s = ns.db.settings
     local odds = { salvager = ns.SalvagerForBuy(), salvagerChance = s.salvagerChance, cut = s.cut }
-    local wrong = 0
+    local wrong, unknown = 0, 0
     for i = 1, n do
         local r = AH.GetItemSearchResultInfo(key, i)
         -- The auction's own link has the last word on the quality: an item valued as another quality is
         -- never listed.
         -- The same for its gear type and its item level: a deal is only listed when the auction's own item
-        -- gives the band it was valued with.
+        -- gives the band it was valued with. What the link does not tell is not trusted: no deal.
         local link = r and r.itemLink
         local real = link and ns.QualityOf(link)
         local realClass = link and ns.ClassOf(link)
         local realLevel = link and ns.ItemLevelOf(link)
         local realBand = realLevel and outcomes and ns.Model.Outcomes(task.quality, task.classID, realLevel)
-        if (real and real ~= task.quality) or (realClass and realClass ~= task.classID)
-            or (realBand and realBand.band ~= outcomes.band) then
+        if r and buying[r.auctionID] then
+            r = nil   -- being bought: its row is there already
+        elseif not (real and realClass and realBand) then
+            unknown = unknown + 1
+            r = nil
+        elseif real ~= task.quality or realClass ~= task.classID or realBand.band ~= outcomes.band then
             wrong = wrong + 1
-        elseif r and r.buyoutAmount and r.buyoutAmount > 0 and not r.containsOwnerItem and r.buyoutAmount <= maxBuy then
+            r = nil
+        end
+        if r and r.buyoutAmount and r.buyoutAmount > 0 and not r.containsOwnerItem and r.buyoutAmount <= maxBuy then
             Scanner.deals[#Scanner.deals + 1] = {
                 auctionID = r.auctionID, itemKey = key, keyString = task.keyString,
                 link = r.itemLink, itemID = key.itemID, ilvl = task.ilvl, quality = task.quality, classID = task.classID,
@@ -78,6 +115,10 @@ local function readAuctions(task)
         ns.Log("item %s: %d auctions left out, their item is not %s %s of item level %s as it was valued",
             task.keyString, wrong, ns.QUALITY_NAME[task.quality] or tostring(task.quality),
             CLASS_NAME[task.classID] or tostring(task.classID), tostring(task.ilvl))
+    end
+    if unknown > 0 then
+        ns.Log("item %s: %d auctions left out, the game did not tell their quality, gear type or item level yet",
+            task.keyString, unknown)
     end
     ns.Log("checked item %s: %d auctions, %d under %s", task.keyString, n, #Scanner.deals - before, ns.Money(maxBuy))
     sortDeals()
@@ -167,7 +208,9 @@ local function judge(r, pass, sum)
     if ns.NoDisenchant(key.itemID) then sum.noDisenchant = sum.noDisenchant + 1 return end
     -- The item's own quality decides, not the browse it came in. A page of another browse can arrive in
     -- this pass (measured 2026-11-26: uncommon items came during the rare pass and were valued as rare).
-    local quality = ns.QualityOf(key.itemID)
+    -- (Read from what was learned: asking the game here would send a request per item of the page. An item
+    -- not learned yet goes on: the auction's own link decides before it is listed, see readAuctions.)
+    local quality = ns.Items.Quality(key.itemID)
     if quality and quality ~= pass.quality then sum.wrongQuality = sum.wrongQuality + 1 return end
     -- The same for the gear type: armor that comes in the weapon pass is not valued as a weapon.
     local classID = ns.ClassOf(key.itemID)
@@ -251,12 +294,7 @@ local function queueChecks()
     if kept > 0 then ns.Log("gear scan: %d deals kept as they were, their browse did not load in full", kept) end
     Scanner.toCheck = #candidates
     for _, c in ipairs(candidates) do
-        ns.Queue.Add({
-            itemKey = c.key, keyString = c.keyString, net = c.net, ilvl = c.ilvl, quality = c.quality,
-            classID = c.classID, limit = c.limit,
-            onResult = function(task) readAuctions(task) checkDone() end,
-            onFail = function() checkDone() end,
-        })
+        checkItem(c, c.key, function(task) readAuctions(task) checkDone() end, checkDone)
     end
     if #candidates == 0 then
         Scanner.toCheck = 1
@@ -393,7 +431,8 @@ function Scanner.Scan(clear)
     if not ns.Queue.open then ns.Print("open the auction house first") return end
     if Scanner.state ~= "idle" then return end
     if ns.Prices.scanning then
-        ns.Print("wait for the material scan to finish")
+        ns.Defer("gear", function() return not ns.Prices.scanning end, function() Scanner.Scan(clear) end,
+            "The gear scan", "the material scan is done")
         return
     end
     if not next(ns.db.prices) then ns.Print("scan material prices first") return end
@@ -428,10 +467,10 @@ local function onPage(added)
         if #list < from and pass.pages > 0 then return end
     end
     lastBrowseAt = GetTime()
-    local ok, err = pcall(function()
-        for i = from, #list do judge(list[i], pass, sum) end
-    end)
-    if not ok then ns.Log("ERROR judging a page of %s: %s", pass.name, tostring(err)) end
+    for i = from, #list do
+        local ok, err = pcall(judge, list[i], pass, sum)
+        if not ok then ns.Log("ERROR judging item %d of a page of %s: %s", i, pass.name, tostring(err)) end
+    end
     if not scan then return end
     pass.got = pass.got + (#list - from + 1)
     pass.pages = pass.pages + 1
@@ -539,8 +578,9 @@ function Scanner.Buying()
     if GetTime() < aimUntil then return true end
     for id, d in pairs(pendingBuys) do
         if GetTime() - d.clickedAt < BUY_EXPIRES then return true end
-        -- No answer at all: free the row again.
+        -- No answer at all: free the row again. (If it went through after all, it is still booked.)
         pendingBuys[id] = nil
+        dropped[id] = d
         d.pending = false
         ns.Log("purchase of %s got no answer in %ds", d.link or d.itemID, BUY_EXPIRES)
     end
@@ -557,6 +597,7 @@ function Scanner.Buy(deal)
     --   measured 2026-11-26): it goes out the moment that one request is answered, ahead of the queue.
     deal.pending = true
     deal.clickedAt = GetTime()
+    ns.Gold.Expect("buy", -deal.buyout, deal.link, 120)
     lastBuyAt = deal.clickedAt
     pendingBuys[deal.auctionID] = deal
     local busy = AH.IsThrottledMessageSystemReady and not AH.IsThrottledMessageSystemReady()
@@ -565,6 +606,7 @@ function Scanner.Buy(deal)
         ns.Log("purchase of %s: the auction house is busy, it goes out the moment it is ready", deal.link or deal.itemID)
         C_Timer.After(1, function() Scanner.SendWaiting(true) end)   -- in case the "ready" event does not come
     else
+        ns.NoteRequest("buy")
         AH.PlaceBid(deal.auctionID, deal.buyout)
     end
     ns.Fire("SALVAGER_DEALS")
@@ -574,13 +616,19 @@ end
 function Scanner.Recheck(deal)
     local t = deal and deal.task
     if not t or not ns.Queue.open then return end
+    -- The value and limit of now: prices or settings may have changed since the scan.
+    local band = currentBand(t.quality, t.classID, t.ilvl)
+    if not band then
+        ns.Log("rechecking item %s: its band has no value or limit now, its rows go", t.keyString)
+        removeKey(t.keyString)
+        ns.Fire("SALVAGER_DEALS")
+        return
+    end
     ns.Log("rechecking item %s after a purchase", t.keyString)
-    ns.Queue.Add({
-        itemKey = t.itemKey, keyString = t.keyString, net = t.net, ilvl = t.ilvl, quality = t.quality,
-        classID = t.classID, limit = t.limit,
-        onResult = function(task) readAuctions(task) ns.Fire("SALVAGER_DEALS") end,
-        onFail = function() ns.Fire("SALVAGER_DEALS") end,
-    })
+    local c = { keyString = t.keyString, net = band.net, limit = band.limit, ilvl = t.ilvl, quality = t.quality,
+        classID = t.classID }
+    checkItem(c, t.itemKey, function(task) readAuctions(task) ns.Fire("SALVAGER_DEALS") end,
+        function() ns.Fire("SALVAGER_DEALS") end)
 end
 
 --- The cheapest deal of a list that is not being bought already.
@@ -629,6 +677,7 @@ function Scanner.SendWaiting(force)
     d.sentByAddon = true
     d.clickedAt = GetTime()
     lastBuyAt = d.clickedAt
+    ns.NoteRequest("buy")
     local ok, err = pcall(AH.PlaceBid, d.auctionID, d.buyout)
     ns.Log("purchase of %s sent%s%s", d.link or d.itemID, d.queued and " (it waited for the auction house)"
         or string.format(" again (%d of %d)", d.resends, MAX_BUY_RESENDS), ok and "" or (": " .. tostring(err)))
@@ -677,7 +726,9 @@ ns.On("AUCTION_HOUSE_PURCHASE_COMPLETED", function(auctionID)
     removeDeal(auctionID)
     if d then
         ns.Print("bought %s for %s (expected profit %s)", d.link or "item", ns.Money(d.buyout), ns.Money(d.profit))
-        ns.Ledger.AuctionPurchase(ns.db.ledger, d.itemID, d.buyout, d.value, time(), d.link)
+        local o = ns.Model.Outcomes(d.quality, d.classID, d.ilvl)
+        ns.Ledger.AuctionPurchase(ns.db.ledger, d.itemID, d.buyout, d.value, time(), d.link,
+            { q = d.quality, cls = d.classID, band = o and o.band, ilvl = d.ilvl, v = ns.VERSION })
         ns.Log("bought %s for %s, value %s", d.link or d.itemID, ns.Money(d.buyout), ns.Money(d.value))
         ns.Fire("SALVAGER_LEDGER")
         Scanner.Recheck(d)
@@ -687,16 +738,36 @@ end)
 
 -- The error does not say which purchase it is about: it is the oldest one still on its way.
 ns.On("AUCTION_HOUSE_SHOW_ERROR", function()
+    -- (The same event answers posts and cancels: it is about a purchase only when one was sent last.)
+    if not ns.ErrorIs("buy") then return end
     local d
     for _, x in pairs(pendingBuys) do
         if not d or x.clickedAt < d.clickedAt then d = x end
     end
     if not d then return end
     pendingBuys[d.auctionID] = nil
+    dropped[d.auctionID] = d
     d.pending = false
     removeDeal(d.auctionID)
     ns.Print("could not buy %s (sold or changed)", d.link or "item")
     ns.Log("could not buy %s for %s", d.link or d.itemID, ns.Money(d.buyout))
     Scanner.Recheck(d)
     ns.Fire("SALVAGER_DEALS")
+end)
+
+-- New settings (a buy limit, the most to pay, the gear type): rows that are no deal under them go at once.
+ns.On("SALVAGER_SETTINGS", function()
+    local gone = 0
+    for i = #Scanner.deals, 1, -1 do
+        local d = Scanner.deals[i]
+        local band = not d.pending and currentBand(d.quality, d.classID, d.ilvl)
+        if not d.pending and (not band or d.buyout > band.limit) then
+            table.remove(Scanner.deals, i)
+            gone = gone + 1
+        end
+    end
+    if gone > 0 then
+        ns.Log("settings changed: %d deals left out, they are over their buy limit now", gone)
+        ns.Fire("SALVAGER_DEALS")
+    end
 end)

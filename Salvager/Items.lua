@@ -14,9 +14,10 @@ ns.Items = Items
 local PER_TICK, PER_TICK_URGENT = 5, 20
 
 local function resolve(id)
-    local _, _, _, lvl = ns.GetItemInfo(id)
+    local _, _, quality, lvl = ns.GetItemInfo(id)
     if lvl and lvl > 0 then
         ns.db.ilvl[id] = lvl
+        ns.db.quality[id] = quality
         Items.pending[id], Items.waiting[id] = nil, nil
         Items.learned = Items.learned + 1
         return true
@@ -26,7 +27,7 @@ end
 
 --- Queues an item to learn its level from the game.
 function Items.Learn(id)
-    if Items.pending[id] or ns.db.ilvl[id] then return end
+    if Items.pending[id] or (ns.db.ilvl[id] and ns.db.quality[id]) then return end
     Items.pending[id] = true
     Items.queue[#Items.queue + 1] = id
 end
@@ -42,6 +43,14 @@ function Items.Level(key)
     if k and k > 0 then return k, "key" end
     Items.urgent = true
     return nil
+end
+
+--- An item's quality, from what was learned (no request to the game during a scan). nil = not learned yet:
+--- it is asked for in the background.
+function Items.Quality(id)
+    local q = ns.db.quality[id]
+    if q == nil then Items.Learn(id) end
+    return q
 end
 
 function Items.Backlog() return #Items.queue end

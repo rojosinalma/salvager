@@ -110,11 +110,6 @@ end
 local Value = { title = "Disenchant value", columns = { { "Band", 190 }, { "Value now", 76, "RIGHT" },
     { "Change", 54, "RIGHT", help = { "Change", "How much the value of one disenchant moved over the time picked." } } } }
 
-local function bandOf(key)
-    local q, c, up = key:match("^(%d+):(%d+):(%d+)$")
-    return tonumber(q), tonumber(c), tonumber(up)
-end
-
 local function valueOptions()
     local s = ns.db.settings
     return { salvager = ns.SalvagerForBuy(), salvagerChance = s.salvagerChance, cut = s.cut }
@@ -143,7 +138,7 @@ function Value.Rows()
             for _, band in ipairs(q[2]) do
                 local series = Market.ValueSeries(q[1], classID, band.up, from)
                 if #series > 0 then
-                    local key = string.format("%d:%d:%d", q[1], classID, band.up)
+                    local key = Ledger.BandKey(q[1], classID, band.up)
                     local v = Model.Value(Model.Outcomes(q[1], classID, band.up), ns.PriceOf, opts)
                     rows[#rows + 1] = pickRow(key, { ns.BandName(q[1], classID, band.up), ns.Money(v.net),
                         percent((History.Change(series))) })
@@ -157,7 +152,7 @@ function Value.Rows()
 end
 
 function Value.Chart(key)
-    local quality, classID, up = bandOf(key)
+    local quality, classID, up = Ledger.BandOf(key)
     local from = since()
     local series = Market.ValueSeries(quality, classID, up, from)
     local line = {}
@@ -176,11 +171,12 @@ end
 
 local Profit = { title = "Profit", columns = { { "Day", 110 }, { "Sales", 50, "CENTER" }, { "Profit", 90, "RIGHT" } } }
 
---- The sales with a known cost, from `from` on, oldest first.
+--- The sales with a known cost, and the deposits lost, from `from` on, oldest first. A sale's profit
+--- counts only its units with a known cost.
 local function sales(from)
     local out = {}
     for _, s in ipairs(ns.db.ledger.sales) do
-        if (s.count - (s.untracked or 0)) > 0 and s.t and (not from or s.t >= from) then out[#out + 1] = s end
+        if (s.lost or (s.count - (s.untracked or 0)) > 0) and s.t and (not from or s.t >= from) then out[#out + 1] = s end
     end
     table.sort(out, function(a, b) return a.t < b.t end)
     return out
@@ -219,7 +215,7 @@ function Profit.Chart()
         levels = { { value = 0, color = { 0.6, 0.6, 0.6 }, label = "Zero" } },
         empty = "No sale with a known cost in this time.",
     }), "Profit of your sales", string.format(
-        "%sSales|r %d    %sProfit|r %s    %s(sales of materials with no recorded cost are left out)|r", GOLD, #list_,
+        "%sSales|r %d    %sProfit|r %s    %s(units with no recorded cost are left out; deposits lost count)|r", GOLD, #list_,
         GOLD, (total >= 0 and GREEN or RED) .. ns.Money(total) .. "|r", GREY)
 end
 
@@ -405,7 +401,7 @@ local function build()
     local help = {
         material = "The price of one material over time, its lowest listing, your break-even, and how many units were listed.",
         value = "What one disenchant of an item level band was worth over time, against its buy limit: is gear worth buying now?",
-        profit = "The profit of your sales, added up over time, and per day.",
+        profit = "The profit of your sales (units with a known cost, less deposits lost), added up over time, and per day.",
         essence = "Three lesser against one greater, per essence: when combining or splitting pays.",
         hour = "The average price of a material at each hour of the day: when to post, and when to buy.",
     }

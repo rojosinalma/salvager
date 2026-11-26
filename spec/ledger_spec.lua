@@ -70,12 +70,86 @@ describe("Ledger", function()
         assert.is_nil(Ledger.AvgCost(old, 5))
     end)
 
-    it("counts units sold beyond the tracked stock at zero cost", function()
+    it("counts the profit of the units with a known cost only", function()
         Ledger.AddStock(state, 5, 1, 500)
         local rec = Ledger.Sell(state, 5, 3, 3000, 150, 0)
         assert.are.equal(2, rec.untracked)
         assert.are.equal(500, rec.cost)
+        assert.are.equal(950 - 500, rec.profit)          -- one known unit: a third of the net, minus its cost
+        assert.are.equal(1900, rec.netUntracked)
         assert.is_nil(state.stock[5])
+        -- Sales of older versions are split on load.
+        local old = Ledger.Init({ sales = { { id = 5, count = 2, untracked = 1, net = 2000, cost = 300, profit = 1700 } } })
+        assert.are.equal(700, old.sales[1].profit)
+        assert.are.equal(1000, old.sales[1].netUntracked)
+    end)
+
+    it("starts a new ledger with nothing to repair, and keeps what is seen sold on a reset", function()
+        assert.is_true(state.doubleSalesFixed)
+        state.seenSold[1] = { auctionID = 9, qty = 1, due = 4000 }
+        state.sales[1] = { id = 5, count = 1, unpaid = 1, each = 100, net = 95, cost = 0 }
+        local fresh = Ledger.Reset(state)
+        assert.are.equal(0, #fresh.sales)
+        assert.are.equal(1, #fresh.seenSold)
+        assert.is_true(fresh.doubleSalesFixed)
+        assert.are.equal(0, Ledger.DropDoubleSales(fresh))
+        assert.are.equal(0, #Ledger.NewSold(fresh, { { auctionID = 9, qty = 1, due = 4010 } }, 3000))
+        assert.is_nil(Ledger.Init({ sales = {} }).doubleSalesFixed)   -- an old ledger is still repaired once
+    end)
+
+    it("writes the real cut back when the mail pays a sale booked when seen", function()
+        Ledger.AddStock(state, 5, 10, 3000)
+        local rec = Ledger.SaleSeen(state, 5, 10, 500, 0.05, 1000)
+        assert.are.equal(250, rec.cut)                        -- estimated: 5%
+        Ledger.SalePaid(state, 5, 4, 2000, 80, 2000)          -- two mails, the real cut is 4%
+        assert.are.equal(250, rec.cut)                        -- not all paid yet: still the estimate
+        Ledger.SalePaid(state, 5, 6, 3000, 120, 2100)
+        assert.are.equal(200, rec.cut)
+        assert.are.equal(4800, rec.net)
+        assert.are.equal(4800 - 3000, rec.profit)
+        assert.are.equal(2100, rec.paidAt)
+    end)
+
+    it("keeps unknown cost unknown in proportion when essences change form", function()
+        Ledger.AddStock(state, 5, 3, 900)
+        Ledger.AddStock(state, 5, 3, nil)                     -- 6 lesser, 3 with a known cost
+        local cost, unknown = Ledger.Convert(state, 5, 6, 6, 2)
+        assert.are.equal(900, cost)
+        assert.are.equal(3, unknown)
+        assert.are.equal(2, state.stock[6].qty)
+        assert.are.equal(1, state.stock[6].unknown)           -- one greater known, one not
+        assert.are.equal(900, Ledger.AvgCost(state, 6))
+    end)
+
+    it("drops records that waited more than 30 days", function()
+        local now = 100 * 86400
+        local old, recent = now - 31 * 86400, now - 86400
+        state.bought = { { itemID = 1, each = 5, t = old }, { itemID = 1, each = 5, t = old, mail = true },
+            { itemID = 2, each = 5, t = recent } }
+        state.purchases = { [1] = { { each = 5, t = old }, { each = 5, t = recent } }, [3] = { { each = 1, t = old } } }
+        state.sales = { { id = 5, count = 1, unpaid = 1, t = old }, { id = 5, count = 1, unpaid = 1, t = recent } }
+        local b, p, s = Ledger.Expire(state, now)
+        assert.are.same({ 1, 2, 1 }, { b, p, s })
+        assert.are.equal(2, #state.bought)
+        assert.are.equal(1, #state.purchases[1])
+        assert.is_nil(state.purchases[3])
+        assert.are.equal(0, state.sales[1].unpaid)
+        assert.are.equal(1, state.sales[2].unpaid)
+    end)
+
+    it("books a lost deposit as a loss that the totals count and Accuracy leaves out", function()
+        local rec = Ledger.DepositLost(state, 5, 20, 60, "expired", 1000)
+        assert.are.equal(-60, rec.profit)
+        assert.are.equal(0, rec.count)
+        assert.are.equal(0, #Ledger.Accuracy(state).mats)
+    end)
+
+    it("makes and reads one band key", function()
+        local key = Ledger.BandKey(3, 2, 45)
+        assert.are.equal("3:w:45", key)
+        assert.are.same({ 3, 2, 45 }, { Ledger.BandOf(key) })
+        assert.are.same({ 2, 4, 30 }, { Ledger.BandOf(Ledger.BandKey(2, 4, 30)) })
+        assert.is_nil(Ledger.BandOf("2:4:30"))
     end)
 
     it("takes purchases oldest first", function()
@@ -172,13 +246,18 @@ describe("Ledger", function()
         local fresh = Ledger.NewSold(state, { { auctionID = 9, qty = 1, due = 4000 } }, 1000)
         Ledger.SaleSeen(state, 5, fresh[1].qty, 19699, 0.05, 1000)
         assert.are.equal(0, #Ledger.NewSold(state, { { auctionID = 9, qty = 1, due = 4036 } }, 1600))
-        assert.are.equal(0, #Ledger.NewSold(state, { { auctionID = 9, qty = 1, due = 4500 } }, 4400))  -- still on screen
+        assert.are.equal(0, #Ledger.NewSold(state, { { auctionID = 9, qty = 1, due = 4100 } }, 4000))  -- still on screen
+        -- The same size again, minutes later: another part of the listing.
+        assert.are.equal(1, #Ledger.NewSold(state, { { auctionID = 9, qty = 1, due = 4100 },
+            { auctionID = 9, qty = 1, due = 4400 } }, 4050))
+        table.remove(state.seenSold)
         assert.are.equal(0, #Ledger.NewSold(state, {}, 4600))                  -- gone, but its money was due a moment ago
         assert.are.equal(1, #state.seenSold)
         assert.are.equal(0, #Ledger.NewSold(state, {}, 6000))                  -- long gone: forgotten
         assert.are.equal(0, #state.seenSold)
         -- What 0.3.39 and before left behind: the same part seen twice, and booked twice.
         state.seenSold = { { auctionID = 9, qty = 1, due = 4000 }, { auctionID = 9, qty = 1, due = 4036 } }
+        state.doubleSalesFixed = nil                                           -- (a ledger of those versions)
         Ledger.SaleSeen(state, 5, 1, 19699, 0.05, 1600)
         assert.are.equal(2, #state.sales)
         assert.are.equal(1, Ledger.DropDoubleSales(state))
