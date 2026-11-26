@@ -34,6 +34,10 @@ By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_foreve
    your auctions (listed, sold and waiting for the money, undercut) and the sales already paid with their
    profit, and the disenchant odds of every band with its buy limit and the chance to lose at that limit.
    Point at a column title for what it means. **Log** opens the activity log.
+   **Reports** shows what your trading made, for this session (login to logout, a /reload keeps it), a past
+   session or the last hours or days: sales, the cost of what you sold, the change in your stock and how much
+   richer you are, then a check against your gold. It also lists every change of your gold, and the profit by
+   band, material and item.
 7. Options: Esc > Options > AddOns > Salvager, the **Options** button, or right-click the minimap button.
 
 ## How the value is calculated

@@ -373,15 +373,24 @@ end
 --- An "Auction successful" mail was taken: `count` units for `gross`, `cutPaid` kept by the house.
 --- One mail can cover several part sales of a listing. Units already booked when they were seen as sold
 --- (same material, same price each) are marked paid; only the rest is booked as a new sale.
+--- `back` (optional): the deposit the mail gave back with the money, kept on the first record it pays
+--- (`back`, `backAt`) so the statement can tell it from the sale.
 --- @return table|nil the new sale record (nil when everything was booked before), number units matched
-function Ledger.SalePaid(state, matID, count, gross, cutPaid, t)
+function Ledger.SalePaid(state, matID, count, gross, cutPaid, t, back)
     local each = gross / count
     local left = count
+    local function keepBack(rec)
+        if back and back > 0 then
+            rec.back, rec.backAt = (rec.back or 0) + back, t
+            back = nil
+        end
+    end
     for _, rec in ipairs(state.sales) do
         if left <= 0 then break end
         if rec.id == matID and (rec.unpaid or 0) > 0 and rec.each and math.abs(rec.each - each) < 1 then
             local take = math.min(rec.unpaid, left)
             rec.unpaid = rec.unpaid - take
+            keepBack(rec)
             -- The cut was estimated when the sale was seen: the mail has the real one.
             rec.paidCut = (rec.paidCut or 0) + (cutPaid or 0) * take / count
             if rec.unpaid == 0 then
@@ -398,6 +407,7 @@ function Ledger.SalePaid(state, matID, count, gross, cutPaid, t)
     local part = left / count
     local rec = Ledger.Sell(state, matID, left, math.floor(gross * part + 0.5), math.floor((cutPaid or 0) * part + 0.5), t)
     rec.each, rec.paidAt = each, t
+    keepBack(rec)
     return rec, count - left
 end
 
@@ -753,8 +763,10 @@ end
 ---   items = { sums with itemID, link }, mats = { id, got, sold, net, cost, profit, untracked, depositsLost } }
 ---   sums = { n, paid, value (disenchant value), sold (sold value), salvager (disenchants with it) }
 --- `keep(record)` (optional): only the disenchants it says yes to count (filters by gear type, quality, ...).
-function Ledger.Profits(state, from, keep)
+--- `to` (optional): the end of the time (included); nil = up to now.
+function Ledger.Profits(state, from, keep, to)
     from = from or 0
+    local function inTime(t) t = t or 0 return t >= from and (not to or t <= to) end
     local each = {}
     for _, s in ipairs(state.sales) do
         if not s.lost and s.count > 0 then
@@ -780,7 +792,7 @@ function Ledger.Profits(state, from, keep)
         return m
     end
     for _, r in ipairs(state.disenchants) do
-        if (r.t or 0) >= from and (not keep or keep(r)) then
+        if inTime(r.t) and (not keep or keep(r)) then
             for id, qty in pairs(r.got or {}) do mat(id).got = mat(id).got + qty end
             if r.costKnown then
                 local soldValue = 0
@@ -819,7 +831,7 @@ function Ledger.Profits(state, from, keep)
         end
     end
     for _, s in ipairs(state.sales) do
-        if (s.t or 0) >= from then
+        if inTime(s.t) then
             local m = mat(s.id)
             if s.lost then
                 m.depositsLost = m.depositsLost - (s.net or 0)

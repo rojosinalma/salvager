@@ -3,7 +3,7 @@
 -- taken) is known exactly; the rest is told by the window that is open (vendor, mailbox, trade, trainer).
 local _, ns = ...
 
-local Journal, Util = ns.Journal, ns.Util
+local Journal, Util, Statement = ns.Journal, ns.Util, ns.Statement
 
 local Gold = {}
 ns.Gold = Gold
@@ -80,7 +80,7 @@ local function hide(w)
     opened[w] = nil
 end
 
-local function seen(kindIfChanged)
+local function seen(kindIfChanged, at)
     local c, balance = Gold.Char(), GetMoney and GetMoney()
     if not c or not balance or not ns.db then return end
     local last = db().chars[c]
@@ -90,7 +90,7 @@ local function seen(kindIfChanged)
         kind, ref = Journal.Match(expected, d, GetTime())
         kind = kind or byWindow(d)
     end
-    local e = Journal.Seen(db(), c, balance, time(), kind, ref)
+    local e = Journal.Seen(db(), c, balance, at or time(), kind, ref)
     if e then
         ns.Log("gold: %s%s %s%s, now %s", e.d > 0 and "+" or "", ns.Money(e.d), Journal.KIND_NAME[e.k] or e.k,
             e.r and (" (" .. e.r .. ")") or "", ns.Money(e.b))
@@ -98,19 +98,67 @@ local function seen(kindIfChanged)
     end
 end
 
+local function sessions() return ns.db.sessions end
+
+--- The stock now: its value and cost (Statement.StockValue).
+function Gold.Stock() return Statement.StockValue(ns.db.ledger, ns.PriceOf, ns.Cut()) end
+
 local sessionStart
--- The session starts when the game tells the character's realm: at login, or a moment later.
+local reloading = false   -- the game said this load is a /reload (PLAYER_ENTERING_WORLD)
+-- The session starts when the game tells the character's realm: at login, or a moment later. A /reload keeps
+-- the session that was open (SDD 97).
 local function start(anyway)
     if sessionStart or not Gold.Char(anyway) or not GetMoney then return false end
-    seen("unseen")
+    -- (A change found now happened while the addon was off: before the session.)
+    seen("unseen", time() - 1)
     sessionStart = GetMoney()
-    ns.Log("session: %s logged in with %s (Salvager %s)", Gold.Char(), ns.Money(sessionStart), ns.VERSION)
+    local s, new = Statement.Login(sessions(), Gold.Char(), time(), reloading, Gold.Stock())
+    if new then
+        ns.Log("session: %s logged in with %s (Salvager %s)", Gold.Char(), ns.Money(sessionStart), ns.VERSION)
+    else
+        ns.Log("session: %s reloaded with %s, the session from %s goes on (Salvager %s)", Gold.Char(),
+            ns.Money(sessionStart), date("%H:%M", s.start), ns.VERSION)
+    end
+    ns.Fire("SALVAGER_GOLD")
     return true
 end
+
+--- When the session being played started (nil before it does).
+function Gold.SessionStart()
+    local s = ns.db and sessions().open
+    return s and sessionStart and s.start or nil
+end
+--- The open session of this character, or nil.
+function Gold.Session()
+    local s = ns.db and sessions().open
+    return (s and sessionStart and s.c == Gold.Char()) and s or nil
+end
+
+-- The money of a sold auction comes about an hour after the sale (the addon's guess, SDD 97).
+Gold.MAIL_DELAY = 3600
+
+--- The statement of this character from `from` to `to` (nil = now), Statement.Compute.
+function Gold.Statement(from, to)
+    if sessionStart then seen() end
+    local now = time()
+    return Statement.Compute({ ledger = ns.db.ledger, journal = db(), char = Gold.Char(true), from = from or 0,
+        to = math.min(to or now, now), now = now, snaps = sessions().snaps, stockNow = Gold.Stock() })
+end
+
+--- Trading profit and total of a session; kept with a closed session (its records do not change).
+function Gold.SessionSums(s)
+    if s.stop and s.sum then return s.sum end
+    local st = Gold.Statement(s.start, s.stop)
+    local sum = { trading = st.trading, total = st.total }
+    if s.stop then s.sum = sum end
+    return sum
+end
+
 -- (This client gives no realm name at all, measured 2026-11-26: the name alone is used after a short wait.)
 local REALM_WAIT = 3
-ns.On("PLAYER_ENTERING_WORLD", function()
+ns.On("PLAYER_ENTERING_WORLD", function(_, isReloadingUi)
     if sessionStart then seen() return end   -- (a loading screen, not a login)
+    reloading = isReloadingUi and true or false
     if start() then return end
     local tries = 0
     local function again()
@@ -120,9 +168,16 @@ ns.On("PLAYER_ENTERING_WORLD", function()
     C_Timer.After(1, again)
 end)
 -- A change of gold never waits for the realm name.
-ns.On("PLAYER_MONEY", function() if sessionStart or start(true) then seen() end end)
+ns.On("PLAYER_MONEY", function()
+    if sessionStart or start(true) then
+        seen()
+        Statement.Touch(sessions(), time())
+    end
+end)
+ns.On("SALVAGER_LEDGER", function() if sessionStart then Statement.Touch(sessions(), time()) end end)
 -- (At logout the game reports 0 gold: the balance is not read then, the last one seen is the one logged.)
 ns.On("PLAYER_LOGOUT", function()
+    if sessionStart and ns.db then Statement.Leave(sessions(), time(), Gold.Stock()) end
     local last = Gold.Char() and ns.db and db().chars[Gold.Char()]
     if sessionStart and last then
         ns.Log("session: logged out with %s (%s%s this session)", ns.Money(last.b), last.b >= sessionStart and "+" or "",
@@ -247,5 +302,6 @@ end
 
 ns.On("SALVAGER_READY", function()
     Journal.Init(ns.db.money)
+    Statement.Init(ns.db.sessions)
     Util.Cap(ns.db.money.entries, Journal.MAX)
 end)

@@ -191,7 +191,8 @@ end
 ---   list.onColumnsChanged = fn                            runs after a change in the chooser (else list:Refresh)
 ---   list:SetSource(count, getRow)                         getRow(i) -> row, only called for rows on screen
 ---   list:Refresh()
---- row = { cells = { text, ... }, itemID = icon and tooltip, link = tooltip, indent = pixels }
+--- row = { cells = { text, ... }, itemID = icon and tooltip, link = tooltip, indent = pixels,
+---         tip = { title, line, ... } (hover help of the row, instead of an item tooltip) }
 --- row.group = true marks the first row of a group (an item with its materials under it): it gets a band.
 --- opts = { rowHeight = 22, header = true, plain = false }
 --- Unless `plain`, the list is drawn as a sunken table: dark panel, title band, every second row shaded.
@@ -307,6 +308,15 @@ function Widgets.List(parent, opts)
         end
         row:SetScript("OnEnter", function(self)
             local data = self.data
+            -- A row's own help: what the line is and how it is computed.
+            local tip = data and data.tip
+            if tip then
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(tip[1], 1, 1, 1)
+                for i = 2, #tip do GameTooltip:AddLine(tip[i], 1, 0.82, 0, true) end
+                GameTooltip:Show()
+                return
+            end
             local link = data and (data.link or (data.itemID and ("item:" .. data.itemID)))
             if not link then return end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")

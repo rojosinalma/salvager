@@ -48,6 +48,7 @@ local DEFAULTS = {
     listings = {},                 -- your auctions as last read: { t, rows, lowest = { [itemID] = { lo, t } } }
     posted = {},                   -- posts made through Salvager: { auctionID, itemID, qty, each, t }
     money = {},                    -- the gold journal, every change of gold with its cause (Journal.lua)
+    sessions = {},                 -- sessions from login to logout, and the stock's value at each (Statement.lua)
 }
 
 ------------------------------------------------------------------ output

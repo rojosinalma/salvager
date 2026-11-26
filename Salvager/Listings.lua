@@ -132,6 +132,10 @@ function Listings.Read()
         rec.due = r.due   -- when its money arrives, for the countdown in the Ledger
         local post = postedEntry(r.auctionID)
         rec.val = post and post.val or nil   -- the value when it was posted (sell price ratio, SDD 3)
+        -- Sold before this session started (not seen since then, its money due an hour after the sale): a sale
+        -- made while you were away.
+        local start = ns.Gold.SessionStart()
+        if start and (not prevT or prevT < start) and r.due - ns.Gold.MAIL_DELAY < start then rec.away = true end
         booked = true
         ns.Log("sold %dx %s at %s each: %s after cut, profit %s (money in %d min)", r.qty, ns.MaterialName(r.itemID),
             ns.Money(r.each), ns.Money(rec.net), ns.Money(rec.profit), math.floor((r.left or 0) / 60 + 0.5))

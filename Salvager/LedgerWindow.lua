@@ -41,20 +41,23 @@ local COLUMNS = {
             .. "got, at the prices of the moment you disenchanted, after the auction house cut." } },
         { "DV/EV %", 46, "RIGHT", help = { "DV/EV %",
             "The difference between Disenchant value (DV) and Expected value (EV), in percent of the Expected value. The "
-            .. "gap comes from luck in the results, or from result rates that are not what the addon assumes." } },
+            .. "gap comes from luck in the results, or from result rates that are not what the addon assumes."
+            .. " Grey: a gap from a forecast, not gold you gained or lost." } },
         { "Sold value (SV)", 70, "RIGHT", help = { "Sold value (SV)", "The same materials at the average price each one "
             .. "really sold for, after the auction house cut. Materials you have not sold yet count at their disenchant "
             .. "value." } },
         { "SV/DV %", 46, "RIGHT", help = { "SV/DV %",
             "The difference between Sold value (SV) and Disenchant value (DV), in percent of the Disenchant value. The "
             .. "gap comes from prices that moved, and from undercutting. * = more than half of the row's materials are "
-            .. "not sold yet, so most of it is still the disenchant value." } },
+            .. "not sold yet, so most of it is still the disenchant value."
+            .. " Grey: a gap from a forecast, not gold you gained or lost." } },
         { "Expected profit (EP)", 70, "RIGHT", help = { "Expected profit (EP)", "Expected value minus Paid." } },
         { "Actual profit (AP)", 70, "RIGHT", help = { "Actual profit (AP)", "Sold value minus Paid." } },
         { "AP/EP %", 46, "RIGHT", help = { "AP/EP %",
             "The difference between Actual profit (AP) and Expected profit (EP), in percent of the Expected profit: how "
             .. "much more (+) or less (-) the items made than the Deals list said when you bought them. "
-            .. "- = no expected profit to compare with." } } },
+            .. "- = no expected profit to compare with."
+            .. " Grey: a gap from a forecast, not gold you gained or lost." } } },
     accMats = { { "Material", 170 }, { "Units", 44, "CENTER" },
         { "Disenchant value each (DV)", 80, "RIGHT", help = { "Disenchant value each (DV)", "The average market price of "
             .. "one unit at the moment you disenchanted, after the auction house cut." } },
@@ -513,11 +516,18 @@ function Window.SoldRows(history)
     return rows
 end
 
---- "+5%" in green, "-3%" in red: how far `part` is from `whole`.
+--- "+5%", "-3%" in grey: how far `part` is from `whole`. A gap from a forecast is not gold gained or lost, so it is
+--- never green or red (UI.md Tables 7); the sign says which way.
 local function share(part, whole)
     if not whole or whole == 0 then return GREY .. "-|r" end
     local pct = math.floor((part - whole) / whole * 100 + 0.5)
-    return (pct > 0 and (GREEN .. "+") or pct < 0 and RED or GREY) .. pct .. "%|r"
+    return GREY .. (pct > 0 and "+" or "") .. pct .. "%|r"
+end
+
+--- A gap from a forecast in coins: grey, with its sign.
+local function gap(c)
+    c = math.floor(c + 0.5)
+    return GREY .. (c > 0 and "+" or "") .. ns.Money(c) .. "|r"
 end
 
 --- AP/EP %: how far the actual profit is from the expected one, in percent of the expected one
@@ -525,7 +535,7 @@ end
 local function profitShare(actual, expected)
     if not expected or expected == 0 then return GREY .. "-|r" end
     local pct = math.floor((actual - expected) / math.abs(expected) * 100 + 0.5)
-    return (pct > 0 and (GREEN .. "+") or pct < 0 and RED or GREY) .. pct .. "%|r"
+    return GREY .. (pct > 0 and "+" or "") .. pct .. "%|r"
 end
 
 --- Accuracy, by band: what was promised, what the disenchants gave, what the sales brought.
@@ -550,7 +560,7 @@ function Window.AccuracyBandRows()
         rows[#rows + 1] = { group = group, cells = { name, (few and GREY or "") .. b.n .. (few and "|r" or ""),
             ns.Money(b.paid), ns.Money(b.promised), ns.Money(b.got), share(b.got, b.promised), ns.Money(b.sold),
             share(b.sold, b.got) .. ((b.units > 0 and b.soldUnits < b.units / 2) and (GREY .. "*|r") or ""),
-            signed(b.promised - b.paid), signed(math.floor(b.sold + 0.5) - b.paid),
+            gap(b.promised - b.paid), signed(math.floor(b.sold + 0.5) - b.paid),
             profitShare(math.floor(b.sold + 0.5) - b.paid, b.promised - b.paid) } }
     end
     if acc.total.n == 0 then
@@ -589,7 +599,7 @@ function Window.AccuracyMaterialRows()
         local sold = m.soldUnits > 0 and m.soldNet / m.soldUnits or nil
         rows[#rows + 1] = { itemID = m.id, cells = { ns.MaterialName(m.id), tostring(m.units),
             valued and ns.Money(valued) or (GREY .. "-|r"), sold and ns.Money(sold) or (GREY .. "not sold yet|r"),
-            (valued and sold) and signed(sold - valued) or "", (valued and sold) and share(sold, valued) or "",
+            (valued and sold) and gap(sold - valued) or "", (valued and sold) and share(sold, valued) or "",
             m.soldUnits > 0 and tostring(m.soldUnits) or (GREY .. "0|r") } }
     end
     if #rows == 0 then rows[1] = note("No disenchant with a recorded purchase yet.") end

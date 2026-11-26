@@ -301,11 +301,11 @@ describe("Salvager in a simulated client", function()
             return cells[11], cells
         end
         local vs, cells = vsExpected(1000, 2000, 2500)              -- expected 1000, actual 1500
-        assert.are.equal("|cff40ff40+50%|r", vs)
-        assert.are.equal(ns.Money(1000), cells[9]:match("^|c%x%x%x%x%x%x%x%x(.*)|r$"))   -- Expected profit
+        assert.are.equal("|cff808080+50%|r", vs)                    -- a gap from a forecast: grey, signed
+        assert.are.equal("+" .. ns.Money(1000), cells[9]:match("^|cff808080(.*)|r$"))    -- Expected profit, grey
         assert.are.equal(ns.Money(1500), cells[10]:match("^|c%x%x%x%x%x%x%x%x(.*)|r$"))  -- Actual profit
-        assert.are.equal("|cffff4040-25%|r", (vsExpected(1000, 2000, 1750)))          -- actual 750: less
-        assert.are.equal("|cffff4040-100%|r", (vsExpected(1000, 800, 600)))           -- expected -200, actual -400
+        assert.are.equal("|cff808080-25%|r", (vsExpected(1000, 2000, 1750)))          -- actual 750: less
+        assert.are.equal("|cff808080-100%|r", (vsExpected(1000, 800, 600)))           -- expected -200, actual -400
         assert.are.equal("|cff808080-|r", (vsExpected(1000, 1000, 1500)))             -- nothing expected
         assert.is_true(acc[2].open)
         acc[2].onClick()                                            -- the Armor heading closes
@@ -358,7 +358,7 @@ describe("Salvager in a simulated client", function()
         assert.is_true(cell:IsShown())
         local expected, actual = total.promised - total.paid, math.floor(total.sold + 0.5) - total.paid
         local pct = math.floor((actual - expected) / math.abs(expected) * 100 + 0.5)
-        assert.are.equal((pct > 0 and "|cff40ff40+" or pct < 0 and "|cffff4040" or "|cff808080") .. pct .. "%|r",
+        assert.are.equal("|cff808080" .. (pct > 0 and "+" or "") .. pct .. "%|r",
             cell:GetText())
         local matTitles = {}
         for _, h in ipairs(byMat.headers) do if h:IsShown() then matTitles[#matTitles + 1] = h:GetText() end end
@@ -2548,6 +2548,148 @@ describe("The forecast learns from your own sales in a simulated client", functi
         local row
         for _, m in ipairs(ns.Materials.Rows()) do if m.itemID == DUST then row = m end end
         assert.are.equal("80.0%", row.cells[10])
+        for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
+    end)
+end)
+
+describe("Sessions and the statement in a simulated client", function()
+    local env, ns
+    local BOOTS_LINK = "|cff1eff00|Hitem:5001::::::::30:::::|h[Test Boots]|h|r"
+    local DUST = 11083
+    local function money(amount)
+        env.money = env.money + amount
+        wow.fire(ns, "PLAYER_MONEY")
+    end
+    -- A fresh client (the game reloaded or logged in again) with the saved data, the gold and the clock it had.
+    local function load(saved, gold, clock, initial, reload)
+        env = wow.install()
+        env.items[5001] = { name = "Test Boots", quality = 2, ilvl = 28, req = 23, classID = 4 }
+        env.items[DUST] = { name = "Soul Dust", quality = 1, ilvl = 1, classID = 7 }
+        env.bagLinks = { ["0:1"] = BOOTS_LINK }
+        env.money, env.clock = gold, clock
+        _G.SalvagerDB = saved
+        ns = wow.loadAddon()
+        wow.fire(ns, "ADDON_LOADED", "Salvager")
+        wow.fire(ns, "PLAYER_ENTERING_WORLD", initial, reload)
+    end
+    local function sellMail(bid, cut, count, daysLeft)
+        wow.fire(ns, "MAIL_SHOW")
+        env.inbox[1] = { sender = "Auction House", subject = "Auction successful: Soul Dust", money = bid - cut,
+            daysLeft = daysLeft, invoice = { "seller", "Soul Dust", "Buyer", bid, bid, 0, cut, 0, 0, 0, count } }
+        TakeInboxMoney(1)
+        money(bid - cut)
+        table.remove(env.inbox, 1)
+        wow.fire(ns, "MAIL_INBOX_UPDATE")
+        wow.fire(ns, "MAIL_CLOSED")
+    end
+    local function labels(rows)
+        local out = {}
+        for _, r in ipairs(rows) do out[#out + 1] = r.cells[1] end
+        return table.concat(out, "\n")
+    end
+
+    setup(function() load(nil, 1000000, 1700000000, true, false) end)
+
+    it("starts a session at login, and books a buy, a disenchant and a sale in it", function()
+        local s = ns.db.sessions.open
+        assert.are.same({ "Tester-Realm", 1700000000 }, { s.c, s.start })
+        ns.db.prices[DUST] = { p = 433, t = time() }
+        local deal = { auctionID = 501, itemID = 5001, link = BOOTS_LINK, buyout = 500, value = 900, profit = 400,
+            quality = 2, classID = 4, ilvl = 28 }
+        ns.Scanner.Buy(deal)
+        money(-500)
+        wow.fire(ns, "AUCTION_HOUSE_PURCHASE_COMPLETED", 501)
+        env.clock = env.clock + 60
+        wow.fire(ns, "UNIT_SPELLCAST_SENT", "player", nil, "cast-guid", 13262)
+        wow.fire(ns, "ITEM_LOCK_CHANGED", 0, 1)
+        env.loot = { { id = DUST, qty = 3 } }
+        wow.fire(ns, "LOOT_READY")
+        env.clock = env.clock + 60
+        sellMail(1200, 60, 2, 30)
+        local st = ns.Gold.Statement(s.start)
+        assert.are.same({ 1140, 333, 807 }, { st.sales, st.cost, st.trading })
+        assert.are.equal(st.trading + st.away.profit + st.stock.change, st.total)
+        assert.are.equal(0, st.check.missing)
+        ns.Reports.Show()
+        ns.Reports.view, ns.Reports.range, ns.Reports.goldTab = "gold", "session", "statement"
+        ns.Reports.Refresh()
+        local rows = ns.Reports.StatementRows()
+        assert.is_truthy(labels(rows):find("= Trading profit", 1, true))
+        assert.is_nil(labels(rows):find("Sold while you were away", 1, true))
+        for _, r in ipairs(rows) do
+            if r.cells[1]:find("Trading profit", 1, true) then
+                assert.is_true(r.group)                                  -- a total, visibly
+                assert.are.equal("|cff40ff40+" .. ns.Money(807) .. "|r", r.cells[2])
+            end
+            if r.cells[1]:find("Not explained", 1, true) then
+                assert.is_nil(r.cells[1]:find("check", 1, true))        -- every change has its record
+            end
+            if r.cells[1] ~= "" and not r.cells[1]:find("^|cff808080") then assert.is_table(r.tip, r.cells[1]) end
+        end
+        -- Each column as wide as its widest text (the stand-in measures 6 px a character), title included.
+        local real = ns.Widgets.TextWidth
+        ns.Widgets.TextWidth = shownWidth
+        local list, widths = ns.Reports.list, {}
+        list.GetWidth = function() return 860 end
+        for i = 1, 2 do list.headers[i].SetWidth = function(_, w) widths[i] = w end end
+        ns.Reports.Refresh()
+        local want = { shownWidth("What"), shownWidth("Amount") }
+        for _, r in ipairs(rows) do
+            want[1] = math.max(want[1], shownWidth(r.cells[1]) + (r.indent or 0))
+            want[2] = math.max(want[2], shownWidth(r.cells[2]))
+        end
+        assert.are.same({ want[1] + 10, want[2] + 10 }, widths)
+        ns.Widgets.TextWidth = real
+    end)
+
+    it("keeps the session over a /reload", function()
+        local start = ns.db.sessions.open.start
+        wow.fire(ns, "PLAYER_LOGOUT")
+        load(_G.SalvagerDB, env.money, env.clock + 30, false, true)
+        assert.are.equal(start, ns.db.sessions.open.start)
+        assert.are.equal(0, #ns.db.sessions.list)
+        assert.is_truthy(table.concat(ns.db.log, "\n"):find("reloaded with", 1, true))
+        assert.are.equal(807, ns.Gold.Statement(start).trading)         -- the session's trading goes on
+    end)
+
+    it("closes the session at logout, and puts a sale paid while away on its own line at the next login", function()
+        env.clock = env.clock + 60
+        wow.fire(ns, "PLAYER_LOGOUT")
+        local stop = env.clock
+        -- Ten hours later; the last dust sold five hours ago, its mail waits.
+        load(_G.SalvagerDB, env.money, stop + 36000, true, false)
+        local list = ns.db.sessions.list
+        assert.are.equal(1, #list)
+        assert.are.same({ 1700000000, stop }, { list[1].start, list[1].stop })
+        local s = ns.db.sessions.open
+        assert.are.equal(stop + 36000, s.start)
+        sellMail(600, 30, 1, 30 - 5 / 24)
+        local sale = ns.db.ledger.sales[#ns.db.ledger.sales]
+        assert.is_true(sale.away)
+        local st = ns.Gold.Statement(s.start)
+        assert.are.same({ 0, 0 }, { st.sales, st.trading })
+        assert.are.same({ 1, 570, 167, 403 }, { st.away.n, st.away.net, st.away.cost, st.away.profit })
+        assert.are.equal(-(411 - 167), st.stock.change)               -- the dust left the stock
+        assert.are.equal(st.away.profit + st.stock.change, st.total)
+        assert.are.equal(0, st.check.missing)
+        ns.Reports.Show()
+        ns.Reports.view, ns.Reports.range, ns.Reports.goldTab = "gold", "session", "statement"
+        ns.Reports.Refresh()
+        assert.is_truthy(labels(ns.Reports.StatementRows()):find("Sold while you were away", 1, true))
+        -- The Sessions list: this one first, then the one before, with its trading profit; a click shows it.
+        local rows = ns.Reports.SessionRows()
+        assert.are.equal(2, #rows)
+        assert.is_truthy(rows[1].cells[1]:find("(now)", 1, true))
+        assert.are.equal("|cff40ff40+" .. ns.Money(807) .. "|r", rows[2].cells[3])
+        rows[2].onClick()
+        assert.are.equal("s:1700000000", ns.Reports.range)
+        local from, _, to = ns.Reports.From()
+        assert.are.same({ 1700000000, stop }, { from, to })
+        assert.is_truthy(labels(ns.Reports.StatementRows()):find("Session of", 1, true))
+        for _, tab in ipairs({ "sessions", "changes", "statement" }) do
+            ns.Reports.goldTab = tab
+            ns.Reports.Refresh()
+        end
         for _, m in ipairs(env.chat) do assert.is_nil(m:find("error", 1, true), m) end
     end)
 end)

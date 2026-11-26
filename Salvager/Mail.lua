@@ -15,6 +15,7 @@ local Data, Ledger = ns.Data, ns.Ledger
 local Mail = {}
 ns.Mail = Mail
 
+local MAIL_DAYS = 30   -- an auction house mail stays this many days: its days left tell when it was sent
 local watch = {}   -- [key] = { info, holding = mails of this kind that still hold their item/money, asked, booked }
 
 -- Material by name: the English name and the client's own. Built once; built again on a miss,
@@ -47,13 +48,14 @@ end
 local function describe(index)
     local invoiceType, itemName, _, bid, _, _, consignment, _, _, _, count = GetInboxInvoiceInfo(index)
     if invoiceType ~= "buyer" and invoiceType ~= "seller" then return nil end
-    local _, _, sender, subject, money, _, _, itemCount = GetInboxHeaderInfo(index)
+    local _, _, sender, subject, money, _, daysLeft, itemCount = GetInboxHeaderInfo(index)
     local holds
     if invoiceType == "buyer" then holds = (itemCount or 0) > 0 else holds = (money or 0) > 0 end
     count = (count and count > 0) and count or 1
     local key = table.concat({ invoiceType, tostring(sender), tostring(subject), tostring(itemName), tostring(bid),
         tostring(count) }, "|")
-    return key, holds, { type = invoiceType, itemName = itemName, bid = bid or 0, cut = consignment or 0, count = count }
+    return key, holds, { type = invoiceType, itemName = itemName, bid = bid or 0, cut = consignment or 0, count = count,
+        money = money or 0, daysLeft = daysLeft }
 end
 
 --- How many mails of each kind still hold their item or money: one pass over the inbox.
@@ -73,7 +75,13 @@ local function book(info)
         ns.Log("mail: bought %s for %s%s", info.link or info.itemID, ns.Money(info.bid),
             added and "" or " (already recorded at the auction house)")
     else
-        local rec, matched = Ledger.SalePaid(ns.db.ledger, info.matID, info.count, info.bid, info.cut, time())
+        -- The mail's money beyond the sale after the cut is the deposit given back.
+        local back = info.money - (info.bid - info.cut)
+        local rec, matched = Ledger.SalePaid(ns.db.ledger, info.matID, info.count, info.bid, info.cut, time(),
+            back > 0 and back or nil)
+        -- A sale first known from its mail, sent before this session started: sold while you were away.
+        local start = ns.Gold.SessionStart()
+        if rec and start and info.daysLeft and time() - (MAIL_DAYS - info.daysLeft) * 86400 < start then rec.away = true end
         if matched > 0 then
             ns.Log("mail: money for %dx %s (%d already booked when they sold)", info.count, ns.MaterialName(info.matID),
                 matched)

@@ -112,10 +112,17 @@ describe("The gold journal in a simulated client", function()
         ns.Reports.Toggle()
         ns.Reports.view = "gold"
         ns.Reports.Refresh()
-        local sums, log = ns.Reports.GoldRows()
-        assert.are.equal("At the start", sums[1].cells[1])
-        assert.is_truthy(sums[4].cells[1]:find("In the mail", 1, true))
+        local log = ns.Reports.ChangeRows()
         assert.is_true(#log >= 5)
+        local statement = ns.Reports.StatementRows()
+        local text = {}
+        for _, r in ipairs(statement) do text[#text + 1] = r.cells[1] end
+        text = table.concat(text, "\n")
+        for _, want in ipairs({ "Sales, after the auction house cut", "= Trading profit", "Stock change",
+            "= Total: how much richer you are", "Gold not from trading", "Check against your gold", "Money in the mail" }) do
+            assert.is_truthy(text:find(want, 1, true), want)
+        end
+        for _, tab in ipairs({ "sessions", "changes", "statement" }) do ns.Reports.goldTab = tab ns.Reports.Refresh() end
         for _, view in ipairs({ "profit", "materials", "items" }) do   -- every view draws, with data and the time picked
             ns.Reports.view = view
             for _, range in ipairs({ "24h", "all" }) do ns.Reports.range = range ns.Reports.Refresh() end

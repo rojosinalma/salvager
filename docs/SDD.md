@@ -244,7 +244,8 @@ flipping is out of scope for now.
     By material `Material | Units | Disenchant value each (DV) | Sold value each (SV) | SV - DV | SV/DV % | Units sold`.
     DV/EV % = Disenchant value against Expected value, SV/DV % = Sold value against Disenchant value (the same name
     in both tables), AP/EP % = (Actual profit − Expected profit) / |Expected profit|, "-" where Expected profit is 0;
-    all in percent, "+" and green on a gain, red on a loss. SV - DV is in coins, with a plain hyphen: the game
+    all in percent, grey with "+" or "-" (0.3.123, UI.md Tables 7: a gap from a forecast is not gold gained or lost;
+    Expected profit and SV - DV too; Actual profit stays green or red). SV - DV is in coins, with a plain hyphen: the game
     font's minus sign (U+2212) is not confirmed. The help on each comparison names both values in full. Purchases
     (Expected value, Disenchant value, Profit) has no comparison column, so it keeps its titles without
     abbreviations; so does the Deals list. From 0.3.122 the Expected value of a purchase counts each unit at its price
@@ -338,9 +339,13 @@ flipping is out of scope for now.
 71. **A click that cannot run now runs by itself** (`ns.Defer`): a gear scan clicked during a material scan,
     a material scan during a gear scan or an undercut check, and an undercut check during a material scan
     start when the other is done (dropped if the auction house closes). The chat says when it starts.
-72. **Gold view** (moved 2026-11-26 to the Reports window, 79): the last 24 h of `Gold.Period`: start, now, change, money in
-    the mail and after you collect it, each kind, the buys that lost and the part valued wrong; under it
-    every change of gold, newest first.
+72. **Gold view** (Reports window, 79; rewritten 0.3.123: the user found the old one very hard to understand): three
+    subtabs on the row under the tabs, kept with the window (`goldTab`). "Statement" first (97). "Sessions": one row per
+    session of this character, newest first (Session start, Length, Trading profit, Total; the open one marked
+    "(now)"); a click shows its statement, and the time choice reads "Session of <date>". "All gold changes": every
+    change of gold in the time picked, newest first (What, Time, Change, Kind, Gold after). The old sums (start, now,
+    mail, by kind, the buys that lost and the part valued wrong) left the view: the statement says it better;
+    `/salv gold <hours>` keeps them.
 73. **Min return** (`minReturn`, percent, 0 = off) next to the min profit: the recommended limit is the lower
     of value − min profit and value ÷ (1 + min return) (`Model.MaxBuy`, which also says which rule set it; the
     value is the forecast's: price × sell price ratio after the cut, less deposits lost, 3 and 96; the
@@ -396,7 +401,9 @@ flipping is out of scope for now.
     "ForeverForge AH" button hangs below the game's window, bottom right, and can be dragged (kept in its own
     saved data), so its overlaps can be fixed by dragging it, with no patch.
 79. **Reports window** (`ReportsWindow.lua`, the main window's Reports button, `/salv reports`): one time
-    choice for all views (24 hours, 7 days, 30 days, all), remembered. Views: Gold (from the Ledger, 72);
+    choice for all views, remembered: This session (0.3.123, 97), 24 hours, 7 days, 30 days, all, or a past session
+    picked in Gold, Sessions (`range = "s:<start>"`; that time has an end too: `Ledger.Profits(state, from, keep, to)`).
+    Views: Gold (72, 97);
     Profit by quality and gear type with its bands under it (`Ledger.Profits`: disenchants with a known
     cost; Sold value = the materials at what one unit really sold for, at their disenchant value while that
     material has not sold; Profit = Sold value − Paid; grey under 20 disenchants); Materials (got, sold,
@@ -575,10 +582,54 @@ flipping is out of scope for now.
     (EV 719 040, DV 687 939) and price moves between the disenchant and the sale (SV 676 932), not the undercut
     or the deposits.
 
+97. **Sessions and the statement** (0.3.123, the user, 2026-11-26; `Statement.lua` pure, `Gold.lua` glue,
+    `SalvagerDB.sessions`).
+    - a. A session runs from login to logout. `PLAYER_ENTERING_WORLD` with `isReloadingUi` keeps the open session
+       (`sessions.open`, saved); any other load closes it and starts one. `PLAYER_LOGOUT` (logout and /reload; the
+       client does not say which) keeps the time as the session's last; every change of gold or of the ledger does
+       too. So a session whose logout was never seen (a crash) is closed at the next login at its last known time.
+       Another character's login closes it as well. At most 200 closed sessions.
+    - b. Stock snapshots (`sessions.snaps`, at most 1000): `{ t, v, c }` at each session start and at each
+       `PLAYER_LOGOUT`. Stock value (`Statement.StockValue`): every unit in the ledger's stock (bags, bank, listed) at
+       the material price now (`ns.PriceOf`, before the cut) × (1 − cut); gear bought and not disenchanted yet at its
+       expected value at purchase (`ev`). Without a price or an expected value, at its cost (no gain, no loss). Cost:
+       the stock's known cost plus what the gear cost; units with no recorded cost count at no cost.
+    - c. A sale made while you were away (`away = true` on the sale record): a sale first known from its mail when
+       that mail was sent before the session started (sent = now − (30 − days left) days), or a sale seen sold at the
+       first read of your auctions since the session started whose money is due less than an hour after the start
+       (the money comes about an hour after the sale, `Gold.MAIL_DELAY`; not measured on Forever).
+    - d. The deposit given back: a sale's mail money beyond the sale after the cut is kept on the sale (`back`,
+       `backAt`, `Ledger.SalePaid`), measured from the mail, not assumed.
+    - e. The statement (`Statement.Compute`) for a time `from`..`to` (both included) of one character:
+       Sales = Σ net (after the cut) of sale records booked in the time, not away; Cost of what you sold = Σ their
+       booked cost; Deposits lost = Σ deposits of the lost records (expired, cancelled); Cancel fees = the journal's
+       "cancel" kind. Trading profit = Sales − Cost − Deposits lost + Cancel fees (which are negative). Sold while
+       you were away = Σ (net − cost) of the away sales. Stock change = (v − c) at the end − (v − c) at the start:
+       the end is the stock now while the time runs to now, else the last snapshot at or before `to`; the start is
+       the last snapshot at or before `from`, else the first one in the time ("since <date>": the start is not
+       known), else none ("not known"). Total = Trading profit + Sold while you were away + Stock change. Gold not
+       from trading = the journal's kinds other than buy, sale, deposit, cancel and other auction house, by kind.
+    - f. Check against your gold: gold at the start (`Journal.Summary` start) + money in the mail at the start →
+       gold at the end + money in the mail at the end. Money in the mail just before a time t (`Statement.MailAt`) =
+       Σ net of sales booked before t and paid at or after t (unpaid ones: their unpaid units). Change in gold and
+       mail = (gold + mail at the end) − (gold + mail at the start). Explained = all sales of the time (away ones
+       too) + deposits given back + gear bought + deposits paid + cancel fees + other auction house + gold not from
+       trading (the last five from the journal). Not explained = change − explained; 1s or less counts as none
+       (grey), else it shows in orange with "!" and a tooltip: a record is probably missing. The brief named "sales
+       collected"; with the mail on both sides that would count the money in the mail twice, so the sales booked are
+       used (they go into the gold or the mail).
+    - g. Words and colors: no trading jargon in the statement; every line has its help on hover (`row.tip` of
+       `Widgets.List`); amounts with coins, right-aligned, + or − always; totals are "= ..." lines with the gold band.
+       Green or red only for real gold (Trading profit, Total, Gold not from trading, Change in gold and mail, each
+       change of gold); Stock change is grey (it rests on today's prices).
+    - h. Limits: the ledger is account-wide and the gold journal per character, so another character's sales show
+       as Not explained; a sold auction's mail delay is a guess; Clear history removes the records older statements
+       are built from (the closed sessions keep their Trading profit and Total once shown).
+
 ## Data
 
 `SalvagerBackup` (account-wide): `list` of ledger copies (88). `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `pools`, `disenchants`, `sales`),
-`money` (gold journal), `quality` and `ilvl` (learned item data), `auraSeen` and `auraSnapshots` (to learn the Salvager's aura spell ID; matched by name until then).
+`money` (gold journal), `sessions` (97), `quality` and `ilvl` (learned item data), `auraSeen` and `auraSnapshots` (to learn the Salvager's aura spell ID; matched by name until then).
 
 ## Open
 

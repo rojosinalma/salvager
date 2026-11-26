@@ -28,8 +28,10 @@ reply must say so.
 5. A marker that belongs to a row (your price, your break-even) is on that row, not on a line
    next to it.
 6. An empty table says why it is empty and what fills it.
-7. Money has coin icons, right-aligned. Gains are green, losses red. Color is never the only
-   signal: the sign or a word says it too.
+7. Money has coin icons, right-aligned. Green is gold gained, red is gold lost, and only for real
+   gold (a sale, a profit made, a change of your gold). A gap from a forecast or a value at today's
+   prices (Accuracy's comparisons, Expected profit, luck, price change, Stock change) is grey with
+   its + or -, never green or red. Color is never the only signal: the sign or a word says it too.
 
 ## Words
 
