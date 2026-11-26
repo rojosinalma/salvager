@@ -125,39 +125,76 @@ function Post.MarketRows(market, price, breakEven)
     return rows, c
 end
 
+--- How many units the other sellers list close to the lowest price (within 10% of it): what a new
+--- post at the lowest price competes with.
+function Post.Near(market)
+    local rows = market and market.rows or {}
+    if #rows == 0 then return 0 end
+    local n, limit = 0, rows[1].price * 1.1
+    for _, r in ipairs(rows) do
+        if r.price <= limit then n = n + r.qty end
+    end
+    return n
+end
+
+Post.CONVERT_MIN_GAIN = 0.03    -- a smaller gain is not worth the clicks
+Post.CONVERT_SURE_GAIN = 0.20   -- from this gain up, a crowded market does not hold the advice back
+Post.CONVERT_ROOM = 60          -- a market with fewer units than this near its lowest price (counted as
+                                -- lesser essences) is never "crowded"
+
 --- An essence has two forms: three lesser combine into one greater, and one greater splits into three
---- lesser (a right-click in the bags, free). Which form sells for more now?
---- @return table|nil { other (item ID of the other form), lesser (this one is the lesser form),
----   mine (price each of this form), same (what one of these is worth in the other form: a third of a
----   greater, or three lesser), gain (same - mine, per one of these), better (the other form pays more) }
----   nil when the material is not an essence or a price is missing.
-function Post.Convert(itemID)
+--- lesser (a right-click in the bags, free). Which form is the better one to sell now?
+--- It looks at the price in each form (1 copper under the lowest listing) and at how much is listed
+--- close to that price in each form. Combining needs three in the bags.
+--- @param bags number  how many of this form are in the bags
+--- @param market table|nil, otherMarket table|nil  Post.Market of this form and of the other one
+--- @return table|nil {
+---   other (item ID of the other form), lesser (this one is the lesser form), mine (price each of this
+---   form), same (what one of these sells for in the other form), gain (same - mine), pct (gain as a share),
+---   near, otherNear (units listed close to the lowest price, in each form),
+---   verdict = "convert" | "crowded" (the other form pays more, but far more is listed there) | "keep" }
+---   nil when it does not apply: not an essence, a price is missing, or fewer than three to combine.
+function Post.Convert(itemID, bags, market, otherMarket)
     local pair = Data.ESSENCE_PAIR[itemID]
     if not pair then return nil end
+    local lesser = pair.factor < 1
+    if lesser and (bags or 0) < 3 then return nil end
     local mine, other = Post.Suggest(itemID).price, Post.Suggest(pair.other).price
     if not (ns.db.prices[itemID] and ns.db.prices[pair.other]) or mine <= 0 or other <= 0 then return nil end
     local same = other * pair.factor
-    return { other = pair.other, lesser = pair.factor < 1, mine = mine, same = same, gain = same - mine,
-        better = same - mine >= 1 }
+    local c = { other = pair.other, lesser = lesser, mine = mine, same = same, gain = same - mine,
+        pct = (same - mine) / mine, near = Post.Near(market), otherNear = Post.Near(otherMarket) }
+    -- Both markets counted in lesser essences, so they compare.
+    local nearEq, otherEq = c.near * (lesser and 1 or 3), c.otherNear * (lesser and 3 or 1)
+    if c.pct < Post.CONVERT_MIN_GAIN then
+        c.verdict = "keep"
+    elseif c.pct < Post.CONVERT_SURE_GAIN and otherEq > math.max(2 * nearEq, Post.CONVERT_ROOM) then
+        c.verdict = "crowded"
+    else
+        c.verdict = "convert"
+    end
+    return c
 end
 
 --- The line of the Post window that says it.
-function Post.ConvertText(itemID, quantity)
-    local c = Post.Convert(itemID)
+function Post.ConvertText(itemID, bags, market, otherMarket)
+    local c = Post.Convert(itemID, bags, market, otherMarket)
     if not c then return "" end
     local otherName = ns.MaterialName(c.other)
-    if not c.better then
-        return "|cff808080This form pays more than " .. otherName .. " now: keep it as it is.|r"
+    local pct = math.floor(c.pct * 100 + 0.5)
+    local listed = string.format("Listed near the lowest price: %d there, %d here.", c.otherNear, c.near)
+    if c.verdict == "keep" then
+        return "|cff808080" .. otherName .. " does not pay more now: keep this form.|r"
+    elseif c.verdict == "crowded" then
+        return string.format("|cffffd100Keep this form.|r %s pays +%d%%, but far more is listed there. %s", otherName,
+            pct, listed)
+    elseif c.lesser then
+        return string.format("|cff40ff40Better: combine 3 into 1 %s (+%d%%).|r One sells for %s, three of these for "
+            .. "%s. Your %d make %d. %s", otherName, pct, ns.Money(c.same * 3), ns.Money(c.mine * 3), bags,
+            math.floor(bags / 3), listed)
     end
-    local pct = math.floor(c.gain / c.mine * 100 + 0.5)
-    if c.lesser then
-        local n = math.floor(quantity / 3)
-        return string.format("|cff40ff40Better: combine 3 into 1 %s.|r One sells for %s, three of these for %s "
-            .. "(+%d%%).%s", otherName, ns.Money(c.same * 3), ns.Money(c.mine * 3), pct,
-            n > 0 and string.format(" Your %d make %d.", quantity, n) or " You need 3.")
-    end
-    return string.format("|cff40ff40Better: split each into 3 %s.|r Three sell for %s, one of these for %s (+%d%%).",
-        otherName, ns.Money(c.same), ns.Money(c.mine), pct)
+    return string.format("|cff40ff40Better: split each into 3 %s (+%d%%).|r Three sell for %s, one of these for %s. %s",
+        otherName, pct, ns.Money(c.same), ns.Money(c.mine), listed)
 end
 
 --- What a post brings: after the cut, and against your cost.
@@ -249,7 +286,7 @@ local function recalc()
         d.lines[4]:SetText("Profit: |cff808080cost not known|r")
     end
     d.lines[5]:SetText("Deposit: " .. (o.deposit and ns.Money(o.deposit) or "-") .. " (returned when it sells)")
-    d.convert:SetText(Post.ConvertText(id, qty))
+    d.convert:SetText(Post.ConvertText(id, bags, d.market, d.otherMarket))
     if s.breakEven and price < s.breakEven then
         d.warn:SetText("|TInterface\\DialogFrame\\UI-Dialog-Icon-AlertNew:16|t Below your break-even: you lose "
             .. ns.Money(s.breakEven - price) .. " on each one.")
@@ -274,7 +311,7 @@ end
 
 local function build()
     -- A window of its own: drag it where you want it, and it opens there the next time.
-    d = W.Window("SalvagerPostFrame", "Post on the auction house", "post", 760, 370, 760, 370, true)
+    d = W.Window("SalvagerPostFrame", "Post on the auction house", "post", 760, 390, 760, 390, true)
     d:SetFrameStrata("DIALOG")
 
     d.icon = d:CreateTexture(nil, "ARTWORK")
@@ -379,7 +416,7 @@ local function show(itemID, stale)
     if not d then build() end
     local s = Post.Suggest(itemID)
     d.itemID, d.stale, d.confirm = itemID, stale, nil
-    d.market = Post.Market(itemID)
+    d.market, d.otherMarket = Post.Market(itemID), nil
     d.icon:SetTexture(W.IconOf(itemID))
     d.name:SetText(ns.MaterialName(itemID))
     d.qty:SetText(tostring(Post.BagCount(itemID)))
@@ -406,8 +443,11 @@ function Post.Open(itemID)
         -- An essence: get the price of its other form too, for the "combine or split" line.
         local pair = Data.ESSENCE_PAIR[itemID]
         if pair then
-            ns.Prices.Refresh(pair.other, function()
-                if d and d:IsShown() and d.itemID == itemID then recalc() end
+            ns.Prices.Refresh(pair.other, function(got)
+                if d and d:IsShown() and d.itemID == itemID then
+                    d.otherMarket = got and Post.Market(pair.other) or nil
+                    recalc()
+                end
             end)
         end
     end)

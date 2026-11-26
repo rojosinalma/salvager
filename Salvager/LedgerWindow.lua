@@ -442,8 +442,19 @@ function Window.SetSalesSplit(share)
     Window.Refresh()
 end
 
+--- The popped-out odds window is as tall as its tables, up to the room on the screen; past that it scrolls.
+local ODDS_TOP, ODDS_BOTTOM = 86, 14
+local function fitOdds()
+    local room = (UIParent:GetHeight() or 768) - 120
+    local need = ODDS_TOP + (oddsOut.stack.contentHeight or 0) + ODDS_BOTTOM
+    oddsFrame:SetHeight(math.max(160, math.min(room, need)))
+end
+
 function Window.Refresh()
-    if oddsFrame and oddsFrame:IsShown() then oddsOut:Refresh() end
+    if oddsFrame and oddsFrame:IsShown() then
+        oddsOut:Refresh()
+        fitOdds()
+    end
     if not f or not f:IsShown() then return end
     -- While the odds are in their own window, the ledger shows another view.
     if Window.view == "odds" and Window.OddsPoppedOut() then Window.view = "sales" end
@@ -640,15 +651,15 @@ StaticPopupDialogs["SALVAGER_CLEAR_LEDGER"] = {
 }
 
 local function buildOdds()
-    oddsFrame = W.Window("SalvagerOddsFrame", "Salvager odds", "odds", 760, 520, 640, 240)
+    -- As tall as its tables need (see fitOdds): no resize corner.
+    oddsFrame = W.Window("SalvagerOddsFrame", "Salvager odds", "odds", 760, 520, 760, 160, true)
     oddsOut = newOddsView(oddsFrame)
     oddsOut.dataOnly:SetPoint("TOPLEFT", oddsFrame, "TOPLEFT", 12, -29)
     oddsOut.qualityFilter:SetPoint("TOPRIGHT", oddsFrame, "TOPRIGHT", -12, -30)
     oddsOut.bandFilter:SetPoint("RIGHT", oddsOut.qualityFilter, "LEFT", -6, 0)
     oddsOut.tabs.a:SetPoint("TOPLEFT", oddsFrame, "TOPLEFT", 12, -58)
-    oddsOut.stack:SetPoint("TOPLEFT", oddsFrame, "TOPLEFT", 12, -86)
+    oddsOut.stack:SetPoint("TOPLEFT", oddsFrame, "TOPLEFT", 12, -ODDS_TOP)
     oddsOut.stack:SetPoint("BOTTOMRIGHT", oddsFrame, "BOTTOMRIGHT", -12, 14)
-    oddsFrame.onResize = Window.Refresh
     oddsFrame:SetScript("OnShow", Window.Refresh)
     oddsFrame:SetScript("OnHide", Window.Refresh)
 end

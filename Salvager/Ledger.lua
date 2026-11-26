@@ -163,6 +163,29 @@ function Ledger.Sell(state, matID, count, gross, cutPaid, t)
     return rec
 end
 
+--- Essences changed form (three lesser into one greater, or back): `fromQty` units of one material
+--- became `toQty` of another. Their cost goes with them. Units with a known cost go first.
+--- When some of them had no known cost, the new units still count as known, at the cost that was known.
+--- @return number cost moved, number units that had no known cost
+function Ledger.Convert(state, fromID, fromQty, toID, toQty)
+    local s = state.stock[fromID]
+    local known = Ledger.KnownQty(state, fromID)
+    local tracked = math.min(known, fromQty)
+    local cost = 0
+    if s and tracked > 0 then
+        cost = math.floor(s.cost * tracked / known + 0.5)
+        s.cost = s.cost - cost
+    end
+    if s then
+        local fromUnknown = math.min(s.unknown or 0, fromQty - tracked)
+        s.unknown = (s.unknown or 0) - fromUnknown
+        s.qty = s.qty - tracked - fromUnknown
+        if s.qty <= 0 then state.stock[fromID] = nil end
+    end
+    Ledger.AddStock(state, toID, toQty, tracked > 0 and cost or nil)
+    return cost, fromQty - tracked
+end
+
 --- A sale seen on the auction house (the listing shows as sold; its money comes by mail later).
 --- It is booked now, at the average cost of this moment. `unpaid` counts the units whose mail has not
 --- been taken yet, so that mail does not book them again (Ledger.SalePaid).

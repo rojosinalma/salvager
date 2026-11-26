@@ -176,9 +176,14 @@ flipping is out of scope for now.
     first, read from the search Post just made, with "Your price" and "Your break-even" in their place, the
     units ahead of your price and the units under your break-even. Two buttons set the price: Undercut lowest,
     Break-even. The game gives one line per price, not per auction.
-54. **Combine or split** (`Post.Convert`): for an essence, the Post window compares its undercut price with
-    the other form's (3 lesser = 1 greater, both ways, free) and says which form sells for more. Post searches
-    the other form's price too. Classic's rule; not confirmed for Forever.
+54. **Combine or split** (`Post.Convert`): for an essence, the Post window says which form is the better one
+    to sell (3 lesser = 1 greater, both ways, free). It compares the undercut price in each form and the units
+    listed within 10% of the lowest price in each form: a gain under 3% = keep; a gain under 20% into a market
+    more than twice as full (and over 60 lesser) = keep, "far more is listed there"; else convert. Combining is
+    only advised with three or more in the bags. Classic's rule; not confirmed for Forever.
+55. **Conversions are followed** (`Convert.lua`, `Ledger.Convert`): one form down and the other up by the
+    matching amount in one bag update = a conversion; the cost moves to the new form. Units with no recorded
+    cost count as zero in it.
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),

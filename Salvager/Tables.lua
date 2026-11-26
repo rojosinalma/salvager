@@ -451,6 +451,7 @@ function Widgets.CardList(parent)
         end
         for n = #self.data + 1, #self.cards do self.cards[n]:Hide() end
         content:SetHeight(math.max(10, y))
+        self.contentHeight = math.max(0, y - GAP)   -- what the cards need, for a window that fits them
         -- Scrolling goes in steps of one row.
         local max = math.max(0, math.ceil((y - GAP - (scroll:GetHeight() or 0)) / STEP))
         self.offset = math.max(0, math.min(self.offset, max))

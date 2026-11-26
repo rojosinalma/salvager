@@ -856,23 +856,53 @@ describe("Salvager posting", function()
     end)
 
     it("works out what the post brings", function()
-        -- An essence: is the other form worth more?
+        -- An essence: is the other form the better one to sell?
         local greater = 11082
         local lesser = ns.Data.ESSENCE_PAIR[greater].other
         local keep = { ns.db.prices[greater], ns.db.prices[lesser] }
+        local function listed(price, qty) return { rows = { { price = price, qty = qty, mine = 0 } } } end
         ns.db.prices[greater] = { p = 1700, lo = 1700, t = 0 }
         ns.db.prices[lesser] = { p = 700, lo = 700, t = 0 }          -- three lesser: 20s 97c, a greater: 16s 99c
-        local c = ns.Post.Convert(greater)
-        assert.is_true(c.better)
+        local c = ns.Post.Convert(greater, 1, listed(1700, 10), listed(700, 40))
+        assert.are.equal("convert", c.verdict)
         assert.are.equal(3 * 699 - 1699, c.gain)
-        assert.is_truthy(ns.Post.ConvertText(greater, 2):find("split each into 3", 1, true))
-        assert.is_false(ns.Post.Convert(lesser).better)
-        assert.is_truthy(ns.Post.ConvertText(lesser, 6):find("keep it as it is", 1, true))
+        assert.are.equal(40, c.otherNear)
+        assert.is_truthy(ns.Post.ConvertText(greater, 2, listed(1700, 10), listed(700, 40)):find("split each into 3", 1, true))
+        -- The same gain (23%) holds even against a crowded market; a small gain does not.
+        assert.are.equal("convert", ns.Post.Convert(greater, 1, listed(1700, 10), listed(700, 4000)).verdict)
+        ns.db.prices[lesser] = { p = 600, lo = 600, t = 0 }          -- three lesser: 17s 97c, +6%
+        assert.are.equal("convert", ns.Post.Convert(greater, 1, listed(1700, 10), listed(600, 50)).verdict)
+        assert.are.equal("crowded", ns.Post.Convert(greater, 1, listed(1700, 10), listed(600, 4000)).verdict)
+        assert.is_truthy(ns.Post.ConvertText(greater, 1, listed(1700, 10), listed(600, 4000)):find("far more is listed", 1, true))
+        assert.are.equal("keep", ns.Post.Convert(lesser, 6).verdict)
         ns.db.prices[lesser] = { p = 500, lo = 500, t = 0 }          -- now the greater pays more
         assert.is_truthy(ns.Post.ConvertText(lesser, 7):find("Your 7 make 2", 1, true))
-        assert.is_nil(ns.Post.Convert(DUST))                         -- not an essence
-        assert.are.equal("", ns.Post.ConvertText(DUST, 5))
+        assert.is_nil(ns.Post.Convert(lesser, 2))                    -- fewer than three: nothing to combine
+        assert.are.equal("", ns.Post.ConvertText(lesser, 2))
+        assert.is_nil(ns.Post.Convert(DUST, 5))                      -- not an essence
         ns.db.prices[greater], ns.db.prices[lesser] = keep[1], keep[2]
+        -- A conversion in the bags moves the cost in the ledger.
+        local stock = ns.db.ledger.stock
+        local had = { stock[lesser], stock[greater], env.bags[lesser], env.bags[greater] }
+        stock[lesser], stock[greater] = { qty = 6, cost = 3000, unknown = 0 }, nil
+        env.bags[lesser], env.bags[greater] = 6, 0
+        wow.fire(ns, "BAG_UPDATE_DELAYED")                           -- the first look
+        env.bags[lesser], env.bags[greater] = 3, 1
+        wow.fire(ns, "BAG_UPDATE_DELAYED")
+        assert.are.equal(3, stock[lesser].qty)
+        assert.are.equal(1500, stock[lesser].cost)
+        assert.are.equal(1, stock[greater].qty)
+        assert.are.equal(1500, stock[greater].cost)
+        env.bags[lesser], env.bags[greater] = 6, 0                   -- and split again
+        wow.fire(ns, "BAG_UPDATE_DELAYED")
+        assert.are.equal(6, stock[lesser].qty)
+        assert.are.equal(3000, stock[lesser].cost)
+        assert.is_nil(stock[greater])
+        env.bags[lesser] = 5                                         -- one posted or mailed: not a conversion
+        wow.fire(ns, "BAG_UPDATE_DELAYED")
+        assert.are.equal(6, stock[lesser].qty)
+        stock[lesser], stock[greater], env.bags[lesser], env.bags[greater] = had[1], had[2], had[3], had[4]
+        wow.fire(ns, "BAG_UPDATE_DELAYED")
         -- The other sellers, against a price and a break-even.
         local saved = env.ah.commodities[DUST]
         env.ah.commodities[DUST] = { { unitPrice = 400, quantity = 30, numOwnerItems = 0 },
