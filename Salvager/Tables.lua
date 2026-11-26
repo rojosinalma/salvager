@@ -282,7 +282,7 @@ end
 ---   stack:Refresh()
 function Widgets.CardList(parent)
     -- (The title band has two lines: the title, and under it the card's facts.)
-    local TITLE_H, HEAD_H, ROW_H, GAP, BAR_W, STEP, MAX_COLS = 40, 18, 22, 8, 18, 22, 6
+    local TITLE_H, HEAD_H, ROW_H, GAP, BAR_W, STEP, MAX_COLS = 40, 18, 22, 8, 18, 22, 8
     local stack = CreateFrame("Frame", nil, parent)
     stack.offset, stack.cards, stack.data, stack.columns = 0, {}, {}, {}
     local scroll = CreateFrame("ScrollFrame", nil, stack)

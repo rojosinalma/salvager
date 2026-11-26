@@ -550,8 +550,6 @@ end
 --- Buys a deal. Must run from a click (the server needs a hardware event).
 function Scanner.Buy(deal)
     if deal.pending then return end
-    -- One at a time with a cancel: the auction house's error message does not say which one failed.
-    if ns.Listings and ns.Listings.Cancelling() then ns.Print("wait for the cancel to finish") return end
     if GetMoney() < deal.buyout then ns.Print("not enough money for %s", deal.link or "this item") return end
     -- A click on Buy always buys. Everything else stops at once, and the purchase is next on the line:
     --   the auction house is free: it goes out now;

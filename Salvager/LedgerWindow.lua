@@ -13,8 +13,12 @@ local GREY, GOLD, GREEN, RED = "|cff808080", "|cffffd100", "|cff40ff40", "|cffff
 local INDENT = 22
 
 local COLUMNS = {
-    purchases = { { "Item", 220 }, { "Bought", 82 }, { "Paid", 84, "RIGHT" }, { "Expected", 84, "RIGHT" },
-        { "Got", 96, "RIGHT" }, { "Result", 84, "RIGHT" } },
+    purchases = { { "Item", 220 }, { "Bought", 82 }, { "Paid", 84, "RIGHT" },
+        { "Expected value", 84, "RIGHT", help = { "Expected value", "The value the Deals list showed when you "
+            .. "bought: the average disenchant value at the prices of that moment, after the auction house cut." } },
+        { "Disenchant value", 96, "RIGHT", help = { "Disenchant value", "The market value of the materials you got, "
+            .. "at the prices of the moment you disenchanted, after the auction house cut." } },
+        { "Profit", 84, "RIGHT", help = { "Profit", "Disenchant value minus Paid." } } },
     -- The Accuracy view is two tables: by band, and by material.
     accBands = { { "Band", 170 }, { "Items", 44, "CENTER", help = { "Items", "How many disenchants with a recorded "
             .. "purchase are in the row. Grey = fewer than 20: too few to judge, one lucky shard moves it a lot." } },
@@ -285,11 +289,6 @@ function Window.AccuracyMaterialRows()
     return rows
 end
 
---- "75% · 1-2": how often a material comes and how many.
-local function oddsText(chance, min, max)
-    return string.format("%d%% · %s", math.floor(chance * 100 + 0.5), min == max and tostring(min) or (min .. "-" .. max))
-end
-
 --- Is a band of item levels lo..up inside one of the ticked item level ranges? The ranges are the
 --- scan's level bands; a rare or epic band, which is wider, shows when it overlaps a ticked one.
 local function levelShown(lo, up, off)
@@ -340,10 +339,11 @@ function Window.OddsBands()
                         entry.rows[#entry.rows + 1] = {
                             itemID = r.id, indent = INDENT,
                             cells = { ns.MaterialName(r.id), m and tostring(m.hits) or (GREY .. "0|r"),
-                                oddsText(r.chance, r.min, r.max),
-                                n > 0 and string.format("%d%%%s", math.floor((m and m.hits or 0) / n * 100 + 0.5),
-                                    m and string.format(" · %.2f", m.qty / m.hits) or "") or (GREY .. "-|r"),
-                                price and (ns.Money(price) .. " each") or (GREY .. "no price|r"), "", "", "" },
+                                math.floor(r.chance * 100 + 0.5) .. "%",
+                                r.min == r.max and tostring(r.min) or (r.min .. "-" .. r.max),
+                                n > 0 and (math.floor((m and m.hits or 0) / n * 100 + 0.5) .. "%") or (GREY .. "-|r"),
+                                m and string.format("%.2f", m.qty / m.hits) or (GREY .. "-|r"),
+                                price and ns.Money(price) or (GREY .. "no price|r") },
                         }
                     end
                     -- What came that the table does not have for this band.
@@ -351,9 +351,9 @@ function Window.OddsBands()
                         if not inTable[id] then
                             entry.rows[#entry.rows + 1] = {
                                 itemID = id, indent = INDENT,
-                                cells = { ns.MaterialName(id), tostring(m.hits), RED .. "not expected|r",
-                                    string.format("%d%% · %.2f", math.floor(m.hits / n * 100 + 0.5), m.qty / m.hits),
-                                    "", "", "", "" },
+                                cells = { ns.MaterialName(id), tostring(m.hits), RED .. "not expected|r", "",
+                                    math.floor(m.hits / n * 100 + 0.5) .. "%", string.format("%.2f", m.qty / m.hits),
+                                    "" },
                             }
                         end
                     end
@@ -386,11 +386,13 @@ end
 local ODDS_COLUMNS = {
     { "Material", 150 },
     { "Drops", 50, "CENTER", help = { "Drops", "How many of your own disenchants in this band gave this material." } },
-    { "Expected", 90, "CENTER", help = { "Expected", "How often this material comes from one disenchant in this band, "
-        .. "and how many, by the odds table the addon uses (Classic's table; not confirmed for Forever)." } },
-    { "You got", 96, "CENTER", help = { "You got", "How often it came in your own disenchants in this band, and how "
-        .. "many on average." } },
-    { "Price now", 110, "RIGHT", help = { "Price now", "What one of this material costs on the auction house now, "
+    { "Drop rate", 64, "CENTER", help = { "Drop rate", "How often this material comes from one disenchant in this "
+        .. "band, by the table the addon uses (Classic's table; not confirmed for Forever)." } },
+    { "Quantity", 60, "CENTER", help = { "Quantity", "How many come when it drops, by the same table." } },
+    { "Your drop rate", 84, "CENTER", help = { "Your drop rate", "How often it came in your own disenchants in "
+        .. "this band." } },
+    { "Your quantity", 84, "CENTER", help = { "Your quantity", "How many came on average when it dropped for you." } },
+    { "Price now", 90, "RIGHT", help = { "Price now", "What one of this material costs on the auction house now, "
         .. "from your last material scan. Value now is worked out from these prices." } },
 }
 local BAND_HELP = { "This band", "Disenchants: how many of yours are in this band.\n\n"
@@ -398,7 +400,7 @@ local BAND_HELP = { "This band", "Disenchants: how many of yours are in this ban
     .. "It is not the buy limit.\n\n"
     .. "Buy below: the most the addon lets you pay: Value now minus your minimum profit, or the limit you set in the "
     .. "Limits tab.\n\n"
-    .. "Lose: the chance that one disenchant is worth less than Buy below, so the risk when you pay the full limit.\n\n"
+    .. "Loss chance: the chance that one disenchant is worth less than Buy below, so the risk when you pay the full limit.\n\n"
     .. "Your average: what your own disenchants gave on average, at the prices of the moment. Compare it with Value now." }
 
 --- One card per band for the Odds view.
@@ -410,7 +412,7 @@ function Window.OddsCards()
         cards[#cards + 1] = {
             title = c[1],
             facts = table.concat({ fact("Disenchants", c[2]), fact("Value now", c[5]), fact("Buy below", c[6]),
-                fact("Lose", c[7]), fact("Your average", c[8]) }, "     "),
+                fact("Loss chance", c[7]), fact("Your average", c[8]) }, "     "),
             factsHelp = BAND_HELP, rows = band.rows,
         }
     end
@@ -670,7 +672,7 @@ local function build()
     W.Tooltip(tabs.odds, "Odds", "Every item level band of every quality and gear type. Expected = how often each "
         .. "material comes and how many (the table the addon uses). You got = what your own disenchants gave. Value "
         .. "now = what one disenchant is worth on average at today's prices, after the cut. Buy below = the buy "
-        .. "limit; Lose % = the chance one disenchant is worth less than it. Point at a column title for more.")
+        .. "limit; Loss chance = the chance one disenchant is worth less than it. Point at a column title for more.")
     local clear = W.Button(f, "Clear history", 110, function() StaticPopup_Show("SALVAGER_CLEAR_LEDGER") end,
         "Removes the list of purchases, disenchants and sales, and with them the Odds. Your material stock and its "
         .. "costs stay, and so do purchases you have not disenchanted yet. It asks first.")

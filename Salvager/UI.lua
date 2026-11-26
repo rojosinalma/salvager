@@ -19,19 +19,19 @@ local VIEWS = {
         icon = true,
         indent = 46,
         actionTitle = "Buy",
-        header = { "Item", "Type", "iLvl", "Buyout", "Value", "Profit", "Lose %" },
+        header = { "Item", "Type", "Item level", "Buyout", "Expected value", "Expected profit", "Loss chance" },
         -- Shown when the mouse is over a column's title.
         help = {
-            [5] = { "Value", "What one disenchant of this item is worth on average over many disenchants, at the "
+            [5] = { "Expected value", "What one disenchant of this item is worth on average over many disenchants, at the "
                 .. "scanned material prices, after the 5% auction house cut. One disenchant gives less or more than this." },
-            [6] = { "Profit", "Value minus the buyout: the average profit per item over many disenchants. "
+            [6] = { "Expected profit", "Expected value minus the buyout: the average profit per item over many disenchants. "
                 .. "It is not what one item will give." },
-            [7] = { "Lose %", "The chance that ONE disenchant of this item is worth less than its buyout, after the cut.\n\n"
+            [7] = { "Loss chance", "The chance that ONE disenchant of this item is worth less than its buyout, after the cut.\n\n"
                 .. "Example: you pay 10s for an item. 3 times out of 4 it gives dust worth 5s: you lose 5s. 1 time "
-                .. "out of 4 it gives an essence worth 30s: you gain 20s. Lose % is 75%. Over many items you still "
+                .. "out of 4 it gives an essence worth 30s: you gain 20s. Loss chance is 75%. Over many items you still "
                 .. "gain: the average is 11s 25c per item, so 1s 25c of profit each.\n\n"
                 .. "Green: under 30%. Yellow: 30% or more. Red: 60% or more.\n\n"
-                .. "A high Lose % with a good Profit needs many items before the average shows. A low Lose % is safe "
+                .. "A high Loss chance with a good Profit needs many items before the average shows. A low Loss chance is safe "
                 .. "even for a few items." },
         },
         cols = { { 205, "LEFT" }, { 46, "CENTER" }, { 34, "CENTER" }, { 80, "RIGHT" }, { 80, "RIGHT" }, { 80, "RIGHT" },
@@ -215,7 +215,7 @@ local function helpLines()
     return {
         "Value: what one disenchant of the item is worth on average over many, after the 5% cut.",
         "Profit: Value minus the buyout. An average, not what one item gives.",
-        "Lose %: the chance that one disenchant is worth less than its buyout.",
+        "Loss chance: the chance that one disenchant is worth less than its buyout.",
         "A name with x3 stands for three auctions of one item. Its numbers and its Buy are for the cheapest one.",
         "Click such a row to open it and see each auction.",
         "Buy needs one click per item. After a purchase the item is searched again.",

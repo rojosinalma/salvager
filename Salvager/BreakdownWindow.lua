@@ -12,16 +12,16 @@ local GREY, GOLD, GREEN, RED = "|cff808080", "|cffffd100", "|cff40ff40", "|cffff
 
 local function help(title, text) return { title, text } end
 local SHARED = {
-    { "Gave it", 70, "CENTER", help = help("Gave it", "How many of its disenchants gave this material, out of all "
+    { "Disenchants", 70, "CENTER", help = help("Disenchants", "How many of its disenchants gave this material, out of all "
         .. "its disenchants. 20 of 21 = one of them gave something else.") },
     { "Units", 50, "CENTER", help = help("Units", "How many of this material came from it.") },
     { "Cost each", 84, "RIGHT", help = help("Cost each", "What one unit cost you from this source: the part of the "
         .. "purchase prices that went to this material, divided by the units. Only disenchants with a recorded purchase count.") },
-    { "Now each", 84, "RIGHT", help = help("Now each", "What one unit brings if you sell it at the price of your last "
+    { "Price each", 84, "RIGHT", help = help("Price each", "What one unit brings if you sell it at the price of your last "
         .. "material scan, after the 5% cut.") },
-    { "Per unit", 84, "RIGHT", help = help("Per unit", "Now each minus Cost each. Red = each unit from this source "
+    { "Profit each", 84, "RIGHT", help = help("Profit each", "Price each minus Cost each. Red = each unit from this source "
         .. "costs you more than it sells for now.") },
-    { "As a whole", 120, "RIGHT", help = help("As a whole", "The source with everything it gave, not only this material: "
+    { "Source profit", 120, "RIGHT", help = help("Source profit", "The source with everything it gave, not only this material: "
         .. "the value of all its materials at the time of each disenchant, after the cut, minus what you paid. "
         .. "Red = this item or band has not paid so far. In brackets: how many disenchants it rests on.") },
 }

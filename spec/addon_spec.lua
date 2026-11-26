@@ -148,7 +148,8 @@ describe("Salvager in a simulated client", function()
         assert.are.equal("1", band.cells[2])                       -- the one disenchant
         assert.are.equal(11083, dust.itemID)
         assert.is_truthy(dust.cells[3]:find("75%", 1, true))       -- expected
-        assert.is_truthy(dust.cells[4]:find("100%", 1, true))      -- you got
+        assert.are.equal("1-2", dust.cells[4])                     -- one value per cell: the quantity apart
+        assert.is_truthy(dust.cells[5]:find("100%", 1, true))      -- your drop rate
         -- The band row: its buy limit and the chance one disenchant is worth less than it.
         local v = ns.Model.Value(ns.Model.Outcomes(2, ns.Data.CLASS_ARMOR, 30), ns.PriceOf,
             { cut = ns.db.settings.cut })
@@ -156,8 +157,6 @@ describe("Salvager in a simulated client", function()
         assert.is_true(limit > 0)
         assert.are.equal(ns.Money(limit), band.cells[6])
         assert.is_truthy(band.cells[7]:find("%d+%%"))
-        assert.are.equal("", dust.cells[6])                         -- a material row: no limit, no risk
-        assert.are.equal("", dust.cells[7])
         assert.are.equal(8, #ns.LedgerWindow.OddsRows()[1].cells)
         -- A material the table does not have for the band.
         local des = ns.db.ledger.disenchants
