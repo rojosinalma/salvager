@@ -19,14 +19,17 @@ local VIEWS = {
         icon = true,
         indent = 46,
         actionTitle = "Buy",
-        header = { "Item", "Type", "Item level", "Buyout", "Expected value", "Expected profit", "Loss chance" },
+        header = { "Item", "Type", "Item level", "Buyout", "Expected value", "Expected profit", "Return", "Loss chance" },
+        sortable = { [6] = "profit", [7] = "return" },
         -- Shown when the mouse is over a column's title.
         help = {
             [5] = { "Expected value", "What one disenchant of this item is worth on average over many disenchants, at the "
                 .. "scanned material prices, after the 5% auction house cut. One disenchant gives less or more than this." },
             [6] = { "Expected profit", "Expected value minus the buyout: the average profit per item over many disenchants. "
-                .. "It is not what one item will give." },
-            [7] = { "Loss chance", "The chance that ONE disenchant of this item is worth less than its buyout, after the cut.\n\n"
+                .. "It is not what one item will give.\n\nClick to list the deals by Expected profit." },
+            [7] = { "Return", "Expected profit as a share of the buyout: what each gold you pay brings back on top. "
+                .. "When your gold is what limits you, buy the highest Return first.\n\nClick to list the deals by Return." },
+            [8] = { "Loss chance", "The chance that ONE disenchant of this item is worth less than its buyout, after the cut.\n\n"
                 .. "Example: you pay 10s for an item. 3 times out of 4 it gives dust worth 5s: you lose 5s. 1 time "
                 .. "out of 4 it gives an essence worth 30s: you gain 20s. Loss chance is 75%. Over many items you still "
                 .. "gain: the average is 11s 25c per item, so 1s 25c of profit each.\n\n"
@@ -35,7 +38,7 @@ local VIEWS = {
                 .. "even for a few items." },
         },
         cols = { { 205, "LEFT" }, { 46, "CENTER" }, { 34, "CENTER" }, { 80, "RIGHT" }, { 80, "RIGHT" }, { 80, "RIGHT" },
-            { 54, "CENTER" } },
+            { 44, "RIGHT" }, { 54, "CENTER" } },
     },
     materials = {
         icon = true,
@@ -48,6 +51,12 @@ local VIEWS = {
     limits = {
         icon = false,
         header = { "Item level", "Armor recommended", "Armor buy below", "Weapon recommended", "Weapon buy below" },
+        help = {
+            [2] = { "Recommended", "The value after the cut, less the min profit, or less the min return when that "
+                .. "asks for more. A % after the amount: the min return sets it." },
+            [4] = { "Recommended", "The value after the cut, less the min profit, or less the min return when that "
+                .. "asks for more. A % after the amount: the min return sets it." },
+        },
         -- (The two "buy below" columns are as wide as their gold, silver and copper boxes, title centered.)
         cols = { { 64, "LEFT" }, { 100, "RIGHT" }, { 184, "CENTER" }, { 100, "RIGHT" }, { 184, "CENTER" } },
         edit = { [3] = "armor", [5] = "weapon" },
@@ -57,7 +66,7 @@ local VIEWS = {
 local f, rows, headers, status, footer, minProfit, playButton, stopButton, gearChoice, tabs =
     nil, {}, {}, nil, nil, nil, nil, nil, nil, {}
 local maxPrice, capHint, cautious, bandDrop, ilvlMin, ilvlMax, levelHint, materialsOnly, scanOwned, gold, maxChecks
-local qualityDrop, popOut
+local qualityDrop, popOut, minReturn
 local headerHelp = {}
 local actionHeader
 local REFRESH_GAP, lastRefresh, refreshQueued = 0.25, 0, false
@@ -72,7 +81,8 @@ end
 local function dealCells(d, label)
     return { label, CLASS_NAME[d.classID or ns.ClassOf(d.itemID)] or "", tostring(d.ilvl or ""), ns.Money(d.buyout),
         ns.Money(d.value), (d.profit >= 0 and "|cff40ff40+" or "|cffff4040") .. ns.Money(d.profit) .. "|r",
-        ns.LoseText(d.lose) }
+        string.format("%s%d%%|r", d.profit >= 0 and "|cff40ff40+" or "|cffff4040",
+            math.floor(ns.Scanner.Return(d) * 100 + 0.5)), ns.LoseText(d.lose) }
 end
 
 --- Deals grouped by item name, best profit first. A group with more than one
@@ -91,10 +101,9 @@ local function dealRows()
     end
     for _, g in ipairs(order) do
         table.sort(g.deals, function(a, b) return a.buyout < b.buyout end)
-        g.best = 0
-        for _, d in ipairs(g.deals) do if d.profit > g.best then g.best = d.profit end end
+        for _, d in ipairs(g.deals) do if not g.best or ns.Scanner.Better(d, g.best) then g.best = d end end
     end
-    table.sort(order, function(a, b) return a.best > b.best end)
+    table.sort(order, function(a, b) return ns.Scanner.Better(a.best, b.best) end)
     local out = {}
     for _, g in ipairs(order) do
         -- The row's numbers are those of the auction its Buy button buys: the cheapest not being bought.
@@ -121,6 +130,7 @@ local function recommendedText(x, dim)
     if not x then return "-" end
     local t = ns.Money(x.recommended)
     if x.missing then t = t .. "?" end
+    if x.rule == "return" then t = t .. " %" end   -- (set by the min return, not the min profit)
     if dim then return "|cff808080" .. t .. "|r" end
     return t
 end
@@ -331,12 +341,17 @@ function UI.Refresh()
     for i, h in ipairs(headers) do
         local col = view.cols[i]
         if col then
-            h:SetWidth(w[i]) h:SetJustifyH(col[2]) h:SetText(view.header[i] or "") h:Show()
+            -- The title the list is ordered by has a mark.
+            local sortKey = view.sortable and view.sortable[i]
+            local title = view.header[i] or ""
+            if sortKey and sortKey == ns.db.settings.dealSort then title = title .. " v" end
+            h:SetWidth(w[i]) h:SetJustifyH(col[2]) h:SetText(title) h:Show()
         else
             h:Hide()
         end
         local help = view.help == "materials" and ns.Materials.HELP or view.help
         headerHelp[i].help = col and help and help[i] or nil
+        headerHelp[i].sortKey = col and view.sortable and view.sortable[i] or nil
         headerHelp[i]:SetShown(headerHelp[i].help ~= nil)
     end
     actionHeader:SetText(view.actionTitle or "")
@@ -399,6 +414,7 @@ function UI.Refresh()
     end
     UI.UpdatePlay()
     minProfit:Set(ns.db.settings.minProfit)
+    if not minReturn:HasFocus() then minReturn:SetText(tostring(ns.db.settings.minReturn)) end
     maxPrice:Set(ns.db.settings.maxPrice)
     capHint:SetText(ns.db.settings.maxPrice > 0 and "" or "no limit")
     cautious:SetChecked(ns.db.settings.cautious)
@@ -605,8 +621,29 @@ local function build()
         ns.Fire("SALVAGER_SETTINGS")
     end)
     minProfit:SetPoint("LEFT", mpLabel, "RIGHT", 4, 0)
+    local mrLabel = W.Label(box, "Min return", "GameFontHighlightSmall")
+    mrLabel:SetPoint("LEFT", minProfit:Right(), "RIGHT", 16, 0)
+    W.HelpArea(box, mrLabel, "Min return", "The least return an item must make as well, in percent of its price: "
+        .. "15 = each 1g you pay must bring 1g 15s back on average. Both rules hold: a cheap item needs the return, "
+        .. "an expensive one the profit. 0 = off.")
+    minReturn = W.Edit(box, 30, true)
+    minReturn:SetMaxLetters(3)
+    minReturn:SetJustifyH("RIGHT")
+    minReturn:SetTextInsets(2, 4, 0, 0)
+    minReturn:SetPoint("LEFT", mrLabel, "RIGHT", 6, 0)
+    minReturn:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    minReturn:SetScript("OnEditFocusLost", function(self)
+        local n = math.max(0, math.floor(tonumber(self:GetText()) or 0))
+        if ns.db.settings.minReturn ~= n then
+            ns.db.settings.minReturn = n
+            ns.Log("min return set to %d%%", n)
+            ns.Fire("SALVAGER_SETTINGS")
+        end
+    end)
+    local pctLabel = W.Label(box, "%", "GameFontHighlightSmall")
+    pctLabel:SetPoint("LEFT", minReturn, "RIGHT", 3, 0)
     local capLabel = W.Label(box, "Max price", "GameFontHighlightSmall")
-    capLabel:SetPoint("LEFT", minProfit:Right(), "RIGHT", 16, 0)
+    capLabel:SetPoint("LEFT", pctLabel, "RIGHT", 16, 0)
     W.HelpArea(box, capLabel, "Max price", "The most you pay for one item, whatever it is worth. An item above this "
         .. "is never listed. All zeroes = no limit.")
     maxPrice = W.Money(box, function(copper)
@@ -818,6 +855,14 @@ local function build()
             GameTooltip:Show()
         end)
         area:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        -- A title that orders the list: a click orders it by that column.
+        area:SetScript("OnMouseUp", function(self)
+            if not self.sortKey or ns.db.settings.dealSort == self.sortKey then return end
+            ns.db.settings.dealSort = self.sortKey
+            ns.Log("deals listed by %s", self.sortKey)
+            ns.Scanner.Sort()
+            UI.Refresh()
+        end)
         area:Hide()
         headerHelp[i] = area
     end

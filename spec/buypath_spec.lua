@@ -94,6 +94,47 @@ describe("Buy path safety", function()
         ns.Scanner.Stop()
     end)
 
+    it("asks for the min profit and the min return together: the stricter one sets the limit", function()
+        local M = helper.load().Model
+        assert.are.same({ 900, "profit" }, { M.MaxBuy(1000, 100) })
+        assert.are.same({ 900, "profit" }, { M.MaxBuy(1000, 100, 0) })                -- 0 = off
+        assert.are.same({ 869, "return" }, { M.MaxBuy(1000, 100, 15) })               -- 1000 / 1.15
+        assert.are.same({ 9000, "profit" }, { M.MaxBuy(10000, 1000, 5) })             -- dear items: the profit
+        SlashCmdList.SALVAGER("minreturn 15")
+        assert.are.equal(15, ns.db.settings.minReturn)
+        local band = ns.Limits()[4].armor
+        assert.are.equal(select(2, M.MaxBuy(band.value, ns.db.settings.minProfit, 15)), band.rule)
+        SlashCmdList.SALVAGER("minreturn 0")
+        assert.are.equal(0, ns.db.settings.minReturn)
+    end)
+
+    it("lists the deals by Expected profit or by Return, as the player clicks", function()
+        ns.Scanner.deals = {
+            { auctionID = 1, itemID = BOOTS, buyout = 10000, profit = 1000, value = 11000, classID = 4 },   -- +10%
+            { auctionID = 2, itemID = BOOTS, buyout = 1000, profit = 400, value = 1400, classID = 4 },      -- +40%
+        }
+        ns.db.settings.dealSort = "profit"
+        ns.Scanner.Sort()
+        assert.are.equal(1, ns.Scanner.deals[1].auctionID)
+        ns.db.settings.dealSort = "return"
+        ns.Scanner.Sort()
+        assert.are.equal(2, ns.Scanner.deals[1].auctionID)
+        assert.are.equal(0.4, ns.Scanner.Return(ns.Scanner.deals[1]))
+        ns.db.settings.dealSort = "profit"
+        -- A click on the Return title orders the list by it.
+        ns.UI.Toggle()
+        ns.UI.view = "deals"
+        ns.UI.Refresh()
+        local title
+        for _, fr in ipairs(env.frames) do if rawget(fr, "sortKey") == "return" then title = fr end end
+        assert.is_table(title)
+        title.scripts.OnMouseUp(title)
+        assert.are.equal("return", ns.db.settings.dealSort)
+        assert.are.equal(2, ns.Scanner.deals[1].auctionID)
+        ns.db.settings.dealSort = "profit"
+        ns.Scanner.deals = {}
+    end)
+
     it("never lets a buy limit set by hand go over the value", function()
         assert.is_false(select(2, ns.BuyLimit(2, 4, 30, 1000)))
         ns.db.settings.limitOverride[ns.BandKey(2, 4, 30)] = 5000

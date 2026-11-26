@@ -32,9 +32,19 @@ local function setState(s)
     ns.Fire("SALVAGER_SCAN")
 end
 
-local function sortDeals()
-    table.sort(Scanner.deals, function(a, b) return a.profit > b.profit end)
+--- A deal's return: its expected profit as a share of its price.
+function Scanner.Return(d) return d.buyout > 0 and d.profit / d.buyout or 0 end
+
+--- Which deal comes first, by the order the player picked (Expected profit or Return).
+function Scanner.Better(a, b)
+    if ns.db.settings.dealSort == "return" then return Scanner.Return(a) > Scanner.Return(b) end
+    return a.profit > b.profit
 end
+
+local function sortDeals()
+    table.sort(Scanner.deals, Scanner.Better)
+end
+Scanner.Sort = sortDeals
 
 --- Queues the search of one item. `c` = { keyString, net, limit, ilvl, quality, classID }.
 local function checkItem(c, itemKey, onResult, onFail)
@@ -242,7 +252,7 @@ local function judge(r, pass, sum)
     if scan.seen[keyString] then return end
     scan.seen[keyString] = true
     scan.candidates[#scan.candidates + 1] = { key = key, keyString = keyString, net = band.net, limit = band.limit,
-        ilvl = ilvl, quality = pass.quality, classID = pass.classID, margin = margin }
+        ilvl = ilvl, quality = pass.quality, classID = pass.classID, margin = margin, price = price }
 end
 
 ------------------------------------------------------------------ after the browse
@@ -273,7 +283,12 @@ local function queueChecks()
     Scanner.toCheck, Scanner.checked = 0, 0
     Scanner.checksAt = GetTime()
     ns.Queue.lost, ns.Queue.late = 0, 0
-    table.sort(candidates, function(a, b) return a.margin > b.margin end)
+    -- (In the order of the Deals list: by margin, or by return on the price.)
+    local byReturn = ns.db.settings.dealSort == "return"
+    table.sort(candidates, function(a, b)
+        if byReturn then return a.margin / math.max(1, a.price) > b.margin / math.max(1, b.price) end
+        return a.margin > b.margin
+    end)
     -- Each item search takes about 0.7 s: check the best ones first, at most maxChecks.
     for i = #candidates, ns.db.settings.maxChecks + 1, -1 do candidates[i] = nil end
     -- Rows of items that are no longer under their limit go; the others are replaced as they are checked.
@@ -448,8 +463,9 @@ function Scanner.Scan(clear)
     local names = {}
     for _, p in ipairs(passes) do names[#names + 1] = p.name end
     local s = ns.db.settings
-    ns.Log("gear scan started: %s; levels %d-%d; min profit %s, max price %s", table.concat(names, ", "), s.minLevel,
-        s.maxLevel, ns.Money(s.minProfit), s.maxPrice > 0 and ns.Money(s.maxPrice) or "none")
+    ns.Log("gear scan started: %s; levels %d-%d; min profit %s, min return %s, max price %s", table.concat(names, ", "),
+        s.minLevel, s.maxLevel, ns.Money(s.minProfit), s.minReturn > 0 and (s.minReturn .. "%") or "off",
+        s.maxPrice > 0 and ns.Money(s.maxPrice) or "none")
     setState("browsing")
     watchBrowse(scan.seq)
     nextPass()

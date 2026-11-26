@@ -9,6 +9,8 @@ ns.VERSION = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetada
 local DEFAULTS = {
     settings = {
         minProfit = 1000,          -- copper; deals below this profit are hidden
+        minReturn = 0,             -- percent of the price a deal must make as well (0 = off)
+        dealSort = "profit",       -- Deals list order: "profit" | "return"
         maxPrice = 0,              -- copper; the most to pay for one item, whatever it is worth (0 = no limit)
         levelBandsOff = {},        -- item level bands NOT scanned: { [upper item level of the band] = true }
         ilvlMin = 0,               -- item level range for the scan (0 = no limit)
@@ -382,8 +384,9 @@ function ns.LimitBasis(v)
     return ns.db.settings.cautious and v.low or v.net
 end
 
+--- @return number limit, string rule ("profit" | "return")
 function ns.RecommendedLimit(net)
-    return Model.MaxBuy(net, ns.db.settings.minProfit)
+    return Model.MaxBuy(net, ns.db.settings.minProfit, ns.db.settings.minReturn)
 end
 
 --- The buy limit in use: the one set by hand for this band, else the recommended one.
@@ -392,7 +395,7 @@ end
 function ns.BuyLimit(quality, classID, band, net)
     local o = band and ns.db.settings.limitOverride[ns.BandKey(quality, classID, band)]
     if o then return (net and math.min(o, net) or o), true end
-    return ns.RecommendedLimit(net), false
+    return (ns.RecommendedLimit(net)), false
 end
 
 --- A lose chance (0 to 1) as text: green under 30%, yellow 30% or more, red 60% or more.
@@ -421,7 +424,8 @@ function ns.Limits()
         local v = Model.Value(o, ns.PriceOf, { salvager = salv, salvagerChance = s.salvagerChance, cut = s.cut })
         local basis = ns.LimitBasis(v)
         local limit, manual = ns.BuyLimit(quality, classID, o.band, basis)
-        return { value = v.net, recommended = ns.RecommendedLimit(basis), limit = limit, manual = manual,
+        local recommended, rule = ns.RecommendedLimit(basis)
+        return { value = v.net, recommended = recommended, rule = rule, limit = limit, manual = manual,
             missing = #v.missing > 0, blocked = ns.MissingMajor(v, o), quality = quality, classID = classID,
             band = o.band }
     end
@@ -467,6 +471,7 @@ end
 local HELP = {
     "/salv - open or close the window",
     "/salv minprofit 20s - lowest profit a deal must make",
+    "/salv minreturn 15 - lowest return a deal must make as well, in percent of its price (0 = off)",
     "/salv salvager auto|on|off - Arcane Salvager bonus in buy prices",
     "/salv quality uncommon|rare|epic|both|all - which gear the scan looks at",
     "/salv gear weapons|armor|both - which item types the scan looks at",
@@ -498,6 +503,12 @@ SlashCmdList.SALVAGER = function(msg)
         if not c then ns.Print("usage: /salv minprofit 20s") return end
         s.minProfit = c
         ns.Print("minimum profit: %s", ns.Money(c))
+        ns.Fire("SALVAGER_SETTINGS")
+    elseif cmd == "minreturn" then
+        local n = tonumber((args[2] or ""):match("^(%d+)%%?$"))
+        if not n then ns.Print("usage: /salv minreturn 15 (percent, 0 = off)") return end
+        s.minReturn = n
+        ns.Print("minimum return: %s", n > 0 and (n .. "%") or "off")
         ns.Fire("SALVAGER_SETTINGS")
     elseif cmd == "salvager" then
         local m = (args[2] or ""):lower()

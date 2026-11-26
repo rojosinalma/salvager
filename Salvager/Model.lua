@@ -122,8 +122,15 @@ function Model.ValueOf(got, priceOf, cut)
 end
 
 --- Highest price worth paying for an item with this net value.
-function Model.MaxBuy(net, minProfit)
-    return math.max(0, net - (minProfit or 0))
+--- The most to pay for an item worth `net`: it must make at least `minProfit` copper and, when
+--- `minReturn` (percent of the price) is above 0, at least that return. Both rules hold.
+--- @return number limit, string rule that sets it ("profit" | "return")
+function Model.MaxBuy(net, minProfit, minReturn)
+    local byProfit = math.max(0, net - (minProfit or 0))
+    if not minReturn or minReturn <= 0 then return byProfit, "profit" end
+    local byReturn = math.max(0, math.floor(net / (1 + minReturn / 100)))
+    if byReturn < byProfit then return byReturn, "return" end
+    return byProfit, "profit"
 end
 
 return Model

@@ -288,6 +288,12 @@ flipping is out of scope for now.
 72. **Gold view** (Ledger window, last tab): the last 24 h of `Gold.Period`: start, now, change, money in
     the mail and after you collect it, each kind, the buys that lost and the part valued wrong; under it
     every change of gold, newest first.
+73. **Min return** (`minReturn`, percent, 0 = off) next to the min profit: the recommended limit is the lower
+    of value − min profit and value ÷ (1 + min return) (`Model.MaxBuy`, which also says which rule set it; the
+    Limits tab marks a limit set by the return with "%"). Deals have a Return column (expected profit ÷
+    buyout); a click on Expected profit or Return orders the list (`dealSort`, remembered), and the item
+    checks of a scan go in the same order. Reason: with more supply than gold, return on each gold paid is
+    what grows the gain (measured 2026-11-26: 82 of 361 Azure Silk Hoods under the limit in one check).
 ## Data
 
 `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `disenchants`, `sales`),
