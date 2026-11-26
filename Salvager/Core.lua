@@ -34,6 +34,7 @@ local DEFAULTS = {
         minimap = { hide = false, angle = 215 },
         postDuration = 2,          -- auction length for Post: 1, 2 or 3 (the game's three choices)
         limitOverride = {},        -- ["<quality>:<a|w>:<band>"] = copper: buy limits set by hand
+        timeZone = "local",        -- "local" | "server": the clock every shown time follows (SDD 110)
     },
     prices = {},                   -- [matID] = { p = copper each, units, listings, t }
     history = {},                  -- [matID] = { { t, p, lo, n }, ... }: the price at each scan (History.lua)
@@ -64,6 +65,72 @@ function ns.Money(copper) return Util.FormatMoney(copper, true) end
 --- Money in a column of amounts (a statement): every unit under the largest one, two digits each.
 function ns.MoneyColumn(copper) return Util.FormatMoney(copper, true, true) end
 
+------------------------------------------------------------------ times (SDD 110)
+
+-- Every shown time goes through ns.Date: the computer's clock, or the realm's (Options, "Times shown in").
+-- Saved times stay Unix time; only the text changes. The realm's offset from UTC is measured at login and every
+-- hour (a daylight saving change of the realm shows within the hour).
+local SERVER_CHECK = 3600   -- s between two readings of the realm's clock
+local serverOffset          -- s: the realm's clock minus UTC (Util.ServerOffset); nil until read
+local serverTried = false
+
+-- The realm's clock now: the game's calendar time (with the date), else GetGameTime (hours and minutes).
+local function serverClock()
+    if C_DateAndTime and C_DateAndTime.GetCurrentCalendarTime then
+        local ok, c = pcall(C_DateAndTime.GetCurrentCalendarTime)
+        if ok and type(c) == "table" and type(c.year) == "number" and c.year >= 2000 then return c end
+    end
+    if GetGameTime then
+        local ok, h, m = pcall(GetGameTime)
+        if ok and type(h) == "number" and type(m) == "number" then return { hour = h, minute = m } end
+    end
+    return nil
+end
+
+--- Reads the realm's clock again. When its offset changed while times follow it, the windows draw again (not with
+--- `quiet`: the first reading, made while a window draws).
+--- @return number|nil the realm's offset from UTC in seconds
+function ns.MeasureServerTime(quiet)
+    serverTried = true
+    local offset = Util.ServerOffset(time(), serverClock())
+    if offset == nil or offset == serverOffset then return serverOffset end
+    local was = serverOffset
+    serverOffset = offset
+    ns.Log("server time: %s%s", Util.OffsetName(offset), was and (" (was " .. Util.OffsetName(was) .. ")") or "")
+    if not quiet and ns.db and ns.db.settings.timeZone == "server" then ns.Fire("SALVAGER_SETTINGS") end
+    return offset
+end
+
+--- The offset ns.Date applies: nil = local time; else seconds from UTC (server time, once the realm's clock is known).
+function ns.TimeOffset()
+    if not (ns.db and ns.db.settings.timeZone == "server") then return nil end
+    if serverOffset == nil and not serverTried then ns.MeasureServerTime(true) end
+    return serverOffset
+end
+
+--- A shown time (`date` formats) on the clock the Times option picks. `t` defaults to now.
+function ns.Date(fmt, t) return Util.Date(fmt, t or time(), ns.TimeOffset()) end
+--- "HH:MM" of a time on that clock.
+function ns.Clock(t) return ns.Date("%H:%M", t) end
+--- "server time" or "local time": the clock the shown times follow now.
+function ns.TimesName() return ns.TimeOffset() ~= nil and "server time" or "local time" end
+--- The sentence the help on time titles ends with.
+function ns.TimesNote()
+    if ns.TimeOffset() ~= nil then
+        return "Times in server time (the realm's clock, " .. Util.OffsetName(serverOffset) .. "): Options, Times shown in."
+    end
+    return "Times in local time (your computer's clock): Options, Times shown in."
+end
+--- Help for a time column's title: `text`, then which clock (read when the help shows).
+function ns.TimeHelp(title, text)
+    return { title, function() return (text and (text .. " ") or "") .. ns.TimesNote() end }
+end
+
+local function measureEveryHour()
+    ns.MeasureServerTime()
+    C_Timer.After(SERVER_CHECK, measureEveryHour)
+end
+
 local LOG_MAX = 5000
 
 --- Adds a line to the activity log (SalvagerDB.log): "HH:MM:SS text". A line "== <date> ==" starts each day.
@@ -73,12 +140,12 @@ function ns.Log(fmt, ...)
     if not ok then msg = tostring(fmt) end
     msg = Util.PlainMoney(msg)
     local log = ns.db.log
-    local day = date("%Y-%m-%d")
+    local day = ns.Date("%Y-%m-%d")
     if ns.db.logDay ~= day then
         ns.db.logDay = day
-        log[#log + 1] = "== " .. date("%A %d %B %Y") .. " =="
+        log[#log + 1] = "== " .. ns.Date("%A %d %B %Y") .. " =="
     end
-    log[#log + 1] = date("%H:%M:%S") .. " " .. msg
+    log[#log + 1] = ns.Date("%H:%M:%S") .. " " .. msg
     ns.logChanged = true
     Util.Cap(log, LOG_MAX)
 end
@@ -110,6 +177,14 @@ function ns.Fire(event, ...)
 end
 
 frame:SetScript("OnEvent", function(_, event, ...) ns.Fire(event, ...) end)
+
+-- The realm's clock (ns.Date): read at login (and at each loading screen), then every hour.
+local measuring = false
+ns.On("PLAYER_ENTERING_WORLD", function()
+    if measuring then ns.MeasureServerTime() return end
+    measuring = true
+    measureEveryHour()
+end)
 
 -- One ticker for everything that works in small steps (10 times a second).
 local ticks, tickSum = {}, 0

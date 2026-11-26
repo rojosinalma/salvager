@@ -9,7 +9,8 @@ local _, ns = ...
 local Competition = {}
 ns.Competition = Competition
 
-local dateOf = date or (os and os.date)   -- (the game's `date`; the tests' Lua has os.date)
+-- The hour of the day of a time, on the clock the Times option picks (ns.Date; local time when loaded alone).
+local function hourOf(t) return tonumber((ns.Date or ns.Util.Date)("%H", t)) end
 
 Competition.UNKNOWN = "Unknown seller"
 Competition.MAX_EVENTS = 5000      -- undercut events kept (the newest); the names keep their counts beyond that
@@ -263,7 +264,7 @@ local function add(g, e)
     g.pcts[#g.pcts + 1] = e.my > 0 and (e.g / e.my * 100) or 0
     g.mats[e.id] = (g.mats[e.id] or 0) + 1
     g.names[e.o] = (g.names[e.o] or 0) + 1
-    local h = tonumber(dateOf("%H", e.t)) or 0
+    local h = hourOf(e.t) or 0
     g.hours[h] = (g.hours[h] or 0) + 1
     g.first = g.first and math.min(g.first, e.t) or e.t
     g.last = g.last and math.max(g.last, e.t) or e.t

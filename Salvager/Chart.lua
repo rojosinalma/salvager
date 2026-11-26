@@ -157,7 +157,7 @@ function Widgets.Chart(parent)
         mark:Show()
         local data = chart.data
         local format = data.format or ns.Money
-        local xFormat = data.xFormat or function(at) return date("%m-%d %H:%M", at) end
+        local xFormat = data.xFormat or function(at) return ns.Date("%m-%d %H:%M", at) end
         GameTooltip:SetOwner(plot, "ANCHOR_CURSOR")
         GameTooltip:SetText(xFormat(n.t), 1, 1, 1)
         local d = 0
@@ -238,7 +238,7 @@ function Widgets.Chart(parent)
             grid[i]:SetPoint("BOTTOMRIGHT", plot, "BOTTOMRIGHT", 0, y(v))
             grid[i]:Show()
         end
-        local xFormat = data.xFormat or function(t) return date("%m-%d %H:%M", t) end
+        local xFormat = data.xFormat or function(t) return ns.Date("%m-%d %H:%M", t) end
         for _, m in ipairs(tickMarks) do m:Hide() end
         for _, l in ipairs(tickLabels) do l:Hide() end
         if data.xTicks then

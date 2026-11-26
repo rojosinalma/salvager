@@ -19,5 +19,6 @@ read_globals = {
     "BackdropTemplateMixin", "StaticPopup_Show", "ItemLocation", "Settings", "InterfaceOptions_AddCategory", "InterfaceOptionsFrame_OpenToCategory", "GetCursorPosition",
     "UnitName", "GetRealmName", "GetNormalizedRealmName", "InCombatLockdown", "GetScreenWidth", "GetScreenHeight",
     "PanelTemplates_SelectTab", "PanelTemplates_DeselectTab", "PanelTemplates_TabResize",
+    "C_DateAndTime", "GetGameTime",
     "date", "hooksecurefunc", "time", "tinsert", "wipe",
 }

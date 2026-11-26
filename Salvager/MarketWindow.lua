@@ -174,7 +174,8 @@ end
 
 ------------------------------------------------------------------ Profit
 
-local Profit = { title = "Profit", columns = { { "Day", 110 }, { "Sales", 50, "CENTER" }, { "Profit", 90, "RIGHT" } } }
+local Profit = { title = "Profit", columns = { { "Day", 110, help = ns.TimeHelp("Day", "The day of the sales.") },
+    { "Sales", 50, "CENTER" }, { "Profit", 90, "RIGHT" } } }
 
 --- The sales with a known cost, and the deposits lost, from `from` on, oldest first. A sale's profit
 --- counts only its units with a known cost.
@@ -190,7 +191,7 @@ end
 function Profit.Rows()
     local days, order = {}, {}
     for _, s in ipairs(sales(since())) do
-        local day = date("%Y-%m-%d", s.t)
+        local day = ns.Date("%Y-%m-%d", s.t)
         if not days[day] then
             days[day] = { n = 0, profit = 0 }
             order[#order + 1] = day
@@ -288,7 +289,7 @@ Hour.Rows = Material.Rows
 
 function Hour.Chart(matID)
     local points = History.Points(ns.db.history, matID, since())
-    local byHour = History.ByHour(points, function(t) return tonumber(date("%H", t)) end)
+    local byHour = History.ByHour(points, function(t) return tonumber(ns.Date("%H", t)) end)
     local low, high
     for _, p in ipairs(byHour) do
         if not low or p[2] < low[2] then low = p end

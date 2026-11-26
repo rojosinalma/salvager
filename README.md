@@ -49,6 +49,8 @@ By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_foreve
    Competition who undercut you in the period, what it cost you and how you answered, per competitor and material.
    A heading of a grouped table (gear type, quality) opens and closes with a click; it stays as you left it.
 7. Options: Esc > Options > AddOns > Salvager, the **Options** button, or right-click the minimap button.
+   **Times shown in** picks the clock of every time and day the addon shows: your computer's (local time) or
+   the realm's (server time).
 
 ## How the value is calculated
 

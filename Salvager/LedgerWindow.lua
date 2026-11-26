@@ -19,7 +19,7 @@ local ODDS_INDENT = 12   -- each level of the Odds cards (gear type, quality, ba
 local COUNTDOWN_MAX = "00:00:00"
 
 local COLUMNS = {
-    purchases = { { "Gear", 220 }, { "Bought", 82 }, { "Paid", 84, "RIGHT" },
+    purchases = { { "Gear", 220 }, { "Bought", 82, help = ns.TimeHelp("Bought", "When you bought it.") }, { "Paid", 84, "RIGHT" },
         { "Expected value", 84, "RIGHT", help = { "Expected value", "The value the Gear tab showed when you "
             .. "bought: the average disenchant value at the prices of that moment, after the auction house cut." } },
         { "Disenchant value", 96, "RIGHT", help = { "Disenchant value", "The market value of the materials you got, "
@@ -28,7 +28,7 @@ local COLUMNS = {
     -- The Purchases view's second subtab: what waits in the mail.
     waiting = { { "Gear", 220 },
         { "Item level", 60, "CENTER", help = { "Item level", "The gear's item level, as the Gear tab judged it when you bought." } },
-        { "Bought", 82 }, { "Paid", 84, "RIGHT" },
+        { "Bought", 82, help = ns.TimeHelp("Bought", "When you bought it.") }, { "Paid", 84, "RIGHT" },
         { "Expected value", 84, "RIGHT", help = { "Expected value", "The value the Gear tab showed when you "
             .. "bought: the average disenchant value at the prices of that moment, after the auction house cut." } } },
     -- The Purchases view's third subtab: the current batch (SDD 107).
@@ -98,8 +98,9 @@ local COLUMNS = {
             .. "your auctions (see \"as of\" above)." } },
         { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
         { "You get", 76, "RIGHT" }, { "Cost", 84, "RIGHT" }, { "Profit", 76, "RIGHT" } },
-    history = { { "Material", 150 }, { "Sold", 110 },
-        { "Collected", 110, "LEFT", help = { "Collected", "When you took the money of this sale from the mail." } },
+    history = { { "Material", 150 },
+        { "Sold", 110, help = ns.TimeHelp("Sold", "When it sold (an auction that expired or was cancelled: when that was).") },
+        { "Collected", 110, "LEFT", help = ns.TimeHelp("Collected", "When you took the money of this sale from the mail.") },
         { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
         { "You got", 76, "RIGHT" }, { "Cost", 84, "RIGHT" }, { "Profit", 76, "RIGHT", help = PROFIT_HELP } },
     -- The Sales view's third subtab: who undercuts you (SDD 109).
@@ -108,7 +109,7 @@ local COLUMNS = {
             .. "name (it learns names over time). Click a row for each time it was seen, newest first." } },
         { "Times seen", 60, "RIGHT", help = { "Times seen", "How many times a search found a price line of theirs "
             .. "under one of your auctions: once per line, not again while the line stays the same. All time." } },
-        { "Last seen", 82 },
+        { "Last seen", 82, help = ns.TimeHelp("Last seen", "The last time a search found them under you.") },
         { "Materials", 120, help = { "Materials", "Which of your materials they undercut, the most often first." } },
         { "Typical gap", 76, "RIGHT", help = { "Typical gap", "How far under your price their price each was: the "
             .. "median, in coins." } },
@@ -119,7 +120,8 @@ local COLUMNS = {
             .. "cancel fees and deposits of your undercut auctions you cancelled, the deposits of the reposts, and "
             .. "the lower price your reposted units sold at against your first price. Split evenly when several "
             .. "were under you. Units not sold yet are not in it." } } },
-    paid = { { "Material", 150 }, { "Sold", 110 },
+    paid = { { "Material", 150 },
+        { "Sold", 110, help = ns.TimeHelp("Sold", "When it sold (an auction that expired or was cancelled: when that was).") },
         { "Time", 62, "RIGHT", sample = COUNTDOWN_MAX, help = { "Time", "The time until the money of this sale arrives by mail." } },
         { "Each", 64, "RIGHT" }, { "Price", 76, "RIGHT" },
         { "You get", 76, "RIGHT" }, { "Cost", 84, "RIGHT" }, { "Profit", 76, "RIGHT", help = PROFIT_HELP } },
@@ -250,7 +252,7 @@ local function oddsFilter()
 end
 Window.OddsFilter = oddsFilter
 
-local function when(t) return (t and t > 0) and date("%m-%d %H:%M", t) or "-" end
+local function when(t) return (t and t > 0) and ns.Date("%m-%d %H:%M", t) or "-" end
 local function money(c) return c and ns.Money(c) or "-" end
 local function signed(c)
     if not c then return "" end
@@ -416,7 +418,7 @@ function Window.PurchaseRows()
     for _, e in ipairs(all) do
         if passes(e, x, search) then
             local t = e.boughtAt or e.t or 0
-            local key = date("%Y-%m-%d", t)
+            local key = ns.Date("%Y-%m-%d", t)
             local d = days[key]
             if not d then
                 d = { key = key, t = t, all = {}, waiting = {}, done = {} }
@@ -432,11 +434,12 @@ function Window.PurchaseRows()
     local function refresh() Window.Refresh() end
     for _, d in ipairs(order) do
         local t = totalsOf(d.all)
-        local head = { group = true, cells = { GOLD .. date("%a %m-%d", d.t) .. "|r" .. GREY .. "  " .. pieces(t.n) .. "|r",
+        local head = { group = true, cells = { GOLD .. ns.Date("%a %m-%d", d.t) .. "|r" .. GREY .. "  " .. pieces(t.n) .. "|r",
             "", t.known > 0 and ns.Money(t.paid) or (GREY .. "not recorded|r"), money(t.expected),
             t.done > 0 and money(t.got) or "", t.resultKnown > 0 and signed(t.result) or "" },
-            tip = { date("%A %m-%d", d.t), "The gear you bought this day: how many pieces, what you paid and expected; "
-                .. "Disenchant value and Profit for the pieces disenchanted so far. Click to open or close." } }
+            tip = { ns.Date("%A %m-%d", d.t), "The gear you bought this day: how many pieces, what you paid and expected; "
+                .. "Disenchant value and Profit for the pieces disenchanted so far. Click to open or close. Days in "
+                .. ns.TimesName() .. "." } }
         rows[#rows + 1] = head
         if ns.HeadingToggle(head, x.collapsed, "d" .. d.key, refresh) then
             for _, st in ipairs({ { "waiting", "Not disenchanted" }, { "done", "Disenchanted" } }) do
@@ -808,7 +811,7 @@ function Window.CompetitionRows()
                         ns.MaterialName(e.id) or tostring(e.id), gapText(e.g), gapPct(e.my > 0 and e.g / e.my * 100 or 0),
                         ns.Money(e.p), "" },
                         tip = { ns.MaterialName(e.id) or "", string.format("%s: %d units at %s each, under your %d at %s each "
-                            .. "(%s less).", date("%m-%d %H:%M", e.t), e.q, ns.Money(e.p), e.u, ns.Money(e.my), ns.Money(e.g)) } }
+                            .. "(%s less).", ns.Date("%m-%d %H:%M", e.t), e.q, ns.Money(e.p), e.u, ns.Money(e.my), ns.Money(e.g)) } }
                 end
             end
             if shown > EVENTS_SHOWN then
@@ -1245,7 +1248,7 @@ function Window.Refresh()
         salesParts[4]:Refresh()
     elseif split then
         local l = ns.db.listings
-        salesParts[1]:SetText(GOLD .. "Open auctions|r" .. (l.t and (GREY .. "  as of " .. date("%H:%M", l.t) .. "|r") or "")
+        salesParts[1]:SetText(GOLD .. "Open auctions|r" .. (l.t and (GREY .. "  as of " .. ns.Date("%H:%M", l.t) .. "|r") or "")
             .. GREY .. "  click one to see where it stands|r")
         salesParts[3]:SetText(GOLD .. "Sold|r" .. GREY .. "  the money is on its way, or waits in your mail|r")
         local listed, paid = Window.ListingRows(), Window.SoldRows(false)

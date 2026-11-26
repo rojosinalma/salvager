@@ -117,7 +117,7 @@ local function start(anyway)
         ns.Log("session: %s logged in with %s (Salvager %s)", Gold.Char(), ns.Money(sessionStart), ns.VERSION)
     else
         ns.Log("session: %s reloaded with %s, the session from %s goes on (Salvager %s)", Gold.Char(),
-            ns.Money(sessionStart), date("%H:%M", s.start), ns.VERSION)
+            ns.Money(sessionStart), ns.Date("%H:%M", s.start), ns.VERSION)
     end
     ns.Fire("SALVAGER_GOLD")
     return true
@@ -282,7 +282,7 @@ function Gold.Report(hours)
     ns.Print("  at the start: %s; now: %s (%s)", ns.Money(s.start), ns.Money(s.finish), signed(s.change))
     if s.mailSales > 0 then
         ns.Print("  in the mail: %s from %d sales (the last one at %s); after you take it: %s (%s)", ns.Money(s.mail),
-            s.mailSales, date("%H:%M", s.mailLast), ns.Money(s.finish + s.mail), signed(s.change + s.mail))
+            s.mailSales, ns.Date("%H:%M", s.mailLast), ns.Money(s.finish + s.mail), signed(s.change + s.mail))
     end
     for _, k in ipairs(Journal.KINDS) do
         local x = s.kinds[k[1]]

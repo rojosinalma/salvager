@@ -101,6 +101,23 @@ local function populate(panel, standalone)
         function(n) s.priceUnits = math.max(1, math.floor(n)) changed("priceUnits", s.priceUnits) end,
         "More units = a price that one cheap listing moves less.")
     at(unL, 24)
+    -- The clock of every time shown (SDD 110): one choice.
+    local TIMES_HELP = "Local time: your computer's clock. Server time: the realm's clock, read at login and every "
+        .. "hour. Every time and day in the windows, the log and the chat follows it; what is saved does not change."
+    local timesL = W.Label(panel, "Times shown in", "GameFontHighlightSmall")
+    at(timesL, 24)
+    local times
+    times = W.Dropdown(panel, 220, { { "local", "Local time (your computer)" }, { "server", "Server time (the realm)" } },
+        function(v) return s.timeZone == v end,
+        function(v)
+            times:Close()
+            if s.timeZone == v then times:Update() return end
+            s.timeZone = v
+            changed("timeZone", v)
+        end, TIMES_HELP, "Times shown in")
+    times:SetPoint("LEFT", timesL, "RIGHT", 12, 0)
+    panel.timesDrop = times
+    controls[#controls + 1] = { refresh = function() times:Update() end }
     local autoOpen = W.Check(panel, "Open the window with the auction house", nil,
         function(on) s.autoOpen = on changed("autoOpen", on) end)
     at(autoOpen, 20)
@@ -139,7 +156,7 @@ local function populate(panel, standalone)
             ns.Util.FormatBytes(data), #ns.db.log, #(ns.db.money.entries or {}), ns.Util.FormatBytes(backups)))
         local b = ns.Backup.Last()
         restoreButton:SetEnabled(b ~= nil)
-        last:SetText(b and ("last copy: " .. date("%m-%d %H:%M", b.t)) or "no backup yet")
+        last:SetText(b and ("last copy: " .. ns.Date("%m-%d %H:%M", b.t)) or "no backup yet")
     end }
 
     if not standalone then

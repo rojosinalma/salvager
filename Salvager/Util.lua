@@ -126,4 +126,54 @@ function Util.FormatBytes(n)
     return string.format("%.1f KB", n / 1024)
 end
 
+------------------------------------------------------------------ times (SDD 110)
+
+--- A time as text (`date` formats). `offset` nil: the computer's local time (its own DST rules for `t`);
+--- else the clock `offset` seconds ahead of UTC (the realm's clock, Util.ServerOffset).
+--- The one place a shown time is made: every window calls it through ns.Date.
+function Util.Date(fmt, t, offset)
+    local dateOf = date or os.date   -- (the game's `date`; the tests' Lua has os.date)
+    if offset == nil then return dateOf(fmt, t) end
+    return dateOf("!" .. fmt, t + offset)
+end
+
+-- Days from 1970-01-01 to a calendar date (proleptic Gregorian; H. Hinnant's days_from_civil).
+local function daysFromCivil(year, month, day)
+    local y = month <= 2 and year - 1 or year
+    local era = math.floor(y / 400)
+    local yoe = y - era * 400
+    local doy = math.floor((153 * (month + (month > 2 and -3 or 9)) + 2) / 5) + day - 1
+    local doe = yoe * 365 + math.floor(yoe / 4) - math.floor(yoe / 100) + doy
+    return era * 146097 + doe - 719468
+end
+
+Util.OFFSET_STEP = 900          -- s: a time zone is a whole number of quarter hours
+Util.OFFSET_MAX = 14 * 3600     -- s: no time zone is further from UTC
+
+--- The realm's clock against UTC, in seconds, rounded to the nearest quarter hour; nil when `clock` makes no sense.
+--- `now` = Unix time (UTC); `clock` = the realm's clock now: { year, month, monthDay, hour, minute } (the game's
+--- CalendarTime) or { hour, minute } only (GetGameTime: the nearest day is taken, so within 12 hours of UTC).
+function Util.ServerOffset(now, clock)
+    if type(clock) ~= "table" or type(clock.hour) ~= "number" or type(clock.minute) ~= "number" then return nil end
+    local d
+    if type(clock.year) == "number" and type(clock.month) == "number" and type(clock.monthDay) == "number" then
+        d = daysFromCivil(clock.year, clock.month, clock.monthDay) * 86400 + clock.hour * 3600 + clock.minute * 60 - now
+    else
+        d = (clock.hour * 3600 + clock.minute * 60 - now % 86400) % 86400
+        if d >= 43200 then d = d - 86400 end
+    end
+    d = math.floor(d / Util.OFFSET_STEP + 0.5) * Util.OFFSET_STEP
+    if math.abs(d) > Util.OFFSET_MAX then return nil end
+    return d
+end
+
+--- "UTC+1", "UTC-5:30", "UTC" for an offset in seconds.
+function Util.OffsetName(offset)
+    if offset == 0 then return "UTC" end
+    local m = math.floor(math.abs(offset) / 60 + 0.5)
+    local text = (offset < 0 and "UTC-" or "UTC+") .. math.floor(m / 60)
+    if m % 60 ~= 0 then text = text .. string.format(":%02d", m % 60) end
+    return text
+end
+
 return Util

@@ -150,3 +150,6 @@ reply must say so.
 1. What the player is told to pay for is checked against the thing itself (the auction's own
    item), never trusted from the context it arrived in.
 2. A number that rests on few samples says so.
+3. Times follow the Times option (Options, "Times shown in": local or server time, SDD 110): every shown time and day
+   goes through `ns.Date`, and where the clock matters (a time column's help, a statement's period line) it says
+   which one.

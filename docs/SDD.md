@@ -986,9 +986,40 @@ flipping is out of scope for now.
     - g. Not in the books: the statement (97) already counts the deposits and fees; this splits a part of them by
        competitor, plus the lower sale prices, which no statement line shows.
 
+110. **Times in local or server time** (0.3.139, the user, 2026-11-27; `Util.Date` and `Util.ServerOffset` pure,
+    glue in `Core.lua`: `ns.Date`, `ns.Clock`, `ns.TimesName`, `ns.TimesNote`, `ns.TimeHelp`).
+    - a. Options, "Prices and window": "Times shown in" (a one-choice dropdown: Local time (your computer), Server
+       time (the realm)), `settings.timeZone` = "local" (default) | "server". A change fires `SALVAGER_SETTINGS`, so
+       the open windows draw again.
+    - b. Every shown time goes through `ns.Date(fmt, t)`: the windows' times and day headings, the Purchases days,
+       the Market's Profit days and its Time of day view, the charts' times, the Competition's Active hours, the
+       statements' periods and session names, the chat lines, the backup times and the activity log (its lines
+       are text, written on the clock of that moment). Saved times stay Unix time. Periods ("Last 24 hours") are
+       rolling, so they do not depend on the clock. A spec (`spec/times_spec.lua`) fails on any other `date(` in
+       the addon; the only one left (`Prices.SeedHistory`, which reads back, once, the log of versions before
+       0.3.139) is marked "not shown".
+    - c. Local time is the game's `date(fmt, t)` (the computer's rules, daylight saving included, for each `t`).
+       Server time is `date("!" .. fmt, t + offset)`, with offset = the realm's clock minus UTC: read from
+       `C_DateAndTime.GetCurrentCalendarTime()` (year, month, monthDay, hour, minute; in `Gethe/wow-ui-source`
+       branch `forever`, `DateAndTimeDocumentation.lua`), as days since 1970 × 86400 + hour × 3600 + minute × 60
+       − `time()`; where it is missing, `GetGameTime()` (hours, minutes; `SystemTimeDocumentation.lua`), the
+       nearest day (within 12 hours of UTC). Rounded to the nearest 15 minutes (the clock gives no seconds; every
+       time zone is whole quarter hours); more than 14 hours away from UTC is not a reading. Read at
+       `PLAYER_ENTERING_WORLD` and every hour after (`C_Timer`), so the realm's daylight saving change shows within
+       the hour; a change is logged ("server time: UTC+2 (was UTC+1)") and draws the windows again. One offset
+       for every time: a time from before the realm's last daylight saving change shows one hour off in server
+       time (the client does not give the realm's rules). Until the first reading succeeds, times are local and
+       say so.
+    - d. Which clock: the help on time titles (Bought, Sold, Collected, Last seen, First seen, Time, Active hours,
+       Day) ends with "Times in server time (the realm's clock, UTC+1): Options, Times shown in." (or local time),
+       read when the help shows (`ns.TimeHelp`; a title's help text can be a function, `Tables.lua`); a statement's
+       period line ends with "times in server time"; a Purchases day heading's tooltip says "Days in server time".
+    - e. Day boundaries (the Purchases days, the Market's Profit days, the log's day lines) follow the clock. The
+       heading states of the Purchases days are saved per day of that clock.
+
 ## Data
 
-`SalvagerBackup` (account-wide): `list` of ledger copies (88). `SalvagerDB` (account-wide): `settings`, `prices`, `ledger` (`purchases`, `stock`, `pools`, `disenchants`, `sales`),
+`SalvagerBackup` (account-wide): `list` of ledger copies (88). `SalvagerDB` (account-wide): `settings` (`timeZone`, 110), `prices`, `ledger` (`purchases`, `stock`, `pools`, `disenchants`, `sales`),
 `money` (gold journal), `sessions` (97), `competition` (109), `quality` and `ilvl` (learned item data), `auraSeen` and `auraSnapshots` (to learn the Salvager's aura spell ID; matched by name until then).
 
 ## Open

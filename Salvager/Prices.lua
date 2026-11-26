@@ -144,7 +144,7 @@ function Prices.SeedHistory()
     end
     for id, e in pairs(db.prices) do add(id, e.t, e.p, e.lo) end
     -- The log has the time of day only, newest last: walk back from now and step a day at each wrap.
-    local at = date("*t", time())
+    local at = date("*t", time())   -- not shown: reads back, once, the log of versions before 0.3.139 (local time)
     local limit = time()
     for i = #db.log, 1, -1 do
         local h, m, sec, id, money = db.log[i]:match("^(%d%d):(%d%d):(%d%d) price .- %((%d+)%): (.-) over %d+ units")
@@ -154,7 +154,7 @@ function Prices.SeedHistory()
             local t = time(at)
             while t > limit + 60 do
                 t = t - 86400
-                at = date("*t", t)
+                at = date("*t", t)   -- not shown
             end
             limit = t
             if h and sec and m then add(tonumber(id), t, ns.Util.ParseMoney(money)) end

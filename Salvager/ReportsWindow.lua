@@ -77,7 +77,7 @@ function Reports.Length(sec)
     if h < 24 then return string.format("%d h %02d min", h, m % 60) end
     return string.format("%d d %d h", math.floor(h / 24), h % 24)
 end
-local function when(t) return date("%m-%d %H:%M", t) end
+local function when(t) return ns.Date("%m-%d %H:%M", t) end
 
 --- A session's name: its start and its length ("11-26 18:49, 1 h 10 min").
 function Reports.SessionName(s)
@@ -118,7 +118,7 @@ local COLUMNS = {
     statement = { { "What", 260 }, { "Amount", 90, "RIGHT", help = { "Amount", "Gold, silver and copper; + came in, "
             .. "- went out. Green and red only for gold you really gained or lost; grey for values at today's prices." } },
         statement = true },
-    goldLog = { { "What", 200 }, { "Time", 90 }, { "Change", 90, "RIGHT" },
+    goldLog = { { "What", 200 }, { "Time", 90, help = ns.TimeHelp("Time", "When your gold changed.") }, { "Change", 90, "RIGHT" },
         { "Kind", 140, "LEFT", help = { "Kind", "What the change was: told by what the addon did (a purchase, a "
             .. "deposit, a mail taken), else by the window open then (vendor, mailbox, trade)." } },
         { "Gold after", 90, "RIGHT" } },
@@ -158,9 +158,10 @@ local COLUMNS = {
         { "Typical gap", 70, "RIGHT", help = { "Typical gap", "How far under your price each: the median, in coins." } },
         { "Typical gap %", 50, "RIGHT", help = { "Typical gap %", "The same in percent of your price each." } },
         { "Lowest price", 70, "RIGHT", help = { "Lowest price", "Their lowest price each seen under yours." } },
-        { "First seen", 76 }, { "Last seen", 76 },
-        { "Active hours", 70, help = { "Active hours", "The hours of the day they undercut you most (from that hour "
-            .. "to the next)." } },
+        { "First seen", 76, help = ns.TimeHelp("First seen", "Their first undercut in this period.") },
+        { "Last seen", 76, help = ns.TimeHelp("Last seen", "Their last undercut in this period.") },
+        { "Active hours", 70, help = ns.TimeHelp("Active hours", "The hours of the day they undercut you most (from that "
+            .. "hour to the next).") },
         { "Trend", 44, "RIGHT", help = { "Trend", "Undercuts against the period before, of the same length: green "
             .. "when fewer (+ more, - fewer). \"-\" for All time." } },
         { "Profit lost to them", 84, "RIGHT", help = { "Profit lost to them", "Cancel fees and deposits of your "
@@ -263,7 +264,7 @@ function Reports.StatementRows()
     local rows = {}
     -- What it is, for whom, for which time.
     local span = from and (when(from) .. " to " .. (to and when(to) or "now") .. " ("
-        .. Reports.Length((to or time()) - from) .. ")") or "every record kept"
+        .. Reports.Length((to or time()) - from) .. "), times in " .. ns.TimesName()) or "every record kept"
     rows[1] = { cells = { "Gold statement of " .. ns.Gold.Char(true), "" }, bold = true, tip = { "Gold statement",
         "What your trading made and how much richer you are, for this character, checked against your gold." } }
     rows[2] = { cells = { GREY .. name .. ": " .. span .. "|r", "" } }
@@ -400,7 +401,7 @@ function Reports.ChangeRows()
     for i = #s.entries, 1, -1 do
         local e = s.entries[i]
         if e.k ~= "start" then
-            log[#log + 1] = { cells = { e.r or GREY .. "-|r", date("%m-%d %H:%M", e.t), real(e.d),
+            log[#log + 1] = { cells = { e.r or GREY .. "-|r", ns.Date("%m-%d %H:%M", e.t), real(e.d),
                 ns.Journal.KIND_NAME[e.k] or e.k, ns.MoneyColumn(e.b) }, link = e.r and e.r:match("|Hitem:[^|]+|h") and e.r }
         end
     end
@@ -546,7 +547,7 @@ function Reports.CompetitionSummaryRows()
     end
     local stake, undercut, lowered = ns.Competition.AtStake(state, live, time())
     local span = from and (when(from) .. " to " .. (to and when(to) or "now") .. " (" .. Reports.Length((to or time()) - from)
-        .. ")") or "every record kept"
+        .. "), times in " .. ns.TimesName()) or "every record kept"
     local rows = {}
     rows[1] = { cells = { "Undercuts of your auctions" .. (id and (", " .. (ns.MaterialName(id) or "")) or ""), "" },
         bold = true, tip = { "Competition", "Who listed under the price of your auctions, what it cost you and how you "

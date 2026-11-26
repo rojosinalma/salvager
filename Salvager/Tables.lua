@@ -179,8 +179,14 @@ function Widgets.ColumnChooser(parent, getColumns, changed)
     return b
 end
 
+-- A title's help text: a string, or a function that gives it when the help shows (ns.TimeHelp: which clock).
+local function helpLine(text)
+    if type(text) == "function" then return text() end
+    return text
+end
+
 --- A scrolling table. The caller anchors the returned frame.
----   list:SetColumns({ { title, width, justify, help = { title, text }, sample = text, key = title }, ... }, setId)
+---   list:SetColumns({ { title, width, justify, help = { title, text or function() -> text }, sample = text, key = title }, ... }, setId)
 ---                                                         the first column takes the spare width; help shows
 ---                                                         on the column title; sample = the widest text the
 ---                                                         column can hold ("00:00:00"), so it keeps its width;
@@ -253,7 +259,7 @@ function Widgets.List(parent, opts)
             if not help then return end
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
             GameTooltip:SetText(help[1], 1, 1, 1)
-            GameTooltip:AddLine(help[2], 1, 0.82, 0, true)
+            GameTooltip:AddLine(helpLine(help[2]), 1, 0.82, 0, true)
             GameTooltip:Show()
         end)
         area:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -743,7 +749,7 @@ function Widgets.CardList(parent)
             if not help then return end
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
             GameTooltip:SetText(help[1], 1, 1, 1)
-            GameTooltip:AddLine(help[2], 1, 0.82, 0, true)
+            GameTooltip:AddLine(helpLine(help[2]), 1, 0.82, 0, true)
             GameTooltip:Show()
         end)
         card.factsHelp:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -765,7 +771,7 @@ function Widgets.CardList(parent)
                 if not (col and col.help) then return end
                 GameTooltip:SetOwner(self, "ANCHOR_TOP")
                 GameTooltip:SetText(col.help[1], 1, 1, 1)
-                GameTooltip:AddLine(col.help[2], 1, 0.82, 0, true)
+                GameTooltip:AddLine(helpLine(col.help[2]), 1, 0.82, 0, true)
                 GameTooltip:Show()
             end)
             area:SetScript("OnLeave", function() GameTooltip:Hide() end)
