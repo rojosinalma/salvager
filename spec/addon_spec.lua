@@ -515,7 +515,7 @@ describe("Salvager in a simulated client", function()
             posted = ns.db.posted, bags = env.bags }
         L.purchases = { [7001] = { { each = 1000, ev = 1500, t = 50, link = "|Hitem:7001|h[Alpha]|h" } },
             [7004] = { { each = 300, ev = 400, t = 60, link = "|Hitem:7004|h[Delta]|h" } } }
-        L.bought = { { itemID = 7004, each = 300, t = 60 } }                -- still in the mail: not in the batch
+        L.bought = { { itemID = 7004, each = 300, t = 60 } }                -- still in the mail: in the batch, apart
         L.disenchants = { { t = 40, itemID = 7002, link = "|Hitem:7002|h[Beta]|h", costKnown = true, cost = 1000,
             evAtBuy = 1200, value = 1600, got = { [11083] = 2 }, quality = 2, classID = 4, band = 30, ilvl = 28 } }
         L.sales, ns.db.posted = {}, {}
@@ -526,8 +526,30 @@ describe("Salvager in a simulated client", function()
         W.Refresh()
         W.purchaseTabs.batch:Click()
         assert.are.equal("batch", W.PurchaseTab())
-        assert.are.equal("Current batch (2)", W.purchaseTabs.batch:GetText())
+        -- The purchase in the mail: under "In the mail" first, counted, in the totals (0.3.153).
+        assert.are.equal("Current batch (3)", W.purchaseTabs.batch:GetText())
         local rows = W.BatchRows()
+        assert.are.equal(7, #rows)
+        assert.is_truthy(rows[1].cells[1]:find("^In the mail"))
+        assert.is_truthy(rows[1].cells[1]:find("1 piece", 1, true))
+        assert.are.same({ ns.Money(300), ns.Money(400) }, { rows[1].cells[3], rows[1].cells[4] })
+        assert.are.same({ 7004, ns.Money(300) }, { rows[2].itemID, rows[2].cells[3] })
+        assert.is_truthy(rows[2].cells[6]:find("in the mail", 1, true))
+        assert.is_truthy(rows[3].cells[1]:find("^Not disenchanted"))
+        assert.is_truthy(rows[7].cells[1]:find("3 pieces: 1 in the mail, 1 waiting, 1 disenchanted", 1, true))
+        assert.are.same({ ns.Money(2300), ns.Money(3100) }, { rows[7].cells[3], rows[7].cells[4] })   -- all three
+        -- Picked up: it moves to Not disenchanted (the Disenchant panel never listed it while it was in the mail).
+        assert.are.equal(0, #ns.DisenchantPanel.Pieces())
+        L.bought[1].mail = true
+        env.bags[7004] = 1
+        rows = W.BatchRows()
+        assert.is_truthy(rows[1].cells[1]:find("^Not disenchanted"))
+        assert.is_truthy(rows[1].cells[1]:find("2 pieces", 1, true))
+        assert.is_truthy(rows[#rows].cells[1]:find("3 pieces: 0 in the mail, 2 waiting, 1 disenchanted", 1, true))
+        env.bags[7004] = 0
+        W.Refresh()
+        assert.are.equal("Current batch (2)", W.purchaseTabs.batch:GetText())
+        rows = W.BatchRows()
         assert.are.equal(5, #rows)                -- Not disenchanted first, its piece, the disenchanted, its piece, totals
         assert.is_truthy(rows[1].cells[1]:find("^Not disenchanted"))
         assert.are.same({ 7001, ns.Money(1000), ns.Money(1500) }, { rows[2].itemID, rows[2].cells[3], rows[2].cells[4] })
@@ -543,7 +565,7 @@ describe("Salvager in a simulated client", function()
         assert.are.equal(now, de[11])
         local total = rows[5]
         assert.is_true(total.bold and total.rule == "total")
-        assert.is_truthy(total.cells[1]:find("2 pieces, 1 disenchanted", 1, true))
+        assert.is_truthy(total.cells[1]:find("2 pieces: 0 in the mail, 1 waiting, 1 disenchanted", 1, true))
         assert.are.same({ ns.Money(2000), ns.Money(2700), ns.Money(1600), "2 units", now },
             { total.cells[3], total.cells[4], total.cells[7], total.cells[10], total.cells[11] })
         assert.is_truthy(total.cells[5]:find(ns.Money(700), 1, true))           -- Expected profit of the batch

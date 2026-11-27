@@ -455,14 +455,16 @@ describe("Ledger", function()
                 Ledger.TakePurchase(state, itemID), priceOf, 0.05)
         end
 
-        it("lists what is picked up, not what waits in the mail", function()
+        it("lists what is picked up, and apart what waits in the mail", function()
             Ledger.AuctionPurchase(state, 7001, 500, 900, 10, "[A]")       -- bought with Buy: its mail not taken
             Ledger.MailPurchase(state, 7002, 1, 400, 700, 20, "[B]")       -- known from its mail: picked up
             local b = Ledger.Batch(state, {})
             assert.are.same({ 7002 }, { b.waiting[1].itemID, b.waiting[2] and b.waiting[2].itemID })
             assert.are.same({ 400, 700 }, { b.waiting[1].each, b.waiting[1].ev })
-            assert.is_false(Ledger.MailPurchase(state, 7001, 1, 500, 900, 30))   -- its mail taken: in the batch
+            assert.are.same({ 1, 7001, 500, 900 }, { #b.mail, b.mail[1].itemID, b.mail[1].each, b.mail[1].ev })   -- apart
+            assert.is_false(Ledger.MailPurchase(state, 7001, 1, 500, 900, 30))   -- its mail taken: waiting now
             b = Ledger.Batch(state, {})
+            assert.are.equal(0, #b.mail)
             assert.are.same({ 7002, 7001 }, { b.waiting[1].itemID, b.waiting[2].itemID })   -- newest bought first
             -- What you hold caps it: a piece sold or thrown away is not in the batch any more.
             b = Ledger.Batch(state, {}, function(id) return id == 7002 and 0 or 1 end)

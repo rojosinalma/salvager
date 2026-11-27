@@ -907,7 +907,8 @@ flipping is out of scope for now.
        (per day and status); all in `purchaseFilter()` (`collapsed`, `open`).
     - c. Current batch, the Purchases view's third subtab ("Current batch (n)"): the gear you bought and picked
        up and have not disenchanted, then the disenchants of bought gear whose materials are not all posted
-       (`Ledger.Batch`). Purchases still in the mail are in Not picked up only. The rule: every post made through
+       (`Ledger.Batch`). Purchases still in the mail are in Not picked up only (until 0.3.152; since 0.3.153 in
+       the batch too, under "In the mail", 117). The rule: every post made through
        Salvager (`SalvagerDB.posted`: material, units, time) and every sale that came from no such post (posted
        another way: at the sale's time), in time order, takes that material's units of the disenchants made at or
        before it, first in, first out (a post before a disenchant is not its). Then what you hold caps it
@@ -923,8 +924,8 @@ flipping is out of scope for now.
        "Disenchanted, not posted" (newest first) with their count and totals, open and close
        (`ns.GroupState("ledger.batch")`); the last row is the batch's totals (bold, a line above): pieces and how
        many disenchanted, Paid, EV, Expected profit of all; DV, DV/EV % and Profit so far of the disenchanted part
-       against its own EV; the units not posted and their value now. Empty: "No batch: every purchase you picked up
-       is disenchanted and its materials are posted." No new action: the totals' help says to post from the
+       against its own EV; the units not posted and their value now. Empty: "No batch: every purchase you made is
+       picked up and disenchanted, and its materials are posted." (0.3.153) No new action: the totals' help says to post from the
        Materials window.
     - d. Every window with tables is as wide as its shown columns need, up to the screen width
        (`Widgets.FitTables`, `Widgets.ScreenWidth`): `list.fitWidth` is the narrowest width that leaves no column
@@ -1332,6 +1333,17 @@ flipping is out of scope for now.
        -4g 33s - +24g 92s - +55g 33s?; it would no longer be listed (over the 49g 72s limit). Azure Silk Hood
        (Uncommon Armor 26-30, 539 of your disenchants with the Salvager: observed) at 11s 99c: -7s 17c - +3s 69c -
        +35s 49c (1 Soul Dust 4s 82c; average 15s 68c; 1 Large Glimmering Shard 47s 48c).
+
+117. **The Current batch shows the purchases in the mail** (0.3.153, the user, 2026-11-27). `Ledger.Batch` returns
+    them too (`mail`: the purchases made with Buy whose "Auction won" mail is not taken, newest first; the same
+    entries as Not picked up), as their own group: status headings "In the mail" first, then "Not disenchanted",
+    then "Disenchanted, not posted", each with its count and totals (pieces, Paid, Avg value (EV), the average profit;
+    sums of averages, said in the heading's help). Their rows are built as the "Not disenchanted" rows
+    (`LedgerWindow.BatchMailRow`: Gear, Item level, Paid, Avg value, Profit: low - avg - high from the purchase's
+    `j.lo`, `j.hi`, 116), the Materials got cell "in the mail" in grey. "Current batch (n)" counts them, as its help
+    says. The batch's totals row includes them: "Batch: N pieces: N in the mail, N waiting, N disenchanted". The
+    Disenchant panel does not list them (they are not in the bags, 112b), and Not picked up stays as it is (90). Specs:
+    a purchase in the mail shows under "In the mail", moves to "Not disenchanted" when picked up, the totals add up.
 
 ## Data
 

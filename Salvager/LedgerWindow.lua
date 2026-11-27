@@ -504,7 +504,7 @@ end
 --- the disenchants whose materials are not all posted, newest first, each under its status heading with totals,
 --- and the batch's totals last: what it cost, what it was expected to make, what the disenchants gave so far
 --- against what they were expected to give, and the materials still to post.
-local NOT_YET, NONE = GREY .. "not disenchanted yet|r", GREY .. "-|r"
+local NOT_YET, NONE, IN_MAIL = GREY .. "not disenchanted yet|r", GREY .. "-|r", GREY .. "in the mail|r"
 local function ilvlText(ilvl) return ilvl and tostring(ilvl) or NONE end
 
 -- The Current batch's columns (COLUMNS.batch), by name: the Disenchant panel shows some of them (SDD 112).
@@ -527,6 +527,14 @@ function Window.BatchWaitingRow(p)
     return { itemID = p.itemID, link = p.link, indent = INDENT, paid = p.each or 0, ev = p.ev or 0,
         cells = { itemName(p.itemID, p.link), ilvlText(ilvl), money(p.each), money(p.ev), profitRange(p),
             NOT_YET, NONE, NONE, NONE, NONE, NONE } }
+end
+
+--- A row of the Current batch for a purchase still in the mail (an entry of Ledger.Batch's `mail`): as one not
+--- disenchanted yet, its materials cells "in the mail" (grey).
+function Window.BatchMailRow(p)
+    local row = Window.BatchWaitingRow(p)
+    row.cells[6] = IN_MAIL
+    return row
 end
 
 --- A row of the Current batch for a disenchant (an entry of Ledger.Batch's `done`): its cells in the order of
@@ -557,9 +565,16 @@ end
 function Window.BatchRows()
     local b = Window.Batch()
     local rows = {}
-    if #b.waiting == 0 and #b.done == 0 then
-        rows[1] = note("No batch: every purchase you picked up is disenchanted and its materials are posted.")
+    if #b.mail == 0 and #b.waiting == 0 and #b.done == 0 then
+        rows[1] = note("No batch: every purchase you made is picked up and disenchanted, and its materials are posted.")
         return rows
+    end
+    local m = { n = #b.mail, paid = 0, ev = 0 }
+    local mRows = {}
+    for _, p in ipairs(b.mail) do
+        local row = Window.BatchMailRow(p)
+        m.paid, m.ev = m.paid + row.paid, m.ev + row.ev
+        mRows[#mRows + 1] = row
     end
     local w = { n = #b.waiting, paid = 0, ev = 0 }
     local wRows = {}
@@ -579,6 +594,17 @@ function Window.BatchRows()
     local state = ns.GroupState("ledger.batch")
     local function refresh() Window.Refresh() end
     local function units(n) return n .. (n == 1 and " unit" or " units") end
+    -- In the mail first (still to pick up), then not disenchanted, then disenchanted and not posted.
+    if m.n > 0 then
+        local h = { group = true, cells = { "In the mail" .. GREY .. "  " .. pieces(m.n) .. "|r", "",
+            ns.Money(m.paid), ns.Money(m.ev), gap(m.ev - m.paid), "", "", "", "", "", "" },
+            tip = { "In the mail", "Gear you bought with Buy whose \"Auction won\" mail you have not taken yet. Paid, "
+                .. "Avg value and the average profit (sums of averages: averages too)." } }
+        rows[#rows + 1] = h
+        if ns.HeadingToggle(h, state, "mail", refresh) then
+            for _, r in ipairs(mRows) do rows[#rows + 1] = r end
+        end
+    end
     if w.n > 0 then
         local h = { group = true, cells = { "Not disenchanted" .. GREY .. "  " .. pieces(w.n) .. "|r", "",
             ns.Money(w.paid), ns.Money(w.ev), gap(w.ev - w.paid), "", "", "", "", "", "" } }
@@ -597,9 +623,12 @@ function Window.BatchRows()
         end
     end
     -- The batch's totals, the last row (UI.md Tables 13).
+    local all = { n = m.n + w.n, paid = m.paid + w.paid, ev = m.ev + w.ev }
     rows[#rows + 1] = { bold = true, rule = "total",
-        cells = Window.BatchTotals("Batch: " .. pieces(w.n + d.n) .. ", " .. d.n .. " disenchanted", w, d),
-        tip = { "The batch", "Paid, Avg value and the average profit: every piece of the batch (sums of averages: "
+        cells = Window.BatchTotals("Batch: " .. pieces(all.n + d.n) .. ": " .. m.n .. " in the mail, " .. w.n
+            .. " waiting, " .. d.n .. " disenchanted", all, d),
+        tip = { "The batch", "Paid, Avg value and the average profit: every piece of the batch, the ones in the mail "
+            .. "too (sums of averages: "
             .. "averages too). Disenchant value, DV/EV % and Profit so far: the pieces disenchanted so far, against their "
             .. "average value. "
             .. "Not posted yet and Value now: their materials still to post, at what they are worth now. Post them "
@@ -1046,7 +1075,7 @@ function Window.Refresh()
     if purchases then
         purchaseTabs.mail:SetText(string.format("Not picked up (%d)", (Window.NotPickedUpTotal())))
         local batch = Window.Batch()
-        purchaseTabs.batch:SetText(string.format("Current batch (%d)", #batch.waiting + #batch.done))
+        purchaseTabs.batch:SetText(string.format("Current batch (%d)", #batch.mail + #batch.waiting + #batch.done))
         bagLabel:SetText(Window.BagText())
     end
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -top)
@@ -1291,9 +1320,10 @@ local function build()
     for _, t in ipairs({ { "all", "All purchases", "All gear you bought, with what each piece was disenchanted into." },
         { "mail", "Not picked up", "The gear you bought with Buy whose \"Auction won\" mail you have not taken "
             .. "yet, the first bought first. The number is how many." },
-        { "batch", "Current batch", "The gear you picked up and have not disenchanted yet, and what you disenchanted "
-            .. "whose materials are not all posted yet: what the batch cost, its average value, and what it has made so far. "
-            .. "A piece leaves when all its materials are posted." } }) do
+        { "batch", "Current batch", "The gear you bought and have not disenchanted yet (in the mail or picked up), "
+            .. "and what you disenchanted whose materials are not all posted yet: what the batch cost, its average "
+            .. "value, and what it has made so far. A piece leaves when all its materials are posted. The number counts "
+            .. "every piece, the ones in the mail too." } }) do
         local b = W.Subtab(bars.purchases, t[2], function()
             f.saved.purchaseTab = t[1] ~= "all" and t[1] or nil
             list.offset = 0

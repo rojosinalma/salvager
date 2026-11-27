@@ -968,11 +968,21 @@ end
 --- left, newest first, at most the pieces you hold. A post that expires or is cancelled stays posted.
 --- @param posted table|nil  SalvagerDB.posted
 --- @param held function|nil  (itemID) -> units in the bags and the bank, or nil where not known (no cap)
---- @return table { waiting = { { itemID, link, each, ev, t, j }, ... }, done = { { rec, left = { [id] = units },
----   units }, ... } }, each newest first
+--- `mail`: the purchases made with Buy whose "Auction won" mail is not taken yet (0.3.153, the user): part of the
+--- batch, though not in the bags.
+--- @return table { mail = { { itemID, link, each, ev, t, j }, ... }, waiting = { same }, done = { { rec,
+---   left = { [id] = units }, units }, ... } }, each newest first
 function Ledger.Batch(state, posted, held)
     posted = posted or {}
-    local _, mailed = inMail(state)
+    local mailList, mailed = inMail(state)
+    local mail = {}
+    for _, b in ipairs(mailList) do
+        mail[#mail + 1] = { itemID = b.itemID, link = b.link, each = b.each, ev = b.ev, t = b.t or 0, j = b.j }
+    end
+    table.sort(mail, function(a, b)
+        if a.t ~= b.t then return a.t > b.t end
+        return a.itemID < b.itemID
+    end)
     local waiting = {}
     for itemID, list in pairs(state.purchases) do
         local mine = {}
@@ -1042,7 +1052,7 @@ function Ledger.Batch(state, posted, held)
         end
     end
     table.sort(done, function(a, b) return (a.rec.t or 0) > (b.rec.t or 0) end)
-    return { waiting = waiting, done = done }
+    return { mail = mail, waiting = waiting, done = done }
 end
 
 --- Every item bought or disenchanted, newest first: one entry per item, with what it gave.

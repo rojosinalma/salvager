@@ -48,7 +48,8 @@ By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_foreve
    drag the bar between them to make one taller (right-click: back to the default).
    **Ledger** opens a window of its own: all gear you bought by day, with what each piece was disenchanted into,
    what you bought and have not picked up from the mail yet (with your free bag space), your current batch (what
-   you picked up and have not disenchanted or posted yet, with what it cost, its average value and what it has made),
+   you bought and have not disenchanted or posted yet, in the mail or picked up, with what it cost, its average value
+   and what it has made),
    your auctions (listed, sold and waiting for the money, undercut; ▶ next to Check undercuts checks them every
    minute while the auction house is open), who undercuts you (Competition: each seller under your price, how
    often, on which materials, by how much, and what it cost you) and the sales already paid with their
