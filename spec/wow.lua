@@ -521,6 +521,8 @@ function M.install(opts)
     _G.IsPlayerSpell = function() return false end
     _G.IsShiftKeyDown = function() return false end
     _G.GetMoney = function() return env.money end
+    -- env.equipped[slot] = itemID: what the character wears (the game's item count includes it).
+    _G.GetInventoryItemID = function(unit, slot) return unit == "player" and env.equipped and env.equipped[slot] or nil end
     _G.UnitName = function() return "Tester" end
     _G.GetRealmName = function() return "Realm" end
     _G.TooltipDataProcessor = { AddTooltipPostCall = function(_, fn) env.tooltipPost = fn end }
@@ -559,7 +561,11 @@ function M.install(opts)
         GetItemQualityByID = function(x) local it = item(x) return it and it.quality end,
         GetDetailedItemLevelInfo = function(x) local it = item(x) return it and it.ilvl end,
         GetItemNameByID = function(x) local it = item(x) return it and it.name end,
-        GetItemCount = function(id) return env.bags[id] or 0 end,
+        GetItemCount = function(id)
+            local worn = 0
+            for _, e in pairs(env.equipped or {}) do if e == id then worn = worn + 1 end end
+            return (env.bags[id] or 0) + worn
+        end,
         -- env.guids["bag:slot"] = the item's GUID
         GetItemGUID = function(loc) return env.guids and env.guids[loc.bag .. ":" .. loc.slot] end,
     }

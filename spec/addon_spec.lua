@@ -500,6 +500,11 @@ describe("Salvager in a simulated client", function()
         assert.are.equal(2, #W.BatchRows())
         assert.is_true(ns.db.groups["ledger.batch"].waiting)
         rows[1].onClick()
+        env.bags[7001] = 0                                                      -- worn, not in the bags: not in it
+        env.equipped = { [10] = 7001 }
+        assert.are.equal(1, ns.GetItemCount(7001))                              -- (the game counts what you wear)
+        assert.is_truthy(W.BatchRows()[1].cells[1]:find("No batch", 1, true))
+        env.equipped = nil
         env.bags[7001] = 0                                                      -- the piece is gone: no batch
         assert.is_truthy(W.BatchRows()[1].cells[1]:find("No batch", 1, true))
         W.Refresh()

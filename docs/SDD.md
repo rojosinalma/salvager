@@ -877,7 +877,7 @@ flipping is out of scope for now.
        Salvager (`SalvagerDB.posted`: material, units, time) and every sale that came from no such post (posted
        another way: at the sale's time), in time order, takes that material's units of the disenchants made at or
        before it, first in, first out (a post before a disenchant is not its). Then what you hold caps it
-       (`GetItemCount`, bags and bank): a material's units left, newest disenchant first, are at most what you hold
+       (`ns.HeldCount`: `GetItemCount`, bags and bank, less what the character wears, 0.3.141: worn gear is not in the batch): a material's units left, newest disenchant first, are at most what you hold
        (units converted, mailed or posted another way and not sold yet are gone with it); a gear's purchases left,
        newest first, at most the pieces you hold. A disenchant leaves when none of its units is left; a post that
        expires or is cancelled stays posted (its units come back as stock from elsewhere). Disenchants without a

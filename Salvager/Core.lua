@@ -238,6 +238,27 @@ local GetItemInfoInstant = (C_Item and C_Item.GetItemInfoInstant) or _G.GetItemI
 local GetItemCount = (C_Item and C_Item.GetItemCount) or _G.GetItemCount
 ns.GetItemInfo, ns.GetItemInfoInstant, ns.GetItemCount = GetItemInfo, GetItemInfoInstant, GetItemCount
 
+--- How many of this item the player wears (the character's 19 equipment slots). The game's item count includes
+--- them; gear you wear is not gear to disenchant.
+function ns.EquippedCount(id)
+    if type(GetInventoryItemID) ~= "function" then return 0 end
+    local n = 0
+    for slot = 1, 19 do
+        local ok, worn = pcall(GetInventoryItemID, "player", slot)
+        if ok and worn == id then n = n + 1 end
+    end
+    return n
+end
+
+--- Pieces of an item in the bags (and the bank with `bank`), not counting what the player wears. nil where the
+--- game does not say.
+function ns.HeldCount(id, bank)
+    local ok, n = pcall(GetItemCount, id, bank)
+    n = ok and tonumber(n) or nil
+    if not n then return nil end
+    return math.max(0, n - ns.EquippedCount(id))
+end
+
 function ns.ItemID(linkOrID)
     if type(linkOrID) == "number" then return linkOrID end
     if type(linkOrID) ~= "string" then return nil end

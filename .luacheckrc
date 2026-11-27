@@ -14,7 +14,7 @@ read_globals = {
     "C_AddOns", "C_AuctionHouse", "C_Container", "C_Item", "C_Texture", "C_Timer", "C_UnitAuras",
     "CreateFrame", "DEFAULT_CHAT_FRAME", "Enum", "GameTooltip", "GetCoinTextureString",
     "GetInboxHeaderInfo", "GetInboxInvoiceInfo", "GetInboxItemLink", "GetInboxNumItems", "GetLootSlotInfo", "GetLootSlotLink",
-    "GetMoney", "GetNumLootItems", "GetTime", "IsPlayerSpell", "IsShiftKeyDown", "ItemRefTooltip",
+    "GetMoney", "GetInventoryItemID", "GetNumLootItems", "GetTime", "IsPlayerSpell", "IsShiftKeyDown", "ItemRefTooltip",
     "TooltipDataProcessor", "UIParent", "UISpecialFrames", "ATTACHMENTS_MAX_RECEIVE",
     "BackdropTemplateMixin", "StaticPopup_Show", "ItemLocation", "Settings", "InterfaceOptions_AddCategory", "InterfaceOptionsFrame_OpenToCategory", "GetCursorPosition",
     "UnitName", "GetRealmName", "GetNormalizedRealmName", "InCombatLockdown", "GetScreenWidth", "GetScreenHeight",

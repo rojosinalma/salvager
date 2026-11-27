@@ -487,10 +487,8 @@ function Window.PurchaseTab()
 end
 
 --- What you hold of an item, the bags and the bank; nil where the client does not say.
-local function held(id)
-    local ok, n = pcall(ns.GetItemCount, id, true)
-    return ok and tonumber(n) or nil
-end
+-- (Gear the player wears is not in the batch: SDD 107.)
+local function held(id) return ns.HeldCount(id, true) end
 
 --- The current batch (Ledger.Batch, SDD 107).
 function Window.Batch() return Ledger.Batch(ns.db.ledger, ns.db.posted, held) end
@@ -1091,11 +1089,10 @@ function Window.Summary()
         -- Where those items are: counted in the bags and the bank; the rest is taken to be in the mail.
         local bags, bank = 0, 0
         for id, n in pairs(waitingBy) do
-            local okA, inBags = pcall(ns.GetItemCount, id)
-            local okB, withBank = pcall(ns.GetItemCount, id, true)
-            inBags = math.min(n, okA and tonumber(inBags) or 0)
+            -- (Worn pieces are not counted: they are not waiting for a disenchant.)
+            local inBags = math.min(n, ns.HeldCount(id) or 0)
             bags = bags + inBags
-            bank = bank + math.min(n - inBags, math.max(0, (okB and tonumber(withBank) or 0) - inBags))
+            bank = bank + math.min(n - inBags, math.max(0, (ns.HeldCount(id, true) or 0) - inBags))
         end
         local where = {}
         if bags > 0 then where[#where + 1] = bags .. " in bags" end
