@@ -46,10 +46,11 @@ describe("Salvager windows (0.3.137)", function()
         local panel = ns.MiniPanel.Frame()
         assert.is_true(panel:IsShown())
         assert.is_falsy(_G.SalvagerFrame and _G.SalvagerFrame:IsShown())
-        for _, name in ipairs({ "Ledger", "Reports", "Market", "Log", "Salvager" }) do
+        for _, name in ipairs({ "Ledger", "Reports", "Market", "Materials", "Log", "Salvager" }) do
             ns.MiniPanel.buttons[name]:Click()
         end
-        for _, global in ipairs({ "SalvagerLedgerFrame", "SalvagerReportsFrame", "SalvagerMarketFrame", "SalvagerLogFrame" }) do
+        for _, global in ipairs({ "SalvagerLedgerFrame", "SalvagerReportsFrame", "SalvagerMarketFrame", "SalvagerMaterialsFrame",
+            "SalvagerLogFrame" }) do
             local win = _G[global]
             assert.is_true(win:IsShown(), global)
             assert.are.equal("panel", rawget(win, "owner"), global)

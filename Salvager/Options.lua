@@ -92,7 +92,7 @@ local function populate(panel, standalone)
     local chL = numberBox(panel, "Chance of one extra dust or essence (%)", 36,
         function() return math.floor(s.salvagerChance * 100 + 0.5) end,
         function(n) s.salvagerChance = math.min(100, math.max(0, n)) / 100 changed("salvagerChance", s.salvagerChance) end,
-        "Community data says 50%. The Ledger window (Odds) shows your own results.")
+        "Community data says 50%. The Reports window (Odds) shows your own results, with and without it.")
     at(chL, 24)
 
     heading("Prices and window")

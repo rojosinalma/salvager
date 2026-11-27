@@ -1,10 +1,12 @@
 -- Salvager: the Ledger window. A window of its own (move it, resize it), with three views:
---   Purchases: every item bought, and under it what it was disenchanted into.
---   Sales:     every material sale, with its profit against what the materials cost you.
---   Odds:      per item level band, what your disenchants gave against the table, the buy limit and its risk.
+--   Sales:     your auctions, every material sale with its profit against what the materials cost you, and who
+--              undercuts you.
+--   Purchases: every item bought, and under it what it was disenchanted into; what waits in the mail; the batch.
+--   Accuracy:  what the Gear tab expected against what the disenchants gave and the materials sold for.
+-- (The Odds moved to the Reports in 0.3.148: OddsWindow.lua.)
 local _, ns = ...
 
-local Ledger, Data, Model, W = ns.Ledger, ns.Data, ns.Model, ns.Widgets
+local Ledger, Data, W = ns.Ledger, ns.Data, ns.Widgets
 
 local Window = { view = "sales" }
 ns.LedgerWindow = Window
@@ -14,7 +16,6 @@ local PROFIT_HELP = { "Profit", "What you got after the cut minus what the mater
     .. "known cost only. \"+3?\" in Cost = 3 units with no recorded cost, left out. An auction that expired or was "
     .. "cancelled shows the deposit the auction house kept, as a loss." }
 local INDENT = 22
-local ODDS_INDENT = 12   -- each level of the Odds cards (gear type, quality, band) sits in this much
 -- The longest countdown (an auction runs up to 48 hours): the Time columns keep this width while they count.
 local COUNTDOWN_MAX = "00:00:00"
 
@@ -128,11 +129,7 @@ local COLUMNS = {
 }
 
 local f, list, summary, tabs = nil, nil, nil, {}
-local newOddsView
 local checkButton, cancelButton, autoButton
-local oddsView          -- the Odds view in the ledger window: its filters and one table per band
-local oddsFrame, oddsOut -- the odds in a window of their own
-local popOut            -- the button next to the Odds tab that moves them there and back
 local salesParts = {}   -- title, table, title, table of the Sales view
 local purchaseControls = {} -- the Purchases view's search box and filters
 local accuracyControls = {} -- the Accuracy view's filters
@@ -140,7 +137,6 @@ local salesTabs = {}    -- the Sales view's subtabs: open and sold, history
 local purchaseTabs = {} -- the Purchases view's subtabs: all purchases, not picked up
 local bagLabel, bagArea -- the Purchases view's bag space, in the footer
 
---- Which bands the Odds view shows: { quality = { [2], [3], [4] }, type = { a, w } }, kept with the window.
 --- A filter set as every view keeps it: gear types, qualities, item level bands left out, Salvager
 --- ("all" | "with" | "without"), and the closed headings. Missing parts are filled in.
 local function filterSet(x)
@@ -151,6 +147,7 @@ local function filterSet(x)
     x.collapsed = x.collapsed or {}
     return x
 end
+Window.FilterSet = filterSet
 
 --- Does a thing of this gear type, quality, item level (and Salvager) pass the filter? Unknown parts pass.
 -- The Purchases view's search and filters (in the window's saved data): text in the item's name, gear types,
@@ -237,20 +234,7 @@ local function filterRow(bar, x, changed, salvager)
     end
     return controls
 end
-
---- The Odds view's filters (saved; the gear type was a subtab before 0.3.99, the qualities and bands
---- had keys of their own).
-local function oddsFilter()
-    local saved = ns.db.windows.ledger or {}
-    ns.db.windows.ledger = saved
-    if not saved.oddsFilter then
-        saved.oddsFilter = { qualities = saved.oddsQuality, bandsOff = saved.oddsBandsOff,
-            dataOnly = saved.oddsDataOnly }
-        saved.oddsQuality, saved.oddsBandsOff, saved.oddsDataOnly, saved.oddsTab = nil, nil, nil, nil
-    end
-    return filterSet(saved.oddsFilter)
-end
-Window.OddsFilter = oddsFilter
+Window.FilterRow = filterRow
 
 local function when(t) return (t and t > 0) and ns.Date("%m-%d %H:%M", t) or "-" end
 local function money(c) return c and ns.Money(c) or "-" end
@@ -925,172 +909,6 @@ function Window.AccuracyMaterialRows()
     return rows
 end
 
---- Is a band of item levels lo..up inside one of the ticked item level ranges? The ranges are the
---- scan's level bands; a rare or epic band, which is wider, shows when it overlaps a ticked one.
-local function levelShown(lo, up, off)
-    local from = 1
-    for _, range in ipairs(ns.LevelBands()) do
-        if not off[range.up] and lo <= range.up and up >= from then return true end
-        from = range.up + 1
-    end
-    return false
-end
-
---- Odds: every item level band of every quality and gear type that the filters show, with the table
---- the addon uses and, where you have disenchanted, what you got.
---- @return table  bands { head = the band's row, rows = its material rows }, in the flat list's cell order
-function Window.OddsBands()
-    local bands = {}
-    local by = Ledger.Report(ns.db.ledger, nil, function(r)
-        local f0 = oddsFilter()
-        return filterPasses(f0, nil, nil, nil, r.salvager and true or false)
-    end)
-    local opts = ns.ValueOptions()
-    local x = oddsFilter()
-    for _, q in ipairs({ { 2, Data.GREEN }, { 3, Data.BLUE }, { 4, Data.PURPLE } }) do
-        for _, c in ipairs({ { Data.CLASS_ARMOR }, { Data.CLASS_WEAPON } }) do
-            local lo = 1
-            for _, band in ipairs((x.qualities[q[1]] and x.classes[c[1]]) and q[2] or {}) do
-                local quality, classID, up = q[1], c[1], band.up
-                local inRange = levelShown(lo, up, x.bandsOff)
-                lo = up + 1
-                -- The rates used (SDD 99): the table blended with your results of the band, with or without the
-                -- Salvager as buying counts it (not the filter's).
-                local outcomes = ns.Outcomes(quality, classID, up, opts.salvager)
-                local mine = by[Ledger.BandKey(quality, classID, up)]
-                local n = mine and mine.n or 0
-                if inRange and (n > 0 or not x.dataOnly) then
-                    local v = Model.Value(outcomes, ns.PriceOf, opts)
-                    local limit = ns.BuyLimit(quality, classID, up, ns.LimitBasis(v))
-                    local entry = { quality = quality, classID = classID, band = up, rows = {}, head = {
-                        group = true,
-                        -- (The subtab is the gear type: the quality and the range say the rest.)
-                        cells = { ns.QualityText(quality) .. " " .. ns.BandRange(quality, up),
-                            n > 0 and tostring(n) or (GREY .. "0|r"), "", "",
-                            ns.Money(v.net) .. (#v.missing > 0 and (GREY .. "?|r") or ""),
-                            ns.Money(limit),
-                            limit > 0 and ns.LoseText(Model.LossChance(outcomes, ns.PriceOf, opts, limit)) or (GREY .. "-|r"),
-                            n > 0 and ns.Money(mine.value / n) or (GREY .. "-|r"),
-                            outcomes.n .. (outcomes.salvager and " with Salvager" or " without Salvager") },
-                    } }
-                    local inTable = {}
-                    -- Rate used and Quantity used rest on few results while the band has fewer than FEW_RESULTS.
-                    local few = outcomes.few
-                    local function used(text)
-                        return few and (GREY .. text .. "|r") or text
-                    end
-                    for _, r in ipairs(outcomes.results) do
-                        inTable[r.id] = true
-                        local m = mine and mine.mats[r.id]
-                        local price = ns.PriceOf(r.id)
-                        entry.rows[#entry.rows + 1] = {
-                            itemID = r.id, indent = INDENT,
-                            cells = { ns.MaterialName(r.id), m and tostring(m.hits) or (GREY .. "0|r"),
-                                r.unexpected and (RED .. "not expected|r") or (math.floor(r.tableChance * 100 + 0.5) .. "%"),
-                                r.unexpected and "" or (r.min == r.max and tostring(r.min) or (r.min .. "-" .. r.max)),
-                                n > 0 and (math.floor((m and m.hits or 0) / n * 100 + 0.5) .. "%") or (GREY .. "-|r"),
-                                m and string.format("%.2f", m.qty / m.hits) or (GREY .. "-|r"),
-                                used(string.format("%d%%", math.floor(r.chance * 100 + 0.5)) .. (few and " (few results)" or "")),
-                                used(string.format("%.2f", r.mean)),
-                                price and ns.Money(price) or (GREY .. "no price|r") },
-                        }
-                    end
-                    -- What came that the table does not have for this band.
-                    for id, m in pairs(mine and mine.mats or {}) do
-                        if not inTable[id] then
-                            entry.rows[#entry.rows + 1] = {
-                                itemID = id, indent = INDENT,
-                                cells = { ns.MaterialName(id), tostring(m.hits), RED .. "not expected|r", "",
-                                    math.floor(m.hits / n * 100 + 0.5) .. "%", string.format("%.2f", m.qty / m.hits),
-                                    "", "", "" },
-                            }
-                        end
-                    end
-                    bands[#bands + 1] = entry
-                end
-            end
-        end
-    end
-    return bands
-end
-
-local function oddsNote()
-    return oddsFilter().dataOnly and "No disenchants yet in the selected bands. Untick \"Only bands with my data\" "
-        .. "to see the tables." or "Nothing selected: pick a quality and an item level band above."
-end
-
---- The same as one flat list: each band's row, then its material rows.
-function Window.OddsRows()
-    local rows = {}
-    for _, band in ipairs(Window.OddsBands()) do
-        rows[#rows + 1] = band.head
-        for _, r in ipairs(band.rows) do rows[#rows + 1] = r end
-    end
-    if #rows == 0 then rows[1] = note(oddsNote()) end
-    return rows
-end
-
--- The Odds view shows each band as a table of its own.
-local ODDS_COLUMNS = {
-    { "Material", 150 },
-    { "Results", 56, "CENTER", help = { "Results", "How many of your own disenchants in this band gave this material." } },
-    { "Result rate", 70, "CENTER", help = { "Result rate", "How often this material comes from one disenchant in this "
-        .. "band, by the table the addon uses (Classic's table; not confirmed for Forever)." } },
-    { "Quantity", 60, "CENTER", help = { "Quantity", "How many come when a disenchant gives it, by the same table." } },
-    { "Your result rate", 96, "CENTER", help = { "Your result rate", "How often it came in your own disenchants in "
-        .. "this band." } },
-    { "Your quantity", 84, "CENTER", help = { "Your quantity", "How many came on average when a disenchant of yours gave it." } },
-    { "Rate used", 70, "CENTER", help = { "Rate used", "The result rate Expected value, Buy below and Loss chance use: the "
-        .. "table's rate counted as " .. Model.RESULT_PRIOR .. " disenchants, plus your own results of this band (with the "
-        .. "Salvager when buying counts its bonus, else without). A band with few of yours stays near the table; one with "
-        .. "hundreds follows your results. Grey with \"few results\": under " .. Model.FEW_RESULTS .. " of yours, the table "
-        .. "still weighs more. The card's \"Rates used from\" says how many." } },
-    { "Quantity used", 84, "CENTER", help = { "Quantity used", "How many come on average when a disenchant gives it, by "
-        .. "the same blend of the table and your results (the Salvager bonus in it when buying counts it)." } },
-    { "Price now", 90, "RIGHT", help = { "Price now", "What one of this material costs on the auction house now, "
-        .. "from your last material scan. Value now is worked out from these prices." } },
-}
-local BAND_HELP = { "This band", "Disenchants: how many of yours are in this band.\n\n"
-    .. "Value now: what ONE disenchant is worth on average over many, at today's material prices, after the 5% cut. "
-    .. "It is not the buy limit.\n\n"
-    .. "Buy below: the most the addon lets you pay: Value now minus your minimum profit, or the limit you set in the "
-    .. "Limits window.\n\n"
-    .. "Loss chance: the chance that one disenchant is worth less than Buy below, so the risk when you pay the full limit.\n\n"
-    .. "Your average: what your own disenchants gave on average, at the prices of the moment. Compare it with Value now.\n\n"
-    .. "Rates used from: how many of your disenchants of this band the rates used rest on, with or without the Salvager "
-    .. "as buying counts it (the filters above do not change it)." }
-
---- One card per band for the Odds view.
-function Window.OddsCards()
-    local cards = {}
-    local function fact(label, value) return GREY .. label .. "|r " .. value end
-    local x = oddsFilter()
-    local byKey = {}
-    for _, band in ipairs(Window.OddsBands()) do byKey[Ledger.BandKey(band.quality, band.classID, band.band)] = band end
-    -- Grouped the one way: gear type, quality, then each band by its range; every heading and band opens
-    -- and closes.
-    local rows = ns.GroupedRows(Window.OddsBands(), function(band)
-        return { key = Ledger.BandKey(band.quality, band.classID, band.band), cells = { "" } }
-    end, nil, ODDS_INDENT, { collapsed = x.collapsed, changed = function() Window.Refresh() end })
-    for _, r in ipairs(rows) do
-        if r.head then
-            cards[#cards + 1] = { heading = true, title = r.cells[1], open = r.open, onClick = r.onClick,
-                indent = r.indent }
-        else
-            local band = byKey[r.key]
-            local c = band.head.cells
-            local card = { title = ns.QualityText(band.quality) .. " " .. r.cells[1], indent = r.indent }
-            local open = ns.HeadingToggle(card, x.collapsed, "b" .. r.key, function() Window.Refresh() end)
-            cards[#cards + 1] = card
-            card.facts = table.concat({ fact("Disenchants", c[2]), fact("Value now", c[5]), fact("Buy below", c[6]),
-                fact("Loss chance", c[7]), fact("Your average", c[8]), fact("Rates used from", c[9]) }, "     ")
-            card.factsHelp, card.rows = BAND_HELP, open and band.rows or {}
-        end
-    end
-    if #cards == 0 then cards[1] = { title = GREY .. oddsNote() .. "|r", rows = {} } end
-    return cards
-end
-
 --- The two lines above the list.
 function Window.Summary()
     local bought, spent, done, got, waiting, waitingCost = 0, 0, 0, 0, 0, 0
@@ -1140,44 +958,9 @@ function Window.Summary()
     return short, lines
 end
 
-local VIEWS = { sales = true, purchases = true, odds = true, accuracy = true }
+local VIEWS = { sales = true, purchases = true, accuracy = true }
 
 ------------------------------------------------------------------ the window
-
---- The Odds view: its filter row (`bar`) and the stack of tables, one per band. The caller places the bar and the
---- stack. The ledger window has one, and the popped-out odds window has one. `checkBar`: a second filter row for
---- "Only bands with my data" (a narrow window); else it ends the first one.
-function newOddsView(parent, bar, checkBar)
-    local view = { bar = bar, checkBar = checkBar }
-    local function changed()
-        view.stack.offset = 0
-        Window.Refresh()
-    end
-    -- The filter row, as everywhere: Gear, Quality, Bands, Salvager; then "Only bands with my data".
-    view.controls = filterRow(bar, oddsFilter(), changed, true)
-    view.dataOnly = W.Check(checkBar or bar, "Only bands with my data",
-        "Lists only the item level bands you have disenchanted in. Untick it to see the table of every band.",
-        function(on)
-            oddsFilter().dataOnly = on or nil
-            changed()
-        end)
-    ;(checkBar or bar):AddCheck(view.dataOnly)
-    view.stack = W.CardList(parent)
-    view.stack:SetColumns(ODDS_COLUMNS, "odds")
-    view.stack.onColumnsChanged = function() Window.Refresh() end
-    function view:SetShown(on)
-        self.bar:SetShown(on)
-        if self.checkBar then self.checkBar:SetShown(on) end
-        self.stack:SetShown(on)
-    end
-    function view:Refresh()
-        self.dataOnly:SetChecked(oddsFilter().dataOnly and true or false)
-        for _, c in ipairs(self.controls) do if c.Update then c:Update() end end
-        self.stack:SetCards(Window.OddsCards())
-        self.stack:Refresh()
-    end
-    return view
-end
 
 -- The Sales view's two tables share the height under the tabs; the bar between them moves the border.
 local SPLIT_DEFAULT = 0.45
@@ -1197,38 +980,33 @@ function Window.SetSalesSplit(part)
     Window.Refresh()
 end
 
-local ODDS_TOP, ODDS_W = 28 + 2 * 26 + 2 + 6, 740
 local WIDTH = 860   -- the ledger window's width; wider where the tables on show need it
 -- The least height (SDD 113): the rows above the tables (the tabs, a subtab row or a filter row), two titles, two
 -- tables of TABLE_MIN each and the footer, so the Sales and Accuracy tables never overlap.
 local MIN_H = TABS_TOP + W.BAR_H.tabs + 4 + W.BAR_H.filters + 4 + 44 + 2 * W.TABLE_MIN + FOOT
 
 function Window.Refresh()
-    if oddsFrame and oddsFrame:IsShown() then oddsOut:Refresh() end
     if not f or not f:IsShown() then return end
-    -- While the odds are in their own window, the ledger shows another view.
-    if Window.view == "odds" and Window.OddsPoppedOut() then Window.view = "sales" end
     -- Sales (its first subtab) and Accuracy are two tables, each in its own panel; the other views are one.
     local accuracy = Window.view == "accuracy"
     local sales = Window.view == "sales"
     local history = sales and f.saved.salesTab == "history"
     local competition = sales and f.saved.salesTab == "competition"
     local split = (sales and not history and not competition) or accuracy
-    local odds = Window.view == "odds"
-    list:SetShown(not split and not odds)
+    list:SetShown(not split)
     -- The Sales view has a row of subtabs, the Purchases view its search and filters; the tables start under.
     local purchases = Window.view == "purchases"
     local purchaseTab = Window.PurchaseTab()
     local mailTab = purchases and purchaseTab == "mail"
     local batchTab = purchases and purchaseTab == "batch"
     -- Under the tabs: the view's subtabs (Sales, Purchases), then its filter row (Purchases' first subtab,
-    -- Accuracy, Odds), then its tables.
+    -- Accuracy), then its tables.
     local top = TABS_TOP + W.BAR_H.tabs + 4
     bars.sales:SetShown(sales)
     bars.purchases:SetShown(purchases)
     if sales or purchases then top = top + W.BAR_H.subtabs + 4 end
     local filterBar = (purchases and purchaseTab == "all" and bars.purchaseFilters) or (accuracy and bars.accuracyFilters)
-        or (odds and oddsView.bar) or nil
+        or nil
     for _, b in ipairs({ bars.purchaseFilters, bars.accuracyFilters }) do b:SetShown(b == filterBar) end
     for _, c in ipairs((filterBar == bars.purchaseFilters and purchaseControls)
         or (filterBar == bars.accuracyFilters and accuracyControls) or {}) do
@@ -1254,8 +1032,6 @@ function Window.Refresh()
     salesParts[1]:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -top - 2)
     salesParts[2]:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -top - 20)
     salesParts[2]:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -top - 20)
-    oddsView.stack:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -top)
-    oddsView:SetShown(odds)
     for _, part in ipairs(salesParts) do part:SetShown(split) end
     if split then
         -- The upper table takes the share of the room that the bar between the tables was dragged to.
@@ -1283,8 +1059,6 @@ function Window.Refresh()
         salesParts[2]:Refresh()
         salesParts[4]:SetSource(#paid, function(i) return paid[i] end)
         salesParts[4]:Refresh()
-    elseif odds then
-        oddsView:Refresh()
     elseif competition then
         local rows = Window.CompetitionRows()
         list.onSort = nil
@@ -1332,7 +1106,7 @@ function Window.Refresh()
     end
     -- As wide as the tables on show need (all their columns, the first one not cut, SDD 91), at least its own width,
     -- and no wider (SDD 113): each view sets it again, so a view that needs less makes it narrower.
-    local shown = split and { salesParts[2], salesParts[4] } or (odds and { oddsView.stack }) or { list }
+    local shown = split and { salesParts[2], salesParts[4] } or { list }
     if W.FitTables(f, WIDTH, shown, Window.view, true) then for _, l in ipairs(shown) do l:Refresh() end end
     summary:SetText((Window.Summary()))
     for name, button in pairs(tabs) do button:SetSelected(name == Window.view) end
@@ -1341,7 +1115,6 @@ function Window.Refresh()
     checkButton:SetShown(sales)
     cancelButton:SetShown(sales)
     autoButton:SetShown(sales)
-    popOut:SetShown(odds)
     if sales then
         local c, n = ns.Listings.checking, ns.Listings.CountUndercut()
         -- Only what is still for sale can be undercut: sold auctions are not checked.
@@ -1385,15 +1158,11 @@ local function build()
     summary:SetJustifyH("LEFT")
     summary:SetWordWrap(false)
     bars.tabs = W.Bar(f, "tabs"):Place(TABS_TOP, 12, 12)
-    for _, t in ipairs({ { "sales", "Sales" }, { "purchases", "Purchases" }, { "accuracy", "Accuracy" },
-        { "odds", "Odds" } }) do
+    for _, t in ipairs({ { "sales", "Sales" }, { "purchases", "Purchases" }, { "accuracy", "Accuracy" } }) do
         local b = W.Tab(bars.tabs, t[2], function()
-            -- The Odds tab, while the odds are in their own window: put them back here.
-            if t[1] == "odds" then Window.OddsPutBack() end
             Window.view = t[1]
             f.saved.view = t[1]
             list.offset = 0
-            oddsView.stack.offset = 0
             Window.Refresh()
         end)
         bars.tabs:Add(b, 90)
@@ -1408,10 +1177,6 @@ local function build()
     W.Tooltip(tabs.sales, "Sales", "Your open auctions, and what is sold with its money still to collect. The History "
         .. "subtab has the sales you have collected; Competition who undercuts you. Profit = what you get after the cut, minus what those "
         .. "materials cost you.")
-    W.Tooltip(tabs.odds, "Odds", "Every item level band of every quality and gear type. Expected = how often each "
-        .. "material comes and how many (the table the addon uses). You got = what your own disenchants gave. Value "
-        .. "now = what one disenchant is worth on average at today's prices, after the cut. Buy below = the buy "
-        .. "limit; Loss chance = the chance one disenchant is worth less than it. Point at a column title for more.")
     -- (Clear history is in the options, with the backups.)
     cancelButton = W.Button(bars.footer, "Cancel undercut (0)", 150, function() ns.Listings.CancelNext() end,
         "Cancels one undercut listing per click (the game wants a click for each). The materials come back by mail, "
@@ -1462,26 +1227,6 @@ local function build()
     bagArea = W.HelpArea(bars.footer, bagLabel, "Bag space", Window.BAG_HELP)
     bagLabel:Hide()
     bagArea:Hide()
-    -- The Odds view: its filter row under the tabs.
-    oddsView = newOddsView(f, W.Bar(f, "filters"))
-    oddsView.stack:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, FOOT)
-    -- The Odds view's action, at the footer's right end (where the Sales view has its own): the odds in a window
-    -- of their own, and back.
-    popOut = W.IconButton(bars.footer, 22, function()
-        if Window.OddsPoppedOut() then Window.OddsPutBack() else Window.OddsPopOut() end
-    end)
-    popOut:SetPoint("RIGHT", bars.footer, "RIGHT", -2, 0)
-    popOut:SetPopOutGlyph()
-    popOut:SetScript("OnEnter", function(self)
-        local out = Window.OddsPoppedOut()
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(out and "Put the odds back" or "Pop out the odds", 1, 1, 1)
-        GameTooltip:AddLine(out and "Closes their window and shows them in the Odds tab again."
-            or "Moves the odds to a window of their own. Click again, or close that window, to put them back.",
-            1, 0.82, 0, true)
-        GameTooltip:Show()
-    end)
-    popOut:SetScript("OnLeave", function() GameTooltip:Hide() end)
     list = W.List(f, { rowHeight = 22 })
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -contentTop)
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, FOOT)
@@ -1588,40 +1333,6 @@ local function build()
 end
 
 
-local function buildOdds()
-    -- As wide as its tables need; the height is the player's (the corner sizes it up and down only).
-    -- 740 wide: the cards need about 700 (their columns, the icon, two levels of indent, the scroll bar); the
-    -- filter row about 700, with "Only bands with my data" on a second filter row under it. No tabs: the filter
-    -- rows are right under the title bar.
-    oddsFrame = W.Window("SalvagerOddsFrame", "Salvager Odds", "odds", ODDS_W, 520, ODDS_W, 200, "vertical")
-    oddsFrame.onResize = Window.Refresh
-    oddsOut = newOddsView(oddsFrame, W.Bar(oddsFrame, "filters"):Place(28, 12, 12),
-        W.Bar(oddsFrame, "filters"):Place(28 + W.BAR_H.filters + 2, 12, 12))
-    oddsOut.stack:SetPoint("TOPLEFT", oddsFrame, "TOPLEFT", 12, -ODDS_TOP)
-    oddsOut.stack:SetPoint("BOTTOMRIGHT", oddsFrame, "BOTTOMRIGHT", -12, 14)
-    oddsFrame:HookScript("OnShow", Window.Refresh)
-    oddsFrame:HookScript("OnHide", Window.Refresh)
-end
-
-function Window.OddsPoppedOut()
-    return oddsFrame ~= nil and oddsFrame:IsShown()
-end
-
---- Moves the odds to their own window.
-function Window.OddsPopOut()
-    if not oddsFrame then buildOdds() end
-    oddsFrame.UserShow()
-    ns.Log("odds popped out")
-end
-
---- Puts the odds back in the ledger window's tab.
-function Window.OddsPutBack()
-    if Window.OddsPoppedOut() then
-        oddsFrame.UserHide()
-        ns.Log("odds put back")
-    end
-end
-
 function Window.Toggle()
     if not f then build() end
     f.UserToggle()
@@ -1638,11 +1349,6 @@ function Window.Restore()
     if saved and saved.open then
         if not f then build() end
         f:Show()
-    end
-    local odds = ns.db.windows.odds
-    if odds and odds.open then
-        if not oddsFrame then buildOdds() end
-        oddsFrame:Show()
     end
 end
 

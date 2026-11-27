@@ -45,8 +45,8 @@ reply must say so.
 11. Text that cannot be clicked never looks like a control.
 12. Text contrast 4.5:1 or more; control edges 3:1; one color means one thing everywhere.
 13. Buttons that open other windows are one group in the footer, at its left (the main window: Auction house, Ledger,
-    Reports, Market, Disenchant, Limits, Log, Options; the mini panel: Salvager, Ledger, Reports, Market, Disenchant, Log), never where they
-    read as tabs.
+    Reports, Market, Disenchant, Limits, Log, Options), never where they read as tabs. The mini panel is only such
+    buttons: two columns (Salvager, Ledger, Materials; Reports, Market, Log), Disenchant across both under them.
 14. Checked by the specs (rows of tabs hold tabs only; filters under the subtabs; every row fits the smallest width;
     `spec/fit_spec.lua`: no cut text, no overlap in a row, nothing outside its window, at the smallest and the
     default size, SDD 105)
@@ -92,6 +92,8 @@ reply must say so.
     with groupings: `ns.HeadingToggle`, `ns.GroupedRows` with `ns.GroupState(<table>)` (saved data).
 16. Every list of materials is in one order, the Materials window's (dust, essences, shards, each from the lowest
     level up): `Data.SortMaterials`. A click on a column title may re-sort it; with none, that order.
+17. A stack of small tables of the same kind (the Odds' bands) sets two next to each other where both fit, each half
+    the width, else one per row; a heading row stays across the whole width. Their columns line up in every card.
 
 ## Statements
 

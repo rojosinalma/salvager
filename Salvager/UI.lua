@@ -1043,7 +1043,7 @@ local function build()
             ns.Fire("SALVAGER_SETTINGS")
         end,
         "Which item level bands the scan looks at. A band is a range of item levels that disenchants into the same "
-            .. "materials. The Limits window and the Ledger's Odds view list them.", "Bands",
+            .. "materials. The Limits window and the Reports' Odds tab list them.", "Bands",
         function(names, total)
             if #names == total then return "All" end
             if #names > 3 then return #names .. " bands" end
@@ -1443,6 +1443,7 @@ function UI.RestoreWindows()
     ns.Materials.Restore()
     ns.Market.Restore()
     ns.Reports.Restore()
+    ns.Odds.Restore()
     ns.LimitsWindow.Restore()
 end
 

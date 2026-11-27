@@ -645,19 +645,29 @@ end
 
 --- A scrolling stack of small tables ("cards"), each in its own sunken panel with a title band.
 --- The caller anchors the returned frame.
----   stack:SetColumns({ { title, width, justify, help = { title, text } }, ... }, setId)   the first column takes the
----                                                         spare width; setId as in Widgets.List (the chooser sits
----                                                         at the top right, over the scroll bar)
----   stack:SetCards({ { title = text, facts = text, factsHelp = { title, text }, rows = { { cells, itemID } } }, ... })
+---   stack:SetColumns({ { title, width, justify, help = { title, text }, key = title, sep = true }, ... }, setId)
+---                                                         the first column takes the spare width; setId as in
+---                                                         Widgets.List (the chooser sits at the top right, over the
+---                                                         scroll bar); `sep`: a vertical line before the column
+---                                                         (two groups of columns, the Odds' table and yours)
+---   stack:SetCards({ { title = text, facts = text or { { text, help = { title, text } }, ... },
+---                      factsHelp = { title, text }, more = { title, line, ... } or function() -> that,
+---                      pair = true, rows = { { cells, itemID } } }, ... })
+---                                                         facts as parts: each with its own help on hover; `more`:
+---                                                         a "?" at the card's top right shows the lines on hover;
+---                                                         `pair`: cards next to each other share a row, two per row
+---                                                         where both fit (else one), the same width each
 ---   stack:Refresh()
+--- stack.fitWidth: the width two cards per row need (one where there are no pairs); stack.leastWidth: one per row;
+--- stack.perRow: the cards per row now.
 function Widgets.CardList(parent)
     -- (The title band has two lines: the title, and under it the card's facts.)
     local TITLE_H, HEAD_H, ROW_H, GAP, BAR_W, STEP, MAX_COLS = 40, 18, 22, 8, 18, 22, 10
-    local HEADING_H, TOGGLE = 26, 18   -- a heading card (title only); the open / close sign
+    local HEADING_H, TOGGLE, SEP, MORE = 26, 18, 12, 18   -- a heading card; the open / close sign; a separator; "?"
     -- A card may be a heading (data.heading: its title only), may open and close (data.open ~= nil: the sign
     -- before its title, a click on its title band calls data.onClick), and may sit in (data.indent).
     local stack = CreateFrame("Frame", nil, parent)
-    stack.offset, stack.cards, stack.data, stack.columns = 0, {}, {}, {}
+    stack.offset, stack.cards, stack.data, stack.columns, stack.perRow = 0, {}, {}, {}, 1
     local scroll = CreateFrame("ScrollFrame", nil, stack)
     scroll:SetPoint("TOPLEFT", stack, "TOPLEFT", 0, 0)
     scroll:SetPoint("BOTTOMRIGHT", stack, "BOTTOMRIGHT", -BAR_W, 0)
@@ -695,25 +705,37 @@ function Widgets.CardList(parent)
     bar:EnableMouseWheel(true)
     bar:SetScript("OnMouseWheel", wheel)
 
-    --- Where each column sits: the first from the left (after the icon), the others from the right edge.
     -- Where each column sits: packed from the left, each as wide as stack.widths says (see Refresh); a column
-    -- hidden with the chooser takes no room.
+    -- hidden with the chooser takes no room; a column with `sep` starts SEP px later, after its line.
     -- The first column (the row's label) takes the card's spare width (`extra`), so the other columns end at the
     -- card's right edge and line up over cards of any indent.
-    local function place(region, card, i, forTitle, extra)
+    local function columnX(i, extra)
         local cols, ws, shown = stack.columns, stack.widths, stack.colShown
-        extra = extra or 0
         local x = 30
         for c = 1, i - 1 do if shown[c] then x = x + ws[c] + (c == 1 and extra or 0) + 8 end end
+        if cols[i] and cols[i].sep then x = x + SEP end
+        return x
+    end
+    local function place(region, card, i, forTitle, extra)
+        local cols, ws = stack.columns, stack.widths
+        extra = extra or 0
         region:ClearAllPoints()
         if i == 1 and forTitle then
             region:SetPoint("LEFT", card, "LEFT", 8, 0)
             region:SetWidth(ws[1] + extra + 22)
         else
-            region:SetPoint("LEFT", card, "LEFT", x, 0)
+            region:SetPoint("LEFT", card, "LEFT", columnX(i, extra), 0)
             region:SetWidth(ws[i] + (i == 1 and extra or 0))
         end
         region:SetJustifyH(cols[i][3] or "LEFT")
+    end
+
+    local function tip(self, help)
+        if not help then return end
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText(help[1], 1, 1, 1)
+        for n = 2, #help do GameTooltip:AddLine(helpLine(help[n]), 1, 0.82, 0, true) end
+        GameTooltip:Show()
     end
 
     local function newCard()
@@ -744,21 +766,27 @@ function Widgets.CardList(parent)
         card.factsHelp = CreateFrame("Frame", nil, card)
         card.factsHelp:SetAllPoints(card.facts)
         card.factsHelp:EnableMouse(true)
-        card.factsHelp:SetScript("OnEnter", function(self)
-            local help = card.data and card.data.factsHelp
-            if not help then return end
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText(help[1], 1, 1, 1)
-            GameTooltip:AddLine(helpLine(help[2]), 1, 0.82, 0, true)
-            GameTooltip:Show()
-        end)
+        card.factsHelp:SetScript("OnEnter", function(self) tip(self, card.data and card.data.factsHelp) end)
         card.factsHelp:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        -- The facts as parts, each with its own help (made as needed).
+        card.parts, card.partHelps = {}, {}
+        -- The "?" at the top right: the card's other facts on hover.
+        card.more = Widgets.Button(card, "?", MORE)
+        card.more:SetHeight(MORE)
+        card.more:SetPoint("TOPRIGHT", card, "TOPRIGHT", -5, -4)
+        card.more:SetScript("OnEnter", function(self)
+            local more = card.data and card.data.more
+            if type(more) == "function" then more = more() end
+            tip(self, more)
+        end)
+        card.more:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        card.more:Hide()
         -- The column titles, in a strip under the title band.
         card.heads = CreateFrame("Frame", nil, card)
         card.heads:SetPoint("TOPLEFT", card, "TOPLEFT", 0, -TITLE_H - 1)
         card.heads:SetPoint("TOPRIGHT", card, "TOPRIGHT", 0, -TITLE_H - 1)
         card.heads:SetHeight(HEAD_H)
-        card.headTexts, card.headHelps = {}, {}
+        card.headTexts, card.headHelps, card.seps = {}, {}, {}
         for i = 1, MAX_COLS do
             local h = card.heads:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             h:SetHeight(HEAD_H)
@@ -768,17 +796,58 @@ function Widgets.CardList(parent)
             area:EnableMouse(true)
             area:SetScript("OnEnter", function(self)
                 local col = stack.columns[i]
-                if not (col and col.help) then return end
-                GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                GameTooltip:SetText(col.help[1], 1, 1, 1)
-                GameTooltip:AddLine(helpLine(col.help[2]), 1, 0.82, 0, true)
-                GameTooltip:Show()
+                tip(self, col and col.help)
             end)
             area:SetScript("OnLeave", function() GameTooltip:Hide() end)
             card.headHelps[i] = area
         end
         card.rows = {}
         return card
+    end
+
+    -- A separator before column i: a thin line from the column titles to the card's bottom.
+    local function separator(card, n, x)
+        local t = card.seps[n]
+        if not t then
+            t = card:CreateTexture(nil, "ARTWORK")
+            t:SetWidth(1)
+            t:SetColorTexture(1, 0.82, 0, 0.45)
+            card.seps[n] = t
+        end
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", card, "TOPLEFT", x, -(TITLE_H + 3))
+        t:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", x, 3)
+        t:Show()
+    end
+
+    -- The facts of a card as parts, left to right, each with its help area.
+    local function factParts(card, parts, x)
+        for n, part in ipairs(parts) do
+            local fs = card.parts[n]
+            if not fs then
+                fs = card:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                fs:SetJustifyH("LEFT")
+                fs:SetWordWrap(false)
+                card.parts[n] = fs
+                local area = CreateFrame("Frame", nil, card)
+                area:SetAllPoints(fs)
+                area:EnableMouse(true)
+                area.uiKind = "help"
+                area:SetScript("OnEnter", function(self) tip(self, rawget(self, "help")) end)
+                area:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                card.partHelps[n] = area
+            end
+            fs:ClearAllPoints()
+            fs:SetPoint("TOPLEFT", card, "TOPLEFT", x, -23)
+            fs:SetText(part[1])
+            local w = math.ceil(Widgets.EstimateWidth(part[1])) + 2
+            fs:SetWidth(w)
+            fs:Show()
+            card.partHelps[n].help = part.help
+            card.partHelps[n]:SetShown(part.help ~= nil)
+            x = x + w + 16
+        end
+        for n = #parts + 1, #card.parts do card.parts[n]:Hide() card.partHelps[n]:Hide() end
     end
 
     local function newRow(card, r)
@@ -828,6 +897,96 @@ function Widgets.CardList(parent)
     end
     function stack:SetCards(cards) self.data = cards end
 
+    -- Draws one card at (x, -y) in the content, `width` wide; returns its height.
+    local function drawCard(card, data, x, y, width, used, measured)
+        card.data = data
+        local cols = stack.columns
+        local rows = data.rows or {}
+        local titleH = data.heading and HEADING_H or TITLE_H
+        local height = titleH + 2 + (#rows > 0 and (HEAD_H + #rows * ROW_H + 2) or 0)
+        card:ClearAllPoints()
+        card:SetPoint("TOPLEFT", content, "TOPLEFT", x, -y)
+        card:SetSize(width, height)
+        card.band:SetHeight(titleH)
+        card.click:SetHeight(titleH)
+        -- A heading card has no facts: the whole title band is the click target.
+        card.click:ClearAllPoints()
+        card.click:SetPoint("TOPLEFT", card, "TOPLEFT", 0, 0)
+        card.click:SetPoint("TOPRIGHT", card, "TOPRIGHT", data.heading and 0 or -200, 0)
+        card.click:SetShown(data.onClick ~= nil)
+        local tx = 8
+        if data.open ~= nil then
+            Widgets.GroupArrow(card.toggle, data.open)
+            card.toggle:ClearAllPoints()
+            card.toggle:SetPoint("TOPLEFT", card, "TOPLEFT", 6, -(data.heading and 4 or 3))
+            card.toggle:Show()
+            tx = 6 + TOGGLE + 4
+        else
+            card.toggle:Hide()
+        end
+        card.title:ClearAllPoints()
+        card.title:SetPoint("TOPLEFT", card, "TOPLEFT", tx, data.heading and -6 or -5)
+        card.title:SetText(data.title or "")
+        local parts = type(data.facts) == "table" and data.facts or {}
+        card.facts:ClearAllPoints()
+        card.facts:SetPoint("TOPLEFT", card, "TOPLEFT", tx, -23)
+        card.facts:SetText(type(data.facts) == "string" and data.facts or "")
+        card.facts:SetShown(type(data.facts) == "string")
+        card.factsHelp:SetShown(type(data.facts) == "string" and data.factsHelp ~= nil)
+        factParts(card, parts, tx)
+        card.more:SetShown(data.more ~= nil)
+        -- The room the columns leave in this card: the first column takes it.
+        local extra = measured and math.max(0, math.floor(width - used)) or 0
+        card.heads:SetShown(#rows > 0)
+        card.heads:ClearAllPoints()
+        card.heads:SetPoint("TOPLEFT", card, "TOPLEFT", 0, -titleH - 1)
+        card.heads:SetPoint("TOPRIGHT", card, "TOPRIGHT", 0, -titleH - 1)
+        local nSep = 0
+        for i = 1, MAX_COLS do
+            local h, col = card.headTexts[i], cols[i]
+            if col and stack.colShown[i] then
+                place(h, card.heads, i, i == 1, extra)
+                h:SetText(col[1])
+                h:Show()
+                if col.sep and #rows > 0 then
+                    nSep = nSep + 1
+                    separator(card, nSep, columnX(i, extra) - SEP / 2 - 4)
+                end
+            else
+                h:Hide()
+            end
+            card.headHelps[i]:SetShown(col ~= nil and stack.colShown[i] and col.help ~= nil)
+        end
+        for n = nSep + 1, #card.seps do card.seps[n]:Hide() end
+        for r = 1, math.max(#rows, #card.rows) do
+            local row, rowData = card.rows[r], rows[r]
+            if rowData and not row then
+                row = newRow(card, r)
+                card.rows[r] = row
+            end
+            if row then
+                row.data = rowData
+                row:SetShown(rowData ~= nil)
+                if rowData then
+                    local icon = rowData.itemID and Widgets.IconOf(rowData.itemID)
+                    if icon then row.icon:SetTexture(icon) row.icon:Show() else row.icon:Hide() end
+                    for i = 1, MAX_COLS do
+                        local fs = row.cells[i]
+                        if cols[i] and stack.colShown[i] then
+                            place(fs, row, i, nil, extra)
+                            fs:SetText(rowData.cells[i] or "")
+                            fs:Show()
+                        else
+                            fs:Hide()
+                        end
+                    end
+                end
+            end
+        end
+        card:Show()
+        return height
+    end
+
     function stack:Refresh()
         local cols = self.columns
         if not cols or #cols == 0 then return end
@@ -846,101 +1005,51 @@ function Widgets.CardList(parent)
             self.colShown[i] = i == 1 or Widgets.ColumnShown(setId, Widgets.ColumnKey(col))
         end
         chooser:SetShown(setId ~= nil)
-        content:SetWidth(math.max(10, (scroll:GetWidth() or 0)))
-        local y = 0
-        for n, data in ipairs(self.data) do
+        local room = tonumber((scroll:GetWidth())) or 0
+        content:SetWidth(math.max(10, room))
+        -- What one card's columns take (the icon, the gaps, the separators), and the widest indent.
+        local used, indent, pairs_ = 30 + 8, 0, false
+        for i = 1, #cols do
+            if self.colShown[i] then used = used + self.widths[i] + 8 + (cols[i].sep and SEP or 0) end
+        end
+        for _, data in ipairs(self.data) do
+            indent = math.max(indent, data.indent or 0)
+            if data.pair then pairs_ = true end
+        end
+        -- Two cards per row where both fit next to each other (UI.md Tables 17), else one.
+        local perRow = (pairs_ and room - indent >= 2 * used + GAP) and 2 or 1
+        self.perRow = perRow
+        local y, n, rowH, col = 0, 0, 0, 0
+        for _, data in ipairs(self.data) do
+            n = n + 1
             local card = self.cards[n]
             if not card then
                 card = newCard()
                 self.cards[n] = card
             end
-            card.data = data
-            local rows = data.rows or {}
-            local titleH = data.heading and HEADING_H or TITLE_H
-            local height = titleH + 2 + (#rows > 0 and (HEAD_H + #rows * ROW_H + 2) or 0)
-            card:ClearAllPoints()
-            card:SetPoint("TOPLEFT", content, "TOPLEFT", data.indent or 0, -y)
-            card:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, -y)
-            card:SetHeight(height)
-            card.band:SetHeight(titleH)
-            card.click:SetHeight(titleH)
-            -- A heading card has no facts: the whole title band is the click target.
-            card.click:ClearAllPoints()
-            card.click:SetPoint("TOPLEFT", card, "TOPLEFT", 0, 0)
-            card.click:SetPoint("TOPRIGHT", card, "TOPRIGHT", data.heading and 0 or -200, 0)
-            card.click:SetShown(data.onClick ~= nil)
-            local tx = 8
-            if data.open ~= nil then
-                Widgets.GroupArrow(card.toggle, data.open)
-                card.toggle:ClearAllPoints()
-                card.toggle:SetPoint("TOPLEFT", card, "TOPLEFT", 6, -(data.heading and 4 or 3))
-                card.toggle:Show()
-                tx = 6 + TOGGLE + 4
+            local x = data.indent or 0
+            local width = room - x
+            if data.pair and perRow == 2 then
+                width = math.floor((room - x - GAP) / 2)
+                if col == 1 then x = x + width + GAP end
+            elseif col > 0 then
+                -- (A card that is not a pair after a half row: the row ends.)
+                y, rowH, col = y + rowH + GAP, 0, 0
+            end
+            local h = drawCard(card, data, x, y, width, used, need ~= nil)
+            if data.pair and perRow == 2 and col == 0 then
+                col, rowH = 1, h
             else
-                card.toggle:Hide()
+                rowH = math.max(rowH, h)
+                y, rowH, col = y + rowH + GAP, 0, 0
             end
-            card.title:ClearAllPoints()
-            card.title:SetPoint("TOPLEFT", card, "TOPLEFT", tx, data.heading and -6 or -5)
-            card.facts:ClearAllPoints()
-            card.facts:SetPoint("TOPLEFT", card, "TOPLEFT", tx, -23)
-            card.title:SetText(data.title or "")
-            card.facts:SetText(data.facts or "")
-            card.factsHelp:SetShown(data.factsHelp ~= nil)
-            -- The room the columns leave in this card: the first column takes it.
-            local used = 30 + 8
-            for i = 1, #cols do if self.colShown[i] then used = used + self.widths[i] + 8 end end
-            local extra = math.max(0, math.floor(((scroll:GetWidth() or 0) - (data.indent or 0)) - used))
-            if not need then extra = 0 end
-            card.heads:SetShown(#rows > 0)
-            card.heads:ClearAllPoints()
-            card.heads:SetPoint("TOPLEFT", card, "TOPLEFT", 0, -titleH - 1)
-            card.heads:SetPoint("TOPRIGHT", card, "TOPRIGHT", 0, -titleH - 1)
-            for i = 1, MAX_COLS do
-                local h, col = card.headTexts[i], cols[i]
-                if col and self.colShown[i] then
-                    place(h, card.heads, i, i == 1, extra)
-                    h:SetText(col[1])
-                    h:Show()
-                else
-                    h:Hide()
-                end
-                card.headHelps[i]:SetShown(col ~= nil and self.colShown[i] and col.help ~= nil)
-            end
-            for r = 1, math.max(#rows, #card.rows) do
-                local row, rowData = card.rows[r], rows[r]
-                if rowData and not row then
-                    row = newRow(card, r)
-                    card.rows[r] = row
-                end
-                if row then
-                    row.data = rowData
-                    row:SetShown(rowData ~= nil)
-                    if rowData then
-                        local icon = rowData.itemID and Widgets.IconOf(rowData.itemID)
-                        if icon then row.icon:SetTexture(icon) row.icon:Show() else row.icon:Hide() end
-                        for i = 1, MAX_COLS do
-                            local fs = row.cells[i]
-                            if cols[i] and self.colShown[i] then
-                                place(fs, row, i, nil, extra)
-                                fs:SetText(rowData.cells[i] or "")
-                                fs:Show()
-                            else
-                                fs:Hide()
-                            end
-                        end
-                    end
-                end
-            end
-            card:Show()
-            y = y + height + GAP
         end
-        for n = #self.data + 1, #self.cards do self.cards[n]:Hide() end
-        -- The narrowest width that fits every card's columns (a window that fits its tables reads it).
+        if col > 0 then y = y + rowH + GAP end
+        for k = n + 1, #self.cards do self.cards[k]:Hide() end
+        -- The width the cards need (a window that fits its tables reads them): two per row where there are pairs, one.
         if need then
-            local used, indent = 30 + 8, 0
-            for i = 1, #cols do if self.colShown[i] then used = used + self.widths[i] + 8 end end
-            for _, data in ipairs(self.data) do indent = math.max(indent, data.indent or 0) end
-            self.fitWidth = math.ceil(used + indent + BAR_W)
+            self.leastWidth = math.ceil(used + indent + BAR_W)
+            self.fitWidth = math.ceil((pairs_ and (2 * used + GAP) or used) + indent + BAR_W)
         end
         content:SetHeight(math.max(10, y))
         self.contentHeight = math.max(0, y - GAP)   -- what the cards need, for a window that fits them

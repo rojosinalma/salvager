@@ -149,7 +149,7 @@ flipping is out of scope for now.
     loses the deposit; searches wait while a cancel is on its way (not the read of your auctions, which tells the
     cancel: 0.3.138; before, it waited the cancel's 8 s and the cancel cost was lost from its record). Not verified in
     the game yet.
-30. **Odds filters:** quality and gear type, kept with the Ledger window.
+30. **Odds filters:** quality and gear type, kept with the Ledger window (with the Odds window since 0.3.148, 114).
 31. **Odds columns:** each band row shows Buy below (`ns.BuyLimit`: the hand-set limit, else value minus the
     minimum profit) and Lose % at that limit (`Model.LossChance` with the limit as the price: the risk when you
     pay the full limit; "-" when the limit is 0). Titles: Expected (the table), You got, Value now, Buy below,
@@ -190,7 +190,8 @@ flipping is out of scope for now.
     with its own title, columns and scroll bar. The Log stays a plain text list.
 39. **Odds view: one table per band** (`Widgets.CardList`): a scrolling stack of cards, each a sunken panel
     with a gold title band (the band, then its facts: disenchants, value now, buy below, lose, your average),
-    column titles and one striped row per material. Cards and rows are created as needed and reused.
+    column titles and one striped row per material. Cards and rows are created as needed and reused. 0.3.148: two
+    per row, the facts and columns of 114.
 40. **Sales are booked when seen sold** (own-auctions list), not when the mail is taken: a sold part is known by
     (auction ID, quantity, time the money is due ±20 s) in `ledger.seenSold`; the later mail marks those units
     paid (`Ledger.SalePaid`) and books only units never seen.
@@ -201,6 +202,7 @@ flipping is out of scope for now.
     scrolls); no resize corner.
 44. **Ledger tabs**: Sales, Purchases, Accuracy, Odds (Sales is the default). The Odds view can pop out to a window of its
     own (`SalvagerOddsFrame`), as the Materials list does; both share the filters saved under `windows.ledger`.
+    0.3.148: Sales, Purchases, Accuracy; the Odds are a Reports tab and pop out from there (114).
 45. **Searches for the same thing are merged** (`Queue.Add`): one search goes out and every caller gets its
     answer; an urgent one (a click) takes the queued one's place at the front. Stop keeps urgent searches and
     ends a running undercut check. A buy and a cancel never run together (one error message, no sender).
@@ -949,7 +951,8 @@ flipping is out of scope for now.
     - d. Minimize (the title bar, left of the close button: the game's "RedButton-Condense" art where the client has
        the atlas, else a "_" button; tooltip "Minimize"): the main window hides alone (`UI.Minimize`), the other
        windows stay, and the **mini panel** shows (`MiniPanel.lua`, "Salvager", fixed size, place remembered): one
-       footer row with Salvager, Ledger, Reports, Market, Log (Disenchant before Log since 0.3.146, 112). Each opens or closes its window with owner "panel",
+       footer row with Salvager, Ledger, Reports, Market, Log (Disenchant before Log since 0.3.146, 112; two columns
+       since 0.3.148, 114g). Each opens or closes its window with owner "panel",
        at the auction house or away from it; Salvager opens the main window (at the auction house its full view,
        elsewhere what it can show: the last lists, the settings, scans off with the reason). The mini panel closes
        with its own X and when the main window shows (the main window leads again); Escape leaves it (it is a
@@ -1165,6 +1168,52 @@ flipping is out of scope for now.
        window, the Ledger, the Reports and the Market shrink back after a wider tab. The stand-in found a bug of
        its own: `Widgets.CardList` kept its column flags in `stack.shown`, the field the stand-in's `IsShown` reads,
        so a hidden stack counted as shown (renamed `colShown`).
+
+114. **The Odds in the Reports, redesigned; the mini panel in two columns** (0.3.148, the user, 2026-11-27;
+    `OddsWindow.lua`, new).
+    - a. The Odds view is a tab of the Reports, the last one (Gold, Gear, Materials, Competition, Odds): it is a report
+       of your disenchants against the game's table, like the others, and the last place keeps the tabs the player
+       uses most where they were. It left the Ledger (tabs Sales, Purchases, Accuracy; a saved view "odds" opens on
+       Sales). The button at the right end of its filter row pops it out into "Salvager Odds" (`SalvagerOddsFrame`,
+       place, size and open remembered, `windows.odds`); there the same button puts it back and shows the Reports on
+       the Odds tab, and so does the Reports' Odds tab while it is out. While it is out the Reports show the Gold view
+       in its place (not remembered). The mini panel's Reports button opens the Reports on the tab seen last (the
+       Odds too). `/salv reports`.
+    - b. No search and no Period on the Odds tab: the rates rest on every disenchant, all time (the tab's tooltip says
+       so). Its filter rows: Gear, Quality, Bands, Salvager, the pop-out button at the right; under them (the row of
+       1065 px did not fit the Reports' 1050) "Only bands with my data" and "Show with and without the Salvager". The
+       filters are kept with the Odds window (`windows.odds.filter`; from `windows.ledger.oddsFilter` and the older
+       keys once).
+    - c. A heading per gear type (Armor, Weapons), a heading per quality under it (Uncommon, Rare, Epic), both open
+       and close, remembered (`filter.collapsed`, keys as `ns.GroupedRows`); the bands have no toggle of their own
+       any more. Under each quality one card per band, titled with the item level range only ("26-30"), two per
+       row where both fit (each half the row), else one (`Widgets.CardList`: `pair`, `perRow`, `fitWidth` = two per
+       row, `leastWidth` = one; a window that fits it gets two per row by default and can be made narrower down to
+       one per row, 113). The Reports: 1266 px on Odds with the fit spec's long data (1798 with the Salvager columns);
+       the pop-out the same, at least 760 (928 with the Salvager columns: one card).
+    - d. Columns: the game's table, Material, Result rate, Quantity; a vertical line (`sep`); yours, Results (how many
+       of your disenchants gave it), Result rate (Results ÷ Disenchants), Result quantity (the average units when it
+       came). The two "Result rate" titles have keys of their own for the column chooser ("Result rate (table)",
+       "Result rate (yours)"). Every title has help. Rate used, Quantity used and Price now left the columns.
+    - e. The card's facts line: Disenchants and Loss chance (at the buy limit), each with its own help on hover
+       (`facts` as parts). A "?" at the card's top right shows the rest on hover: Value now, Buy below, Your average
+       (your average value per disenchant, all of the band's disenchants), Rates used from (99), and Price now per
+       material (a tooltip, not the help panel: the cards scroll in a clipped frame).
+    - f. "Show with and without the Salvager" (`filter.both`): the observed columns show the disenchants without the
+       Salvager, and two columns follow, Rate with Salvager and Quantity with Salvager, for the materials the
+       Salvager adds to (the table's dust and essence, `bonus`; empty for shards and for what the table does not
+       have). Observed only: the game has no table of it. Disenchants then says "n without, m with the Salvager".
+       The Salvager filter is off meanwhile, with the reason (UI.md Actions 3); off, the observed columns follow it
+       as before. Its own column set (`odds.salvager`).
+    - g. The mini panel: two columns of buttons in three rows, Salvager, Ledger, Materials at the left, Reports,
+       Market, Log at the right, and "Disenchant" across both under them (92 px each, the panel 216 × 162). Materials
+       opens or closes the materials list in its window (20). The minimap button opens the panel away from the
+       auction house, as before (108e).
+    - h. Specs: the Odds rows and cards (the columns, the facts and their help, the "?", the headings, with and without
+       the Salvager on a band with both, the filters, the old settings), the pop-out from the Reports and back, the
+       Ledger's tabs, the Reports' tabs, the fit spec: two cards per row at the default width and one at the smallest
+       (the Reports' tab and the pop-out, with and without the Salvager columns), the mini panel's columns and rows,
+       its Reports button on the Odds tab.
 
 ## Data
 

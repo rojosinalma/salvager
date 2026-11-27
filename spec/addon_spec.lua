@@ -226,85 +226,130 @@ describe("Salvager in a simulated client", function()
         local paid
         for _, r in ipairs(sales) do if r.itemID == 11083 then paid = r end end
         assert.is_truthy(paid.cells[1]:find("2x Soul Dust", 1, true))
-        ns.db.windows.ledger = nil
-        ns.LedgerWindow.OddsFilter().classes[ns.Data.CLASS_WEAPON] = nil     -- the Gear filter: armor only
-        local odds = ns.LedgerWindow.OddsRows()
+        -- The Odds (the Reports' Odds tab, SDD 114).
+        ns.db.windows.ledger, ns.db.windows.odds = nil, nil
+        ns.Odds.Filter().classes[ns.Data.CLASS_WEAPON] = nil       -- the Gear filter: armor only
+        local odds = ns.Odds.Rows()
         -- Every band of every quality is there for armor, with or without data: 24 bands, two rows each at least.
         assert.is_true(#odds > 2 * 24)
         local band, dust
         for i, r in ipairs(odds) do
-            if r.cells[1]:find("Uncommon", 1, true) and r.cells[1]:find("26-30", 1, true) then
+            if r.band and r.cells[1]:find("Uncommon", 1, true) and r.cells[1]:find("26-30", 1, true) then
                 band, dust = r, odds[i + 1]
             end
         end
         assert.are.equal("1", band.cells[2])                       -- the one disenchant
         assert.are.equal(11083, dust.itemID)
-        assert.is_truthy(dust.cells[3]:find("75%", 1, true))       -- expected
-        assert.are.equal("1-2", dust.cells[4])                     -- one value per cell: the quantity apart
-        assert.is_truthy(dust.cells[5]:find("100%", 1, true))      -- your result rate
-        -- The band row: its buy limit and the chance one disenchant is worth less than it.
+        -- The game's table, then yours: Material, Result rate, Quantity | Results, Result rate, Result quantity.
+        assert.is_truthy(dust.cells[2]:find("75%", 1, true))
+        assert.are.equal("1-2", dust.cells[3])                     -- one value per cell: the quantity apart
+        assert.are.equal("1", dust.cells[4])
+        assert.are.equal("100%", dust.cells[5])
+        assert.are.equal("2.00", dust.cells[6])
+        assert.are.equal(6, #dust.cells)
+        -- The band: its buy limit and the chance one disenchant is worth less than it.
         local v = ns.Model.Value(ns.Model.Outcomes(2, ns.Data.CLASS_ARMOR, 30), ns.PriceOf, ns.ValueOptions())
         local limit = ns.BuyLimit(2, ns.Data.CLASS_ARMOR, 30, v.net)
         assert.is_true(limit > 0)
-        assert.are.equal(ns.Money(limit), band.cells[6])
-        assert.is_truthy(band.cells[7]:find("%d+%%"))
-        assert.are.equal(9, #ns.LedgerWindow.OddsRows()[1].cells)
-        -- What the rates used rest on: buying counts no Salvager here, and the one disenchant was with it.
-        assert.are.equal("0 without Salvager", band.cells[9])
-        assert.is_truthy(dust.cells[7]:find("75%% %(few results%)"))   -- the table's rate, marked
+        assert.are.equal(limit, band.band.limit)
+        assert.is_truthy(band.cells[3]:find("%d+%%"))
         -- A material the table does not have for the band.
         local des = ns.db.ledger.disenchants
         des[#des + 1] = { quality = 2, classID = ns.Data.CLASS_ARMOR, band = 30, value = 0, got = { [10940] = 1 } }
         local odd
-        for _, r in ipairs(ns.LedgerWindow.OddsRows()) do
-            if r.itemID == 10940 and r.cells[3]:find("not expected", 1, true) then odd = r end
+        for _, r in ipairs(ns.Odds.Rows()) do
+            if r.itemID == 10940 and r.cells[2]:find("not expected", 1, true) then odd = r end
         end
         des[#des] = nil
         assert.is_table(odd)
-        -- In the window: a heading for the gear type, one per quality, and a card per band, each opens and closes.
-        local cards = ns.LedgerWindow.OddsCards()
+        -- The cards: a heading per gear type, one per quality, a card per band (two per row), titled with its range.
+        local cards = ns.Odds.Cards()
         assert.are.equal(1 + 3 + 24, #cards)
         assert.is_true(cards[1].heading)
         assert.is_truthy(cards[1].title:find("Armor", 1, true))
+        assert.is_true(cards[2].heading)
+        assert.is_truthy(cards[2].title:find("Uncommon", 1, true))
         local card
-        for _, c in ipairs(cards) do
-            if not c.heading and c.title:find("Uncommon", 1, true) and c.title:find("26-30", 1, true) then card = c end
-        end
+        for _, c in ipairs(cards) do if not c.heading and c.title == "26-30" and c.band.quality == 2 then card = c end end
+        assert.is_true(card.pair)
         assert.are.equal(3, #card.rows)                            -- dust, essence, shard
-        assert.is_truthy(card.facts:find("Value now", 1, true))
-        assert.is_truthy(card.facts:find("Buy below", 1, true))
         assert.are.equal(11083, card.rows[1].itemID)
-        card.onClick()                                             -- closed: no rows
-        for _, c in ipairs(ns.LedgerWindow.OddsCards()) do
-            if not c.heading and c.title:find("Uncommon", 1, true) and c.title:find("26-30", 1, true) then card = c end
+        -- Its facts: Disenchants and Loss chance, each with its help; the "?" has the rest.
+        assert.are.equal(2, #card.facts)
+        assert.is_truthy(card.facts[1][1]:find("Disenchants", 1, true))
+        assert.is_truthy(card.facts[2][1]:find("Loss chance", 1, true))
+        assert.is_table(card.facts[1].help)
+        local more = table.concat(card.more(), "\n")
+        for _, word in ipairs({ "Value now", "Buy below", "Your average", "Rates used from", "Price now" }) do
+            assert.is_truthy(more:find(word, 1, true), word)
         end
-        assert.are.same({ false, 0 }, { card.open, #card.rows })
-        card.onClick()
+        -- Every column title has its help; the two groups are apart (a line before Results).
+        for _, col in ipairs(ns.Odds.Columns()) do assert.is_table(col.help, col[1]) end
+        assert.is_true(ns.Odds.Columns()[4].sep)
+        -- The headings open and close, remembered; the bands have no toggle of their own.
+        assert.is_nil(card.open)
         cards[2].onClick()                                         -- the Uncommon heading closes its bands
-        assert.are.equal(1 + 3 + 24 - #ns.Data.GREEN, #ns.LedgerWindow.OddsCards())
+        assert.are.equal(1 + 3 + 24 - #ns.Data.GREEN, #ns.Odds.Cards())
+        assert.is_true(ns.db.windows.odds.filter.collapsed[ns.Data.CLASS_ARMOR .. ":2"])
         cards[2].onClick()
+        cards[1].onClick()                                         -- Armor closes: only its heading
+        assert.are.equal(1, #ns.Odds.Cards())
+        cards[1].onClick()
+        -- With and without the Salvager: the one disenchant was with it; one more without it (1 dust). The usual
+        -- columns show the one without, the dust and essence have the rate and quantity with it too (the shard none:
+        -- the Salvager does not add to it).
+        des[#des + 1] = { quality = 2, classID = ns.Data.CLASS_ARMOR, band = 30, value = 0, got = { [11083] = 1 } }
+        ns.Odds.Filter().both = true
+        assert.are.equal(8, #ns.Odds.Columns())
+        local both = ns.Odds.Rows()
+        for i, r in ipairs(both) do
+            if r.band and r.cells[1]:find("Uncommon", 1, true) and r.cells[1]:find("26-30", 1, true) then
+                band, dust = r, both[i + 1]
+            end
+        end
+        assert.are.same({ 1, 1 }, { band.band.n, band.band.nWith })
+        assert.are.same({ "1", "100%", "1.00", "100%", "2.00" }, { dust.cells[4], dust.cells[5], dust.cells[6],
+            dust.cells[7], dust.cells[8] })
+        local shard
+        for i, r in ipairs(both) do if r == dust then shard = both[i + 2] break end end
+        assert.are.same({ "", "" }, { shard.cells[7], shard.cells[8] })
+        -- The Salvager filter has no effect meanwhile: off, with the reason.
+        ns.Reports.ShowView("odds")
+        assert.is_false(ns.Reports.oddsView.salvagerDrop:IsEnabled())
+        assert.is_string(rawget(ns.Reports.oddsView.salvagerDrop, "reason"))
+        ns.Odds.Filter().both = nil
+        ns.Reports.Refresh()
+        assert.is_true(ns.Reports.oddsView.salvagerDrop:IsEnabled())
+        ns.Reports.Toggle()
+        des[#des] = nil
         -- Only the bands with data: the one band, its table rows.
-        ns.LedgerWindow.OddsFilter().dataOnly = true
-        local mine = ns.LedgerWindow.OddsRows()
+        ns.Odds.Filter().dataOnly = true
+        local mine = ns.Odds.Rows()
         assert.are.equal(4, #mine)                                 -- the band, dust, essence, shard
         assert.is_truthy(mine[1].cells[1]:find("26-30", 1, true))
         -- Filters: only rare weapons.
-        ns.db.windows.ledger = { oddsFilter = { qualities = { [3] = true }, classes = { [ns.Data.CLASS_WEAPON] = true } } }
-        local few = ns.LedgerWindow.OddsRows()
+        ns.db.windows.odds = { filter = { qualities = { [3] = true }, classes = { [ns.Data.CLASS_WEAPON] = true } } }
+        local few = ns.Odds.Rows()
         assert.are.equal(#ns.Data.BLUE * 2, #few)                  -- each band: its row and its one shard
         assert.is_truthy(few[1].cells[1]:find("Rare", 1, true))
         -- The band filter: only item levels 26-30.
         local off = {}
         for _, range in ipairs(ns.LevelBands()) do if range.up ~= 30 then off[range.up] = true end end
-        ns.db.windows.ledger = { oddsFilter = { bandsOff = off, qualities = { [2] = true },
+        ns.db.windows.odds = { filter = { bandsOff = off, qualities = { [2] = true },
             classes = { [ns.Data.CLASS_ARMOR] = true } } }
-        local one = ns.LedgerWindow.OddsCards()
+        local one = ns.Odds.Cards()
         assert.are.equal(3, #one)                                  -- Armor, Uncommon, the band
-        assert.is_truthy(one[3].title:find("26-30", 1, true))
-        -- Settings from before (a gear subtab, qualities of their own) move into the filter.
+        assert.are.equal("26-30", one[3].title)
+        -- Settings from before: the Ledger's filter (0.3.99 to 0.3.147) and older keys move to the Odds window.
+        ns.db.windows.odds = nil
+        ns.db.windows.ledger = { oddsFilter = { qualities = { [3] = true }, dataOnly = true } }
+        assert.are.same({ true, true }, { ns.Odds.Filter().qualities[3], ns.Odds.Filter().dataOnly })
+        assert.is_nil(ns.db.windows.ledger.oddsFilter)
+        ns.db.windows.odds = nil
         ns.db.windows.ledger = { oddsQuality = { [3] = true }, oddsTab = "w", oddsDataOnly = true }
-        assert.are.same({ true, true }, { ns.LedgerWindow.OddsFilter().qualities[3], ns.LedgerWindow.OddsFilter().dataOnly })
+        assert.are.same({ true, true }, { ns.Odds.Filter().qualities[3], ns.Odds.Filter().dataOnly })
         assert.is_nil(ns.db.windows.ledger.oddsTab)
+        ns.db.windows.odds = nil
         -- Accuracy: AP/EP %, its filters and its headings that close.
         ns.db.windows.ledger = nil
         local acc = ns.LedgerWindow.AccuracyBandRows()
@@ -703,7 +748,7 @@ describe("Salvager window and options", function()
         ns.LedgerWindow.Toggle()
         assert.is_true(#ns.LedgerWindow.AccuracyBandRows() >= 1)
         assert.is_true(#ns.LedgerWindow.AccuracyMaterialRows() >= 1)
-        for _, v in ipairs({ "purchases", "sales", "odds", "accuracy" }) do
+        for _, v in ipairs({ "purchases", "sales", "accuracy" }) do
             ns.LedgerWindow.view = v
             ns.LedgerWindow.Refresh()
         end
@@ -813,10 +858,11 @@ describe("Salvager window and options", function()
         end
         ns.LimitsWindow.Show()
         ns.LimitsWindow.Refresh()
-        for _, v in ipairs({ "purchases", "sales", "odds", "accuracy" }) do
+        for _, v in ipairs({ "purchases", "sales", "accuracy" }) do
             ns.LedgerWindow.view = v
             ns.LedgerWindow.Refresh()
         end
+        ns.Reports.ShowView("odds")
         ns.Materials.PopOut()
         ns.Materials.Refresh()
         ns.Materials.PutBack()
@@ -1947,19 +1993,32 @@ describe("Salvager listings", function()
         assert.is_string((ns.LedgerWindow.Summary()))
     end)
 
-    it("pops the odds out to a window of their own, and puts them back", function()
-        ns.LedgerWindow.Show()
-        ns.LedgerWindow.view = "odds"
-        ns.LedgerWindow.Refresh()
-        assert.is_false(ns.LedgerWindow.OddsPoppedOut())
-        ns.LedgerWindow.OddsPopOut()
-        assert.is_true(ns.LedgerWindow.OddsPoppedOut())
+    it("pops the odds out of the Reports' Odds tab to a window of their own, and puts them back (SDD 114)", function()
+        ns.Reports.ShowView("odds")
+        assert.are.equal("odds", ns.Reports.view)
+        assert.is_true(ns.Reports.oddsView.stack:IsShown())
+        assert.is_false(ns.Odds.PoppedOut())
+        ns.Reports.oddsView.pop:Click()                             -- the button at the right end of its filter row
+        assert.is_true(ns.Odds.PoppedOut())
         assert.is_true(ns.db.windows.odds.open)
-        ns.LedgerWindow.Refresh()
-        assert.are.equal("sales", ns.LedgerWindow.view)            -- the ledger shows another view meanwhile
-        ns.LedgerWindow.OddsPutBack()
-        assert.is_false(ns.LedgerWindow.OddsPoppedOut())
+        assert.are.equal("gold", ns.Reports.view)                  -- the Reports show another view meanwhile
+        assert.are.equal("odds", ns.db.windows.reports.view)       -- (not remembered)
+        ns.Odds.out.pop:Click()                                    -- the pop-out's own button puts them back
+        assert.is_false(ns.Odds.PoppedOut())
         assert.is_false(ns.db.windows.odds.open)
+        assert.are.equal("odds", ns.Reports.view)
+        -- The Odds tab, while they are out: back in the tab.
+        ns.Odds.PopOut()
+        ns.Reports.tabs.odds:Click()
+        assert.is_false(ns.Odds.PoppedOut())
+        assert.are.equal("odds", ns.Reports.view)
+        -- The Ledger has no Odds tab any more; an old saved view opens on Sales.
+        ns.LedgerWindow.Show()
+        local names = {}
+        for _, t in ipairs(ns.LedgerWindow.bars.tabs.items) do names[#names + 1] = t:GetText() end
+        assert.are.same({ "Sales", "Purchases", "Accuracy" }, names)
+        ns.Reports.Toggle()
+        ns.LedgerWindow.Toggle()
     end)
 
     it("records each material scan and charts it in the Market window", function()
@@ -2488,7 +2547,7 @@ describe("Salvager column chooser", function()
         -- The Ledger's tables, each view.
         local byBand, byMat = openAccuracy()
         for _, l in ipairs({ byBand, byMat }) do assert.is_true(l.chooser:IsShown()) end
-        for _, v in ipairs({ "purchases", "sales", "odds" }) do
+        for _, v in ipairs({ "purchases", "sales" }) do
             ns.LedgerWindow.view = v
             ns.LedgerWindow.Refresh()
         end
@@ -3062,11 +3121,12 @@ describe("Salvager control hierarchy (UI.md Controls)", function()
         ns.UI.Show()
         for _, v in ipairs({ "deals", "materials" }) do ns.UI.view = v ns.UI.Refresh() end
         ns.LedgerWindow.Show()
-        for _, v in ipairs({ "sales", "purchases", "accuracy", "odds" }) do
+        for _, v in ipairs({ "sales", "purchases", "accuracy" }) do
             ns.LedgerWindow.view = v
             ns.LedgerWindow.Refresh()
         end
-        ns.LedgerWindow.OddsPopOut()
+        ns.Reports.ShowView("odds")
+        ns.Odds.PopOut()
         ns.Materials.PopOut()
         ns.Market.Toggle()
         ns.Reports.Show()
@@ -3406,13 +3466,14 @@ describe("Salvager gear, Gear details and headings that open and close (0.3.129)
         ns.Queue.Clear()
     end)
 
-    it("has the Reports tabs Gold, Gear, Materials, Competition; Gear has Bands then History; an old Items view moves over", function()
+    it("has the Reports tabs Gold, Gear, Materials, Competition, Odds; Gear has Bands then History; an old Items view "
+        .. "moves over", function()
         ns.db.windows.reports = { view = "items" }                           -- saved by 0.3.128: the Items tab
         ns.Reports.Show()
         assert.are.same({ "gear", "history" }, { ns.Reports.view, ns.Reports.gearTab })
         local names = {}
         for _, t in ipairs(ns.Reports.bars.tabs.items) do names[#names + 1] = t:GetText() end
-        assert.are.same({ "Gold", "Gear", "Materials", "Competition" }, names)
+        assert.are.same({ "Gold", "Gear", "Materials", "Competition", "Odds" }, names)
         names = {}
         for _, t in ipairs(ns.Reports.bars.gear.items) do names[#names + 1] = t:GetText() end
         assert.are.same({ "Bands", "History" }, names)

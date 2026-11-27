@@ -18,8 +18,8 @@ By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_foreve
 ## Use
 
 1. Open the auction house. The Salvager window opens with it (also: minimap button or `/salv`). Away from the
-   auction house the minimap button opens the mini panel: one button for each Salvager window. The **_** button in
-   the main window's title bar minimizes it to that panel; the other windows stay open.
+   auction house the minimap button opens the mini panel: one button for each Salvager window, in two columns. The
+   **_** button in the main window's title bar minimizes it to that panel; the other windows stay open.
 2. Under **Scan once**, click **Both**: material prices first (about 20 seconds), then the gear.
 3. Click ▶ (play) to scan the gear again every 20 seconds; it turns into ■ (stop), which ends it.
 4. **Gear** lists every auction of gear below its buy limit, best profit first. Click **Buy**, or **Buy Top**
@@ -45,13 +45,16 @@ By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_foreve
    your auctions (listed, sold and waiting for the money, undercut; ▶ next to Check undercuts checks them every
    minute while the auction house is open), who undercuts you (Competition: each seller under your price, how
    often, on which materials, by how much, and what it cost you) and the sales already paid with their
-   profit, and the disenchant odds of every band with its buy limit and the chance to lose at that limit.
+   profit, and how close the forecasts came (Accuracy).
    Point at a column title for what it means. **Log** opens the activity log.
    **Reports** shows what your trading made, for this session (login to logout, a /reload keeps it), a past
    session or the last hours or days: sales, the cost of what you sold, the change in your stock and how much
    richer you are, then a check against your gold. It also lists every change of your gold; Gear shows the
    profit by band (Bands) and piece by piece (History); Materials what each material gave and sold for;
-   Competition who undercut you in the period, what it cost you and how you answered, per competitor and material.
+   Competition who undercut you in the period, what it cost you and how you answered, per competitor and material;
+   Odds the game's disenchant table of every band against your own disenchants (tick "Show with and without the
+   Salvager" for the dust and essence with its bonus apart), with the chance to lose at the buy limit; point at a
+   band's "?" for its value, buy limit and prices. The button at the right of its filters pops it out.
    A heading of a grouped table (gear type, quality) opens and closes with a click; it stays as you left it.
    **Search** (first on the filter row of Reports, Market and the Ledger's Purchases) shows the rows whose name has
    the text you type; the X in the box or Escape clears it. Every list of materials is in the Materials window's
@@ -67,7 +70,7 @@ when you can use it, minus the 5% auction house cut. The buy limit is that value
 
 - The table is Classic's disenchant table by item level (`Salvager/Data.lua`). Your own disenchants move it: per
   band, the table counts as 50 disenchants and yours are added to it, so a band with few of yours stays near the
-  table and a band with hundreds follows your results (Ledger, Odds: Rate used).
+  table and a band with hundreds follows your results (Reports, Odds: a band's "?", Rates used from).
 - Each material counts at its price × what your sales of it really got against the price, less the deposits you
   lose per unit sold.
 - Time to sell (Materials list): how long your posts of a material took to sell. A deal's tooltip shows its Return

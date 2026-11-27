@@ -409,7 +409,7 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
             SalvagerFrame = function() ns.UI.Show() end,
             SalvagerMiniFrame = function() ns.MiniPanel.Show() end,
             SalvagerLedgerFrame = function() ns.LedgerWindow.Show() end,
-            SalvagerOddsFrame = function() ns.LedgerWindow.OddsPopOut() end,
+            SalvagerOddsFrame = function() ns.Odds.PopOut() end,
             SalvagerMaterialsFrame = function() ns.Materials.PopOut() end,
             SalvagerMarketFrame = function() if not (_G.SalvagerMarketFrame or {}).shown then ns.Market.Toggle() end end,
             SalvagerReportsFrame = function() ns.Reports.Show() end,
@@ -589,6 +589,64 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
             win.saved.split, win.saved.salesSplit, win.saved.compSplit = nil, nil, nil
         end
         assert.are.equal("", table.concat(seen, "\n"))
+    end)
+    it("lays the Odds cards two per row at the default width, one per row at the smallest (SDD 114)", function()
+        local seen = {}
+        for _, both in ipairs({ false, true }) do
+            ns.Odds.Filter().both = both or nil
+            ns.Odds.Filter().dataOnly = nil
+            for _, case in ipairs({
+                { "SalvagerReportsFrame", function() ns.Reports.ShowView("odds") end, function() return ns.Reports.oddsView end },
+                { "SalvagerOddsFrame", function() ns.Odds.PopOut() end, function() return ns.Odds.out end } }) do
+                ns.UI.Show()
+                case[2]()
+                local win, odds = _G[case[1]], case[3]()
+                default(win)
+                local where = case[1] .. (both and " (with and without the Salvager)" or "")
+                assert.are.equal(2, odds.stack.perRow, where .. " at the default width")
+                problems(win, where .. " default", seen, true)
+                smallest(win)
+                assert.are.equal(1, odds.stack.perRow, where .. " at the smallest width")
+                problems(win, where .. " smallest", seen, false)
+                -- Two cards of a row share its width; each card's columns end at its right edge (problems, above).
+                default(win)
+                local a, b = odds.stack.cards[3], odds.stack.cards[4]   -- (Armor, Uncommon, then the first two bands)
+                assert.is_true(a.data.pair and b.data.pair)
+                assert.are.equal(a:GetWidth(), b:GetWidth())
+                assert.are.equal(a:GetTop(), b:GetTop())
+                assert.is_true(b:GetLeft() > a:GetRight())
+                if case[1] == "SalvagerOddsFrame" then ns.Odds.PutBack() end
+            end
+        end
+        ns.Odds.Filter().both = nil
+        assert.are.equal("", table.concat(seen, "\n"))
+    end)
+    it("has the mini panel in two columns of buttons, Disenchant across both under them (SDD 114)", function()
+        ns.MiniPanel.Show()
+        local b = ns.MiniPanel.buttons
+        local function r(n) return rect(b[n]) end
+        for _, col in ipairs({ { "Salvager", "Ledger", "Materials" }, { "Reports", "Market", "Log" } }) do
+            for i = 2, 3 do
+                assert.is_true(math.abs(r(col[i]).l - r(col[1]).l) < EPS, col[i] .. " under " .. col[1])
+                assert.is_true(r(col[i]).t <= r(col[i - 1]).b + EPS, col[i] .. " below " .. col[i - 1])
+            end
+        end
+        for i, left in ipairs({ "Salvager", "Ledger", "Materials" }) do
+            local right = ({ "Reports", "Market", "Log" })[i]
+            assert.is_true(math.abs(r(left).t - r(right).t) < EPS, left .. " and " .. right .. " on one row")
+            assert.is_true(r(right).l > r(left).r, right .. " right of " .. left)
+        end
+        assert.is_true(r("Disenchant").t <= r("Materials").b + EPS)
+        assert.is_true(math.abs(r("Disenchant").l - r("Materials").l) < EPS)
+        assert.is_true(math.abs(r("Disenchant").r - r("Log").r) < EPS)
+        -- The Reports button opens the Reports on the tab seen last (the Odds here).
+        ns.Reports.ShowView("odds")
+        ns.Reports.Toggle()
+        b.Reports:Click()
+        assert.is_true(_G.SalvagerReportsFrame:IsShown())
+        assert.are.equal("odds", ns.Reports.view)
+        assert.is_true(ns.Reports.tabs.odds.selected)
+        ns.Reports.Toggle()
     end)
     it("drew the Disenchant panel with pieces and results", function()
         local top, bottom = ns.DisenchantPanel.Rows()

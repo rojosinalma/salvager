@@ -5,6 +5,8 @@
 --   Gear       Bands: the profit by gear type, quality and item level band; History: every piece of gear you bought
 --              and disenchanted, best first
 --   Materials  what each material gave, sold for and cost, and what is left
+--   Competition who undercut you, what it cost you and how you answered
+--   Odds       per band, the game's disenchant table against your disenchants (OddsWindow.lua; it pops out)
 local _, ns = ...
 
 local Ledger, W = ns.Ledger, ns.Widgets
@@ -27,14 +29,17 @@ local RANGES = {
     { "all", "All time", nil },
 }
 Reports.MENU_SESSIONS = 15   -- past sessions in the Period menu (older ones: the Sessions part of All time)
-local ORDER = { "gold", "gear", "materials", "competition" }
-local TITLES = { gold = "Gold", gear = "Gear", materials = "Materials", competition = "Competition" }
+local ORDER = { "gold", "gear", "materials", "competition", "odds" }
+local TITLES = { gold = "Gold", gear = "Gear", materials = "Materials", competition = "Competition", odds = "Odds" }
 local HELP = {
     gold = "What the trading made and how much richer you are, checked against your gold; every change of your gold.",
     gear = "What the gear you bought and disenchanted made: by band, and piece by piece.",
     materials = "Each material: how many you got and sold, what they sold for and cost, and what is left.",
     competition = "Who undercut your auctions in this period, what it cost you, and how you answered: per competitor "
         .. "and per material. The Ledger's Sales, Competition subtab is the live list.",
+    odds = "Every item level band of every quality and gear type: how often each material comes and how many, by the "
+        .. "game's table, against your own disenchants (with and without the Arcane Salvager), and the chance to lose "
+        .. "at the buy limit. All your disenchants count: the period does not apply. Point at a column title for more.",
 }
 -- The views before 0.3.129: the Gear tab ("profit") and the Items tab are the Gear view's two subtabs now.
 local OLD_VIEW = { profit = { "gear", "bands" }, items = { "gear", "history" } }
@@ -183,7 +188,7 @@ local COLUMNS = {
 -- The search of each view (UI.md Controls 6), remembered per view: its key is the view and its subtab
 -- ("gear.bands"). The Gold statement has none (a statement reads as a whole).
 Reports.search = {}
-local NO_SEARCH = { ["gold.statement"] = true }
+local NO_SEARCH = { ["gold.statement"] = true, odds = true }
 
 --- The key of the view shown, for its search: "gold.changes", "gear.bands", "gear.history", "materials",
 --- "competition"; nil where the view has no search.
@@ -713,7 +718,8 @@ end
 
 ------------------------------------------------------------------ window
 
-local f, list, filterRow, rangeDrop
+local f, list, filterRow, rangeDrop, oddsView
+local ODDS_TWO_ROWS = true    -- the Odds view's checks on a second filter row (one row needs 1065 of 1050)
 local searchBox, searchParts, periodLabel = nil, {}, nil   -- the filter row's search, and the Period label after it
 local SEARCH_W = 110
 local tabs, filters, goldTabs, gearTabs = {}, {}, {}, {}
@@ -785,6 +791,9 @@ end
 
 function Reports.Refresh()
     if not f or not f:IsShown() then return end
+    -- While the odds are in their own window, the Reports show the Gold view in their place (not remembered).
+    if Reports.view == "odds" and ns.Odds.PoppedOut() then Reports.view = "gold" end
+    local odds = Reports.view == "odds"
     local gold, gear = Reports.view == "gold", Reports.view == "gear"
     -- The filter row: under the view's subtabs (Gold, Gear), else right under the tabs; the content under it.
     local top = TABS_TOP + W.BAR_H.tabs + 4
@@ -792,12 +801,25 @@ function Reports.Refresh()
     bars.gear:SetShown(gear)
     if gold or gear then top = top + W.BAR_H.subtabs + 4 end
     filterRow:Place(top, 12, 12)
+    filterRow:SetShown(not odds)
+    -- The Odds view has filter rows of its own (no search, no period: every disenchant counts).
+    oddsView:SetShown(odds)
+    if odds then
+        oddsView.bar:Place(top, 12, 12)
+        if oddsView.checkBar then
+            top = top + W.BAR_H.filters + 2
+            oddsView.checkBar:Place(top, 12, 12)
+        end
+    end
     local contentTop = top + W.BAR_H.filters + 4
     list:ClearAllPoints()
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -contentTop)
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
     local competition = Reports.view == "competition"
-    list:SetShown(not competition)
+    list:SetShown(not competition and not odds)
+    oddsView.stack:ClearAllPoints()
+    oddsView.stack:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -contentTop)
+    oddsView.stack:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
     for _, x in ipairs(comp.controls) do x:SetShown(competition) end
     for _, x in ipairs(comp.parts) do x:SetShown(competition) end
     -- The search first, where the view has one; the Period comes first where it has none.
@@ -830,11 +852,13 @@ function Reports.Refresh()
         end
     elseif competition then
         Reports.LayoutCompetition(contentTop)
+    elseif odds then
+        oddsView:Refresh()
     else
         show(list, COLUMNS.materials, Reports.MaterialRows(), "reports.materials")
     end
     -- As wide as the table's columns need, up to the screen (SDD 107).
-    local shown = competition and { comp.summary, comp.names, comp.mats } or { list }
+    local shown = (competition and { comp.summary, comp.names, comp.mats }) or (odds and { oddsView.stack }) or { list }
     if W.FitTables(f, MIN_W, shown, Reports.SearchKey() or Reports.view .. "." .. Reports.goldTab) then
         for _, l in ipairs(shown) do l:Refresh() end
     end
@@ -856,9 +880,12 @@ local function build()
     bars.tabs = W.Bar(f, "tabs"):Place(TABS_TOP, 12, 12)
     for _, key in ipairs(ORDER) do
         local b = W.Tab(bars.tabs, TITLES[key], function()
+            -- The Odds tab, while the odds are in their own window: put them back here.
+            if key == "odds" and ns.Odds.PoppedOut() then ns.Odds.PutBack() return end
             Reports.view = key
             f.saved.view = key
             list.offset = 0
+            oddsView.stack.offset = 0
             Reports.Refresh()
         end, HELP[key])
         bars.tabs:Add(b, 90)
@@ -1010,6 +1037,10 @@ local function build()
         gearTabs[t[1]] = b
     end
     Reports.bars, Reports.tabs, Reports.gearTabs = bars, tabs, gearTabs   -- (the specs read them)
+    -- The Odds view (OddsWindow.lua): its filter row in the place of the others, its stack of cards.
+    oddsView = ns.Odds.NewView(f, W.Bar(f, "filters"), ODDS_TWO_ROWS and W.Bar(f, "filters") or nil)
+    oddsView:SetShown(false)
+    Reports.oddsView = oddsView
     list = W.List(f, { rowHeight = 22 })
     Reports.list = list
     -- The Competition view's three tables (UI.md Tables 3: one inset per section), the last two with a title.
@@ -1043,6 +1074,15 @@ end
 function Reports.Show()
     if not f then build() end
     f.UserShow()
+end
+
+--- Shows the window on a view ("odds": the Odds tab).
+function Reports.ShowView(key)
+    if not TITLES[key] then return end
+    if not f then build() end
+    Reports.view = key
+    f.saved.view = key
+    if f:IsShown() then Reports.Refresh() else f.UserShow() end
 end
 
 --- Opens the window again if it was open the last time.

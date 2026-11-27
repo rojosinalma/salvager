@@ -1006,7 +1006,8 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
             if f.SetMaxResize then f:SetMaxResize(hi, maxH) end
         end
     end
-    function f.FitWidth(width, view)
+    -- `least`: the narrowest the view's tables allow (a stack of cards: one per row), when more than `minW`.
+    function f.FitWidth(width, view, least)
         if vertical then
             bounds(width, width)
             f:SetWidth(width)
@@ -1021,7 +1022,8 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
             lo, hi = width, math.max(width, maxW)
             if changed and not rawget(f, "userW") then want = width else want = math.max(now, width) end
         else
-            lo, hi = minW, math.max(minW, width)
+            lo = math.max(minW, least or 0)
+            hi = math.max(lo, width)
             if changed then f.userW = nil end
             want = math.max(lo, math.min(hi, rawget(f, "userW") or hi))
         end
@@ -1072,7 +1074,11 @@ end
 --- `full`: the first column at its full width too (`list.neededWidth`: the Ledger, SDD 91).
 --- @return boolean changed  the width changed: refresh the lists again
 function Widgets.FitTables(f, base, lists, view, full)
-    local w = base
+    local w, least = base, nil
+    for _, l in ipairs(lists) do
+        local n = rawget(l, "leastWidth")
+        if type(n) == "number" then least = math.max(least or 0, math.ceil(n + (rawget(l, "margin") or 24))) end
+    end
     local fw = tonumber((f:GetWidth())) or 0
     for _, l in ipairs(lists) do
         -- (The room around a table is a constant, 12 px each side, or its `margin`: read live, a table's width lags
@@ -1082,7 +1088,7 @@ function Widgets.FitTables(f, base, lists, view, full)
     end
     w = math.min(w, math.floor(Widgets.ScreenWidth()))
     local before = fw
-    f.FitWidth(w, view)
+    f.FitWidth(w, view, least and math.min(least, w))
     return math.abs((tonumber((f:GetWidth())) or 0) - before) >= 1
 end
 
