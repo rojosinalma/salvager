@@ -11,6 +11,7 @@ local MAX_COLS = 11
 -- (940: the footer's row holds the window buttons, the gold, the bag space, Play, Stop and Buy Top, SDD 101a.)
 local WIDTH, HEIGHT = 940, 560
 local MIN_W, MIN_H = 940, 470
+local LIST_MARGIN = 10 + 2 + 20 + 10   -- the window's width less the list's (inset and list anchors, below)
 -- Under the title bar: the tabs (24 to 54 px), then the view: the Gear view's settings block, or the Materials
 -- view's filter row; the list under it. The footer: two lines of text and the row of buttons (UI.md Controls 1).
 local TABS_TOP, SETTINGS_TOP, SETTINGS_H, FILTERS_TOP, LIST_BOTTOM = 24, 58, 108, 58, 68
@@ -546,8 +547,10 @@ function UI.Refresh()
     local w = layout(view, data)
     -- As wide as the table's columns need, up to the screen (UI.md Tables 2): the smallest width grows to it.
     if UI.tableNeed and not UI.fitting then
-        local frame = (tonumber((f:GetWidth())) or 0) - (tonumber((UI.list:GetWidth())) or 0)
-        local want = math.min(math.floor(W.ScreenWidth()), math.max(MIN_W, math.ceil(UI.tableNeed + 4 + frame)))
+        -- (The window's width around the list is fixed: the inset 10 px in from each side, the list 2 px in from its
+        -- left and 20 px from its right. Read live, the list's width lags its new anchors for a frame after a tab
+        -- change, and the window then took the whole screen: 0.3.143.)
+        local want = math.min(math.floor(W.ScreenWidth()), math.max(MIN_W, math.ceil(UI.tableNeed + 4 + LIST_MARGIN)))
         if want ~= f.minWidth then
             f.minWidth = want
             if f.SetResizeBounds then f:SetResizeBounds(want, MIN_H, UIParent:GetWidth(), UIParent:GetHeight())

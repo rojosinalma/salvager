@@ -962,6 +962,9 @@ flipping is out of scope for now.
        0.3.136: about 450 px empty at the right at 985 px). Where the columns need more than the list has, the
        window's smallest width grows to them, up to the screen; past that the first column gives way down to 90 px,
        its text cut with "..." (the full name on hover). The fit spec checks the main window's table too.
+       0.3.143 (the user: the window took the whole screen on the Materials tab): the width around the list is a
+       constant (`LIST_MARGIN`, 42 px), not the window's width less the list's read live: just after a tab change the
+       list's width lags its new anchors, so the old sum added the whole window to the columns' need.
 
 109. **Who undercuts you** (0.3.138, the user, 2026-11-27; `Competition.lua` pure, glue in `Listings.lua`,
     `SalvagerDB.competition`).

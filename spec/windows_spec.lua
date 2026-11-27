@@ -90,6 +90,31 @@ describe("Salvager windows (0.3.137)", function()
         end
     end)
 
+    it("keeps its width on a tab change even when the list's width lags its new anchors (no full-screen window)",
+        function()
+        local realWidth = ns.Widgets.TextWidth
+        ns.Widgets.TextWidth = function(t)
+            if not t then return 0 end
+            local plain = t:gsub("|T.-|t", "\1\1"):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+            return #plain * 6
+        end
+        ns.UI.Show()
+        local f = _G.SalvagerFrame
+        local width = 940
+        f.GetWidth = function() return width end
+        f.SetWidth = function(_, w) width = w end
+        ns.UI.list.GetWidth = function() return 0 end            -- the client has not laid the list out again yet
+        ns.UI.view = "materials"
+        ns.UI.Refresh()
+        assert.is_true(width < 1920, tostring(width))
+        assert.are.equal(math.max(940, math.ceil(ns.UI.tableNeed + 4 + 42)), width)
+        ns.UI.view = "deals"
+        ns.UI.Refresh()
+        ns.Widgets.TextWidth = realWidth
+        ns.UI.list.GetWidth, f.GetWidth, f.SetWidth = nil, nil, nil
+        f:Hide()
+    end)
+
     it("has one Play/Stop toggle: play while no scan runs, stop while one does", function()
         wow.fire(ns, "AUCTION_HOUSE_SHOW")
         wow.tick(ns, 0.5)
