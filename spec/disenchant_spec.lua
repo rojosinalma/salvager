@@ -206,7 +206,7 @@ describe("The Disenchant panel", function()
         assert.are.equal(casts, #env.casts)
         -- The empty table says why and what fills it.
         local top = P.Rows()
-        assert.truthy(top[1].cells[1]:find("No gear of your purchases", 1, true))
+        assert.truthy(top[1].cells[1]:find("No gear you bought", 1, true))
         frame().UserHide()
         SlashCmdList.SALVAGER("disenchant")
         assert.is_true(frame():IsShown())

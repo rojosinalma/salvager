@@ -1133,7 +1133,9 @@ flipping is out of scope for now.
     - h. Auto Loot off: a grey one-line note at the top says the loot window will need a click (the setting is not
        changed).
     - i. Size: 640 × 440 by default, at least 520 × 320, place and size remembered; as wide as its tables need
-       (`Widgets.FitTables`). The top table is as tall as its rows up to 45% of the room.
+       (`Widgets.FitTables`). The top table is as tall as its rows up to 45% of the room. A size change and the bar
+       only lay the tables out again (`Panel.Layout`); the rows are built on a bag change, a cast or a booked
+       purchase (`Panel.Refresh`) (115b).
     - j. Filter (0.3.150, the user): Options, "Disenchant panel": Quality (Uncommon, Rare, Epic), Gear (Armor,
        Weapons), Item level from / to (0 = no limit), in `settings.disenchantFilter`; at least one quality and one
        gear type stay ticked. The panel (and so its auto-open and its button) offers only the bought gear that
@@ -1167,6 +1169,7 @@ flipping is out of scope for now.
        for Sales and Accuracy, `split` for Breakdown and Disenchant, `compSplit` for Competition), 0.1 to 0.9, a
        right-click resets it. The Disenchant panel's top table stays as tall as its rows (up to 45%) until the bar
        is moved. Smallest heights: Ledger 330 (was 260: the Sales tables overlapped), Reports 352 (was 300).
+       Smallest widths since 0.3.151 (115a): the Ledger 890 (was 860), the main window at least its footer.
     - e. Checked by the fit spec: no two tables of a window overlap and each is at least its titles and two rows
        high (one row where it has one); at the default size no window is wider than its view needs, and each view
        comes back at its own width after the other tabs (every tab twice); at the smallest size every view is
@@ -1220,6 +1223,47 @@ flipping is out of scope for now.
        Ledger's tabs, the Reports' tabs, the fit spec: two cards per row at the default width and one at the smallest
        (the Reports' tab and the pop-out, with and without the Salvager columns), the mini panel's columns and rows,
        its Reports button on the Odds tab.
+
+115. **No cut text, smooth resizing** (0.3.151, the user, 2026-11-27: "check no panel is truncating text"; "the
+    Disenchant panel behaves weird when resizing"; the Odds the same; the gold in the main window's footer cut).
+    - a. The pass: every window, tab and subtab at the default and the smallest size, in the fit spec (106) and in
+       wow-ui-sim with the game's fonts and art (`.agents/tools/wow-ui-sim/render.sh`, `SIM_ALL=1`: a cut scan per
+       view; dev tool, not in git). Found and fixed: (1) an empty table's note sat in the first column and was cut
+       ("No undercut in this period. Check undercuts, the Post win", Reports Competition; both Disenchant tables):
+       a row with `span = true` (the note helpers of Ledger, Reports, Disenchant, Breakdown, Market, Post) spans the
+       whole row, sets no column's width, and may not be cut (the fit spec checks it); the Disenchant notes are
+       shorter. (2) Dropdown values cut in the game's 12 pt font (the stand-in drew the fallback's 10 pt): Quality
+       "Uncommon, Rare" (Ledger, Odds, Reports: 140, was 120; the main window's "Uncommon, Rare, Epic": 180, was 160),
+       Bands with three names (120, was 110, and "n bands" from three names, was four), the Reports' Material
+       (200, was 150; the Period 140, was 170, its widest value 124 px), the Ledger's Show (150, was 130), the Options'
+       Disenchant Gear (140, was 130). The Ledger's smallest width is 890 (was 860) for its Purchases filter row.
+       (3) The main window at 940 with no data: the gold readout overlapped Log: its least width covers the footer
+       (`footerBar.used` + 34, `UI.leastWidth`). (4) The Disenchant footer's reason was cut at the count: it shows a
+       short one ("Nothing left to disenchant"), the full one is in the button's tooltip. (5) The gold readout
+       (the user): sized from the small font's meter, which the client's coin icons outgrew, it was cut, in a fixed
+       box far from the bag space. It sits right next to the bag space (8 px: gold, bags, Play), both boxes as wide
+       as the text they show, measured by their own font strings (icons at their real size) each refresh; the
+       footer keeps room for their widest values. (6) The Odds cards: a column after a line lost the line's 12 px, so
+       it overlapped the column before by 4 px. Allowed and left: the Log's first column ends with "..." at the
+       smallest width (its line in full on hover).
+    - b. Resizing (the Disenchant panel, the Odds in the Reports and popped out). Causes found in the code (not seen
+       in the client): each size event and each step of the bar built every row again (the Disenchant panel read
+       the bags and the whole batch, `Ledger.Batch`, twice; the Odds every card from every disenchant), so the
+       corner and the bar lagged the pointer; the bar's border jumped by the pointer's place in the bar at the grab;
+       the cards chose one or two per row from the stack's own width, which lags the window's for a frame while it
+       is sized, and a window at exactly the width two need could be a fraction short at the game's UI scale. Now:
+       a size change only lays out (`Panel.Layout`, `Reports.Resized`, the pop-out's own), the bar moves the border
+       from where it was grabbed and only when the pointer moves, the cards read the window's width
+       (`stack.widthOf`, constant 12 px margins) with 1 px of slack. No hysteresis: with the width read from the
+       window nothing feeds back into the choice. Specs: the panel and both Odds windows are dragged step by step
+       both ways (each step the size asked for, bounds unchanged, the tables share the height, monotonic, no
+       overlap, no rows built during the drag, one or two cards per row exactly where two fit, two switches), and
+       the bar's grab moves nothing.
+    - c. The Odds' Salvager columns (the user): with "Show with and without the Salvager" on, Rate with Salvager and
+       Quantity with Salvager have a line before them, like Results, and their titles and values are in the
+       Salvager's color, `ns.SALVAGER_COLOR` light blue (#66e0ff, about 12:1 on the panels; not the green of a gain,
+       not the Rare blue); grey ("-", none) stays grey; their help says what the color means. Their chooser keys stay
+       the plain titles. The main window's "Arcane Salvager bonus included" takes the same color (was the gain green).
 
 ## Data
 

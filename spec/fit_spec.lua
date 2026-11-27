@@ -533,13 +533,13 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
         assert.are.equal(gearW, main:GetWidth())
         local lo, _, hi = main:GetResizeBounds()
         if lo then assert.are.same({ gearW, gearW }, { lo, hi }) end   -- only the height can be dragged
-        -- The Ledger: Competition, then History (860, its smallest).
+        -- The Ledger: Competition, then History (890, its smallest).
         ns.LedgerWindow.Show()
         local ledger = _G.SalvagerLedgerFrame
         tab(ledger, "Sales") sub(ledger, "Competition")
-        assert.is_true(ledger:GetWidth() > 860)
+        assert.is_true(ledger:GetWidth() > 890)
         sub(ledger, "History")
-        assert.are.equal(860, ledger:GetWidth())
+        assert.are.equal(890, ledger:GetWidth())
         -- The Reports: Competition, then Gold (its smallest); narrowed by the player, the next tab is as wide as it needs.
         ns.Reports.Show()
         local reports = _G.SalvagerReportsFrame
@@ -591,6 +591,105 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
         end
         assert.are.equal("", table.concat(seen, "\n"))
     end)
+    -- The player drags a window's corner (its grip): mouse down, the client sizes it step by step inside its resize
+    -- bounds (each step fires OnSizeChanged down the window), mouse up. `steps` = { { w, h }, ... }; `check(i, want)`
+    -- runs after each step with the size asked for (clamped to the bounds).
+    local function gripOf(win)
+        for _, c in ipairs(win._children) do
+            if c.scripts.OnMouseDown and c.scripts.OnMouseUp and c:GetWidth() == 16 then return c end
+        end
+    end
+    local function drag(win, steps, check)
+        local grip = gripOf(win)
+        assert.is_table(grip, "no grip")
+        grip.scripts.OnMouseDown(grip, "LeftButton")
+        local lo, loH, hi, hiH = win:GetResizeBounds()
+        for i, st in ipairs(steps) do
+            local w = math.max(lo, math.min(hi or 1e9, st[1]))
+            local h = math.max(loH, math.min(hiH or 1e9, st[2]))
+            win:SetSize(w, h)
+            sized(win)
+            check(i, w, h)
+            -- (While the corner is dragged the bounds hold: a bound that moves makes the client move the corner.)
+            local lo2, loH2, hi2 = win:GetResizeBounds()
+            assert.are.same({ lo, loH, hi }, { lo2, loH2, hi2 }, "the bounds changed during the drag, step " .. i)
+        end
+        grip.scripts.OnMouseUp(grip, "LeftButton")
+    end
+    it("resizes the Disenchant panel smoothly both ways: the corner follows, the tables share the height", function()
+        ns.DisenchantPanel.Show()
+        local win, P = _G.SalvagerDisenchantFrame, ns.DisenchantPanel
+        win.saved.split = nil
+        default(win)
+        local lo, loH, hi = win:GetResizeBounds()
+        assert.is_true(hi > lo, lo .. " " .. hi)
+        local seen, steps = {}, {}
+        for k = 0, 10 do steps[#steps + 1] = { lo + (hi - lo) * k / 10, loH + 60 * k } end
+        for k = 9, 0, -1 do steps[#steps + 1] = { lo + (hi - lo) * k / 10, loH + 60 * k } end
+        local last
+        -- A drag lays the tables out again; it does not read the bags or the batch again (each step did, 0.3.150).
+        local LW, batches, realBatch = ns.LedgerWindow, 0, ns.LedgerWindow.Batch
+        LW.Batch = function(...) batches = batches + 1 return realBatch(...) end
+        local layouts = P.layouts or 0
+        drag(win, steps, function(i, w, h)
+            local where = string.format("SalvagerDisenchantFrame drag step %d (%dx%d)", i, w, h)
+            -- The size is the one dragged to: nothing snaps it back or widens it.
+            assert.are.equal(w, win:GetWidth(), where .. ": width")
+            assert.are.equal(h, win:GetHeight(), where .. ": height")
+            local b, r, f = rect(P.bags), rect(P.results), rect(win)
+            -- The bags table stays at the top; the results table ends over the footer; both reach the right edge.
+            assert.is_true(math.abs((f.t - b.t) - (last and last.top or (f.t - b.t))) < EPS, where .. ": the top table moved")
+            assert.is_true(math.abs(r.b - f.b - 44) < EPS, where .. ": the results table's bottom")
+            assert.is_true(math.abs(f.r - b.r - 12) < EPS and math.abs(f.r - r.r - 12) < EPS, where .. ": the right edges")
+            -- Taller window, taller (or as tall) tables; lower, lower.
+            if last then
+                local up = h >= last.h
+                assert.is_true(up and b.h >= last.bh - EPS or (not up and b.h <= last.bh + EPS), where .. ": the top table")
+                assert.is_true(up and r.h >= last.rh - EPS or (not up and r.h <= last.rh + EPS), where .. ": the results")
+            end
+            last = { top = f.t - b.t, h = h, bh = b.h, rh = r.h }
+            problems(win, where, seen, false)
+        end)
+        LW.Batch = realBatch
+        assert.are.equal(0, batches, "the batch was read again during the drag")
+        assert.is_true(P.layouts >= layouts + #steps, "the tables were not laid out on each step")
+        -- After the mouse is let go, the width holds, through a refresh (a bag update) too.
+        local w = win:GetWidth()
+        P.Refresh()
+        sized(win)
+        assert.are.equal(w, win:GetWidth())
+        assert.are.equal("", table.concat(seen, "\n"))
+    end)
+    it("moves the border of the Disenchant panel's tables with the bar, from where it was grabbed (no jump)", function()
+        ns.DisenchantPanel.Show()
+        local win, P = _G.SalvagerDisenchantFrame, ns.DisenchantPanel
+        win.saved.split = nil
+        default(win)
+        local bar, bags = P.splitBar, P.bags
+        local real = _G.GetCursorPosition
+        local y0 = rect(bar).t - 11   -- (grabbed in the bar's middle)
+        local cursor = y0
+        _G.GetCursorPosition = function() return 600, cursor end
+        local h0 = rect(bags).h
+        bar.scripts.OnMouseDown(bar, "LeftButton")
+        bar.scripts.OnUpdate(bar, 0.01)
+        sized(win)
+        assert.is_true(math.abs(rect(bags).h - h0) <= 1, "the border jumped at the grab: " .. h0 .. " -> " .. rect(bags).h)
+        local prev = rect(bags).h
+        for k = 1, 6 do
+            cursor = y0 - 15 * k   -- (down: the top table grows with the cursor)
+            bar.scripts.OnUpdate(bar, 0.01)
+            sized(win)
+            local now = rect(bags).h
+            assert.is_true(now >= prev - EPS, "step " .. k .. ": " .. prev .. " -> " .. now)
+            assert.is_true(math.abs((h0 + 15 * k) - now) <= 1 or now <= prev + EPS, "step " .. k .. " follows the cursor")
+            prev = now
+        end
+        bar.scripts.OnMouseUp(bar, "LeftButton")
+        _G.GetCursorPosition = real
+        win.saved.split = nil
+        P.Refresh()
+    end)
     it("lays the Odds cards two per row at the default width, one per row at the smallest (SDD 114)", function()
         local seen = {}
         for _, both in ipairs({ false, true }) do
@@ -616,10 +715,101 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
                 assert.are.equal(a:GetWidth(), b:GetWidth())
                 assert.are.equal(a:GetTop(), b:GetTop())
                 assert.is_true(b:GetLeft() > a:GetRight())
+                -- The column titles of a card do not overlap; each line lies between the two columns it parts (one
+                -- before Results, one more before the Salvager's columns while both show).
+                local heads, lines = {}, 0
+                for i, h in ipairs(a.headTexts) do if h:IsShown() then heads[#heads + 1] = { i = i, r = rect(h) } end end
+                for k = 2, #heads do
+                    assert.is_true(heads[k].r.l >= heads[k - 1].r.r - EPS, where .. ": titles " .. heads[k - 1].i
+                        .. " and " .. heads[k].i .. " overlap")
+                end
+                for _, t in ipairs(a.seps) do
+                    if t:IsShown() then
+                        lines = lines + 1
+                        local x = rect(t).l
+                        local after
+                        for k = 2, #heads do if heads[k].r.l >= x then after = k break end end
+                        assert.is_true(after ~= nil and heads[after - 1].r.r <= x + EPS, where .. ": a line inside a column")
+                    end
+                end
+                assert.are.equal(both and 2 or 1, lines, where .. ": the lines")
                 if case[1] == "SalvagerOddsFrame" then ns.Odds.PutBack() end
             end
         end
         ns.Odds.Filter().both = nil
+        assert.are.equal("", table.concat(seen, "\n"))
+    end)
+    it("resizes the Odds smoothly both ways: one or two cards per row as the width allows, nothing jumps back", function()
+        local seen = {}
+        for _, both in ipairs({ false, true }) do
+            ns.Odds.Filter().both = both or nil
+            for _, case in ipairs({
+                { "SalvagerReportsFrame", function() ns.Reports.ShowView("odds") end, function() return ns.Reports.oddsView end },
+                { "SalvagerOddsFrame", function() ns.Odds.PopOut() end, function() return ns.Odds.out end } }) do
+                ns.UI.Show()
+                case[2]()
+                local win, odds = _G[case[1]], case[3]()
+                default(win)
+                local lo, loH, hi = win:GetResizeBounds()
+                local stack = odds.stack
+                assert.is_true(hi > lo, case[1] .. " " .. lo .. " " .. hi)
+                -- The narrowest width with two per row: what the stack says two need.
+                local two = stack.fitWidth + 24
+                local steps = {}
+                for k = 0, 12 do steps[#steps + 1] = { hi - (hi - lo) * k / 12, loH + 200 - 10 * k } end
+                for k = 11, 0, -1 do steps[#steps + 1] = { hi - (hi - lo) * k / 12, loH + 200 - 10 * k } end
+                local cards, realCards = 0, ns.Odds.Cards
+                ns.Odds.Cards = function(...) cards = cards + 1 return realCards(...) end
+                local prev, flips = nil, 0
+                drag(win, steps, function(i, w, h)
+                    local where = string.format("%s%s drag step %d (%dx%d)", case[1], both and " (both)" or "", i, w, h)
+                    assert.are.equal(w, win:GetWidth(), where .. ": width")
+                    -- Two per row exactly where two fit, from the window's width (not the width before).
+                    assert.are.equal(w >= two - 1 and 2 or 1, stack.perRow, where .. ": cards per row (two need " .. two .. ")")
+                    if prev and prev ~= stack.perRow then flips = flips + 1 end
+                    prev = stack.perRow
+                    -- No card reaches past the scroll bar.
+                    local sr = rect(stack)
+                    for _, c in ipairs(stack.cards) do
+                        if c:IsShown() and c.data and not c.data.heading then
+                            local cr = rect(c)
+                            assert.is_true(cr.r <= sr.r - 18 + EPS, where .. ": a card past the scroll bar")
+                        end
+                    end
+                    problems(win, where, seen, false)
+                end)
+                ns.Odds.Cards = realCards
+                assert.are.equal(0, cards, case[1] .. ": the cards were built again during the drag")
+                assert.are.equal(2, flips, case[1] .. ": one or two per row changed " .. flips .. " times (down, then up)")
+                -- Let go at a width: it holds through a refresh (an event that draws the cards again).
+                local w = win:GetWidth()
+                ns.Odds.Refresh()
+                sized(win)
+                assert.are.equal(w, win:GetWidth(), case[1] .. ": the width after a refresh")
+                if case[1] == "SalvagerOddsFrame" then ns.Odds.PutBack() end
+            end
+        end
+        ns.Odds.Filter().both = nil
+        assert.are.equal("", table.concat(seen, "\n"))
+    end)
+    it("shows the gold in full right next to the bag space, as wide as its text, at any amount (0.3.151)", function()
+        ns.UI.Show()
+        local win, gold, bags = _G.SalvagerFrame, ns.UI.gold, ns.UI.bags
+        local seen = {}
+        for _, money in ipairs({ 0, 123456, 99999999, 2147483647 }) do
+            env.money = money
+            ns.UI.Refresh()
+            smallest(win)
+            local g, b = rect(gold), rect(bags)
+            assert.is_false(wow.isCut(gold), gold:GetText())
+            assert.is_false(wow.isCut(bags), bags:GetText())
+            -- Each box is its text (and 4 px): the gold's text ends 8 px before the bag space's text starts.
+            for _, r in ipairs({ gold, bags }) do
+                assert.is_true(math.abs(rect(r).w - (r:GetStringWidth() + 4)) <= 1, tostring(r:GetText()))
+            end
+            assert.is_true(math.abs(b.l - g.r - 8) <= EPS, string.format("%.0f..%.0f, then %.0f", g.l, g.r, b.l))
+            problems(win, "SalvagerFrame with " .. money .. "c", seen, false)
+        end
         assert.are.equal("", table.concat(seen, "\n"))
     end)
     it("has the mini panel in two columns of buttons, Disenchant across both under them (SDD 114)", function()
@@ -682,5 +872,123 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
         assert.are.same({}, l.leftOut)
         assert.is_false(note:IsShown())
         parent:Hide()
+    end)
+end)
+
+describe("Every window fits its texts with no data at all (an empty table says why in full, UI.md Tables 6)", function()
+    it("draws every view at its smallest and its default size without a cut note", function()
+        wow.install({ layout = true })
+        local ns = wow.loadAddon()
+        ns_ = ns
+        wow.fire(ns, "ADDON_LOADED", "Salvager")
+        wow.fire(ns, "AUCTION_HOUSE_SHOW")
+        local mat = ns.Data.MATERIALS[1].id
+        local open = {
+            SalvagerFrame = function() ns.UI.Show() end,
+            SalvagerLedgerFrame = function() ns.LedgerWindow.Show() end,
+            SalvagerOddsFrame = function() ns.Odds.PopOut() end,
+            SalvagerMarketFrame = function() if not (_G.SalvagerMarketFrame or {}).shown then ns.Market.Toggle() end end,
+            SalvagerReportsFrame = function() ns.Reports.Show() end,
+            SalvagerLogFrame = function() ns.LogWindow.Show() end,
+            SalvagerBreakdownFrame = function() ns.Breakdown.Open(mat) end,
+            SalvagerDisenchantFrame = function() ns.DisenchantPanel.Show() end,
+        }
+        local found = {}
+        for _, global in ipairs(WINDOWS) do
+            if open[global] then
+                ns.UI.Show()
+                open[global]()
+                local win = _G[global]
+                assert.is_true(win ~= nil and win:IsShown(), global .. " is not open")
+                for _, size in ipairs({ "smallest", "default" }) do
+                    local function fit()
+                        local bounds = rawget(win, "_bounds")
+                        if size == "smallest" then
+                            local minW = bounds and bounds[1] or rawget(win, "minWidth") or win:GetWidth()
+                            rawset(win, "userW", minW)
+                            win:SetSize(minW, bounds and bounds[2] or win:GetHeight())
+                        else
+                            rawset(win, "userW", nil)
+                            win:SetSize(rawget(win, "_firstW") or win:GetWidth(), rawget(win, "_firstH") or win:GetHeight())
+                        end
+                        sized(win)
+                    end
+                    local function look(where)
+                        fit()
+                        problems(win, global .. " (no data, " .. size .. ")" .. where, found, false)
+                    end
+                    look("")
+                    for _, tab in ipairs(tabsOf(win, "tab")) do
+                        tab:Click()
+                        look(" / " .. tostring(tab.text))
+                        for _, sub in ipairs(tabsOf(win, "subtab")) do
+                            sub:Click()
+                            look(" / " .. tostring(tab.text) .. " / " .. tostring(sub.text))
+                        end
+                    end
+                end
+            end
+        end
+        assert.are.equal("", table.concat(found, "\n"))
+    end)
+end)
+
+describe("A dropdown shows every value it can take in full (UI.md Controls 5)", function()
+    it("fits each choice of its options (Gear, Quality, Bands: any of them ticked) in the game's font", function()
+        local env = wow.install({ layout = true })
+        local ns = wow.loadAddon()
+        wow.fire(ns, "ADDON_LOADED", "Salvager")
+        wow.fire(ns, "AUCTION_HOUSE_SHOW")
+        assert.is_true(#seed(env, ns) > 0)
+        ns.UI.Show()
+        ns.LedgerWindow.Show()
+        ns.Reports.Show()
+        ns.Odds.PopOut()
+        ns.LogWindow.Show()
+        ns.Options.Open()
+        if not (_G.SalvagerMarketFrame or {}).shown then ns.Market.Toggle() end
+        local MULTI = { Gear = true, Quality = true, Bands = true }
+        local cut, seenDrops = {}, 0
+        for _, d in ipairs(env.frames) do
+            local opts = rawget(d, "uiKind") == "dropdown" and rawget(d, "options")
+            if opts then
+                seenDrops = seenDrops + 1
+                local summary, n = rawget(d, "summary"), #opts
+                local function text(picked)
+                    local names = {}
+                    for i = 1, n do if picked[i] then names[#names + 1] = opts[i][2] end end
+                    return summary and summary(names, n) or (#names > 0 and table.concat(names, ", ") or "none")
+                end
+                local function try(picked)
+                    local t = text(picked)
+                    -- (The game's dropdown writes its value in GameFontHighlight, 12 pt; 32 px go to its edges and arrow.)
+                    local need = wow.textWidth(t, 12) + 32
+                    if need > d.maxWidth + EPS then
+                        cut[#cut + 1] = string.format("%s \"%s\": %.0f px in %d", tostring(d.title), t, need, d.maxWidth)
+                    end
+                end
+                for i = 1, n do try({ [i] = true }) end
+                if MULTI[d.title or ""] then
+                    -- Every choice of up to three, and all but one (more names make a longer text, unless the summary
+                    -- shortens them).
+                    for i = 1, n do for j = i + 1, n do
+                        try({ [i] = true, [j] = true })
+                        for k = j + 1, n do try({ [i] = true, [j] = true, [k] = true }) end
+                    end end
+                    for i = 1, n do
+                        local all = {}
+                        for k = 1, n do all[k] = k ~= i end
+                        try(all)
+                    end
+                    local all = {}
+                    for k = 1, n do all[k] = true end
+                    try(all)
+                end
+            end
+        end
+        assert.is_true(seenDrops >= 10, seenDrops .. " dropdowns")
+        local seen, out = {}, {}
+        for _, c in ipairs(cut) do if not seen[c] then seen[c] = true out[#out + 1] = c end end
+        assert.are.equal("", table.concat(out, "\n"))
     end)
 end)

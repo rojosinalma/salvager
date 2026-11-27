@@ -395,7 +395,7 @@ function Market.Rows()
         local cells = { GREY .. (search ~= "" and W.NoMatch(search) or Market.view == "profit" and "No sale with a known "
             .. "cost in this time." or "The addon has not seen a price for this yet.") .. "|r" }
         for i = 2, n do cells[i] = "" end
-        rows[1] = { cells = cells }
+        rows[1] = { cells = cells, span = true }
     end
     return rows, picked
 end

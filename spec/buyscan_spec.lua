@@ -376,7 +376,7 @@ describe("Buying during a scan", function()
         assert.are.equal(ns.UI.playButton, play)
         assert.are.equal(at[ns.UI.bags] + 1, at[ns.UI.gold])          -- then the bag space, then the gold
         assert.are.same({ "RIGHT", play, "LEFT", -12, 0 }, rawget(ns.UI.bags, "points")[1])
-        assert.are.same({ "RIGHT", ns.UI.bags, "LEFT", -10, 0 }, rawget(ns.UI.gold, "points")[1])
+        assert.are.same({ "RIGHT", ns.UI.bags, "LEFT", -8, 0 }, rawget(ns.UI.gold, "points")[1])
         local frame = bar:GetParent()
         assert.is_true(bar.used <= rawget(frame, "minWidth") - 20)
         env.money = 123456

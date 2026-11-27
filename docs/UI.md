@@ -30,7 +30,7 @@ reply must say so.
    red button, `Widgets.Button`). A tab or a dropdown is never a red button. Rows are made with `Widgets.Bar`.
 3. A row of tabs or subtabs holds tabs only: no filter, no action, no readout.
 4. A filter is in the filter row directly above the content it filters. Never next to a tab.
-5. A filter has a label at its left that says what it filters ("Period:"), and shows its value. "All" is the first
+5. A filter has a label at its left that says what it filters ("Period:"), and shows its value in full (a dropdown is as wide as its widest value). "All" is the first
    option. A filter that hides rows shows it and clears in one click. A check box has its label at its right.
 6. Filter row order: search, filters, then the table's actions at the right end.
    A search is one widget (`Widgets.Search`): a text box with an X at its right end that clears it in one click,
@@ -72,7 +72,7 @@ reply must say so.
 4. Rows the player acts on first come first (open before sold, newest before oldest).
 5. A marker that belongs to a row (your price, your break-even) is on that row, not on a line
    next to it.
-6. An empty table says why it is empty and what fills it.
+6. An empty table says why it is empty and what fills it, in full: the note spans the row, never cut.
 7. Money has coin icons, right-aligned. Every signed number (gold, a profit, a forecast, a gap from a forecast,
    a percent change) is green when it is good (a gain, more than planned) and red when it is bad, with its + or -
    (the user, 2026-11-26: grey forecasts read as "nothing there"). Grey is only for what is not known, rests on

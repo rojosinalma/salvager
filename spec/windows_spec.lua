@@ -108,7 +108,8 @@ describe("Salvager windows (0.3.137)", function()
         ns.UI.view = "materials"
         ns.UI.Refresh()
         assert.is_true(width < 1920, tostring(width))
-        assert.are.equal(math.max(940, math.ceil(ns.UI.tableNeed + 4 + 42)), width)
+        assert.are.equal(math.max(ns.UI.leastWidth, math.ceil(ns.UI.tableNeed + 4 + 42)), width)
+        assert.is_true(ns.UI.leastWidth >= 940)
         ns.UI.view = "deals"
         ns.UI.Refresh()
         ns.Widgets.TextWidth = realWidth

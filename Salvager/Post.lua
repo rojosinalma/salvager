@@ -162,7 +162,7 @@ function Post.MarketRows(market, price, breakEven)
     end
     marks(nil)
     if #market.rows == 0 then
-        rows[#rows + 1] = { cells = { GREY .. "Nobody else lists it.|r", "", "" } }
+        rows[#rows + 1] = { cells = { GREY .. "Nobody else lists it.|r", "", "" }, span = true }
     end
     return rows, c
 end

@@ -84,12 +84,14 @@ function Panel.Pieces()
     return out, batch
 end
 
---- Why the Disenchant button is off now, or nil when it casts on the next piece.
+--- Why the Disenchant button is off now, or nil when it casts on the next piece; and the same in a few words, for
+--- the footer (the full reason is in the button's tooltip; the long one was cut at the count, 0.3.151).
 function Panel.Reason(pieces)
-    if combat() then return "In combat: Disenchant waits until the fight ends." end
-    if state.casting then return "Disenchanting..." end
-    if state.loot then return "The loot window is open: take the loot first." end
-    if #pieces == 0 then return "Nothing left to disenchant: no gear of your purchases is in your bags." end
+    if combat() then return "In combat: Disenchant waits until the fight ends.", "In combat" end
+    if state.casting then return "Disenchanting...", "Disenchanting..." end
+    if state.loot then return "The loot window is open: take the loot first.", "Take the loot first" end
+    if #pieces == 0 then return "Nothing left to disenchant: no gear of your purchases is in your bags.",
+        "Nothing left to disenchant" end
     return nil
 end
 
@@ -124,7 +126,7 @@ end
 function Panel.Update()
     if not button then return end
     local pieces = Panel.Pieces()
-    local reason = Panel.Reason(pieces)
+    local reason, short = Panel.Reason(pieces)
     button.reason = reason
     if not combat() then
         Panel.Aim(not reason and pieces[1] or nil)
@@ -133,7 +135,7 @@ function Panel.Update()
     end
     if nextLabel then
         local p = pieces[1]
-        nextLabel:SetText(reason and (GREY .. reason .. "|r")
+        nextLabel:SetText(reason and (GREY .. short .. "|r")
             or ("Next: " .. (p.link or ns.GetItemInfo(p.itemID) or ("item " .. p.itemID))))
         leftLabel:SetText(#pieces .. " left")
     end
@@ -204,7 +206,7 @@ end
 local function note(text, n)
     local cells = { GREY .. text .. "|r" }
     for i = 2, n do cells[i] = "" end
-    return { cells = cells }
+    return { cells = cells, span = true }
 end
 
 --- The rows of the two tables: In your bags (the next piece first), and Results (the disenchants of the batch, the
@@ -221,8 +223,7 @@ function Panel.Rows()
         top[#top + 1] = row
     end
     if #top == 0 then
-        top[1] = note("No gear of your purchases in your bags. Take the \"Auction won\" mail: the panel opens by "
-            .. "itself when it lands.", #BAG_COLS)
+        top[1] = note("No gear you bought is in your bags. Take its \"Auction won\" mail: it shows here.", #BAG_COLS)
     end
     local bottom = {}
     local d = { n = 0, paid = 0, ev = 0, got = 0 }
@@ -234,7 +235,7 @@ function Panel.Rows()
         bottom[#bottom + 1] = row
     end
     if #bottom == 0 then
-        bottom[1] = note("No disenchant in this batch yet. Each disenchant shows here, the last one at the top.", #RESULT_COLS)
+        bottom[1] = note("No disenchant in this batch yet: each one shows here, the last one first.", #RESULT_COLS)
     else
         local cells = pick(LW.BatchTotals("Total: " .. d.n .. (d.n == 1 and " piece" or " pieces"),
             { paid = 0, ev = 0 }, d), RESULT_KEYS)
@@ -252,10 +253,28 @@ local function autoLootOff()
     return ok and on == false
 end
 
+local shown = { top = {}, bottom = {}, pieces = {} }   -- the rows on show (Panel.Refresh), for Panel.Layout
+
+--- Builds the rows again (the bags, the batch) and lays the panel out. After a bag change, a cast, a booked purchase.
 function Panel.Refresh()
-    local pieces = Panel.Update()
+    Panel.Update()
     if not f or not f:IsShown() then return end
-    local top, bottom = Panel.Rows()
+    local top, bottom, pieces = Panel.Rows()
+    shown.top, shown.bottom, shown.pieces = top, bottom, pieces
+    for _, x in ipairs({ { bags, BAG_COLS, top, "disenchant.bags" }, { results, RESULT_COLS, bottom, "disenchant.results" } }) do
+        x[1]:SetColumns(x[2], x[4])
+        x[1]:SetSource(#x[3], function(i) return x[3][i] end)
+    end
+    Panel.Layout()
+end
+
+--- Places the tables in the panel's size, from the rows on show: on every size change and while the bar is dragged.
+--- No rows are built here (0.3.151: each step of a drag read the bags and the whole batch again, and the corner and
+--- the bar lagged the pointer).
+function Panel.Layout()
+    if not f or not f:IsShown() then return end
+    local top, pieces = shown.top, shown.pieces
+    Panel.layouts = (Panel.layouts or 0) + 1   -- (the specs count them)
     -- From the top: the Auto Loot note (only while it is off), the bags table with its title, the results table.
     local y = TOP
     local off = autoLootOff()
@@ -266,24 +285,26 @@ function Panel.Refresh()
     -- The top table as tall as its rows, up to 45% of the room; the bar between the tables moves it (SDD 113).
     local hTop = f.saved.split and W.SplitHeight(room, f.saved.split)
         or math.max(W.TABLE_MIN, math.min(W.SplitHeight(room, 0.45), (#top + 1) * 22 + 6))
-    bagsTitle:ClearAllPoints()
-    bagsTitle:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -y)
     bagsTitle:SetText(GOLD .. "In your bags|r" .. GREY .. "  " .. #pieces .. (#pieces == 1 and " piece" or " pieces")
         .. ", the next one first|r")
-    bags:ClearAllPoints()
-    bags:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -(y + TITLE_H))
-    bags:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -(y + TITLE_H))
-    bags:SetHeight(hTop)
-    resultsTitle:ClearAllPoints()
-    resultsTitle:SetPoint("TOPLEFT", bags, "BOTTOMLEFT", 2, -6)
-    results:ClearAllPoints()
-    results:SetPoint("TOPLEFT", bags, "BOTTOMLEFT", 0, -6 - TITLE_H)
-    results:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, FOOT)
-    for _, x in ipairs({ { bags, BAG_COLS, top, "disenchant.bags" }, { results, RESULT_COLS, bottom, "disenchant.results" } }) do
-        x[1]:SetColumns(x[2], x[4])
-        x[1]:SetSource(#x[3], function(i) return x[3][i] end)
-        x[1]:Refresh()
+    -- (Anchored again only where the Auto Loot note came or went: the anchors follow the size by themselves.)
+    if Panel.anchoredY ~= y then
+        Panel.anchoredY = y
+        bagsTitle:ClearAllPoints()
+        bagsTitle:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -y)
+        bagsTitle:SetPoint("RIGHT", f, "RIGHT", -40, 0)   -- (cut before the "?", which is level with the title)
+        bags:ClearAllPoints()
+        bags:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -(y + TITLE_H))
+        bags:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -(y + TITLE_H))
+        resultsTitle:ClearAllPoints()
+        resultsTitle:SetPoint("TOPLEFT", bags, "BOTTOMLEFT", 2, -6)
+        results:ClearAllPoints()
+        results:SetPoint("TOPLEFT", bags, "BOTTOMLEFT", 0, -6 - TITLE_H)
+        results:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, FOOT)
     end
+    bags:SetHeight(hTop)
+    bags:Refresh()
+    results:Refresh()
     if W.FitTables(f, MIN_W, { bags, results }, "disenchant") then bags:Refresh() results:Refresh() end
 end
 
@@ -312,7 +333,6 @@ local function build()
     end)
     help:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -(TOP - 2))
     bagsTitle = W.Label(f, "", "GameFontNormal")
-    bagsTitle:SetPoint("RIGHT", help, "LEFT", -8, 0)
     bagsTitle:SetJustifyH("LEFT")
     bagsTitle:SetWordWrap(false)
     bagsTitle.canCut = true
@@ -323,7 +343,7 @@ local function build()
     for _, l in ipairs({ bags, results }) do l.onColumnsChanged = function() Panel.Refresh() end end
     Panel.splitBar = W.SplitBar(f, bags, function() return Panel.room or 0 end, function(part)
         f.saved.split = part
-        Panel.Refresh()
+        Panel.Layout()
     end)
     -- The footer: the next piece and how many are left at the left; Disenchant (the main action), then Close.
     local footer = W.Bar(f, "footer"):PlaceBottom(10, 12, 24)
@@ -346,7 +366,7 @@ local function build()
     Panel.bars = { footer = footer }   -- (the specs read them)
     Panel.bags, Panel.results, Panel.lootNote, Panel.nextLabel, Panel.leftLabel = bags, results, lootNote, nextLabel,
         leftLabel
-    f.onResize = Panel.Refresh
+    f.onResize = Panel.Layout
     f:HookScript("OnShow", Panel.Refresh)
 end
 

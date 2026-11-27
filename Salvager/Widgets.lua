@@ -643,7 +643,7 @@ function Widgets.Dropdown(parent, width, options, get, set, tooltip, title, summ
             label:SetWordWrap(false)
         end
     end
-    b.uiKind, b.maxWidth = "dropdown", width
+    b.uiKind, b.maxWidth, b.title, b.summary = "dropdown", width, title, summary   -- (the fit spec reads them)
     b:SetWidth(width)
     local list = CreateFrame("Frame", nil, b, BackdropTemplateMixin and "BackdropTemplate" or nil)
     list:SetFrameStrata("DIALOG")
@@ -689,6 +689,7 @@ function Widgets.Dropdown(parent, width, options, get, set, tooltip, title, summ
     end
     function b.SetOptions(_, opts, menuWidth)
         options = opts
+        b.options = opts
         list:SetSize(menuWidth or width, #options * 22 + 12)
         for i, o in ipairs(options) do
             local c = checks[i]
@@ -1127,14 +1128,23 @@ function Widgets.SplitBar(parent, upper, room, set)
         .. "the default.")
     bar:RegisterForClicks("RightButtonUp")
     bar:SetScript("OnClick", function() set(nil) end)
+    -- The border follows the pointer from where the bar was grabbed (the grab itself moves nothing: it jumped by the
+    -- pointer's place in the bar, 0.3.151), and only a move of the pointer lays the tables out again.
+    local function cursorY()
+        local _, y = GetCursorPosition()
+        if type(y) ~= "number" then return nil end
+        return y / (parent:GetEffectiveScale() or 1)
+    end
     bar:SetScript("OnMouseDown", function(self, button)
         if button ~= "LeftButton" then return end
+        local y0, h0, r0 = cursorY(), upper:GetHeight(), room()
+        if not (y0 and type(h0) == "number" and r0 > 0) then return end
+        local last
         self:SetScript("OnUpdate", function()
-            local top, r = upper:GetTop(), room()
-            local _, y = GetCursorPosition()
-            if type(top) ~= "number" or type(y) ~= "number" or r <= 0 then return end
-            y = y / (parent:GetEffectiveScale() or 1)
-            set(math.max(Widgets.SPLIT_LO, math.min(Widgets.SPLIT_HI, (top - y - 4) / r)))
+            local y, r = cursorY(), room()
+            if not y or r <= 0 or y == last then return end
+            last = y
+            set(math.max(Widgets.SPLIT_LO, math.min(Widgets.SPLIT_HI, (h0 + (y0 - y)) / r)))
         end)
     end)
     bar:SetScript("OnMouseUp", function(self) self:SetScript("OnUpdate", nil) end)

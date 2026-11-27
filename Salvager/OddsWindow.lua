@@ -38,6 +38,9 @@ end
 
 local function pct(x) return math.floor(x * 100 + 0.5) .. "%" end
 local function grey(t) return GREY .. t .. "|r" end
+-- A value with the Salvager in its color; grey ("none", "too few") stays grey.
+local SALV = ns.SALVAGER_COLOR
+local function salv(t) return (t == "" or t:find(GREY, 1, true) == 1) and t or (SALV .. t .. "|r") end
 
 -- One material's observed cells from a band of Ledger.Report: hits, rate, average quantity.
 local function seen(band, id)
@@ -97,7 +100,7 @@ function Odds.Bands()
                             -- Only the materials the Salvager adds to; the game has no table of it.
                             if r and r.bonus and not r.unexpected then
                                 local _, wRate, wQty = seen(mineWith, id)
-                                cells[7], cells[8] = wRate, wQty
+                                cells[7], cells[8] = salv(wRate), salv(wQty)
                             else
                                 cells[7], cells[8] = "", ""
                             end
@@ -148,13 +151,19 @@ local COLUMNS = {
     { "Result quantity", 70, "CENTER", help = { "Result quantity (your disenchants)", "How many came on average "
         .. "when a disenchant of yours gave it." } },
 }
+-- The Salvager's columns: after a line of their own, in the Salvager's color (titles and values; grey still says
+-- "too few" or "none"). Their keys stay the plain titles (the column chooser's saved choices).
+local COLOR_HELP = "In the Salvager's color (light blue): with the Salvager, observed only."
 local SALVAGER_COLUMNS = {
-    { "Rate with Salvager", 70, "CENTER", help = { "Rate with Salvager (your disenchants)", "How often it came in "
-        .. "your disenchants with the Arcane Salvager's bonus. Only dust and essence: the Salvager adds to them, not to "
-        .. "shards. The game has no table of it." } },
-    { "Quantity with Salvager", 80, "CENTER", help = { "Quantity with Salvager (your disenchants)", "How many came "
-        .. "on average with the Salvager's bonus, when a disenchant gave it." } },
+    { SALV .. "Rate with Salvager|r", 70, "CENTER", key = "Rate with Salvager", sep = true, help = {
+        "Rate with Salvager (your disenchants)", "How often it came in your disenchants with the Arcane Salvager's "
+        .. "bonus. Only dust and essence: the Salvager adds to them, not to shards. The game has no table of it.",
+        COLOR_HELP } },
+    { SALV .. "Quantity with Salvager|r", 80, "CENTER", key = "Quantity with Salvager", help = {
+        "Quantity with Salvager (your disenchants)", "How many came on average with the Salvager's bonus, when a "
+        .. "disenchant gave it.", COLOR_HELP } },
 }
+Odds.SALVAGER_COLUMNS = SALVAGER_COLUMNS
 function Odds.Columns()
     local cols = {}
     for i, c in ipairs(COLUMNS) do cols[i] = c end
@@ -316,14 +325,22 @@ function Odds.RefreshOut()
     if W.FitTables(oddsFrame, OUT_MIN_W, { oddsOut.stack }, "odds") then oddsOut.stack:Refresh() end
 end
 
+-- A size change: only the cards are laid out again in the new width (the cards are not built again).
+local function resizedOut()
+    if not (oddsFrame and oddsFrame:IsShown()) then return end
+    oddsOut.stack:Refresh()
+    if W.FitTables(oddsFrame, OUT_MIN_W, { oddsOut.stack }, "odds") then oddsOut.stack:Refresh() end
+end
+
 local function buildOut()
     oddsFrame = W.Window("SalvagerOddsFrame", "Salvager Odds", "odds", OUT_MIN_W, 520, OUT_MIN_W,
         OUT_CONTENT + W.TABLE_MIN + 14)
-    oddsFrame.onResize = Odds.RefreshOut
+    oddsFrame.onResize = resizedOut
     oddsOut = Odds.NewView(oddsFrame, W.Bar(oddsFrame, "filters"):Place(OUT_TOP, 12, 12),
         W.Bar(oddsFrame, "filters"):Place(OUT_TOP + W.BAR_H.filters + 2, 12, 12), true)
     oddsOut.stack:SetPoint("TOPLEFT", oddsFrame, "TOPLEFT", 12, -OUT_CONTENT)
     oddsOut.stack:SetPoint("BOTTOMRIGHT", oddsFrame, "BOTTOMRIGHT", -12, 14)
+    oddsOut.stack.widthOf = function() return (tonumber((oddsFrame:GetWidth())) or 0) - 24 end   -- (12 px each side)
     oddsFrame:HookScript("OnShow", Odds.Refresh)
     oddsFrame:HookScript("OnHide", function() if ns.Reports.Refresh then ns.Reports.Refresh() end end)
     Odds.out = oddsOut   -- (the specs read it)

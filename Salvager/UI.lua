@@ -160,7 +160,7 @@ local function statusText()
     if s.paused then table.insert(parts, 1, "|cffffd100Paused|r") end
     if #parts == 0 then parts[1] = ns.Queue.open and (s.auto and "Waiting for the next scan" or "Ready")
         or "Auction house closed" end
-    if ns.SalvagerForBuy() then parts[#parts + 1] = "|cff40ff40Arcane Salvager bonus included|r" end
+    if ns.SalvagerForBuy() then parts[#parts + 1] = ns.SALVAGER_COLOR .. "Arcane Salvager bonus included|r" end
     return table.concat(parts, "  ·  ")
 end
 
@@ -531,6 +531,7 @@ function UI.Refresh()
     if out then popOut:LockHighlight() else popOut:UnlockHighlight() end
     gold:SetText(ns.Money(GetMoney() or 0))
     bags:SetText(ns.LedgerWindow.BagText())
+    UI.fitReadouts()
     -- The view under the tabs: Gear has the settings block, Materials its filter row; the list starts under it.
     local materials = UI.view == "materials"
     P.settingsBox:SetShown(not materials)
@@ -551,8 +552,12 @@ function UI.Refresh()
         -- (The window's width around the list is fixed: the inset 10 px in from each side, the list 2 px in from its
         -- left and 20 px from its right. Read live, the list's width lags its new anchors for a frame after a tab
         -- change, and the window then took the whole screen: 0.3.143.)
+        -- (At least as wide as the footer's buttons and readouts at their widest, 10 + 24 px around them: at 940 the
+        -- gold overlapped Log, 0.3.151.)
+        local least = math.max(MIN_W, math.ceil((tonumber(rawget(P.footerBar, "used")) or 0) + 34))
+        UI.leastWidth = least
         local want = math.min(math.floor(W.ScreenWidth()),
-            math.max(MIN_W, UI.tableNeed and math.ceil(UI.tableNeed + 4 + LIST_MARGIN) or MIN_W))
+            math.max(least, UI.tableNeed and math.ceil(UI.tableNeed + 4 + LIST_MARGIN) or least))
         if want ~= f.minWidth then
             f.minWidth = want
             if f.SetResizeBounds then f:SetResizeBounds(want, MIN_H, want, UIParent:GetHeight())
@@ -829,29 +834,43 @@ local function build()
     end)
     P.footerBar:AddRight(buyTop, 80)
     P.footerBar:AddRight(playButton, 24, 12)
-    -- Left of Play: your gold and your bag space, readouts (not buttons, UI.md Controls 7 and 11), as wide as their
-    -- widest value so Play does not move while they change; the bag space as the Ledger's Purchases view shows it.
-    local function readout(sample, fallback)
-        local tw = W.TextWidth(sample)
-        return tw and math.ceil(tw) + 4 or fallback
+    -- Left of Play: the bag space, and your gold right next to it (one group: gold, bags, Play), readouts (not
+    -- buttons, UI.md Controls 7 and 11); the bag space as the Ledger's Purchases view shows it. Each box is as wide as
+    -- the text it shows (UI.fitReadouts, each refresh), measured by its own font string with its coin icons at their
+    -- real size; the footer keeps room for their widest values. (Until 0.3.151 the gold sat in a fixed box sized
+    -- from the small font's meter, which the client's coin icons outgrew: the gold was cut, far from the bags.)
+    local function measure(label, text)
+        local before = label:GetText()
+        label:SetWidth(0)
+        label:SetText(text)
+        local m = label.GetUnboundedStringWidth or label.GetStringWidth
+        local w = tonumber((m(label))) or W.TextWidth(text)
+        label:SetText(before)
+        return w
     end
-    local bagW = readout(ns.LedgerWindow.BAG_SAMPLE, 120)
     bags = W.Label(P.footerBar, "", "GameFontHighlightSmall")
     bags:SetJustifyH("RIGHT")
     bags:SetWordWrap(false)
-    bags:SetWidth(bagW)
     bags.uiKind = "readout"
+    local bagW = math.ceil(measure(bags, ns.LedgerWindow.BAG_SAMPLE) or 116) + 4
+    bags:SetWidth(bagW)
     P.footerBar:AddRight(bags, bagW, 12)
     W.HelpArea(P.footerBar, bags, "Bag space", ns.LedgerWindow.BAG_HELP)
-    -- (the most gold a character can hold: 2^31 - 1 copper, 214748g 36s 47c)
-    local goldW = readout(ns.Money(2147483647), 100)
     gold = W.Label(P.footerBar, "", "GameFontHighlightSmall")
     gold:SetJustifyH("RIGHT")
     gold:SetWordWrap(false)
-    gold:SetWidth(goldW)
     gold.uiKind = "readout"
-    P.footerBar:AddRight(gold, goldW, 10)
+    -- (the most gold a character can hold: 2^31 - 1 copper, 214748g 36s 47c)
+    local goldW = math.ceil(measure(gold, ns.Money(2147483647)) or 96) + 4
+    gold:SetWidth(goldW)
+    P.footerBar:AddRight(gold, goldW, 8)
     W.HelpArea(P.footerBar, gold, "Gold", "The gold you have now.")
+    function UI.fitReadouts()
+        for _, r in ipairs({ bags, gold }) do
+            local text = r:GetText() or ""
+            r:SetWidth(text == "" and 1 or math.ceil(measure(r, text) or 0) + 4)
+        end
+    end
     UI.gold, UI.bags = gold, bags   -- (the specs read them)
     buyTop:SetMotionScriptsWhileDisabled(true)
     buyTop:SetScript("OnEnter", function(self)
@@ -932,7 +951,7 @@ local function build()
     gearChoice:SetPoint("LEFT", gearLabel, "RIGHT", 6, 0)
     local qLabel = W.Label(box, "Quality", "GameFontHighlightSmall")
     qLabel:SetPoint("LEFT", gearChoice, "RIGHT", 14, 0)
-    qualityDrop = W.Dropdown(box, 160, {
+    qualityDrop = W.Dropdown(box, 180, {
         { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" }, { 4, "|cffa335eeEpic|r" },
     }, function(q) return ns.db.settings.qualities[q] end, function(q, on)
         local qs = ns.db.settings.qualities

@@ -117,7 +117,7 @@ local function populate(panel, standalone)
     dq:SetPoint("LEFT", dqL, "RIGHT", 12, 0)
     local dgL = W.Label(panel, "Gear", "GameFontHighlightSmall")
     dgL:SetPoint("LEFT", dq, "RIGHT", 20, 0)
-    local dg = W.Dropdown(panel, 130, { { 4, "Armor" }, { 2, "Weapons" } },
+    local dg = W.Dropdown(panel, 140, { { 4, "Armor" }, { 2, "Weapons" } },
         function(v) return dx.classes[v] and true or false end,
         function(v, on)
             if not on and lastOne(dx.classes, v) then return end

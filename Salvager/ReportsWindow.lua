@@ -56,7 +56,7 @@ local function pct(part, whole)
     local p = math.floor(part / whole * 100 + 0.5)
     return (p >= 0 and (GREEN .. "+") or RED) .. p .. "%|r"
 end
-local function note(text) return { cells = { GREY .. text .. "|r" } } end
+local function note(text) return { cells = { GREY .. text .. "|r" }, span = true } end
 local function count(n) return (n < FEW and GREY or "") .. n .. (n < FEW and "|r" or "") end
 local function lostCol(c)   -- money lost: red with its "-" (UI.md Tables 7)
     c = math.floor((c or 0) + 0.5)
@@ -789,6 +789,18 @@ function Reports.LayoutCompetition(top)
     show(comp.mats, COLUMNS.compMats, mats, "reports.compMats")
 end
 
+--- The view's key for the window's width (SDD 113): a new one gives the window that view's width.
+function Reports.FitKey() return Reports.SearchKey() or Reports.view .. "." .. Reports.goldTab end
+
+--- A size change. On the Odds tab only the cards are laid out again in the new width (0.3.151: each step of a drag
+--- built every card again, from every disenchant, and the cards chose one or two per row from the width before).
+function Reports.Resized()
+    if not f or not f:IsShown() then return end
+    if Reports.view ~= "odds" or ns.Odds.PoppedOut() then return Reports.Refresh() end
+    oddsView.stack:Refresh()
+    if W.FitTables(f, MIN_W, { oddsView.stack }, Reports.FitKey()) then oddsView.stack:Refresh() end
+end
+
 function Reports.Refresh()
     if not f or not f:IsShown() then return end
     -- While the odds are in their own window, the Reports show the Gold view in their place (not remembered).
@@ -859,7 +871,7 @@ function Reports.Refresh()
     end
     -- As wide as the table's columns need, up to the screen (SDD 107).
     local shown = (competition and { comp.summary, comp.names, comp.mats }) or (odds and { oddsView.stack }) or { list }
-    if W.FitTables(f, MIN_W, shown, Reports.SearchKey() or Reports.view .. "." .. Reports.goldTab) then
+    if W.FitTables(f, MIN_W, shown, Reports.FitKey()) then
         for _, l in ipairs(shown) do l:Refresh() end
     end
     if competition then comp.drop:Update() end
@@ -910,7 +922,7 @@ local function build()
     local searchLabel, searchArea = filterRow:AddFilter("Search", searchBox, SEARCH_W, SEARCH_HELP)
     searchParts = { searchLabel, searchArea, searchBox }
     Reports.searchBox = searchBox   -- (the specs type in it)
-    rangeDrop = W.Dropdown(filterRow, 170, Reports.PeriodOptions(), function(key) return key == Reports.range end,
+    rangeDrop = W.Dropdown(filterRow, 140, Reports.PeriodOptions(), function(key) return key == Reports.range end,
         function(key)
             Reports.range = key
             Reports.Save()
@@ -924,7 +936,7 @@ local function build()
             local s = picked()
             return s and Reports.SessionName(s) or "All time"
         end)
-    periodLabel = filterRow:AddFilter("Period", rangeDrop, 170, "The time the reports cover.")
+    periodLabel = filterRow:AddFilter("Period", rangeDrop, 140, "The time the reports cover.")
     local x0 = f.saved.filter
     if type(x0) == "table" then
         for _, k in ipairs({ "classes", "qualities", "bandsOff" }) do
@@ -964,7 +976,7 @@ local function build()
     add("Gear", W.Dropdown(filterRow, 100, { { 4, "Armor" }, { 2, "Weapons" } }, gearGet, gearSet,
         "Which gear types count.", "Gear", allOr), "Armor, weapons, or both.")
     local qGet, qSet = setOf(flt.qualities, false, { 2, 3, 4 })
-    add("Quality", W.Dropdown(filterRow, 120, { { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" },
+    add("Quality", W.Dropdown(filterRow, 140, { { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" },
         { 4, "|cffa335eeEpic|r" } }, qGet, qSet, "Which qualities count.", "Quality", allOr), "Uncommon, Rare, Epic.")
     local bandOptions, bandKeys = {}, {}
     for _, b in ipairs(ns.LevelBands()) do
@@ -972,10 +984,10 @@ local function build()
         bandKeys[#bandKeys + 1] = b.up
     end
     local bGet, bSet = setOf(flt.bandsOff, true, bandKeys)
-    add("Bands", W.Dropdown(filterRow, 110, bandOptions, bGet, bSet, "Which item level bands count.", "Bands",
+    add("Bands", W.Dropdown(filterRow, 120, bandOptions, bGet, bSet, "Which item level bands count.", "Bands",
         function(names, total)
             if #names == total then return "All" end
-            if #names > 3 then return #names .. " bands" end
+            if #names > 2 then return #names .. " bands" end   -- (three names did not fit, 0.3.151)
             return table.concat(names, ", ")
         end), "Item level bands: a band is a range of item levels that disenchants into the same materials.")
     local salvDrop
@@ -990,7 +1002,7 @@ local function build()
     -- The Competition view's filter after the period: one material, or all.
     if f.saved.compMaterial then Reports.compMaterial = f.saved.compMaterial end
     local MAT_HELP = "One material's undercuts, or all."
-    comp.drop = W.Dropdown(filterRow, 150, Reports.MaterialOptions(),
+    comp.drop = W.Dropdown(filterRow, 200, Reports.MaterialOptions(),
         function(key) return key == (Reports.compMaterial or "all") end,
         function(key)
             Reports.compMaterial = key ~= "all" and key or nil
@@ -1041,6 +1053,7 @@ local function build()
     oddsView = ns.Odds.NewView(f, W.Bar(f, "filters"), ODDS_TWO_ROWS and W.Bar(f, "filters") or nil)
     oddsView:SetShown(false)
     Reports.oddsView = oddsView
+    oddsView.stack.widthOf = function() return (tonumber((f:GetWidth())) or 0) - 24 end   -- (12 px each side)
     list = W.List(f, { rowHeight = 22 })
     Reports.list = list
     -- The Competition view's three tables (UI.md Tables 3: one inset per section), the last two with a title.
@@ -1062,7 +1075,7 @@ local function build()
         l.onColumnsChanged = function() Reports.Refresh() end
         l:Hide()
     end
-    f.onResize = Reports.Refresh
+    f.onResize = Reports.Resized
     f:HookScript("OnShow", Reports.Refresh)
 end
 

@@ -74,7 +74,7 @@ function Breakdown.Rows(sources, matID, label)
                 s.known > 0 and (signed(s.got - s.paid) .. GREY .. " (" .. s.known .. ")|r") or (GREY .. "not known|r") },
         }
     end
-    if #rows == 0 then rows[1] = { cells = { GREY .. "No disenchant gave this material yet.|r" } } end
+    if #rows == 0 then rows[1] = { cells = { GREY .. "No disenchant gave this material yet.|r" }, span = true } end
     return rows
 end
 

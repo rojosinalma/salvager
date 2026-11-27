@@ -308,8 +308,22 @@ describe("Salvager in a simulated client", function()
             end
         end
         assert.are.same({ 1, 1 }, { band.band.n, band.band.nWith })
-        assert.are.same({ "1", "100%", "1.00", "100%", "2.00" }, { dust.cells[4], dust.cells[5], dust.cells[6],
-            dust.cells[7], dust.cells[8] })
+        -- The Salvager's two columns: after a line of their own, titles and values in the Salvager's color (its help
+        -- says so); their chooser keys are the plain titles.
+        local SALV = ns.SALVAGER_COLOR
+        assert.are.same({ "1", "100%", "1.00", SALV .. "100%|r", SALV .. "2.00|r" }, { dust.cells[4], dust.cells[5],
+            dust.cells[6], dust.cells[7], dust.cells[8] })
+        local cols = ns.Odds.Columns()
+        assert.is_true(cols[7].sep)
+        assert.is_nil(cols[8].sep)
+        for i = 7, 8 do
+            assert.are.equal(1, cols[i][1]:find(SALV, 1, true))
+            assert.are.equal(cols[i].key, ns.Widgets.ColumnKey(cols[i]))
+            assert.is_nil(cols[i].key:find("|c", 1, true))
+            assert.is_truthy(cols[i].help[#cols[i].help]:find("with the Salvager, observed only", 1, true))
+        end
+        assert.are.same({ "Rate with Salvager", "Quantity with Salvager" }, { cols[7].key, cols[8].key })
+        assert.are_not.equal(SALV, "|cff40ff40")   -- (not the green of a gain, UI.md Controls 12)
         local shard
         for i, r in ipairs(both) do if r == dust then shard = both[i + 2] break end end
         assert.are.same({ "", "" }, { shard.cells[7], shard.cells[8] })

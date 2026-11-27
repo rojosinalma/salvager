@@ -550,6 +550,9 @@ end
 -- The gear qualities, by the game's names and colors.
 ns.QUALITY_NAME = { [2] = "Uncommon", [3] = "Rare", [4] = "Epic" }
 ns.QUALITY_COLOR = { [2] = "|cff1eff00", [3] = "|cff0070dd", [4] = "|cffa335ee" }
+-- The Arcane Salvager's own color (light blue, 12:1 on the dark panels): what comes with the Salvager's bonus. Not the
+-- green of a gain, not a quality's blue (UI.md Controls 12).
+ns.SALVAGER_COLOR = "|cff66e0ff"
 
 --- "Uncommon armor, item level 26-30", with the game's quality color.
 function ns.BandName(quality, classID, band)

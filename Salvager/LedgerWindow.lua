@@ -207,7 +207,7 @@ local function filterRow(bar, x, changed, salvager)
     add("Gear", 100, W.Dropdown(bar, 100, { { Data.CLASS_ARMOR, "Armor" }, { Data.CLASS_WEAPON, "Weapons" } }, gGet,
         gSet, "Which gear types show.", "Gear", allOr), "Armor, weapons, or both.")
     local qGet, qSet = setOf(x.qualities, false, { 2, 3, 4 })
-    add("Quality", 120, W.Dropdown(bar, 120, { { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" },
+    add("Quality", 140, W.Dropdown(bar, 140, { { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" },
         { 4, "|cffa335eeEpic|r" } }, qGet, qSet, "Which qualities show.", "Quality", allOr), "Uncommon, Rare, Epic.")
     local bandOptions, bandKeys = {}, {}
     for _, b in ipairs(ns.LevelBands()) do
@@ -215,10 +215,10 @@ local function filterRow(bar, x, changed, salvager)
         bandKeys[#bandKeys + 1] = b.up
     end
     local bGet, bSet = setOf(x.bandsOff, true, bandKeys)
-    add("Bands", 110, W.Dropdown(bar, 110, bandOptions, bGet, bSet, "Which item level bands show.", "Bands",
+    add("Bands", 120, W.Dropdown(bar, 120, bandOptions, bGet, bSet, "Which item level bands show.", "Bands",
         function(names, total)
             if #names == total then return "All" end
-            if #names > 3 then return #names .. " bands" end
+            if #names > 2 then return #names .. " bands" end   -- (three names did not fit, 0.3.151)
             return table.concat(names, ", ")
         end), "Item level bands: a band is a range of item levels that disenchants into the same materials.")
     if salvager then
@@ -245,7 +245,7 @@ end
 local function itemName(itemID, link)
     return link or (ns.GetItemInfo(itemID)) or ("item " .. tostring(itemID))
 end
-local function note(text) return { cells = { GREY .. text .. "|r" } } end
+local function note(text) return { cells = { GREY .. text .. "|r" }, span = true } end
 
 --- A signed number's color (UI.md Tables 7): green when it is good (more than planned, a gain), red when it is
 --- bad, none at 0; the sign says it too.
@@ -980,7 +980,8 @@ function Window.SetSalesSplit(part)
     Window.Refresh()
 end
 
-local WIDTH = 860   -- the ledger window's width; wider where the tables on show need it
+local WIDTH = 890   -- the ledger window's width; wider where the tables on show need it (860 until 0.3.151: the
+                    -- Purchases filter row needs 869 with its dropdowns as wide as their values)
 -- The least height (SDD 113): the rows above the tables (the tabs, a subtab row or a filter row), two titles, two
 -- tables of TABLE_MIN each and the footer, so the Sales and Accuracy tables never overlap.
 local MIN_H = TABS_TOP + W.BAR_H.tabs + 4 + W.BAR_H.filters + 4 + 44 + 2 * W.TABLE_MIN + FOOT
@@ -1306,7 +1307,7 @@ local function build()
         -- Show: one choice, All gear first (UI.md Controls 5).
         local SHOW_HELP = "All gear you bought, only what is disenchanted, or only what is not disenchanted yet."
         local show
-        show = W.Dropdown(fbar, 130, { { "all", "All gear" }, { "done", "Disenchanted" },
+        show = W.Dropdown(fbar, 150, { { "all", "All gear" }, { "done", "Disenchanted" },
             { "waiting", "Not disenchanted" } },
             function(key) return purchaseFilter().show == key end,
             function(key)
@@ -1314,7 +1315,7 @@ local function build()
                 show:Close()
                 changed()
             end, SHOW_HELP, "Show")
-        fbar:AddFilter("Show", show, 130, SHOW_HELP)
+        fbar:AddFilter("Show", show, 150, SHOW_HELP)
         purchaseControls[#purchaseControls + 1] = show
         fbar:Hide()
     end

@@ -203,7 +203,8 @@ end
 --- row = { cells = { text, ... }, itemID = icon and tooltip, link = tooltip, indent = pixels,
 ---         tip = { title, line, ... } (hover help of the row, instead of an item tooltip),
 ---         rule = "total" (a line over the amounts: a subtotal) or "final" (that line and a double one under),
----         bold = true (a total: its texts in the larger font, BOLD_FONT) }
+---         bold = true (a total: its texts in the larger font, BOLD_FONT),
+---         span = true (a note, an empty table's why: its first cell spans the row; it sets no column's width) }
 --- row.group = true marks the first row of a group (an item with its materials under it): it gets a band.
 --- opts = { rowHeight = 22, header = true, plain = false }
 --- Unless `plain`, the list is drawn as a sunken table: dark panel, title band, every second row shaded.
@@ -463,20 +464,21 @@ function Widgets.List(parent, opts)
         -- Column positions. The first column takes what is left of the width and shrinks with the
         -- window; a column that still does not fit is left out, from the right.
         local avail = (self:GetWidth() or 0) - BAR_W - 8 - ACTION_W
+        local spanW = avail - 4   -- (a note's width: the whole row up to the scroll bar)
         -- Every column but the first is as wide as its widest text (title or cell), and no wider; the first
         -- takes the room that is left. Where the client cannot measure text, the widths given are used.
         local titles, samples = {}, {}
         for i, col in ipairs(cols) do titles[i], samples[i] = col[1], col.sample end
         local need = opts.fit ~= false and Widgets.FitColumns(titles, self.count, function(r)
             local data = self.getRow(r)
-            if not data then return nil end
+            if not data or data.span then return nil end
             return data.cells, (data.indent or 0) + (data.itemID and ROW_H or 0) + (data.open ~= nil and TOGGLE + 4 or 0)
         end, nil, samples) or nil
         -- A total's texts are in the larger font: measured in the small one, then scaled.
         if need then
             for r = 1, math.min(self.count, 400) do
                 local data = self.getRow(r)
-                if data and data.bold then
+                if data and data.bold and not data.span then
                     for i = 1, #cols do
                         local w = Widgets.TextWidth(data.cells[i])
                         if i == 1 then w = w and (w + (data.indent or 0) / BOLD_SCALE) end
@@ -621,11 +623,13 @@ function Widgets.List(parent, opts)
                 end
                 for i = 1, MAX_COLS do
                     local fs, col = row.cells[i], cols[i]
-                    if col and fits[i] then
+                    if col and fits[i] and not (data.span and i > 1) then
                         local extra = i == 1 and textIndent or 0
                         fs:ClearAllPoints()
                         fs:SetPoint("LEFT", row, "LEFT", xs[i] + extra, 0)
-                        fs:SetWidth(math.max(10, ws[i] - extra))
+                        fs:SetWidth(math.max(10, (data.span and spanW or ws[i]) - extra))
+                        -- (A first cell may end with "...", its text on hover; a note must fit: the fit spec checks.)
+                        if i == 1 then fs.canCut = not data.span end
                         fs:SetJustifyH(col[3] or "LEFT")
                         fs:SetFontObject(data.bold and BOLD_FONT or "GameFontHighlightSmall")
                         fs:SetText(data.cells[i] or "")
@@ -659,7 +663,8 @@ end
 ---                                                         where both fit (else one), the same width each
 ---   stack:Refresh()
 --- stack.fitWidth: the width two cards per row need (one where there are no pairs); stack.leastWidth: one per row;
---- stack.perRow: the cards per row now.
+--- stack.perRow: the cards per row now. stack.widthOf = function() -> the stack's width, from its window's (a constant
+--- margin): read instead of the stack's own width, which lags its window's for a frame while the window is sized.
 function Widgets.CardList(parent)
     -- (The title band has two lines: the title, and under it the card's facts.)
     local TITLE_H, HEAD_H, ROW_H, GAP, BAR_W, STEP, MAX_COLS = 40, 18, 22, 8, 18, 22, 10
@@ -712,7 +717,10 @@ function Widgets.CardList(parent)
     local function columnX(i, extra)
         local cols, ws, shown = stack.columns, stack.widths, stack.colShown
         local x = 30
-        for c = 1, i - 1 do if shown[c] then x = x + ws[c] + (c == 1 and extra or 0) + 8 end end
+        for c = 1, i - 1 do
+            if shown[c] then x = x + ws[c] + (c == 1 and extra or 0) + 8 + (cols[c].sep and SEP or 0) end
+        end
+        -- (Every line before it moves it on, its own too: the columns after a line overlapped it by 4 px, 0.3.151.)
         if cols[i] and cols[i].sep then x = x + SEP end
         return x
     end
@@ -1005,7 +1013,8 @@ function Widgets.CardList(parent)
             self.colShown[i] = i == 1 or Widgets.ColumnShown(setId, Widgets.ColumnKey(col))
         end
         chooser:SetShown(setId ~= nil)
-        local room = tonumber((scroll:GetWidth())) or 0
+        local widthOf = rawget(self, "widthOf")
+        local room = widthOf and (tonumber((widthOf())) or 0) - BAR_W or tonumber((scroll:GetWidth())) or 0
         content:SetWidth(math.max(10, room))
         -- What one card's columns take (the icon, the gaps, the separators), and the widest indent.
         local used, indent, pairs_ = 30 + 8, 0, false
@@ -1016,8 +1025,9 @@ function Widgets.CardList(parent)
             indent = math.max(indent, data.indent or 0)
             if data.pair then pairs_ = true end
         end
-        -- Two cards per row where both fit next to each other (UI.md Tables 17), else one.
-        local perRow = (pairs_ and room - indent >= 2 * used + GAP) and 2 or 1
+        -- Two cards per row where both fit next to each other (UI.md Tables 17), else one. (1 px of slack: a window at
+        -- the width two need may be a fraction short of it at the game's UI scale, and then showed one per row.)
+        local perRow = (pairs_ and room - indent >= 2 * used + GAP - 1) and 2 or 1
         self.perRow = perRow
         local y, n, rowH, col = 0, 0, 0, 0
         for _, data in ipairs(self.data) do
