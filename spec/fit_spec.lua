@@ -517,8 +517,8 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
             for _, t in ipairs(tabsOf(win, "subtab")) do if t.text:find(text, 1, true) == 1 then t:Click() return end end
             error("no subtab " .. text)
         end
-        -- The main window: the Materials tab widens it, back on Gear it is as wide as Gear needs; a width the player
-        -- chose stays.
+        -- The main window: the Materials tab widens it, back on Gear it is as wide as Gear needs; its width is fixed
+        -- (0.3.149): a width set from outside goes back to the view's on the next refresh.
         ns.UI.Show()
         local main = _G.SalvagerFrame
         tab(main, "Gear")
@@ -529,9 +529,10 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
         tab(main, "Gear")
         assert.are.equal(gearW, main:GetWidth())
         main:SetWidth(gearW + 300)
-        tab(main, "Materials")
         tab(main, "Gear")
-        assert.are.equal(gearW + 300, main:GetWidth())
+        assert.are.equal(gearW, main:GetWidth())
+        local lo, _, hi = main:GetResizeBounds()
+        if lo then assert.are.same({ gearW, gearW }, { lo, hi }) end   -- only the height can be dragged
         -- The Ledger: Competition, then History (860, its smallest).
         ns.LedgerWindow.Show()
         local ledger = _G.SalvagerLedgerFrame

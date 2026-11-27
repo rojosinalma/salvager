@@ -1150,8 +1150,9 @@ flipping is out of scope for now.
        is a constant 24 px (`list.margin`), not read live (0.3.143).
     - c. Windows with more than a table: the Market (`f.fitGrows`: the view's width is its smallest, the chart takes
        more; a width the player chose stays, one that came only from another view's list shrinks back) and the main
-       window (its smallest width grows to its table, 108h; a width the fit set shrinks back on a tab change, one
-       the player chose stays).
+       window (0.3.149, the user: a fixed width, as wide as the view's table needs, at least 940 and at most the
+       screen; it follows the view on show, wider or narrower; only its height can be dragged; the saved width is
+       dropped).
     - d. Two or more tables in a view share the window's height, each at least `Widgets.TABLE_MIN` (66 px: the
        titles and two rows): the Ledger's Sales (Open and sold) and Accuracy, the Breakdown, the Disenchant panel, the
        Reports' Competition (per competitor and per material; the summary as tall as its rows up to 45%), Gear Details

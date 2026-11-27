@@ -545,34 +545,28 @@ function UI.Refresh()
     local data = SOURCES[UI.view]()
     UI.tableNeed = nil
     local w = layout(view, data)
-    -- As wide as the table's columns need, up to the screen (UI.md Tables 2): the smallest width grows to it.
-    if UI.tableNeed and not UI.fitting then
+    -- A fixed width (0.3.149, the user): as wide as the view's table needs, never narrower than MIN_W, up to the
+    -- screen; only the height can be changed. The width follows the view on show, wider or narrower.
+    if not UI.fitting then
         -- (The window's width around the list is fixed: the inset 10 px in from each side, the list 2 px in from its
         -- left and 20 px from its right. Read live, the list's width lags its new anchors for a frame after a tab
         -- change, and the window then took the whole screen: 0.3.143.)
-        local want = math.min(math.floor(W.ScreenWidth()), math.max(MIN_W, math.ceil(UI.tableNeed + 4 + LIST_MARGIN)))
+        local want = math.min(math.floor(W.ScreenWidth()),
+            math.max(MIN_W, UI.tableNeed and math.ceil(UI.tableNeed + 4 + LIST_MARGIN) or MIN_W))
         if want ~= f.minWidth then
             f.minWidth = want
-            if f.SetResizeBounds then f:SetResizeBounds(want, MIN_H, UIParent:GetWidth(), UIParent:GetHeight())
-            elseif f.SetMinResize then f:SetMinResize(want, MIN_H) end
+            if f.SetResizeBounds then f:SetResizeBounds(want, MIN_H, want, UIParent:GetHeight())
+            elseif f.SetMinResize then
+                f:SetMinResize(want, MIN_H)
+                if f.SetMaxResize then f:SetMaxResize(want, UIParent:GetHeight()) end
+            end
         end
-        if (tonumber((f:GetWidth())) or 0) < want then
+        if math.abs((tonumber((f:GetWidth())) or 0) - want) >= 1 then
             UI.fitting = true
             f:SetWidth(want)
             UI.fitting = false
-            UI.fitW = want
-            w = layout(view, data)
-        elseif UI.fitView ~= UI.view and UI.fitW and math.abs((tonumber((f:GetWidth())) or 0) - UI.fitW) < 1
-            and UI.fitW > want then
-            -- A width that only came from another tab's table shrinks back to this one's (SDD 113); a width the
-            -- player chose stays.
-            UI.fitting = true
-            f:SetWidth(want)
-            UI.fitting = false
-            UI.fitW = want
             w = layout(view, data)
         end
-        UI.fitView = UI.view
     end
     UI.offset = math.max(0, math.min(UI.offset, #data - ROWS))
     UI.UpdateScrollBar(#data)
@@ -722,7 +716,7 @@ local function build()
     f = CreateFrame("Frame", "SalvagerFrame", UIParent, "BasicFrameTemplateWithInset")
     f.minWidth = MIN_W
     local saved = ns.db.window
-    f:SetSize(math.max(MIN_W, saved.w or WIDTH), math.max(MIN_H, saved.h or HEIGHT))
+    f:SetSize(WIDTH, math.max(MIN_H, saved.h or HEIGHT))   -- (the width follows the view: Refresh)
     f:SetFrameStrata("HIGH")
     f:SetClampedToScreen(true)
     W.ClampToTitle(f)
@@ -1335,14 +1329,14 @@ local function build()
     footer2.canCut = true
     UI.footerLines = { footer, footer2 }
 
-    -- Resize from the bottom right corner.
+    -- Resize from the bottom right corner, the height only (the width is fixed: Refresh sets it and its bounds).
     f:SetResizable(true)
-    local maxW, maxH = UIParent:GetWidth(), UIParent:GetHeight()
+    local maxH = UIParent:GetHeight()
     if f.SetResizeBounds then
-        f:SetResizeBounds(MIN_W, MIN_H, maxW, maxH)
+        f:SetResizeBounds(MIN_W, MIN_H, MIN_W, maxH)
     elseif f.SetMinResize then
         f:SetMinResize(MIN_W, MIN_H)
-        if f.SetMaxResize then f:SetMaxResize(maxW, maxH) end
+        if f.SetMaxResize then f:SetMaxResize(MIN_W, maxH) end
     end
     local grip = CreateFrame("Button", nil, f)
     grip:SetSize(16, 16)
@@ -1356,7 +1350,7 @@ local function build()
     end)
     grip:SetScript("OnMouseUp", function()
         f:StopMovingOrSizing()
-        ns.db.window.w, ns.db.window.h = math.floor(f:GetWidth()), math.floor(f:GetHeight())
+        ns.db.window.w, ns.db.window.h = nil, math.floor(f:GetHeight())
         savePosition()
         UI.Refresh()
     end)
