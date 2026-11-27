@@ -672,6 +672,19 @@ function Scanner.Buying()
     return false
 end
 
+--- The mouse is on this deal's Buy (its row, Buy Top, Gear Details): if a browse came after its search (a click
+--- would get no answer, SDD 105), search its gear again now, ahead of every hold, so the click that comes is on a
+--- current search and buys at once. Once per gear and browse.
+local prefetched = {}   -- [keyString] = browseEpoch searched at
+function Scanner.Prefetch(d)
+    if not d or d.pending or d.wait or d.buyNow or not d.task or not ns.Queue.open then return end
+    if d.epoch == nil or d.epoch >= Scanner.browseEpoch then return end
+    if prefetched[d.keyString] == Scanner.browseEpoch then return end
+    prefetched[d.keyString] = Scanner.browseEpoch
+    ns.Log("searching %s again: the mouse is on its Buy and a browse came after its search", d.link or d.itemID)
+    Scanner.Recheck(d, true)
+end
+
 --- What talks to the auction house now, for the log line of a Buy click.
 local function inFlight()
     local parts = {}

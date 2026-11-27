@@ -101,6 +101,32 @@ describe("Buying during a scan", function()
         ns.Scanner.Stop()
     end)
 
+    it("searches a stale deal again as soon as the mouse is on Buy Top, so the click buys at once", function()
+        local deal = scanOnce()
+        env.ah.fullBrowse = false
+        ns.Scanner.Scan()
+        wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")           -- a browse after the deal's search: stale
+        assert.is_true(deal.epoch < ns.Scanner.browseEpoch)
+        ns.UI.Refresh()
+        ns.UI.buyTop.mouseOver = true                                  -- the mouse comes to Buy Top
+        wow.tick(ns, 0.2)
+        assert.is_truthy(logged("the mouse is on its Buy and a browse came after its search"))
+        local task = ns.Queue.current
+        assert.is_table(task)                                          -- its search goes first, past the hold
+        assert.are.equal(BOOTS, task.itemKey.itemID)
+        wow.fire(ns, "ITEM_SEARCH_RESULTS_UPDATED", KEY)
+        ns.UI.Refresh()
+        local fresh = ns.Scanner.deals[1]
+        assert.is_true(fresh.epoch >= ns.Scanner.browseEpoch)          -- current again
+        local bids = #env.ah.bids
+        click(ns.UI.buyTop)                                            -- one click: it buys
+        assert.are.equal(bids + 1, #env.ah.bids)
+        assert.are.equal(10, env.ah.bids[#env.ah.bids].id)
+        ns.UI.buyTop.mouseOver = nil
+        wow.fire(ns, "AUCTION_HOUSE_PURCHASE_COMPLETED", 10)
+        ns.Scanner.Stop()
+    end)
+
     it("waits for a busy auction house instead of losing the click, then offers Buy now", function()
         local deal = scanOnce()
         env.ah.ready = false                                           -- a request of a scan is in flight

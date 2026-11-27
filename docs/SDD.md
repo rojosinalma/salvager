@@ -852,6 +852,12 @@ flipping is out of scope for now.
     - h. Every click is logged: ready or busy, aiming or not, search current or stale, and what is in flight (the
        search sent and its age, the browse pass and its pages, the last browse's age, purchases on their way), so
        the next failure can be measured. Not yet measured in the game.
+    - i. Search on hover (0.3.140, the user: Buy Top cycled between "Buy now" and "Buy Top"): every click on a deal
+       whose search a browse made stale needed two clicks (the search, then "Buy now", which lapses after 20 s
+       back to the plain label). Now the deal under the mouse (its Gear row, Buy Top or the gear above it, Gear
+       Details) is searched again the moment the mouse is there (`Scanner.Prefetch`, once per gear and browse, first
+       in line past the hold), so the click that follows is on a current search and buys at once. "Buy now" stays
+       only for a click faster than that search, or one while the auction house is busy.
 
 107. **Purchases by day, the Current batch, windows that fit their columns** (0.3.136, the user, 2026-11-26).
     - a. All purchases: a "Show" dropdown on the filter row (after Bands) replaces the "Not disenchanted" check box:

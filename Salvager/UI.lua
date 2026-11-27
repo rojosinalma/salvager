@@ -1529,9 +1529,24 @@ UI.AimedAt = aimedAt
 
 -- While the mouse is there the scan sends nothing new, so the auction house is idle when the click comes; it goes on
 -- a second after the mouse left (`Scanner.Aim`).
+--- The deal a click would buy now: the Gear row under the mouse (a group: the auction its Buy buys), Buy Top's, or
+--- the one Gear Details shows. Its gear is searched again first when a browse made its search stale (Prefetch).
+local function dealUnderMouse()
+    if f and f:IsVisible() and UI.view == "deals" then
+        if buyTop:IsMouseOver() or (topItem:IsShown() and topItem:IsMouseOver()) then return (topDeal()) end
+        for _, row in ipairs(rows or {}) do
+            local item = row:IsShown() and row:IsMouseOver() and row.item
+            if item then return item.deal or (item.group and ns.Scanner.Cheapest(item.group.deals)) end
+        end
+    end
+    local g = ns.GearWindow and ns.GearWindow.Frame()
+    if g and g:IsVisible() and g:IsMouseOver() then return ns.GearWindow.deal end
+end
+
 local wasAimed = false
 ns.OnTick(function()
     local on = aimedAt()
     if on then ns.Scanner.Aim(true) elseif wasAimed then ns.Scanner.Aim(false) end
     wasAimed = on
+    if on then ns.Scanner.Prefetch(dealUnderMouse()) end
 end)
