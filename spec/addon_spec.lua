@@ -1188,18 +1188,13 @@ describe("Salvager scan safety", function()
         table.remove(ns.db.ledger.bought)
     end)
 
-    it("always sends a purchase at once, holds the scan while the mouse aims at Buy, and frees a dropped one", function()
-        ns.Scanner.Stop()
-        local bids = #env.ah.bids
-        local deal = { auctionID = 992, buyout = 100, itemID = 2001, value = 200, profit = 100 }
-        ns.Scanner.Aim(true)                                       -- the mouse is on a Buy button
-        assert.is_true(ns.Scanner.Buying())                        -- the scan sends nothing new
-        ns.Scanner.Aim(false)
-        assert.is_true(ns.Scanner.Buying())                        -- for a second more (the mouse may come back)
+    it("always sends a purchase at once, and frees a dropped one", function()
         wow.tick(ns, 1.1)
-        assert.is_false(ns.Scanner.Buying())
+        assert.is_false(ns.Scanner.Buying())                       -- nothing holds while nothing is bought
         ns.Scanner.Stop()                                          -- (what the second started is not part of this)
         ns.Queue.Clear()
+        local bids = #env.ah.bids
+        local deal = { auctionID = 992, buyout = 100, itemID = 2001, value = 200, profit = 100 }
         -- The auction house is busy with one request: the purchase waits for that one answer only, and
         -- goes out the moment the auction house is ready. No second click.
         env.ah.ready = false
@@ -1288,7 +1283,7 @@ describe("Salvager scan safety", function()
             onResult = function() got = "result" end, onFail = function() got = "fail" end })
         wow.tick(ns, 0.2)
         env.ah.hasResults[5001] = true          -- the game holds results, but no event was seen
-        wow.tick(ns, 2.2)
+        wow.tick(ns, 3.2)
         assert.are.equal("result", got)
         env.ah.hasResults[5001] = nil
     end)
@@ -1298,11 +1293,35 @@ describe("Salvager scan safety", function()
         local first = ns.Queue.items[1] and ns.Queue.items[1].commodity
         wow.tick(ns, 0.2)
         assert.are.equal(first, ns.Queue.current.commodity)
-        wow.tick(ns, 2.3)                       -- no answer in 2 s: the same search goes out again, next in line
+        wow.tick(ns, 2.3)
+        assert.are.equal(0, ns.Queue.lost)      -- 2 s is not "no answer" (late answers come, measured 2026-11-27)
+        wow.tick(ns, 1)                         -- no answer in 3 s: the same search goes out again, next in line
         assert.are.equal(first, ns.Queue.current.commodity)
         assert.are.equal(1, ns.Queue.current.tries)
         assert.are.equal(1, ns.Queue.lost)
         ns.Scanner.Stop()
+    end)
+
+    it("uses a late answer of a search that waits to be sent again, and does not send it again", function()
+        ns.Queue.Clear()
+        local key = { itemID = 5001, itemLevel = 28, itemSuffix = 0 }
+        local got
+        ns.Queue.Add({ itemKey = key, onResult = function() got = "result" end, onFail = function() got = "fail" end })
+        wow.tick(ns, 0.2)
+        local sent = #env.ah.sent
+        env.ah.ready = false                    -- the auction house is busy: the second try waits
+        wow.tick(ns, 3.0)
+        assert.is_nil(ns.Queue.current)
+        assert.is_true(ns.Queue.items[1].itemKey == key)
+        wow.fire(ns, "ITEM_SEARCH_RESULTS_UPDATED", key)   -- the first answer, late
+        assert.are.equal("result", got)
+        assert.are.equal(0, #ns.Queue.items)
+        env.ah.ready = true
+        wow.tick(ns, 2)
+        assert.are.equal(sent, #env.ah.sent)    -- not sent a second time
+        local late = false
+        for _, m in ipairs(ns.db.log) do if m:find("came late", 1, true) then late = true end end
+        assert.is_true(late)
     end)
 end)
 

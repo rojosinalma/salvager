@@ -8,7 +8,9 @@ local AH = C_AuctionHouse
 local Queue = { items = {}, current = nil, open = false, lost = 0, late = 0 }
 ns.Queue = Queue
 
-local REPLY_TIMEOUT = 2     -- seconds to wait for an answer (one normally comes in about 0.3 s)
+-- Seconds to wait for an answer (one normally comes in about 0.3 s; while purchases are answered it can take over
+-- 2 s: measured 2026-11-27 04:00-04:16, 14 of 20 searches sent again after 2 s were answered within 1 s of that).
+local REPLY_TIMEOUT = 3
 local MAX_TRIES = 2         -- times a search is sent again after no answer
 local STUCK_WAIT = 1.5      -- seconds of "not ready" before sending anyway
 local CACHE_GAP = 0.1       -- an answer this soon after a refresh is the client's cache
@@ -133,6 +135,7 @@ local function finish(ok)
             again and ", trying again" or ", skipped (another addon may be using the auction house)")
         if again then
             task.tries = (task.tries or 0) + 1
+            task.lateSince = task.sentAt   -- (its answer may still come before it is sent again: then it is used)
             -- Next in line: the item stays in its place among the best candidates.
             table.insert(Queue.items, 1, task)
             return
@@ -194,6 +197,7 @@ local function pump()
     if ns.Listings and ns.Listings.Cancelling() and not Queue.items[1].owned then return end
     if not ready() then return end
     Queue.current = table.remove(Queue.items, 1)
+    Queue.current.lateSince = nil
     local ok, err = pcall(send, Queue.current)
     if not ok then
         ns.Print("search failed: %s", tostring(err))
@@ -204,6 +208,16 @@ end
 
 local function answered(match)
     local task = Queue.current
+    -- The late answer of a search that waits to be sent again: use it, and do not send it again.
+    local first = Queue.items[1]
+    if not task and first and first.lateSince and match(first) then
+        Queue.current = table.remove(Queue.items, 1)
+        ns.Log("search: the answer for %s came late (%.1fs), not sent again", describe(first),
+            GetTime() - first.lateSince)
+        Queue.late = Queue.late + 1
+        finish(true)
+        return
+    end
     if not task or not match(task) then return end
     if task.refreshed and GetTime() - task.sentAt < CACHE_GAP then return end
     finish(true)

@@ -469,7 +469,7 @@ local function buyTopTooltip(self)
     local d, why, skipped = topDeal()
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
     GameTooltip:SetText("Buy Top", 1, 1, 1)
-    if d and d.wait then
+    if d and (d.wait or (not d.pending and ns.Scanner.BuyBusy())) then
         GameTooltip:AddLine(buyTop.reason or "", 1, 0.3, 0.3, true)
         GameTooltip:AddLine(d.link or dealName(d), 1, 1, 1)
     elseif d and d.buyNow then
@@ -496,6 +496,15 @@ local function updateBuyTop()
     local d, why = topDeal()
     UI.BuyLook(buyTop, d, "Buy Top")
     if not d then buyTop.reason = why buyTop:SetText("Buy Top") end
+    -- The auction house is busy (mostly: still answering the last purchase): a click now would lose the purchase,
+    -- so Buy Top says "..." with the reason until it is ready, and a click meanwhile does nothing (SDD 105j).
+    local busy = d and not d.pending and not d.wait and ns.Scanner.BuyBusy()
+    if busy then
+        buyTop:SetEnabled(false)
+        buyTop.reason = busy
+        buyTop:SetText("...")
+        buyTop:UnlockHighlight()
+    end
     -- Above the button: the gear the next click buys, as wide as its name, at most half the room left of the
     -- button (cut there, one line). Nothing when the button is off: the reason is in its tooltip.
     topItem.link = d and (d.link or ("item:" .. d.itemID)) or nil
@@ -804,7 +813,7 @@ local function build()
     -- spinner before it; the footer takes the room on the left.
     buyTop = W.Button(P.footerBar, "Buy Top", 80, function()
         local d = topDeal()
-        if d and not d.wait then ns.Scanner.Buy(d) end
+        if d and not d.wait then ns.Scanner.Buy(d, true) end
     end)
     P.footerBar:AddRight(buyTop, 80)
     P.footerBar:AddRight(playButton, 24, 12)
@@ -1240,7 +1249,7 @@ local function build()
             local deal = item.deal or (item.group and ns.Scanner.Cheapest(item.group.deals))
             if deal then ns.Scanner.Buy(deal) end
         end)
-        -- (The mouse over the Gear list holds the scan: `aimedAt`.) Off, the reason shows on hover.
+        -- Off, the reason shows on hover.
         row.buy:SetMotionScriptsWhileDisabled(true)
         row.buy:HookScript("OnEnter", function(self)
             if not self.reason then return end
@@ -1514,21 +1523,8 @@ ns.On("AUCTION_HOUSE_CLOSED", function() UI.Refresh() end)
 ns.On("BAG_UPDATE_DELAYED", function() UI.RequestRefresh() end)
 ns.On("PLAYER_MONEY", function() UI.RequestRefresh() end)
 
---- Is the mouse where a Buy click is likely (SDD 105): over the Gear list (any of its rows and their Buy), over
---- Buy Top or the gear above it, or over Gear Details?
-local function aimedAt()
-    if f and f:IsVisible() and UI.view == "deals" then
-        if P.inset:IsMouseOver() or buyTop:IsMouseOver() or (topItem:IsShown() and topItem:IsMouseOver()) then
-            return true
-        end
-    end
-    local g = ns.GearWindow and ns.GearWindow.Frame()
-    return (g and g:IsVisible() and g:IsMouseOver()) and true or false
-end
-UI.AimedAt = aimedAt
-
--- While the mouse is there the scan sends nothing new, so the auction house is idle when the click comes; it goes on
--- a second after the mouse left (`Scanner.Aim`).
+-- Where the mouse is holds nothing: the scan goes on under it (0.3.142, the user; SDD 105b). Only the search of the
+-- deal under the mouse goes ahead when a browse made it stale (`Scanner.Prefetch`), so the click that comes buys.
 --- The deal a click would buy now: the Gear row under the mouse (a group: the auction its Buy buys), Buy Top's, or
 --- the one Gear Details shows. Its gear is searched again first when a browse made its search stale (Prefetch).
 local function dealUnderMouse()
@@ -1543,10 +1539,12 @@ local function dealUnderMouse()
     if g and g:IsVisible() and g:IsMouseOver() then return ns.GearWindow.deal end
 end
 
-local wasAimed = false
+local wasBusy = false
 ns.OnTick(function()
-    local on = aimedAt()
-    if on then ns.Scanner.Aim(true) elseif wasAimed then ns.Scanner.Aim(false) end
-    wasAimed = on
-    if on then ns.Scanner.Prefetch(dealUnderMouse()) end
+    -- (Anywhere over a row, Buy Top or Gear Details: the search goes ahead of the click, past every hold.)
+    ns.Scanner.Prefetch(dealUnderMouse())
+    -- Buy Top follows the auction house: "..." while it is busy, back the moment it is ready.
+    local busy = ns.Scanner.BuyBusy() ~= nil
+    if busy ~= wasBusy and buyTop and f and f:IsVisible() then updateBuyTop() end
+    wasBusy = busy
 end)

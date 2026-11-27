@@ -678,6 +678,19 @@ function M.fire(ns, event, ...)
 end
 
 --- Advances the clock and runs the OnUpdate ticker and due timers.
+--- A purchase on its way (the scan and every other request wait for it, SDD 105), sent with the auction house
+--- ready. Returns a function that ends it: the auction house's error answer ("could not buy").
+function M.buying(ns, auctionID)
+    local env = M.env
+    local d = { auctionID = auctionID or 990, buyout = 1, itemID = 2001, value = 2, profit = 1 }
+    local ready = env.ah.ready
+    env.ah.ready = true
+    ns.Scanner.Buy(d)
+    env.ah.ready = ready
+    assert(d.pending, "the purchase did not go out")
+    return function() M.fire(ns, "AUCTION_HOUSE_SHOW_ERROR") end
+end
+
 function M.tick(ns, seconds)
     local env = M.env
     local step = 0.1

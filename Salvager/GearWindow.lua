@@ -310,7 +310,7 @@ local function build()
         end
         GameTooltip:Show()
     end)
-    -- (The mouse anywhere over this window holds the scan: UI's `aimedAt`.)
+    -- (The mouse over this window searches a stale deal again, UI's `dealUnderMouse`; it holds no scan.)
     buyButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
     footer:AddRight(buyButton, 80)
     Gear.footer, Gear.parts, Gear.buyButton, Gear.nameArea = footer, parts, buyButton, nameArea   -- (the specs read them)

@@ -8,10 +8,11 @@ reply must say so.
 
 1. An action the player clicks happens. It is never refused with "wait" or "try again".
    If it cannot run now, it runs as soon as it can, by itself, ahead of background work.
-2. Buying comes before everything: a Buy click stops scans and searches at once, and the mouse over the Gear list,
-   Buy Top or Gear Details holds them, so the auction house is idle when the click comes. When the game cannot take
-   the purchase in that click (the auction house is busy, or a browse made its search stale), nothing is sent into
-   the void: its Buy says "Buy now", lit, with a chat line, the moment it can, and that click buys. Never a silent wait.
+2. Buying comes before everything: a Buy click stops scans and searches at once, until its purchase is answered.
+   Where the mouse is never stops a scan. When the game cannot take the purchase in that click (the auction house
+   is busy, or a browse made its search stale), nothing is sent into the void: a row's Buy says "Buy now", lit, with
+   a chat line, the moment it can, and that click buys. Never a silent wait. Buy Top, made for fast clicks, says
+   "..." with the reason while the auction house is busy and is back the moment it is ready.
 3. A control that cannot do anything is disabled, with the reason in its tooltip. It does not
    print an error when clicked.
 4. Background work (scans, refreshes) never removes, moves or empties what the player is looking

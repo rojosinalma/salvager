@@ -154,20 +154,19 @@ describe("Salvager windows (0.3.137)", function()
         answer(10)
         assert.is_nil(ns.Listings.checking)
         assert.are.equal(70, ns.Listings.Undercut(ns.db.listings.rows[1]))
-        local said = #env.chat
+        local said
         ns.LedgerWindow.Refresh()
         assert.is_true(auto.running)
         -- Not again before the interval.
         local sent = #env.ah.sent
-        wow.tick(ns, ns.Listings.AUTO_INTERVAL - 5)
+        wow.tick(ns, ns.Listings.AUTO_INTERVAL - 2)
         assert.is_nil(ns.Listings.checking)
-        -- Not while the mouse is where Buy is clicked.
-        for _ = 1, 100 do                                        -- (the window says it again every tick)
-            ns.Scanner.Aim(true)
-            wow.tick(ns, 0.1)
-        end
+        -- Not while a purchase is on its way.
+        local done = wow.buying(ns)
+        wow.tick(ns, 2.5)                                        -- past the interval
         assert.is_nil(ns.Listings.checking)
-        ns.Scanner.Aim(false)
+        done()
+        said = #env.chat                                         -- (its answer: "could not buy")
         wow.tick(ns, 1.2)
         assert.is_table(ns.Listings.checking)
         answer(10)

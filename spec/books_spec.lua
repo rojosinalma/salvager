@@ -75,15 +75,15 @@ describe("Posting in a simulated client", function()
 
     it("switches Post off while a purchase is on its way, with the reason, and on again after", function()
         d:Show()
-        ns.Scanner.Aim(true)                                 -- the mouse is on a Buy button
+        local done = wow.buying(ns)                          -- a purchase on its way
         wow.tick(ns, 0.2)
         assert.is_false(d.post:IsEnabled())
         assert.is_truthy(rawget(d.post, "reason"):find("purchase", 1, true))
         local ok, why = ns.Post.Send(DUST, 5, 429, 2)
         assert.is_false(ok)
         assert.is_truthy(why:find("purchase", 1, true))
-        ns.Scanner.Aim(false)
-        wow.tick(ns, 1.2)                                    -- (the hold ends a second after the mouse left)
+        done()                                               -- its answer
+        wow.tick(ns, 1.2)                                    -- (and the second after a click)
         assert.is_true(d.post:IsEnabled())
         assert.is_nil(rawget(d.post, "reason"))
     end)
@@ -146,12 +146,12 @@ describe("Your auctions in a simulated client", function()
     end)
 
     it("does not cancel while a purchase is on its way, and says nothing", function()
+        local done = wow.buying(ns)
         local before = #env.chat
-        ns.Scanner.Aim(true)
         assert.is_false(ns.Listings.CancelNext())
         assert.are.equal(before, #env.chat)
         assert.are.equal(0, #env.ah.cancels)
-        ns.Scanner.Aim(false)
+        done()
         wow.tick(ns, 1.1)
     end)
 
