@@ -437,7 +437,8 @@ flipping is out of scope for now.
     session; that time has an end too: `Ledger.Profits(state, from, keep, to)`). The rows from the top: the view tabs,
     the Gold or Gear subtabs, the filter row (Period, then Gear, Quality, Bands, Salvager on Gear), the
     table. The line that repeated the period and the view's help left: the period shows in its filter and in the
-    statement's first line, the help is on the tab. Width at least 890 (was 760), so the longest filter row fits.
+    statement's first line, the help is on the tab. Width at least 890 (was 760), so the longest filter row fits
+    (1050 since 0.3.145, with the search, 111).
     Views (tabs, 0.3.129: Gold, Gear, Materials; Competition since 0.3.138, 109): Gold (72, 97);
     Gear (tab named Profit until 0.3.127, the user), with two subtabs (0.3.129, the user; the Items tab is gone):
     Bands first, the profit by quality and gear type with its bands under it (`Ledger.Profits`: disenchants with a known
@@ -744,7 +745,8 @@ flipping is out of scope for now.
        (heading, the Scan, Buy and Levels rows; Scan once: Gear, Materials, Both from 0.3.129), then the list. Materials: a filter row ("Only materials with my data"; Scan owned and
        Pop out at its right end), then the list. Footer: two lines of text (the last scan and the closest item at
        the left; the status (the gold until 0.3.133) at the right of line 1, the next item to buy at the right of line 2), and
-       a row of buttons: Auction house, Ledger, Reports, Market, Limits, Log, Options at the left; Play, Stop and
+       a row of buttons: Auction house, Ledger, Reports, Market, Limits, Log, Options at the left (Disenchant after Market
+       since 0.3.146, 112); Play, Stop and
        Buy Top at the right (Play and Stop one toggle since 0.3.137, 108b). 0.3.134 (the user): left of Play, two readouts (text, not buttons): the gold (coins,
        moved from the footer's upper line) and the bag space (`LedgerWindow.BagText`, the Purchases view's, with its
        help), each as wide as its widest value, live on `PLAYER_MONEY` and `BAG_UPDATE_DELAYED`. The smallest width
@@ -919,7 +921,7 @@ flipping is out of scope for now.
     - d. Every window with tables is as wide as its shown columns need, up to the screen width
        (`Widgets.FitTables`, `Widgets.ScreenWidth`): `list.fitWidth` is the narrowest width that leaves no column
        out (the first column with room for its text up to 90 px; a longer first text ends with "..."). Reports
-       (at least 890), Gear Details (at least 620), Market (its list at least 370, the window 900 plus what the list
+       (at least 890; 1050 since 0.3.145, 111), Gear Details (at least 620), Market (its list at least 370, the window 900 plus what the list
        grew), Materials (as wide as its columns, 84) and the Ledger (91) widen to it. `f.FitWidth` of
        `Widgets.Window`: a window sized only up and down gets exactly the width; a window sized both ways gets it
        as its smallest width (bounds first) and widens when narrower; a fixed one gets the width, and fits again
@@ -946,7 +948,7 @@ flipping is out of scope for now.
     - d. Minimize (the title bar, left of the close button: the game's "RedButton-Condense" art where the client has
        the atlas, else a "_" button; tooltip "Minimize"): the main window hides alone (`UI.Minimize`), the other
        windows stay, and the **mini panel** shows (`MiniPanel.lua`, "Salvager", fixed size, place remembered): one
-       footer row with Salvager, Ledger, Reports, Market, Log. Each opens or closes its window with owner "panel",
+       footer row with Salvager, Ledger, Reports, Market, Log (Disenchant before Log since 0.3.146, 112). Each opens or closes its window with owner "panel",
        at the auction house or away from it; Salvager opens the main window (at the auction house its full view,
        elsewhere what it can show: the last lists, the settings, scans off with the reason). The mini panel closes
        with its own X and when the main window shows (the main window leads again); Escape leaves it (it is a
@@ -1050,10 +1052,89 @@ flipping is out of scope for now.
     - e. Day boundaries (the Purchases days, the Market's Profit days, the log's day lines) follow the clock. The
        heading states of the Purchases days are saved per day of that clock.
 
+111. **One material order, and a search on every filter row of Reports and Market** (0.3.145, the user, 2026-11-27).
+    - a. Every list of materials is in the Materials window's order: dust, then essences, then shards, each from the
+       lowest level up (the order of `Data.MATERIALS`). One rule for all: `Data.MaterialRank(id)` and
+       `Data.SortMaterials(list, idOf)` (pure). It orders the Market's Materials, Time of day and Essences views
+       (with no column clicked: they started by Change, the biggest rise first; a click on the Material or Essence
+       title sorts by that order; a sort saved before is dropped once, `windows.market.materialOrder`), the Reports'
+       Materials tab (was: by sale money), the Competition tab's per-material table and the materials under a
+       competitor (were: the most undercut first), and the Ledger's Accuracy materials (were: by value). The
+       Competition's "Materials" cell (the three most undercut, as text) and "Material most undercut" stay by count.
+    - b. A search box (`Widgets.Search`, UI.md Controls 6) is the first control of the filter row: a text box with an
+       X at its right end (shown while it holds text) that clears it; Escape clears it too; Enter leaves it. Live (each
+       letter), any case (`Widgets.Matches`: color, link and icon codes left out). An empty result says
+       "Nothing matches "<text>". Clear the search (the X in the box, or Escape) to see every row."
+       (`Widgets.NoMatch`). The Ledger's Purchases search uses the same widget (it had no X and Escape only left it).
+    - c. Reports, per view (`windows.reports.search[key]`): All gold changes (what changed the gold), Gear Bands and
+       History (the gear's name: the bands add up only the matching disenchants), Materials (the material's name),
+       Competition (the competitor table by name, the material table by material name; the statement on top stays
+       whole; the competitor totals are those of the rows shown). The Gold statement has none: a statement reads as
+       a whole. Where a view has none, the Period is first. The filter row of Gear (Search, Period, Gear, Quality,
+       Bands, Salvager) needs 1030 px: the Reports' smallest width is 1050 (was 890).
+    - d. Market, per view (`windows.market.search[view]`): Materials and Time of day (the material's name),
+       Disenchant value (the band's name, "Uncommon Armor 26-30"), Essences (either essence's name). Profit has none:
+       its rows are days, which the Time filter picks.
+
+112. **The Disenchant panel** (0.3.146, the user, 2026-11-27, after TSM's Destroy window; `DisenchantWindow.lua`,
+    `Bindings.xml`, "Salvager Disenchant"). The Current batch (107c) in a small window that disenchants it.
+    - a. Facts from `Gethe/wow-ui-source`, branch `forever` (read 2026-11-27): `SecureActionButtonTemplate`
+       (`Blizzard_FrameXML/SecureTemplates.xml`) has only `OnClick = SecureActionButton_OnClick`. Type "spell" calls
+       `CastSpellByID(spell)` for a number (`CastSpellByName` for a name); after any action, when
+       `SpellCanTargetItem()` or `SpellCanTargetItemID()`, the attributes `target-bag` and `target-slot` give the
+       target: `C_Container.UseContainerItem(bag, slot)` (`target-slot` alone: `UseInventoryItem`; `target-item`:
+       `SpellTargetItem`). So type "spell", spell 13262 (`Data.DISENCHANT_SPELL`, the same ID the booking of
+       disenchants reads from `UNIT_SPELLCAST_SENT`), target-bag, target-slot: no macro text (no spell name, which
+       is localised). The click fires on key down or up after the cvar `ActionButtonUseKeyDown`: the button
+       registers "AnyUp" and "AnyDown", so a mouse click and a key both cast once. `UIPanelButtonTemplate` adds
+       only OnEnter and OnLeave, so "SecureActionButtonTemplate,UIPanelButtonTemplate" keeps the red button's look
+       and the secure click. `C_Container` (`ContainerDocumentation.lua`): `GetContainerNumSlots(bag)`,
+       `GetContainerItemID(bag, slot)`, `GetContainerItemLink(bag, slot)`, `GetContainerItemInfo` (`isLocked`,
+       `itemID`, `hyperlink`), `UseContainerItem`. Auto Loot: the cvar `autoLootDefault` (`GetCVarBool`);
+       `C_AutoLoot` has only `SetUseAutoLootToggle`. Not measured on Forever yet: the cast itself (whether the
+       client asks for a target in between); the user checks it in the game.
+    - b. In your bags (the top table): the pieces of `Ledger.Batch`'s `waiting` that are in the bags (bags 0 to
+       `NUM_BAG_SLOTS`: not the bank, not worn), each slot whose item is a purchase of the batch, at most as many
+       per gear as the batch has, armor or weapons of Uncommon to Epic, not `ns.NoDisenchant`. In bag order: the
+       first row (with the highlight band) is the next piece. Each piece is paired with the batch's purchases of
+       that gear, the oldest first (the one `Ledger.TakePurchase` books). Columns (the Current batch's, one name
+       and one help): Gear (icon, name, the item's tooltip), Item level, Paid, Expected value, Expected profit.
+       Gear you did not buy with Salvager is never in it, so a repeated click never aims at your own gear (a copy
+       of the same item as a purchase counts as that purchase).
+    - c. Results (the bottom table): `Ledger.Batch`'s `done` (disenchants of the batch whose materials are not all
+       posted), the last one at the top: Gear, Paid, Materials got, Disenchant value (DV), Profit so far, DV/EV %;
+       the totals last (pieces, Paid, DV, Profit so far, DV/EV %). Both tables come from the Ledger's row builders
+       (`LedgerWindow.BatchWaitingRow`, `BatchDoneRow`, `BatchTotals`), so the panel and the Current batch agree.
+    - d. Footer: the next piece's name ("Next: ...", cut at the count) and "N left" at the left; Disenchant (the
+       main action, with the next piece's icon), then Close. Disenchant is the secure button
+       `SalvagerDisenchantButton`: after each bag change (`BAG_UPDATE_DELAYED`), a booked purchase
+       (`SALVAGER_LEDGER`), a cast and the loot window, it aims at the next piece (out of combat only). Off, with
+       the reason in its tooltip and in the footer: while Disenchant casts (`UNIT_SPELLCAST_START` to its STOP,
+       FAILED, INTERRUPTED or SUCCEEDED), while the loot window is open (`LOOT_OPENED` to `LOOT_CLOSED`), with
+       nothing left (no aim at all), in combat. Before each click (`PreClick`) it checks that the slot still holds
+       the piece; else it aims again. Whether the character knows Disenchant is not checked (the game says it).
+    - e. Combat: the client locks a secure button and every window that holds one. At `PLAYER_REGEN_DISABLED` (just
+       before the lock) the button lets go of its aim and turns off, and the panel closes; at `PLAYER_REGEN_ENABLED`
+       it aims again and the panel comes back if it was open (or asked for in the fight).
+    - f. Opens by itself: after a bag change or a booked purchase, when a gear has more pieces of the batch in the
+       bags than last seen (`SalvagerDB.disenchantSeen`, per gear; the counts follow the bags), not in combat (then
+       when the fight ends), owner "panel" (it stays when the main window closes). Closed, it stays closed until
+       new pieces come. The first check waits for the first bag update after a load, so a /reload does not reopen
+       it. Also: the main window's footer (Disenchant, after Market), the mini panel (before Log), `/salv
+       disenchant`.
+    - g. A key: `Bindings.xml`, `CLICK SalvagerDisenchantButton:LeftButton` (Key Bindings, AddOns, Salvager,
+       "Disenchant next piece"; a mouse wheel notch can be bound too); each press is one cast. The button exists
+       from the load (built hidden), so the key works with the panel closed. The help ("?") and the button's tooltip
+       say it.
+    - h. Auto Loot off: a grey one-line note at the top says the loot window will need a click (the setting is not
+       changed).
+    - i. Size: 640 × 440 by default, at least 520 × 320, place and size remembered; as wide as its tables need
+       (`Widgets.FitTables`). The top table is as tall as its rows up to 45% of the room.
+
 ## Data
 
 `SalvagerBackup` (account-wide): `list` of ledger copies (88). `SalvagerDB` (account-wide): `settings` (`timeZone`, 110), `prices`, `ledger` (`purchases`, `stock`, `pools`, `disenchants`, `sales`),
-`money` (gold journal), `sessions` (97), `competition` (109), `quality` and `ilvl` (learned item data), `auraSeen` and `auraSnapshots` (to learn the Salvager's aura spell ID; matched by name until then).
+`money` (gold journal), `sessions` (97), `competition` (109), `disenchantSeen` (112), `quality` and `ilvl` (learned item data), `auraSeen` and `auraSnapshots` (to learn the Salvager's aura spell ID; matched by name until then).
 
 ## Open
 

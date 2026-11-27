@@ -1396,7 +1396,7 @@ describe("Salvager deals list", function()
     it("closes a drop-down when you click somewhere else", function()
         local drop
         for _, fr in ipairs(env.frames) do
-            if rawget(fr, "checks") and not drop then drop = fr end
+            if rawget(fr, "checks") and rawget(fr, "list") and not drop then drop = fr end
         end
         local list = drop.list
         list:Hide()
@@ -2001,8 +2001,8 @@ describe("Salvager listings", function()
         assert.are.equal(500, ns.History.At(ns.db.history, DUST, time() - 100))
         -- Sorting by a column, and every time range.
         ns.Market.view = "material"
-        local byChange = ns.Market.Rows()                          -- with no click: by change, the biggest rise first
-        assert.is_true(byChange[1].sort[3] >= byChange[#byChange].sort[3])
+        local byOrder = ns.Market.Rows()                           -- with no click: the materials' order (Data.MaterialRank)
+        for i = 2, #byOrder do assert.is_true(byOrder[i - 1].sort[1] < byOrder[i].sort[1]) end
         ns.Market.sort.material = { col = 2, desc = true }
         local sorted = ns.Market.Rows()
         assert.is_true(sorted[1].sort[2] >= sorted[#sorted].sort[2])

@@ -33,6 +33,9 @@ reply must say so.
 5. A filter has a label at its left that says what it filters ("Period:"), and shows its value. "All" is the first
    option. A filter that hides rows shows it and clears in one click. A check box has its label at its right.
 6. Filter row order: search, filters, then the table's actions at the right end.
+   A search is one widget (`Widgets.Search`): a text box with an X at its right end that clears it in one click,
+   Escape clears it too; it narrows the rows live, in any case, by the view's first column (its names); each view
+   keeps its own text; a search that finds nothing says "Nothing matches <text>". A statement has no search.
 7. Status (bag space, gold, progress) is in the footer. The window's main action is at the bottom right. A
    destructive action stands apart from the frequent ones and is never the default.
 8. Tabs separate different content. A choice that only narrows or re-sorts the same content is a filter.
@@ -42,7 +45,7 @@ reply must say so.
 11. Text that cannot be clicked never looks like a control.
 12. Text contrast 4.5:1 or more; control edges 3:1; one color means one thing everywhere.
 13. Buttons that open other windows are one group in the footer, at its left (the main window: Auction house, Ledger,
-    Reports, Market, Limits, Log, Options; the mini panel: Salvager, Ledger, Reports, Market, Log), never where they
+    Reports, Market, Disenchant, Limits, Log, Options; the mini panel: Salvager, Ledger, Reports, Market, Disenchant, Log), never where they
     read as tabs.
 14. Checked by the specs (rows of tabs hold tabs only; filters under the subtabs; every row fits the smallest width;
     `spec/fit_spec.lua`: no cut text, no overlap in a row, nothing outside its window, at the smallest and the
@@ -86,6 +89,8 @@ reply must say so.
     of the heading and points right while closed, down while open (`Widgets.GroupArrow`); the whole heading row is
     the click target, with the hover highlight; a closed heading keeps its totals. One implementation for every table
     with groupings: `ns.HeadingToggle`, `ns.GroupedRows` with `ns.GroupState(<table>)` (saved data).
+16. Every list of materials is in one order, the Materials window's (dust, essences, shards, each from the lowest
+    level up): `Data.SortMaterials`. A click on a column title may re-sort it; with none, that order.
 
 ## Statements
 

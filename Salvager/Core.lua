@@ -842,6 +842,7 @@ local HELP = {
     "/salv auras - list your buffs (to find the Salvager's)",
     "/salv materials - the materials list in its own window (again: put it back)",
     "/salv ledger - the ledger window (purchases, sales, odds)",
+    "/salv disenchant - the Disenchant panel: each click on its Disenchant button (or the key bound to it) is one cast",
     "/salv breakdown <material> - where a material came from, e.g. /salv breakdown 11083",
     "/salv log - the log window; /salv log 20 prints the last 20 lines in chat",
     "/salv reset ledger confirm - clear all purchases, stock and history (a backup is kept)",
@@ -932,6 +933,8 @@ SlashCmdList.SALVAGER = function(msg)
         local id = parseItem(args[2])
         if not (id and ns.Breakdown.Is(id)) then ns.Print("usage: /salv breakdown <material id or link>") return end
         ns.Breakdown.Open(id)
+    elseif cmd == "disenchant" or cmd == "de" then
+        ns.DisenchantPanel.Toggle()
     elseif cmd == "ledger" or cmd == "results" then
         ns.LedgerWindow.Toggle()
     elseif cmd == "log" and not tonumber(args[2]) or cmd == "activity" then

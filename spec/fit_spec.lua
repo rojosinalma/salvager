@@ -6,7 +6,7 @@ local wow = require("spec.wow")
 
 local WINDOWS = { "SalvagerFrame", "SalvagerMiniFrame", "SalvagerLedgerFrame", "SalvagerOddsFrame", "SalvagerMaterialsFrame",
     "SalvagerMarketFrame", "SalvagerReportsFrame", "SalvagerLogFrame", "SalvagerLimitsFrame", "SalvagerOptionsFrame",
-    "SalvagerPostFrame", "SalvagerGearFrame", "SalvagerBreakdownFrame", "SalvagerStandFrame" }
+    "SalvagerPostFrame", "SalvagerGearFrame", "SalvagerBreakdownFrame", "SalvagerStandFrame", "SalvagerDisenchantFrame" }
 local ROWS = { tabrow = true, subtabrow = true, filterrow = true, footer = true }
 local POPUP = { DIALOG = true, TOOLTIP = true, FULLSCREEN_DIALOG = true }
 local EPS = 0.5
@@ -247,6 +247,12 @@ local function seed(env, ns)
     local slots = {}
     for i, m in ipairs(ns.Data.MATERIALS) do slots[i] = m.id end
     env.bagSlots = slots
+    -- The gear in the last slots of the bags (the Disenchant panel lists it), twice each.
+    env.bagItems = {}
+    for i, id in ipairs(gear) do
+        env.bagItems["4:" .. (24 + i)] = id
+        env.bagItems["3:" .. (24 + i)] = id
+    end
     local s = ns.db.settings
     s.minProfit, s.minReturn, s.priceRescan = 0, 0, 0
     s.qualities = { [2] = true, [3] = true, [4] = true }
@@ -385,6 +391,11 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
             SalvagerOptionsFrame = function() ns.Options.Open() end,
             SalvagerPostFrame = function() ns.Post.Open(mat) answer() end,
             SalvagerBreakdownFrame = function() ns.Breakdown.Open(mat) end,
+            SalvagerDisenchantFrame = function()
+                env.cvars.autoLootDefault = false   -- (its note shows)
+                ns.DisenchantPanel.Show()
+                assert.is_true(#ns.DisenchantPanel.Pieces() >= 24)
+            end,
             SalvagerStandFrame = function()
                 local row
                 for _, r in ipairs(ns.db.listings.rows) do if not r.sold and r.commodity then row = r end end
@@ -439,6 +450,12 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
         local seen = {}
         for _, f in ipairs(found) do seen[#seen + 1] = f end
         assert.are.equal("", table.concat(seen, "\n"))
+    end)
+    it("drew the Disenchant panel with pieces and results", function()
+        local top, bottom = ns.DisenchantPanel.Rows()
+        assert.is_true(#top >= 24)
+        assert.is_true(#bottom >= 3)
+        assert.is_true(ns.DisenchantPanel.lootNote:IsShown())
     end)
     it("says so where a table leaves columns out for want of room, and fits them where it can", function()
         local W = ns.Widgets

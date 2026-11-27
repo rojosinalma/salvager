@@ -510,6 +510,47 @@ end
 --- the disenchants whose materials are not all posted, newest first, each under its status heading with totals,
 --- and the batch's totals last: what it cost, what it was expected to make, what the disenchants gave so far
 --- against what they were expected to give, and the materials still to post.
+local NOT_YET, NONE = GREY .. "not disenchanted yet|r", GREY .. "-|r"
+local function ilvlText(ilvl) return ilvl and tostring(ilvl) or NONE end
+
+-- The Current batch's columns (COLUMNS.batch), by name: the Disenchant panel shows some of them (SDD 112).
+Window.BATCH_COLUMNS = COLUMNS.batch
+Window.BATCH = { gear = 1, ilvl = 2, paid = 3, ev = 4, ep = 5, got = 6, dv = 7, dvev = 8, profit = 9, left = 10, now = 11 }
+
+--- A row of the Current batch for a piece not disenchanted yet (an entry of Ledger.Batch's `waiting`): its cells in
+--- the order of COLUMNS.batch, and its numbers (paid, ev). One builder for the Ledger and the Disenchant panel.
+function Window.BatchWaitingRow(p)
+    local ilvl = (p.j and p.j.ilvl) or (p.link and ns.ItemLevelOf(p.link)) or ns.db.ilvl[p.itemID]
+    return { itemID = p.itemID, link = p.link, indent = INDENT, paid = p.each or 0, ev = p.ev or 0,
+        cells = { itemName(p.itemID, p.link), ilvlText(ilvl), money(p.each), money(p.ev),
+            p.ev and gap(p.ev - (p.each or 0)) or NONE, NOT_YET, NONE, NONE, NONE, NONE, NONE } }
+end
+
+--- A row of the Current batch for a disenchant (an entry of Ledger.Batch's `done`): its cells in the order of
+--- COLUMNS.batch, and its numbers (paid, ev, got = its Disenchant value, units not posted, now = their value now).
+function Window.BatchDoneRow(x)
+    local r = x.rec
+    local ev, paid = r.evAtBuy or r.planned or 0, r.cost or 0
+    local now = 0
+    for id, n in pairs(x.left) do now = now + n * (ns.UnitValue(id) or 0) end
+    now = math.floor(now + 0.5)
+    return { itemID = r.itemID, link = r.link, indent = INDENT, paid = paid, ev = ev, got = r.value or 0,
+        units = x.units, now = now,
+        cells = { itemName(r.itemID, r.link) .. (r.salvager and "  |cff9370db[Salvager]|r" or ""),
+            ilvlText(r.ilvl or r.band), money(paid), money(ev), gap(ev - paid), matsText(r.got or {}),
+            money(r.value or 0), share(r.value or 0, ev), signed((r.value or 0) - paid), matsText(x.left),
+            ns.Money(now) } }
+end
+
+--- The cells of a batch total in COLUMNS.batch's order (Paid, EV, EP; DV, DV/EV %, Profit so far where `d.n` > 0).
+function Window.BatchTotals(label, w, d)
+    local function units(n) return n .. (n == 1 and " unit" or " units") end
+    local paid, ev = w.paid + d.paid, w.ev + d.ev
+    return { label, "", ns.Money(paid), ns.Money(ev), gap(ev - paid), "", d.n > 0 and ns.Money(d.got) or NONE,
+        d.n > 0 and share(d.got, d.ev) or NONE, d.n > 0 and signed(d.got - d.paid) or NONE, units(d.units or 0),
+        ns.Money(d.now or 0) }
+end
+
 function Window.BatchRows()
     local b = Window.Batch()
     local rows = {}
@@ -517,32 +558,20 @@ function Window.BatchRows()
         rows[1] = note("No batch: every purchase you picked up is disenchanted and its materials are posted.")
         return rows
     end
-    local NOT_YET, NONE = GREY .. "not disenchanted yet|r", GREY .. "-|r"
-    local function ilvlText(ilvl) return ilvl and tostring(ilvl) or NONE end
     local w = { n = #b.waiting, paid = 0, ev = 0 }
     local wRows = {}
     for _, p in ipairs(b.waiting) do
-        local ilvl = (p.j and p.j.ilvl) or (p.link and ns.ItemLevelOf(p.link)) or ns.db.ilvl[p.itemID]
-        w.paid, w.ev = w.paid + (p.each or 0), w.ev + (p.ev or 0)
-        wRows[#wRows + 1] = { itemID = p.itemID, link = p.link, indent = INDENT,
-            cells = { itemName(p.itemID, p.link), ilvlText(ilvl), money(p.each), money(p.ev),
-                p.ev and gap(p.ev - (p.each or 0)) or NONE, NOT_YET, NONE, NONE, NONE, NONE, NONE } }
+        local row = Window.BatchWaitingRow(p)
+        w.paid, w.ev = w.paid + row.paid, w.ev + row.ev
+        wRows[#wRows + 1] = row
     end
     local d = { n = #b.done, paid = 0, ev = 0, got = 0, units = 0, now = 0 }
     local dRows = {}
     for _, x in ipairs(b.done) do
-        local r = x.rec
-        local ev, paid = r.evAtBuy or r.planned or 0, r.cost or 0
-        local now = 0
-        for id, n in pairs(x.left) do now = now + n * (ns.UnitValue(id) or 0) end
-        now = math.floor(now + 0.5)
-        d.paid, d.ev, d.got, d.units, d.now = d.paid + paid, d.ev + ev, d.got + (r.value or 0), d.units + x.units,
-            d.now + now
-        dRows[#dRows + 1] = { itemID = r.itemID, link = r.link, indent = INDENT,
-            cells = { itemName(r.itemID, r.link) .. (r.salvager and "  |cff9370db[Salvager]|r" or ""),
-                ilvlText(r.ilvl or r.band), money(paid), money(ev), gap(ev - paid), matsText(r.got or {}),
-                money(r.value or 0), share(r.value or 0, ev), signed((r.value or 0) - paid), matsText(x.left),
-                ns.Money(now) } }
+        local row = Window.BatchDoneRow(x)
+        d.paid, d.ev, d.got, d.units, d.now = d.paid + row.paid, d.ev + row.ev, d.got + row.got, d.units + row.units,
+            d.now + row.now
+        dRows[#dRows + 1] = row
     end
     local state = ns.GroupState("ledger.batch")
     local function refresh() Window.Refresh() end
@@ -565,11 +594,8 @@ function Window.BatchRows()
         end
     end
     -- The batch's totals, the last row (UI.md Tables 13).
-    local paid, ev = w.paid + d.paid, w.ev + d.ev
     rows[#rows + 1] = { bold = true, rule = "total",
-        cells = { "Batch: " .. pieces(w.n + d.n) .. ", " .. d.n .. " disenchanted", "", ns.Money(paid), ns.Money(ev),
-            gap(ev - paid), "", d.n > 0 and ns.Money(d.got) or NONE, d.n > 0 and share(d.got, d.ev) or NONE,
-            d.n > 0 and signed(d.got - d.paid) or NONE, units(d.units), ns.Money(d.now) },
+        cells = Window.BatchTotals("Batch: " .. pieces(w.n + d.n) .. ", " .. d.n .. " disenchanted", w, d),
         tip = { "The batch", "Paid, Expected value and Expected profit: every piece of the batch. Disenchant value, "
             .. "DV/EV % and Profit so far: the pieces disenchanted so far, against what they were expected to give. "
             .. "Not posted yet and Value now: their materials still to post, at what they are worth now. Post them "
@@ -886,7 +912,8 @@ end
 --- Accuracy, by material: the price it was valued at when disenchanted against what it really sold for.
 function Window.AccuracyMaterialRows()
     local rows = {}
-    for _, m in ipairs(Ledger.Accuracy(ns.db.ledger, accuracyKeep).mats) do
+    -- (In the materials' order, as every material list: Data.SortMaterials.)
+    for _, m in ipairs(Data.SortMaterials(Ledger.Accuracy(ns.db.ledger, accuracyKeep).mats, function(x) return x.id end)) do
         local valued = m.units > 0 and m.valued / m.units or nil
         local sold = m.soldUnits > 0 and m.soldNet / m.soldUnits or nil
         rows[#rows + 1] = { itemID = m.id, cells = { ns.MaterialName(m.id), tostring(m.units),
@@ -1559,18 +1586,13 @@ local function build()
         -- The filter row: the search first, then the filters (UI.md Controls 6).
         local fbar = W.Bar(f, "filters")
         bars.purchaseFilters = fbar
-        local search = W.Edit(fbar, 120)
-        fbar:AddFilter("Search", search, 120, "Shows the gear whose name has this text in it.")
-        search:SetText(pf.search or "")
-        search:SetScript("OnTextChanged", function(self)
-            local text = self:GetText() or ""
-            if text ~= (pf.search or "") then
-                pf.search = text
-                changed()
-            end
-        end)
-        search:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
-        search:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+        -- (The one search box of every window, Widgets.Search: the X and Escape clear it.)
+        local SEARCH_HELP = "Shows the gear whose name has this text in it, in any case."
+        local search = W.Search(fbar, 120, function() return pf.search or "" end, function(text)
+            pf.search = text
+            changed()
+        end, SEARCH_HELP)
+        fbar:AddFilter("Search", search, 120, SEARCH_HELP)
         purchaseControls = filterRow(fbar, pf, changed, false)
         -- Show: one choice, All gear first (UI.md Controls 5).
         local SHOW_HELP = "All gear you bought, only what is disenchanted, or only what is not disenchanted yet."

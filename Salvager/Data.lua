@@ -51,6 +51,28 @@ Data.MATERIALS = {
 Data.MATERIAL_BY_ID = {}
 for _, m in ipairs(Data.MATERIALS) do Data.MATERIAL_BY_ID[m.id] = m end
 
+-- The one order of materials in every list (the Materials window's): dust, then essences, then shards, each from
+-- the lowest level up (the order of Data.MATERIALS). Every other material list sorts with Data.SortMaterials.
+local RANK = {}
+for i, m in ipairs(Data.MATERIALS) do RANK[m.id] = i end
+
+--- A material's place in the order (1 = first); an id that is not a material comes after them all.
+function Data.MaterialRank(id) return RANK[id] or (#Data.MATERIALS + 1) end
+
+--- Sorts `list` in place in the materials' order; `idOf(entry)` gives an entry's material id (default: the entry
+--- itself). Ties keep their order.
+function Data.SortMaterials(list, idOf)
+    idOf = idOf or function(x) return x end
+    for i, x in ipairs(list) do list[i] = { x = x, i = i } end
+    table.sort(list, function(a, b)
+        local ra, rb = Data.MaterialRank(idOf(a.x)), Data.MaterialRank(idOf(b.x))
+        if ra ~= rb then return ra < rb end
+        return a.i < b.i
+    end)
+    for i, e in ipairs(list) do list[i] = e.x end
+    return list
+end
+
 -- Three lesser essences combine into one greater, and one greater splits into
 -- three lesser. Used only to fill in a price that is missing.
 Data.ESSENCE_PAIR = {}

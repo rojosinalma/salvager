@@ -29,6 +29,10 @@ By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_foreve
    per material), its buy limit and what sets it, your history with this gear and its band, the other auctions
    of it, and a Buy button. A row with x3 is a group of auctions: click it to open or close it.
 5. Take your "Auction won" mail, disenchant, and sell the materials as usual. Salvager books each step.
+   The **Disenchant** panel opens by itself when gear you bought lands in your bags: each click on its Disenchant
+   button disenchants the next piece (only gear you bought with Salvager, never your own). Bind a key to it in Key
+   Bindings, AddOns, Salvager, "Disenchant next piece": each press is one cast. Below, what each disenchant gave.
+   Also from the main window, the mini panel or `/salv disenchant`.
 6. **Materials** shows price, stock, average cost and break-even. **Post** sells what is in your bags at
    1 copper under the lowest listing; a warning sign shows when that is below your break-even.
    **Pop out** moves the materials list to a window of its own; close it to put the list back.
@@ -48,6 +52,9 @@ By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_foreve
    profit by band (Bands) and piece by piece (History); Materials what each material gave and sold for;
    Competition who undercut you in the period, what it cost you and how you answered, per competitor and material.
    A heading of a grouped table (gear type, quality) opens and closes with a click; it stays as you left it.
+   **Search** (first on the filter row of Reports, Market and the Ledger's Purchases) shows the rows whose name has
+   the text you type; the X in the box or Escape clears it. Every list of materials is in the Materials window's
+   order: dust, essences, shards, each from the lowest level up.
 7. Options: Esc > Options > AddOns > Salvager, the **Options** button, or right-click the minimap button.
    **Times shown in** picks the clock of every time and day the addon shows: your computer's (local time) or
    the realm's (server time).

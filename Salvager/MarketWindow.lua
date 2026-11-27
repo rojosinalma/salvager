@@ -21,6 +21,7 @@ local RANGES = {
     { "30d", "30 days", 30 * DAY }, { "60d", "60 days", 60 * DAY }, { "90d", "90 days", 90 * DAY }, { "all", "All" },
 }
 local f, list, chart, title, facts, rangeDrop, tabs = nil, nil, nil, nil, nil, nil, {}
+local searchBox, searchParts, timeLabel = nil, {}, nil   -- the filter row's search, and the Time label after it
 
 local function since()
     for _, r in ipairs(RANGES) do
@@ -36,6 +37,18 @@ local function percent(change)
 end
 
 local function hasHistory(id) return #(ns.db.history[id] or {}) > 0 end
+
+-- The search of each view (UI.md Controls 6), remembered per view. Profit has none: its rows are days, and the Time
+-- filter picks them.
+Market.search = {}
+local NO_SEARCH = { profit = true }
+function Market.SearchText() return not NO_SEARCH[Market.view] and Market.search[Market.view] or "" end
+local function matches(...)
+    local text = Market.SearchText()
+    if text == "" then return true end
+    for i = 1, select("#", ...) do if W.Matches(select(i, ...), text) then return true end end
+    return false
+end
 
 --- Gives a chart some width when everything in it is from one moment.
 local function widen(data)
@@ -57,12 +70,13 @@ local Material = { title = "Materials", columns = { { "Material", 150 }, { "Now"
 function Material.Rows()
     local rows, from = {}, since()
     for _, m in ipairs(Data.MATERIALS) do
-        if hasHistory(m.id) then
+        if hasHistory(m.id) and matches(ns.MaterialName(m.id)) then
             local price = ns.PriceOf(m.id)
             rows[#rows + 1] = pickRow(m.id, { ns.MaterialName(m.id), price and ns.Money(price) or (GREY .. "-|r"),
                 percent((History.Change(History.Points(ns.db.history, m.id, from)))) }, m.id)
             rows[#rows].key = m.id
-            rows[#rows].sort = { ns.MaterialName(m.id), price or -1,
+            -- (The Material column sorts in the materials' order, as every material list: Data.MaterialRank.)
+            rows[#rows].sort = { Data.MaterialRank(m.id), price or -1,
                 (History.Change(History.Points(ns.db.history, m.id, from))) or -math.huge }
         end
     end
@@ -136,7 +150,8 @@ function Value.Rows()
     for _, q in ipairs({ { 2, Data.GREEN }, { 3, Data.BLUE }, { 4, Data.PURPLE } }) do
         for _, classID in ipairs({ Data.CLASS_ARMOR, Data.CLASS_WEAPON }) do
             for _, band in ipairs(q[2]) do
-                local series = Market.ValueSeries(q[1], classID, band.up, from)
+                local series = matches(ns.BandShort(q[1], classID, band.up))
+                    and Market.ValueSeries(q[1], classID, band.up, from) or {}
                 if #series > 0 then
                     local v = Model.Value(ns.Outcomes(q[1], classID, band.up, opts.salvager), ns.PriceOf, opts)
                     entries[#entries + 1] = { quality = q[1], classID = classID, band = band.up, net = v.net,
@@ -243,14 +258,14 @@ end
 function Essence.Rows()
     local rows = {}
     for _, e in ipairs(essencePairs()) do
-        if hasHistory(e.lesser) or hasHistory(e.greater) then
+        if (hasHistory(e.lesser) or hasHistory(e.greater)) and matches(ns.MaterialName(e.lesser), ns.MaterialName(e.greater)) then
             local l, g = ns.db.prices[e.lesser], ns.db.prices[e.greater]
             local three, one = l and l.p and l.p * 3, g and g.p
             rows[#rows + 1] = pickRow(e.lesser, { (ns.MaterialName(e.greater):gsub("^Greater ", ""):gsub(" Essence$", "")),
                 three and ns.Money(three) or (GREY .. "-|r"), one and ns.Money(one) or (GREY .. "-|r"),
                 percent(three and one and (one - three) / three) }, e.greater)
             rows[#rows].key = e.lesser
-            rows[#rows].sort = { ns.MaterialName(e.greater), three or -1, one or -1,
+            rows[#rows].sort = { Data.MaterialRank(e.greater), three or -1, one or -1,
                 three and one and (one - three) / three or -math.huge }
         end
     end
@@ -320,8 +335,9 @@ local VIEWS = { material = Material, value = Value, profit = Profit, essence = E
 local ORDER = { "material", "value", "profit", "essence", "hour" }
 Market.VIEWS = VIEWS
 
--- Each list starts sorted by its change column, the biggest rise first. (Profit keeps its days in order.)
-local DEFAULT_SORT = { material = 3, value = 3, hour = 3, essence = 4 }
+-- A list of materials starts in the materials' order (the Materials window's, Data.SortMaterials); the bands start
+-- by their change, the biggest rise first. (Profit keeps its days in order.)
+local DEFAULT_SORT = { value = 3 }
 local function sortOf(view)
     local sort = Market.sort[view]
     if sort then return sort end
@@ -375,8 +391,9 @@ function Market.Rows()
     end
     if #rows == 0 then
         local n = #view.columns
-        local cells = { GREY .. (Market.view == "profit" and "No sale with a known cost in this time."
-            or "The addon has not seen a price for this yet.") .. "|r" }
+        local search = Market.SearchText()
+        local cells = { GREY .. (search ~= "" and W.NoMatch(search) or Market.view == "profit" and "No sale with a known "
+            .. "cost in this time." or "The addon has not seen a price for this yet.") .. "|r" }
         for i = 2, n do cells[i] = "" end
         rows[1] = { cells = cells }
     end
@@ -410,6 +427,13 @@ function Market.Refresh()
         list:Refresh()
     end
     rangeDrop:Update()
+    -- The search first, where the view has one; the Time filter first where it has none.
+    local searchable = not NO_SEARCH[Market.view]
+    for _, x in ipairs(searchParts) do x:SetShown(searchable) end
+    if searchable then searchBox:Update() end
+    timeLabel:ClearAllPoints()
+    if searchable then timeLabel:SetPoint("LEFT", searchBox, "RIGHT", 16, 0)
+    else timeLabel:SetPoint("LEFT", Market.bars.filters, "LEFT", 2, 0) end
     for key, b in pairs(tabs) do b:SetSelected(key == Market.view) end
     if picked ~= nil or Market.view == "profit" then
         local data, name, text = view.Chart(picked)
@@ -432,6 +456,13 @@ local function build()
     if VIEWS[f.saved.view] then Market.view = f.saved.view end
     for key, value in pairs(f.saved.pick or {}) do Market.pick[key] = value end
     for _, r in ipairs(RANGES) do if r[1] == f.saved.range then Market.range = r[1] end end
+    -- 0.3.145: the lists of materials start in the materials' order once (a sort picked before is dropped).
+    if not f.saved.materialOrder then
+        f.saved.materialOrder = true
+        if type(f.saved.sort) == "table" then
+            f.saved.sort.material, f.saved.sort.hour, f.saved.sort.essence = nil, nil, nil
+        end
+    end
     for key, value in pairs(f.saved.sort or {}) do Market.sort[key] = value end
     -- From the top: the tabs, the filter row (Time), then the list and the chart (UI.md Controls 1).
     local tabBar = W.Bar(f, "tabs"):Place(24, 12, 12)
@@ -454,6 +485,20 @@ local function build()
         tabBar:Add(b, key == "value" and 124 or 90)
         tabs[key] = b
     end
+    -- The search first (UI.md Controls 6), then the time the charts cover.
+    if type(f.saved.search) == "table" then Market.search = f.saved.search end
+    f.saved.search = Market.search
+    local SEARCH_HELP = "Shows the rows whose name has this text, in any case: the material's (Materials, Time of day), "
+        .. "the band's (Disenchant value, \"Uncommon Armor 26-30\"), the essence's (Essences). Each view keeps its own."
+    searchBox = W.Search(filters, 110, function() return Market.SearchText() end, function(text)
+        if NO_SEARCH[Market.view] then return end
+        Market.search[Market.view] = text ~= "" and text or nil
+        list.offset = 0
+        Market.Refresh()
+    end, SEARCH_HELP)
+    local searchLabel, searchArea = filters:AddFilter("Search", searchBox, 110, SEARCH_HELP)
+    searchParts = { searchLabel, searchArea, searchBox }
+    Market.searchBox = searchBox   -- (the specs type in it)
     -- The time the charts cover: one choice.
     local options = {}
     for _, r in ipairs(RANGES) do options[#options + 1] = { r[1], r[2] } end
@@ -463,7 +508,7 @@ local function build()
         rangeDrop:Close()
         Market.Refresh()
     end, "How far back the charts and the Change column go.", "Time")
-    filters:AddFilter("Time", rangeDrop, 120, "How far back the charts and the Change column go.")
+    timeLabel = filters:AddFilter("Time", rangeDrop, 120, "How far back the charts and the Change column go.")
     list = W.List(f, { rowHeight = 22 })
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -88)
     list:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 12, 14)

@@ -785,7 +785,8 @@ local function build()
     UI.playButton = playButton   -- (the specs click it)
     spinner = W.Spinner(f, 18)   -- (with the status, under the list)
 
-    -- Left to right: Auction house, Ledger, Reports, Market, Limits, Log, Options (the user's order, 0.3.113).
+    -- Left to right: Auction house, Ledger, Reports, Market, Disenchant, Limits, Log, Options (the user's order, 0.3.113;
+    -- Disenchant since 0.3.146).
     ahButton = W.Button(P.footerBar, "Auction house", 104, function() UI.ToAuctionHouse() end,
         "Closes the Salvager windows: only the auction house window stays. Scans keep running. The Salvager button "
         .. "above the auction house window brings them back.")
@@ -802,6 +803,9 @@ local function build()
         .. "your materials."), 70, 4)
     P.footerBar:Add(W.Button(P.footerBar, "Market", 64, function() ns.Market.Toggle() end,
         "Opens the market charts in their own window: the price of each material over time, from your scans."), 64, 4)
+    P.footerBar:Add(W.Button(P.footerBar, "Disenchant", 84, function() ns.DisenchantPanel.Toggle() end,
+        "Opens the Disenchant panel: the gear of your purchases in your bags, and a button that disenchants the next "
+        .. "piece with each click."), 84, 4)
     P.footerBar:Add(W.Button(P.footerBar, "Limits", 60, function() ns.LimitsWindow.Toggle() end,
         "Opens the buy limits in their own window: the most the addon lets you pay per item level band, for armor "
         .. "and for weapons. You can set your own."), 60, 4)

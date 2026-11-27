@@ -1,5 +1,5 @@
 -- Salvager: the mini panel (UI.md Layout 5). A small window with one row of buttons, one per Salvager window:
--- Salvager (the main window), Ledger, Reports, Market, Log. The main window's Minimize shows it, and so does the
+-- Salvager (the main window), Ledger, Reports, Market, Disenchant, Log. The main window's Minimize shows it, and so does the
 -- minimap button away from the auction house. The windows it opens stay on their own: closing the main window does
 -- not close them. It closes with its own X, with the minimap button, and when the main window shows (Minimize brings
 -- it back). Escape leaves it: it is a launcher, like the minimap button.
@@ -22,6 +22,8 @@ local BUTTONS = {
         .. "gold, the profit of your gear, your materials and your competitors." },
     { "Market", 64, function() ns.Market.Toggle() end, "SalvagerMarketFrame", "Opens or closes the market charts: "
         .. "the price of each material over time, from your scans." },
+    { "Disenchant", 84, function() ns.DisenchantPanel.Toggle() end, "SalvagerDisenchantFrame", "Opens or closes the "
+        .. "Disenchant panel: the gear of your purchases in your bags, and a button that disenchants the next piece." },
     { "Log", 48, function() ns.LogWindow.Toggle() end, "SalvagerLogFrame", "Opens or closes the log: what the addon "
         .. "did, and any error." },
 }

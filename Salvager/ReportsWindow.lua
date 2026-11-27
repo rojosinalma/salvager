@@ -180,6 +180,29 @@ local COLUMNS = {
         { "Return", 50, "RIGHT" } },
 }
 
+-- The search of each view (UI.md Controls 6), remembered per view: its key is the view and its subtab
+-- ("gear.bands"). The Gold statement has none (a statement reads as a whole).
+Reports.search = {}
+local NO_SEARCH = { ["gold.statement"] = true }
+
+--- The key of the view shown, for its search: "gold.changes", "gear.bands", "gear.history", "materials",
+--- "competition"; nil where the view has no search.
+function Reports.SearchKey()
+    local key = Reports.view
+    if key == "gold" then key = "gold." .. Reports.goldTab end
+    if key == "gear" then key = "gear." .. Reports.gearTab end
+    if NO_SEARCH[key] then return nil end
+    return key
+end
+
+--- The text searched in the view shown ("" = none).
+function Reports.SearchText()
+    local key = Reports.SearchKey()
+    return key and Reports.search[key] or ""
+end
+
+local function matches(name) return W.Matches(name, Reports.SearchText()) end
+
 --- Does a disenchant pass the filters? (Gear type, quality, item level band, with or without the Salvager.)
 function Reports.Keep(r)
     local x = Reports.filter
@@ -188,9 +211,13 @@ function Reports.Keep(r)
     if x.salvager == "without" and r.salvager then return false end
     local ilvl = r.ilvl or r.band or 0
     for _, b in ipairs(ns.LevelBands()) do
-        if ilvl <= b.up then return not x.bandsOff[b.up] end
+        if ilvl <= b.up then
+            if x.bandsOff[b.up] then return false end
+            break
+        end
     end
-    return true
+    -- The search: the gear's name.
+    return matches(r.link or (r.itemID and ns.GetItemInfo(r.itemID)) or "")
 end
 
 ------------------------------------------------------------------ rows
@@ -400,11 +427,12 @@ function Reports.ChangeRows()
     local log = {}
     for i = #s.entries, 1, -1 do
         local e = s.entries[i]
-        if e.k ~= "start" then
+        if e.k ~= "start" and matches(e.r) then
             log[#log + 1] = { cells = { e.r or GREY .. "-|r", ns.Date("%m-%d %H:%M", e.t), real(e.d),
                 ns.Journal.KIND_NAME[e.k] or e.k, ns.MoneyColumn(e.b) }, link = e.r and e.r:match("|Hitem:[^|]+|h") and e.r }
         end
     end
+    if #log == 0 and Reports.SearchText() ~= "" then log[1] = note(W.NoMatch(Reports.SearchText())) end
     if #log == 0 then log[1] = note("No change of gold in this time: every change of your gold is recorded.") end
     return log
 end
@@ -421,6 +449,7 @@ function Reports.ProfitRows()
     local from, _, to = Reports.From()
     local p = Ledger.Profits(ns.db.ledger, from, Reports.Keep, to)
     if p.total.n == 0 then
+        if Reports.SearchText() ~= "" then return { note(W.NoMatch(Reports.SearchText())) } end
         return { note("No disenchant of gear with a known price in this time and these filters. Buy from the "
             .. "main window's Gear tab, then disenchant.") }
     end
@@ -458,15 +487,20 @@ function Reports.MaterialRows()
     local from, _, to = Reports.From()
     local p = Ledger.Profits(ns.db.ledger, from, nil, to)
     local seen, list = {}, {}
-    for _, m in ipairs(p.mats) do seen[m.id] = true list[#list + 1] = m end
+    for _, m in ipairs(p.mats) do
+        seen[m.id] = true
+        if matches(ns.MaterialName(m.id)) then list[#list + 1] = m end
+    end
     for _, mat in ipairs(ns.Data.MATERIALS) do
         local held, listed = heldAndListed(mat.id)
-        if not seen[mat.id] and held + listed > 0 then
+        if not seen[mat.id] and held + listed > 0 and matches(ns.MaterialName(mat.id)) then
             list[#list + 1] = { id = mat.id, got = 0, sold = 0, net = 0, cost = 0, profit = 0, untracked = 0,
                 depositsLost = 0 }
         end
     end
+    if #list == 0 and Reports.SearchText() ~= "" then return { note(W.NoMatch(Reports.SearchText())) } end
     if #list == 0 then return { note("No material got, sold, held or listed in this time.") } end
+    ns.Data.SortMaterials(list, function(m) return m.id end)   -- (the materials' order, as every material list)
     local rows = {}
     local total = { got = 0, sold = 0, net = 0, cost = 0, profit = 0, depositsLost = 0, held = 0, listed = 0, value = 0 }
     for _, m in ipairs(list) do
@@ -488,6 +522,7 @@ end
 function Reports.ItemRows()
     local from, _, to = Reports.From()
     local p = Ledger.Profits(ns.db.ledger, from, Reports.Keep, to)
+    if #p.items == 0 and Reports.SearchText() ~= "" then return { note(W.NoMatch(Reports.SearchText())) } end
     if #p.items == 0 then return { note("No disenchant of gear with a known price in this time and these filters.") } end
     local rows = {}
     for _, it in ipairs(p.items) do
@@ -609,8 +644,10 @@ function Reports.CompetitorRows()
     local pf, pt = previous(from, to)
     local before = pf and ns.Competition.Counts(state, pf, pt, id)
     local groups, rows = ns.GroupState("reports.competitors"), {}
-    for _, g in ipairs(list) do
+    local shownN, shownLost = 0, 0   -- (the totals of the rows shown: the search narrows them)
+    for _, g in ipairs(list) do if matches(g.key) then
         local by = lost.by[g.key] or { total = 0, cancel = 0, repost = 0, price = 0, mats = {} }
+        shownN, shownLost = shownN + g.n, shownLost + by.total
         local trend = GREY .. "-|r"
         if before then
             local d = g.n - (before[g.key] or 0)
@@ -625,26 +662,30 @@ function Reports.CompetitorRows()
                 "Click: open or close, per material." } }
         rows[#rows + 1] = head
         if ns.HeadingToggle(head, groups, g.key, function() Reports.Refresh() end, true) then
-            for _, m in ipairs(g.matOrder) do
+            local order = {}
+            for i, m in ipairs(g.matOrder) do order[i] = m end
+            for _, m in ipairs(ns.Data.SortMaterials(order, function(x) return x.id end)) do
                 local x = g.byMat[m.id]
                 rows[#rows + 1] = { indent = INDENT, itemID = m.id, cells = { ns.MaterialName(m.id) or tostring(m.id),
                     tostring(x.n), share(x.n, g.n), "", gapCol(x.gap), gapPctCol(x.pct), money(x.lowest), when(x.first),
                     when(x.last), hoursText(x.hourOrder), "", lostCol(by.mats[m.id]) } }
             end
         end
-    end
-    rows[#rows + 1] = { rule = "total", bold = true, cells = { "Total", tostring(total), share(total, total), "", "", "",
-        "", "", "", "", "", lostCol(lost.total) } }
+    end end
+    if #rows == 0 then return { note(W.NoMatch(Reports.SearchText())) } end
+    rows[#rows + 1] = { rule = "total", bold = true, cells = { "Total", tostring(shownN), share(shownN, total), "", "", "",
+        "", "", "", "", "", lostCol(Reports.SearchText() == "" and lost.total or shownLost) } }
     return rows
 end
 
---- One heading row per material (the most undercut first) that opens to its competitors.
+--- One heading row per material (in the materials' order) that opens to its competitors.
 function Reports.CompetitionMaterialRows()
     local from, _, to = Reports.From()
     local list = ns.Competition.Materials(ns.db.competition, from, to, compMaterial())
     if #list == 0 then return { note("No undercut in this period.") } end
+    ns.Data.SortMaterials(list, function(g) return g.key end)
     local groups, rows = ns.GroupState("reports.compMaterials"), {}
-    for _, g in ipairs(list) do
+    for _, g in ipairs(list) do if matches(ns.MaterialName(g.key)) then
         local main = g.nameOrder[1]
         local head = { group = true, itemID = g.key, cells = { ns.MaterialName(g.key) or tostring(g.key), tostring(g.n),
             tostring(#g.nameOrder), main and main.name or "-", gapCol(g.gap), gapPctCol(g.pct) } }
@@ -655,7 +696,8 @@ function Reports.CompetitionMaterialRows()
                 rows[#rows + 1] = { indent = INDENT, cells = { o.name, tostring(x.n), "", "", gapCol(x.gap), gapPctCol(x.pct) } }
             end
         end
-    end
+    end end
+    if #rows == 0 then return { note(W.NoMatch(Reports.SearchText())) } end
     return rows
 end
 
@@ -672,6 +714,8 @@ end
 ------------------------------------------------------------------ window
 
 local f, list, filterRow, rangeDrop
+local searchBox, searchParts, periodLabel = nil, {}, nil   -- the filter row's search, and the Period label after it
+local SEARCH_W = 110
 local tabs, filters, goldTabs, gearTabs = {}, {}, {}, {}
 local comp = {}   -- the Competition view: its Material filter (label, help, dropdown), titles and its three tables
 local GOLD_TABS = {
@@ -695,7 +739,7 @@ function Reports.Save()
     end
 end
 local FILTERED = { gear = true }
-local MIN_W = 890   -- the smallest width: the filter row; wider where the table needs it   -- the views the filters apply to
+local MIN_W = 1050   -- the smallest width: the longest filter row (Gear: Search, Period, Gear, Quality, Bands, Salvager)
 
 local function show(l, cols, rows, setId)
     l:SetColumns(cols, setId)
@@ -749,6 +793,13 @@ function Reports.Refresh()
     list:SetShown(not competition)
     for _, x in ipairs(comp.controls) do x:SetShown(competition) end
     for _, x in ipairs(comp.parts) do x:SetShown(competition) end
+    -- The search first, where the view has one; the Period comes first where it has none.
+    local searchable = Reports.SearchKey() ~= nil
+    for _, x in ipairs(searchParts) do x:SetShown(searchable) end
+    if searchable then searchBox:Update() end
+    periodLabel:ClearAllPoints()
+    if searchable then periodLabel:SetPoint("LEFT", searchBox, "RIGHT", 16, 0)
+    else periodLabel:SetPoint("LEFT", filterRow, "LEFT", 2, 0) end
     -- The Gear and Items views have their own filters after the period.
     local filtered = FILTERED[Reports.view] or false
     for _, x in ipairs(filters) do
@@ -785,7 +836,7 @@ function Reports.Refresh()
 end
 
 local function build()
-    f = W.Window("SalvagerReportsFrame", "Salvager Reports", "reports", 900, 480, MIN_W, 300)
+    f = W.Window("SalvagerReportsFrame", "Salvager Reports", "reports", MIN_W, 480, MIN_W, 300)
     local old = OLD_VIEW[f.saved.view]
     if old then f.saved.view, f.saved.gearTab = old[1], old[2] end
     if TITLES[f.saved.view] then Reports.view = f.saved.view end
@@ -804,9 +855,25 @@ local function build()
         bars.tabs:Add(b, 90)
         tabs[key] = b
     end
-    -- The filter row: the period for every view, then the Gear view's own filters.
+    -- The filter row: the search (UI.md Controls 6; not on the Gold statement), the period for every view, then the
+    -- Gear view's own filters.
     filterRow = W.Bar(f, "filters")
     bars.filters = filterRow
+    if type(f.saved.search) == "table" then Reports.search = f.saved.search end
+    f.saved.search = Reports.search
+    local SEARCH_HELP = "Shows the rows whose name has this text, in any case: the gear's name (Gear), the material's "
+        .. "(Materials), the competitor's and the material's (Competition), what changed your gold (All gold changes). "
+        .. "Each view keeps its own."
+    searchBox = W.Search(filterRow, SEARCH_W, function() return Reports.SearchText() end, function(text)
+        local key = Reports.SearchKey()
+        if not key then return end
+        Reports.search[key] = text ~= "" and text or nil
+        list.offset = 0
+        Reports.Refresh()
+    end, SEARCH_HELP)
+    local searchLabel, searchArea = filterRow:AddFilter("Search", searchBox, SEARCH_W, SEARCH_HELP)
+    searchParts = { searchLabel, searchArea, searchBox }
+    Reports.searchBox = searchBox   -- (the specs type in it)
     rangeDrop = W.Dropdown(filterRow, 170, Reports.PeriodOptions(), function(key) return key == Reports.range end,
         function(key)
             Reports.range = key
@@ -821,7 +888,7 @@ local function build()
             local s = picked()
             return s and Reports.SessionName(s) or "All time"
         end)
-    filterRow:AddFilter("Period", rangeDrop, 170, "The time the reports cover.")
+    periodLabel = filterRow:AddFilter("Period", rangeDrop, 170, "The time the reports cover.")
     local x0 = f.saved.filter
     if type(x0) == "table" then
         for _, k in ipairs({ "classes", "qualities", "bandsOff" }) do
@@ -941,7 +1008,7 @@ local function build()
     comp.namesTitle = W.Label(f, GOLD .. "Per competitor|r" .. GREY .. "  the most undercuts first; click one for its "
         .. "materials|r", "GameFontNormal")
     comp.names = W.List(f, { rowHeight = 22 })
-    comp.matsTitle = W.Label(f, GOLD .. "Per material|r" .. GREY .. "  the most undercut first; click one for its "
+    comp.matsTitle = W.Label(f, GOLD .. "Per material|r" .. GREY .. "  in the materials' order; click one for its "
         .. "competitors|r", "GameFontNormal")
     comp.mats = W.List(f, { rowHeight = 22 })
     comp.parts = { comp.summary, comp.namesTitle, comp.names, comp.matsTitle, comp.mats }

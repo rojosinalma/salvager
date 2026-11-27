@@ -1,0 +1,4 @@
+<Bindings>
+	<!-- The Disenchant panel's button (DisenchantWindow.lua): each press casts Disenchant on the next piece. -->
+	<Binding name="CLICK SalvagerDisenchantButton:LeftButton" header="SALVAGER" category="ADDONS"/>
+</Bindings>

@@ -78,7 +78,18 @@ local function newMethods()
             return self.shown and (type(p) ~= "table" or p == _G.UIParent or p:IsVisible())
         end,
         GetRect = function(self) return 0, 0, self:GetWidth(), self:GetHeight() end,
-        Click = function(self, button) if self.scripts.OnClick then self.scripts.OnClick(self, button) end end,
+        -- As the client: PreClick, OnClick, PostClick; a disabled button does nothing.
+        Click = function(self, button)
+            if self.enabled == false then return end
+            if self.scripts.PreClick then self.scripts.PreClick(self, button) end
+            if self.scripts.OnClick then self.scripts.OnClick(self, button) end
+            if self.scripts.PostClick then self.scripts.PostClick(self, button) end
+        end,
+        SetAttribute = function(self, k, v)
+            rawset(self, "attrs", rawget(self, "attrs") or {})
+            self.attrs[k] = v
+        end,
+        GetAttribute = function(self, k) return (rawget(self, "attrs") or {})[k] end,
         CreateAnimationGroup = function() return widget("AnimationGroup") end,
         CreateAnimation = function() return widget("Animation") end,
         GetWidth = function() return 140 end,
@@ -437,7 +448,7 @@ function M.install(opts)
     opts = opts or {}
     local env = {
         now = 1000, clock = 1700000000, chat = {}, timers = {}, frames = {}, tooltipCalls = {},
-        items = {}, bags = {}, auras = {}, loot = {}, inbox = {}, money = 1000000,
+        items = {}, bags = {}, auras = {}, loot = {}, inbox = {}, money = 1000000, casts = {}, cvars = {},
         ah = { browse = {}, fullBrowse = true, commodities = {}, itemResults = {}, sent = {}, bids = {},
             hasResults = {}, ready = true, posts = {}, owned = {}, cancels = {} },
     }
@@ -498,6 +509,23 @@ function M.install(opts)
                 table.insert(f._regions, f.TitleText)
             end
         end
+        -- A secure action button (SecureTemplates.lua): type "spell" casts its spell, then uses target-bag and
+        -- target-slot as the spell's target. Here a cast is recorded in env.casts. Its attributes cannot change in
+        -- combat (env.combat), as in the client.
+        if template and template:find("SecureActionButtonTemplate") then
+            f.secure = true
+            f.scripts.OnClick = function(self)
+                local a = rawget(self, "attrs") or {}
+                if a.type == "spell" then
+                    table.insert(env.casts, { spell = a.spell, bag = a["target-bag"], slot = a["target-slot"] })
+                end
+            end
+            f.SetAttribute = function(self, k, v)
+                if env.combat then error("Action[SetAttribute] blocked in combat", 2) end
+                rawset(self, "attrs", rawget(self, "attrs") or {})
+                self.attrs[k] = v
+            end
+        end
         f.parent = parent
         if type(parent) == "table" and rawget(parent, "_children") then table.insert(parent._children, f) end
         table.insert(env.frames, f)
@@ -519,6 +547,9 @@ function M.install(opts)
         return text:match("## " .. field .. ": ([^\r\n]+)") or "test"
     end }
     _G.IsPlayerSpell = function() return false end
+    -- env.combat: in a fight (the client locks secure frames); env.cvars[name]: a game setting (true/false).
+    _G.InCombatLockdown = function() return env.combat or false end
+    _G.GetCVarBool = function(name) return env.cvars[name] end
     _G.IsShiftKeyDown = function() return false end
     _G.GetMoney = function() return env.money end
     -- env.equipped[slot] = itemID: what the character wears (the game's item count includes it).
@@ -578,7 +609,12 @@ function M.install(opts)
         GetContainerNumFreeSlots = function(bag)
             return env.bagFree[bag] or env.bagSize[bag] or 0, env.bagFamily[bag] or 0
         end,
-        GetContainerItemID = function(_, slot) return env.bagSlots and env.bagSlots[slot] end,
+        -- env.bagItems["bag:slot"] = itemID (else env.bagSlots[slot], in any bag)
+        GetContainerItemID = function(bag, slot)
+            local id = env.bagItems and env.bagItems[bag .. ":" .. slot]
+            if id then return id end
+            return env.bagSlots and env.bagSlots[slot]
+        end,
     }
     _G.NUM_BAG_SLOTS = 4
     _G.ItemLocation = { CreateFromBagAndSlot = function(_, bag, slot) return { bag = bag, slot = slot } end }

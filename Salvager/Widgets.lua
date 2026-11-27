@@ -275,6 +275,81 @@ function Widgets.Edit(parent, width, numeric)
     return e
 end
 
+--- A search box (UI.md Controls 6: first on a filter row): a text box with an X at its right end that clears it in
+--- one click; Escape clears it too. `set(text)` runs at each change (live); `get()` gives the text to show.
+--- box:Update() shows the text of `get()` again (another view's search).
+function Widgets.Search(parent, width, get, set, tooltip)
+    local e = Widgets.Edit(parent, width)
+    e.isSearch = true
+    if e.SetTextInsets then e:SetTextInsets(0, 16, 0, 0) end   -- (the text stops before the X)
+    local clear = CreateFrame("Button", nil, e)
+    clear:SetSize(14, 14)
+    clear:SetPoint("RIGHT", e, "RIGHT", -3, 0)
+    clear:SetNormalTexture("Interface\\FriendsFrame\\ClearBroadcastIcon")
+    clear:SetHighlightTexture("Interface\\FriendsFrame\\ClearBroadcastIcon")
+    clear.uiKind = "clear"
+    Widgets.Tooltip(clear, "Clear the search", "Shows every row again. Escape in the box does the same.")
+    e.clear = clear
+    local quiet = false
+    local function shown()
+        local text = e:GetText() or ""
+        clear:SetShown(text ~= "")
+        return text
+    end
+    function e.Update(self)
+        local want = get() or ""
+        if (self:GetText() or "") ~= want then
+            quiet = true
+            self:SetText(want)
+            quiet = false
+        end
+        shown()
+    end
+    e:SetScript("OnTextChanged", function()
+        local text = shown()
+        if quiet then return end
+        if text ~= (get() or "") then set(text) end
+    end)
+    local function wipeText()
+        e:SetText("")
+        if (get() or "") ~= "" then set("") end
+        shown()
+    end
+    clear:SetScript("OnClick", function()
+        wipeText()
+        e:ClearFocus()
+    end)
+    e:SetScript("OnEscapePressed", function(self)
+        wipeText()
+        self:ClearFocus()
+    end)
+    e:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    if tooltip then
+        e:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText("Search", 1, 1, 1)
+            GameTooltip:AddLine(tooltip, 1, 0.82, 0, true)
+            GameTooltip:Show()
+        end)
+        e:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+    e:Update()
+    return e
+end
+
+--- Does `name` (a link or a text, color codes and all) hold `search` (any case)? An empty search holds everything.
+function Widgets.Matches(name, search)
+    if not search or search == "" then return true end
+    local plain = tostring(name or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h", ""):gsub("|h", "")
+        :gsub("|T.-|t", "")
+    return plain:lower():find(search:lower(), 1, true) ~= nil
+end
+
+--- The empty state of a search that matches no row (UI.md Tables 6).
+function Widgets.NoMatch(search)
+    return "Nothing matches \"" .. tostring(search) .. "\". Clear the search (the X in the box, or Escape) to see every row."
+end
+
 --- Three boxes (gold, silver, copper) in one frame. onChange(copper) runs when a box loses focus.
 function Widgets.Money(parent, onChange)
     -- Layout: [box] coin  [box] coin  [box] coin. Each coin sits right after its own box, and the
