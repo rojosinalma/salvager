@@ -156,13 +156,17 @@ describe("Time to sell", function()
         Ledger.SaleSeen(state, ESS, 1, 1700, 0.05, 100 * H + 70 * 60)             -- 70 min, one sale
         Ledger.DepositLost(state, ESS, 3, 30, "expired", 101 * H)
         local t = Ledger.TimesToSell(state, posted, 102 * H)
-        assert.are.same({ 600, 5, false }, { t[DUST].seconds, t[DUST].n, t[DUST].few })
+        -- Five sales two to four days old: they weigh a little under 5 (SDD 118), so still "few".
+        assert.are.same({ 600, 5, true }, { t[DUST].seconds, t[DUST].count, t[DUST].few })
+        assert.is_true(t[DUST].n > 4.7 and t[DUST].n < 5)
         -- All: median of six sales (five at 10 min) = 10 min; the essence: (1 × 70 + 4 × 10) / 5 = 22 min.
         assert.are.equal(600, t.all.seconds)
         assert.are.equal((70 * 60 + 4 * 600) / 5, t[ESS].seconds)
         assert.are.equal(1, t[ESS].n)
-        -- Past 30 days: nothing.
-        assert.is_nil(Ledger.TimesToSell(state, posted, 102 * H + 31 * 86400).all.seconds)
+        -- A month later the same sales count at about half their weight; nothing is left out.
+        local later = Ledger.TimesToSell(state, posted, 102 * H + 30 * 86400)
+        assert.are.equal(600, later.all.seconds)
+        assert.is_true(math.abs(later[ESS].n - 0.5) < 1e-9)
     end)
 
     it("turns the time to sell of a band's materials into Return per day", function()

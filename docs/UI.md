@@ -124,7 +124,8 @@ reply must say so.
    Average profit (Avg profit), Avg return, Profit, Loss chance, Break-even, Result rate, Avg quantity (the average
    units when a result came), Pessimistic and Optimistic (the outcomes 9 in 10 and 1 in 10 disenchants reach), Sell
    price ratio (what a unit really sold for against its price when posted), Time to
-   sell (from the post to the sale), Avg return per day (Avg return ÷ the days until the materials sell, at least 1). One
+   sell (from the post to the sale), Weighted results (the weight of your results, recent ones counting more),
+   Salvager shape (how the Salvager's extra unit falls, learned per material kind), Avg return per day (Avg return ÷ the days until the materials sell, at least 1). One
    thing has one name in every window.
    What a disenchant gives is a result, never a "drop".
    An average is never shown without saying it is one (the user, 2026-11-27: "never show average numbers without
@@ -170,7 +171,9 @@ reply must say so.
 
 1. What the player is told to pay for is checked against the thing itself (the auction's own
    item), never trusted from the context it arrived in.
-2. A number that rests on few samples says so.
+2. A number that rests on few samples says so. Learned numbers weigh recent results more (SDD 118): where the
+   count matters, it shows as a weight ("Weighted 533.3", "12 sales (weight 11.6)"), and "few results" or "few
+   sales" compares the weight with the floor.
 3. Times follow the Times option (Options, "Times shown in": local or server time, SDD 110): every shown time and day
    goes through `ns.Date`, and where the clock matters (a time column's help, a statement's period line) it says
    which one.

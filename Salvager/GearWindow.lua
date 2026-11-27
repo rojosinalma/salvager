@@ -157,8 +157,8 @@ function Gear.BuildRows(d)
     rows[#rows + 1] = { rule = "total", bold = true, cells = { "Average (over many pieces), now", "",
         money(sp.average), real(sp.average - d.buyout) }, tip = { "Average", "The average over many pieces: the sum "
             .. "of each outcome's chance × its value. One disenchant gives one of the outcomes above, not this." } }
-    local from = string.format("rates from the table and %d of your disenchants of this band%s, %s; rule %s", outcomes.n,
-        outcomes.few and " (few results)" or "", outcomes.salvager and "with the Salvager" or "without the Salvager",
+    local from = string.format("rates from the table and %s of this band, %s; rule %s",
+        ns.WeightedResultsText(outcomes.n, outcomes.few), outcomes.salvager and "with the Salvager" or "without the Salvager",
         ns.EVIDENCE_TEXT[sp.evidence])
     if math.abs(math.floor(sp.average + 0.5) - (d.value or 0)) >= 1 then
         from = from .. "; prices moved since the scan (it showed " .. ns.Money(d.value) .. ")"

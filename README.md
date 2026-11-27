@@ -9,6 +9,19 @@ A WoW Forever addon for disenchant trading. It does three things:
    average and optimistic: one disenchant gives whole units of one material), and buys it with one click.
 3. Follows your cost from the purchase to the disenchant to the sale, and shows a break-even price for each material.
 
+## What's new in 0.4
+
+1. The forecast learns from your own disenchants. Each band starts from the game's table and moves toward what you
+   actually got; the Arcane Salvager bonus is learned per material (dust, essence, shard) from all your bands
+   together, so a band you rarely disenchant still gets a realistic bonus. On my own data the Salvager's extra dust
+   comes about a third of the time, not the quarter the usual "50% chance of +1" gives.
+2. Recent results count more: a result from today counts 1, one from a month ago 0.5. If the game changes, the
+   numbers follow within a few weeks. Nothing is deleted. Sell price ratio and time to sell work the same way.
+3. You can see how much the numbers rest on: each Odds card shows its weighted results, with "few results" when
+   they are thin; the card's "?" explains the learning and shows the Salvager shape the band uses.
+4. Profit as a range from whole units (pessimistic, average, optimistic), every average labelled as one, and an
+   orange highlight on unusually high returns (0.3.152).
+
 ## Install
 
 With the CurseForge app: pick the WoW Forever game version and search for Salvager.
@@ -86,12 +99,16 @@ your minimum profit.
   table and a band with hundreds follows your results (Reports, Odds: a band's "?", Rates used from). A band rests
   on your results (observed) from 50 of yours, else on the table (documented), or on Classic's rule not measured on
   Forever (inferred: Epic 56+).
+- Each result counts 0.5^(its age in days / 30): today 1, a month ago 0.5. The counts shown as "weighted" are these
+  weights added up.
 - Each material counts at its price × what your sales of it really got against the price, less the deposits you
   lose per unit sold.
 - Time to sell (Materials list): how long your posts of a material took to sell. A deal's tooltip shows its average
   return per day (Avg return ÷ the days until its materials sell, at least one day).
-- Arcane Salvager: a 50% chance of one extra dust or essence (community data, not official). It is
-  included only when you know the recipe or have the Salvager, or when you set `/salv salvager on`.
+- Arcane Salvager: how often it gives one more unit is learned per material kind from all your disenchants with
+  it, starting from the community figure (a 50% chance of one extra dust or essence, never on shards) as if it were
+  50 results; Options, "Starting chance of one extra dust or essence (%)", sets that start. It is included only
+  when you know the recipe or have the Salvager, or when you set `/salv salvager on`.
 - Material price: the average of the cheapest 20 units listed (your own listings left out).
 
 ## Cost tracking

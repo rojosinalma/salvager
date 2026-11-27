@@ -28,12 +28,13 @@ Materials.HELP = {
     [9] = { "Profit", "What one unit brings if you sell it at the price now: the price after the 5% cut, minus its "
         .. "average cost. Red = a sale at this price loses money." },
     [10] = { "Sell price ratio", "What one unit really sold for (before the cut) against the price when you posted it: "
-        .. "the median of your sales of the last 30 days. Deal values and buy limits use the price times this ratio. "
-        .. "\"few sales\" = under 5 sales: it leans on all your sales together, and with none at all on 100%. "
+        .. "the median of your sales, recent ones weighing more (a sale counts 0.5^(its age in days / 30)). Deal values "
+        .. "and buy limits use the price times this ratio. \"few sales\" = sales weighing under 5: it leans on all "
+        .. "your sales together, and with none at all on 100%. "
         .. "The material's tooltip has the number of sales and the deposits lost per unit sold." },
     [11] = { "Time to sell", "How long your posts of it took to sell: from the post to the sale, the median of your "
-        .. "sales of the last 30 days (posts made with Salvager). \"few sales\" = under 5 sales: it leans on all your "
-        .. "materials together. Return per day in the Gear tab's tooltips uses it." },
+        .. "sales, recent ones weighing more (posts made with Salvager). \"few sales\" = sales weighing under 5: it "
+        .. "leans on all your materials together. Return per day in the Gear tab's tooltips uses it." },
 }
 
 -- (Age grows while it shows: its column is as wide as "00m" with the widest digit, so it does not change width.)

@@ -10,7 +10,9 @@ flipping is out of scope for now.
 1. **Disenchant table by item level** (Classic table). Required level is only a rough guide; the auction
    house's level filter uses required level, but every item key carries its item level, which picks the band.
 2. **Arcane Salvager rule:** 50% chance of one extra dust or essence; never on shards or single fixed
-   results. Source: a community spreadsheet with 7000+ disenchants. Configurable (`salvagerChance`).
+   results. Source: a community spreadsheet with 7000+ disenchants. Configurable (`salvagerChance`, Options
+   "Starting chance of one extra dust or essence (%)"). Since 0.4.0 it is the prior of the learned Salvager shape
+   (118), not the rule itself: your results with the Salvager take over as they grow.
    Applied to buy prices only when the player can use it (recipe spell 1263056 or item 279985), or by
    `/salv salvager on|off`.
 3. **Material price and what a unit sells for** (rewritten 0.3.122, the user, 2026-11-26). The material's price
@@ -19,8 +21,9 @@ flipping is out of scope for now.
    form (3 lesser = 1 greater, marked `~`). The price itself stays the market's; what the forecast counts a unit at
    is price × the material's **sell price ratio** (`ns.SellRatio`, `Ledger.SellRatios`): what one unit of it
    really sold for (the sale price each, before the cut) against its price when that auction was posted. Per
-   material, the median of its sales of the last 30 days, weighted by units (`Model.WeightedMedian`); under 5 sales
-   it is pulled toward the median of all materials, (n × own + (5 − n) × all) ÷ 5 (`Model.Blend`), and the median
+   material, the median of its sales weighted by units × the sale's weight by age (118; until 0.4.0: the sales of
+   the last 30 days, by units) (`Model.WeightedMedian`); n = the weight of its sales; under 5 it is pulled toward
+   the median of all materials, (n × own + (5 − n) × all) ÷ 5 (`Model.Blend`), and the median
    of all toward 1 the same way; no sales at all = 1. The price at the post is recorded from 0.3.122 on
    (`SalvagerDB.posted[].val`, copied to the sale as `val`); older sales take the price history (57) at the
    post of that material at that price each made before the sale, else at the sale. Used in the Average value of
@@ -394,6 +397,9 @@ flipping is out of scope for now.
        (± 0.11), against +0.5 in the model and +0.60 for Soul Dust (2.04 with, 1.44 without). Neither material has the
        shape of "+1 half of the time". The blend (99) answers it per band: Greater Astral Essence in Uncommon Armor
        26-30 with the Salvager (51 results) is counted at 1.82 each (table with the bonus: 2.00), Soul Dust at 2.04.
+       0.4.0 (118): the shape is learned per material kind from every band; on the saved data of 2026-11-27 Soul
+       Dust and the other dusts 1-2 with the Salvager come as 1 / 2 / 3 about a third each (35.9 / 30.1 / 34.0% of
+       454), essences 39.1 / 37.4 / 23.5% (115), shards always 1 (31).
     - b. No Salvager effect was found on the player by name, and the snapshots were full (they kept the
        first 30). The buff is **Boosted Disenchanting, spell 1283701** (wowhead.com/forever/spell=1283701):
        "Disenchanting boosted from time spent near Arcane Salvager. While near Arcane Salvager, chance of
@@ -723,14 +729,17 @@ flipping is out of scope for now.
     quantity's own chance), the Odds, the Market's disenchant value and a disenchant's `planned` value use it, with
     your results with the Salvager when buying counts its bonus and without it otherwise. Cautious pricing still
     takes the table's lowest amount. "few results" under `Model.FEW_RESULTS` = 50 of yours (the table still weighs
-    more). Measured 2026-11-26 on the user's data, at the saved prices, Expected value table → blend: Uncommon Armor
+    more). Since 0.4.0 (118): your results are weighted by age (n, hits and quantities are weights, `count` the
+    disenchants), and with the Salvager the table's quantities of each result follow the learned Salvager shape of
+    its material kind in place of "+1 with `salvagerChance`"; "few results" and observed (116c) use the weight. Measured 2026-11-26 on the user's data, at the saved prices, Expected value table → blend: Uncommon Armor
     26-30 with the Salvager (251) 1631 → 1634 c; without (50) 1292 → 1233 c (−4.6%: essence 10% of the time, table
     20%); 31-35 without (31) 1437 → 1459 c; the other bands under 15 disenchants move 0.3% to 2.5%. Loss chance at
     the buy limit moves at most 3 points. Limits: results are not judged for their Salvager state beyond the record
     (a result above the table marks it "with Salvager", 74b, which leans that side up a little: 10 of 266).
 100. **Time to sell and Return per day** (0.3.125, the user, 2026-11-26). Time to sell of a material
-    (`Ledger.TimesToSell`, `ns.TimeToSell`): from the post to the sale, the median by units of its sales of the last
-    30 days, pulled toward all materials under 5 sales (as the sell price ratio, 3). The post is the sale's
+    (`Ledger.TimesToSell`, `ns.TimeToSell`): from the post to the sale, the median by units × weight by age of its
+    sales (118; until 0.4.0 the sales of the last 30 days), pulled toward all materials under 5 (weighted) sales (as
+    the sell price ratio, 3). The deposits lost per unit sold (96, `Ledger.DepositRates`) weigh the same way. The post is the sale's
     `postedAt` (kept from 0.3.125 when a sale is seen sold, from `SalvagerDB.posted`), else the last post of that
     material at that price each before the sale; sales of posts not made through Salvager do not count. The sale is
     at its money's due time less `Ledger.MAIL_DELAY` (1 h) when known, else when it was booked (a sale known from its
@@ -1345,6 +1354,52 @@ flipping is out of scope for now.
     Disenchant panel does not list them (they are not in the bags, 112b), and Not picked up stays as it is (90). Specs:
     a purchase in the mail shows under "In the mail", moves to "Not disenchanted" when picked up, the totals add up.
 
+118. **The self-adjusting model** (0.4.0, the user, brief of 2026-11-27, approved). The forecast learns from all
+    of your results and follows a change in the game within weeks. Pure: `Model.Decay`, `Model.PriorShape`,
+    `Model.ShapeAt`, `Model.LearnedShape`, `Model.ShapeDist`, `Model.Blended` (`shapeOf`); `Ledger.Results` and
+    `Ledger.Shapes` (weighted); glue `ns.SalvagerShape`, `ns.KindShape`, `ns.Outcomes` in `Core.lua`.
+    - a. Recency: every observation weighs w = 0.5^(d / 30), d its age in whole days (`Model.HALF_LIFE_DAYS` = 30):
+       today 1, a month 0.5, two months 0.25. In every learned number: band rates and quantities (99), the Salvager
+       shape (b), the sell price ratio (3), time to sell (100) and deposits lost (96), which had a 30-day window
+       before; the window is gone so all of them follow the same rule (a sale older than 30 days now counts at
+       half or less, never at 0). Nothing is deleted. `n` of each is the weight ("weighted results", "weight"),
+       `count` the records; the floors (`Model.FEW_RESULTS` 50, `Model.OBSERVED` 50, `Ledger.FORECAST_MIN_SALES` 5)
+       compare the weight. Whole days, so today's results weigh exactly 1.
+    - b. The Salvager shape, one rule for all bands: a table result with m values lo..hi can come at m + 1 positions
+       with the Salvager (lo..hi and one more at the top; more than one more counts as one more). Per material kind
+       (dust, essence, shard, crystal; `Data.MATERIALS` kind) your weighted results with the Salvager at their
+       position are pooled over every band (`Ledger.Shapes`, `cells[m][position]`). A band of another width reads
+       them stretched: a result at position j of width m0 covers [j, j + 1] ÷ (m0 + 1) of the stretch lo..hi + 1
+       evenly, position k at width m takes its overlap with [k, k + 1] ÷ (m + 1) (`Model.ShapeAt`). The prior is the
+       community rule (2) at that width, each value 1/m, one more with `salvagerChance` (dust and essence; 0 for
+       shards and crystals: never on them), with K = `Model.SHAPE_PRIOR` = 50 results: shape = (K × rule + W ×
+       yours) ÷ (K + W), W the weight of yours. No results: exactly the rule (a spec: the blend equals 0.3's).
+       The pool includes the band's own results; their part in the band's prior is at most K × the table's chance.
+    - c. The band's blend (99) uses that shape as the table's quantities for the Salvager case (`shapeOf`): weight of
+       (material, quantity) = 50 × the table's chance of the material × the shape's chance of that quantity, plus
+       the band's own weighted results. So a band with 5 results starts from the shape learned in all bands (a spec:
+       Strange Dust 1-2 with 5 of its own takes the thirds learned on Soul and Vision Dust). Without the Salvager:
+       the table as before (min..max equally likely). The whole-unit outcomes, the range, Loss chance and the
+       averages (116) read the blend, so they use the learned shape.
+    - d. Options: `salvagerChance` stays, as the prior's chance ("Starting chance of one extra dust or essence
+       (%)", 50), its help says that your results take over. Decision: kept rather than removed, so the prior can
+       be set where the community data changes; the shape itself is learned.
+    - e. Confidence (UI.md Data 2): the Odds cards have a fact "Weighted" (the weight the band's rates rest on, in
+       the Salvager state buying uses, grey "few results" under 50, with its help); a card's "?" has "Rates used
+       from: N weighted results (M disenchants ...)", the two learning lines (`ns.LEARNING_LINES`) and per dust or
+       essence the Salvager shape it starts from ("Salvager shape, Soul Dust: 1: 35%, 2: 32%, 3: 33% (its kind in
+       all bands: 451.5 weighted results ...)"). The deal tooltip says "Rests on N weighted results of this band",
+       Gear Details' line the same; the material tooltip "N sales (weight x)".
+    - f. Measured on the saved data of 2026-11-27 (713 disenchants, 2026-11-25 to 27, so weights 0.95 to 1; prices
+       and sell price ratios of the save, no deposits): learned shapes with the Salvager at width 2: dust 34.8 /
+       32.1 / 33.1% (W 451.5; yours alone 35.9 / 30.1 / 34.0%), essence 34.8 / 41.3 / 23.9% (W 114.3), shards 100%
+       at 1 (W 30.7), crystal 51 / 49 / 0% (1 result). Average value old → new with the Salvager: Uncommon Armor
+       1-15 (33) 2.56 → 2.53s; 21-25 (2) 7.07 → 6.97s; 26-30 (539) 15.68 → 15.64s; 31-35 (9) 17.77 → 17.57s,
+       its range 2 Soul Dust 9.65s - 5 Soul Dust 24.12s → 1 Small Glowing Shard 9.47s - 6 Soul Dust 28.94s (Soul
+       Dust 2-5 reads the thirds stretched: about a fifth on each of 2..6); 36-40 (15) 20.13 → 19.70s; 46-50 (2)
+       83.06 → 80.16s; Epic Armor 61+ (1) 88.91 → 88.34g. Without the Salvager every band moves under 0.1%.
+       Every other range is unchanged.
+
 ## Data
 
 `SalvagerBackup` (account-wide): `list` of ledger copies (88). `SalvagerDB` (account-wide): `settings` (`timeZone`, 110, `highlightReturn`, 116h), `prices`, `ledger` (`purchases`, `stock`, `pools`, `disenchants`, `sales`),
@@ -1355,6 +1410,7 @@ flipping is out of scope for now.
 1. Whether Boosted Disenchanting (1283701) stacks with the time spent near the Salvager, and whether the
    bonus grows with it: read `salvagerStacks` and the results after the next batches (74b).
 3. The shape of the Salvager bonus (74a): neither dust nor essence looks like "+1 half of the time"; essences get
-   about half the dust's bonus (0.3.125). The blend (99) follows the data per band; check the shape after about 100
-   more disenchants with the Salvager outside Uncommon Armor 26-30.
+   about half the dust's bonus (0.3.125). Since 0.4.0 it is learned per material kind from all bands (118); open:
+   whether a band of four values (Soul Dust 2-5) gets the stretched shape (9 results so far) or one more half of the
+   time; check with about 50 disenchants with the Salvager in 31-35 or 41-45.
 2. Whether Forever's disenchant results match the Classic table: the Ledger window (Odds) compares observed odds per band.

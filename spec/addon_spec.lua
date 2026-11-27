@@ -274,13 +274,16 @@ describe("Salvager in a simulated client", function()
         assert.is_true(card.pair)
         assert.are.equal(3, #card.rows)                            -- dust, essence, shard
         assert.are.equal(11083, card.rows[1].itemID)
-        -- Its facts: Disenchants and Loss chance, each with its help; the "?" has the rest.
-        assert.are.equal(2, #card.facts)
+        -- Its facts: Disenchants, Weighted (results by age, SDD 118) and Loss chance, each with its help; the "?" has
+        -- the rest.
+        assert.are.equal(3, #card.facts)
         assert.is_truthy(card.facts[1][1]:find("Disenchants", 1, true))
-        assert.is_truthy(card.facts[2][1]:find("Loss chance", 1, true))
+        assert.is_truthy(card.facts[2][1]:find("Weighted", 1, true))
+        assert.is_truthy(card.facts[3][1]:find("Loss chance", 1, true))
         assert.is_table(card.facts[1].help)
         local more = table.concat(card.more(), "\n")
-        for _, word in ipairs({ "Avg value now", "Range now", "Rule: ", "Buy below", "Your average", "Rates used from", "Price now" }) do
+        for _, word in ipairs({ "Avg value now", "Range now", "Rule: ", "Buy below", "Your average", "Rates used from", "Price now",
+            "Learning: ", "Recent results weigh more", "Salvager shape, " }) do
             assert.is_truthy(more:find(word, 1, true), word)
         end
         -- Every column title has its help; the two groups are apart (a line before Results).
@@ -3477,7 +3480,7 @@ describe("Salvager gear, Gear details and headings that open and close (0.3.129)
         assert.is_true(#build >= 4)
         assert.is_truthy(table.concat(marks, " "):find("pessimistic", 1, true))
         assert.is_truthy(table.concat(marks, " "):find("optimistic", 1, true))
-        assert.is_truthy(from:find("0 of your disenchants of this band (few results)", 1, true))
+        assert.is_truthy(from:find("0 weighted results |cff808080(few results)|r of this band", 1, true))
         local hist = g.HistoryRows(d)
         assert.are.equal("Alpha Boots", hist[1].cells[1])
         assert.is_truthy(hist[2].cells[1]:find("Its band: ", 1, true))

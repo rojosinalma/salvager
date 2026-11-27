@@ -89,10 +89,11 @@ local function populate(panel, standalone)
         "Auto: on when you know the recipe or have an Arcane Salvager in your bags.")
     salv:SetPoint("LEFT", salvLabel, "RIGHT", 12, 0)
     controls[#controls + 1] = { refresh = function() salv:Set(s.salvager) end }
-    local chL = numberBox(panel, "Chance of one extra dust or essence (%)", 36,
+    local chL = numberBox(panel, "Starting chance of one extra dust or essence (%)", 36,
         function() return math.floor(s.salvagerChance * 100 + 0.5) end,
         function(n) s.salvagerChance = math.min(100, math.max(0, n)) / 100 changed("salvagerChance", s.salvagerChance) end,
-        "Community data says 50%. The Reports window (Odds) shows your own results, with and without it.")
+        "Where your results with the Salvager are few, the forecast starts from this chance (community data: 50%). "
+            .. "Your own results take over as they grow. " .. ns.LEARNING_LINES[1] .. " " .. ns.LEARNING_LINES[2])
     at(chL, 24)
 
     -- Which bought gear the Disenchant panel offers (SDD 112b): it never offers gear you did not buy.

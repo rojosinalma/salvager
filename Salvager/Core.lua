@@ -24,7 +24,7 @@ local DEFAULTS = {
         materialsDataOnly = false, -- the materials list shows only the materials you hold, list, sold or got
         cautious = false,          -- buy limits count every material at its lowest amount (1 dust, not 1.5)
         salvager = "auto",         -- "auto" | "on" | "off": add the Arcane Salvager bonus when valuing buys
-        salvagerChance = 0.5,      -- chance of one extra dust or essence with the Salvager
+        salvagerChance = 0.5,      -- the prior of the Salvager shape: one extra dust or essence half of the time (SDD 118)
         cut = 0.05,                -- auction house cut on sales
         priceUnits = 20,           -- material price = average of the cheapest N units
         priceMaxAge = 6 * 3600,    -- seconds before a material price counts as old (when priceRescan is 0)
@@ -397,7 +397,8 @@ local function forecastData()
             deposits = Ledger.DepositRates(ns.db.ledger, unit, time()),
             unit = unit,
             times = Ledger.TimesToSell(ns.db.ledger, ns.db.posted, time()),
-            results = Ledger.Results(ns.db.ledger),
+            results = Ledger.Results(ns.db.ledger, time()),
+            shapes = Ledger.Shapes(ns.db.ledger, time()),
             blended = {},
         }
     end
@@ -410,17 +411,18 @@ for _, event in ipairs({ "SALVAGER_LEDGER", "SALVAGER_PRICES_DONE", "SALVAGER_SE
 end
 
 --- The sell price ratio of a material: what one unit sells for against its value (SDD 3).
---- @return table { ratio, n (your sales of it in the last 30 days), few (fewer than Ledger.FORECAST_MIN_SALES) }
+--- @return table { ratio, n (the weight of your sales of it by age, SDD 118), count (the sales), few (n under
+---   Ledger.FORECAST_MIN_SALES) }
 function ns.SellRatio(id)
     local r = forecastData().ratios
-    return r[id] or { ratio = r.all.ratio, n = 0, few = true }
+    return r[id] or { ratio = r.all.ratio, n = 0, count = 0, few = true }
 end
 
---- Time to sell of a material (SDD 100): post to sale, the median of your sales of the last 30 days.
---- @return table { seconds (nil: no sale of any material), n (its sales), few }
+--- Time to sell of a material (SDD 100): post to sale, the median of your sales, recent ones weighing more (SDD 118).
+--- @return table { seconds (nil: no sale of any material), n (the weight of its sales), count (its sales), few }
 function ns.TimeToSell(id)
     local t = forecastData().times
-    return t[id] or { seconds = t.all.seconds, n = 0, few = true }
+    return t[id] or { seconds = t.all.seconds, n = 0, count = 0, few = true }
 end
 
 local function timeOf(id)
@@ -452,8 +454,26 @@ end
 --- @return number|nil days, boolean few, number|nil seconds (before the 1 day floor)
 function ns.DaysToSell(parts) return Model.DaysToSell(parts, timeOf) end
 
---- What one disenchant of this band gives, as the forecast counts it (SDD 99): the table blended with your own
---- results of the band with the same Salvager state. `salvager` nil = as for buying.
+local function kindOf(id)
+    local m = Data.MATERIAL_BY_ID[id]
+    return m and m.kind
+end
+
+--- The learned Salvager shape of a result (SDD 118, Model.ShapeDist): its quantities with the Salvager, from your
+--- results of its material kind in every band, the community rule (Options) as the prior.
+--- @return table|nil { [quantity] = chance }, table|nil the shape (Model.LearnedShape: dist, n, top, few)
+function ns.SalvagerShape(r)
+    return Model.ShapeDist(r, forecastData().shapes.on, kindOf, ns.db.settings.salvagerChance)
+end
+
+--- The learned Salvager shape of one material kind, read at width m (the Odds' "?", the specs).
+function ns.KindShape(kind, m, bonus)
+    return Model.LearnedShape(forecastData().shapes.on[kind], m, bonus and ns.db.settings.salvagerChance or 0)
+end
+
+--- What one disenchant of this band gives, as the forecast counts it (SDD 99, 118): the table, with the Salvager its
+--- quantities by the learned shape of each material kind, blended with your own results of the band with the same
+--- Salvager state, each weighted by its age. `salvager` nil = as for buying.
 --- @return table|nil outcomes (Model.Blended)
 function ns.Outcomes(quality, classID, ilvl, salvager)
     local o = Model.Outcomes(quality, classID, ilvl)
@@ -465,7 +485,8 @@ function ns.Outcomes(quality, classID, ilvl, salvager)
     if not f.blended[cacheKey] then
         local seen = f.results[key]
         f.blended[cacheKey] = Model.Blended(o, seen and seen[salvager and "on" or "off"],
-            { salvager = salvager, salvagerChance = ns.db.settings.salvagerChance })
+            { salvager = salvager, salvagerChance = ns.db.settings.salvagerChance,
+                shapeOf = function(r) return (ns.SalvagerShape(r)) end })
     end
     return f.blended[cacheKey]
 end
@@ -794,6 +815,27 @@ function ns.RangeText(low, avg, high, unproven)
 end
 --- The widest range cell (a column of live values keeps the width of its widest one, UI.md Tables 2).
 ns.RANGE_SAMPLE = ns.RangeText(-99999000, -99999000, -99999000, true)
+
+--- A weight of results or sales (SDD 118) as text: whole when it is about whole ("539"), else one decimal ("412.3").
+function ns.WeightText(n)
+    n = n or 0
+    if math.abs(n - math.floor(n + 0.5)) < 0.05 then return tostring(math.floor(n + 0.5)) end
+    return string.format("%.1f", n)
+end
+
+--- "N weighted results", grey "(few results)" after it under Model.FEW_RESULTS (UI.md Data 2).
+function ns.WeightedResultsText(n, few)
+    return ns.WeightText(n) .. " weighted " .. (math.abs((n or 0) - 1) < 0.05 and "result" or "results")
+        .. (few and " |cff808080(few results)|r" or "")
+end
+
+-- How the forecast learns (SDD 118), in two lines: the Odds' "?" and the Options' help.
+ns.LEARNING_LINES = {
+    "Learning: your disenchants move the game's table per band (the table counts as 50), and the Salvager bonus is "
+        .. "learned per material kind from all your bands (the 50% rule counts as 50 results).",
+    "Recent results weigh more: each counts 0.5^(its age in days / 30), so today's count 1 and a month old 0.5; "
+        .. "nothing is deleted.",
+}
 
 --- Where a band's rule comes from, in words (Model.Evidence).
 ns.EVIDENCE_TEXT = {

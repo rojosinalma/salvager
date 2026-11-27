@@ -67,7 +67,7 @@ describe("Forecast from your own sales", function()
             assert.is_true(math.abs(two.all.ratio - (2 * 0.9 + 3) / 5) < 1e-9)
         end)
 
-        it("asks for the value when a sale has none, and leaves out lost deposits and old sales", function()
+        it("asks for the value when a sale has none, leaves out lost deposits and weighs old sales by age", function()
             local old = sale(DUST, 10, 100, 400, 31 * 86400)
             local lost = { id = DUST, count = 0, qty = 5, gross = 0, net = -10, lost = "expired", t = NOW - 60 }
             local plain = sale(DUST, 2, 360, nil)
@@ -78,8 +78,14 @@ describe("Forecast from your own sales", function()
                 return 400
             end, NOW)
             assert.are.equal(1, asked)
-            assert.are.equal(1, r[DUST].n)
-            assert.are.equal(0.9, r[DUST].measured)
+            -- The sale of 31 days ago weighs 0.5^(31/30) (SDD 118): it counts, less than today's.
+            assert.are.equal(2, r[DUST].count)
+            assert.is_true(math.abs(r[DUST].n - (1 + 0.5 ^ (31 / 30))) < 1e-9)
+            -- Its 10 units at about half weight (4.9) still outweigh today's 2 units: the median is its ratio.
+            assert.are.equal(0.25, r[DUST].measured)
+            -- Without it, today's sale alone.
+            local fresh = Ledger.SellRatios(ledger({ lost, plain }), function() return 400 end, NOW)
+            assert.are.equal(0.9, fresh[DUST].measured)
         end)
     end)
 

@@ -512,7 +512,11 @@ function UI.AddDealLines(tip, d)
     line("Time to sell (its materials)", d.days and (ns.DurationText(d.sellSeconds)
         .. string.format(", counted as %.1f %s", d.days, d.days == 1 and "day" or "days") .. few) or "not known yet")
     line("Avg return per day", perDay and (string.format("%s%+.1f%%|r", GREY, perDay * 100) .. few) or "not known yet")
-    if sp then tip:AddLine("Rule: " .. ns.EVIDENCE_TEXT[sp.evidence], 0.5, 0.5, 0.5, true) end
+    if sp then
+        tip:AddLine("Rule: " .. ns.EVIDENCE_TEXT[sp.evidence], 0.5, 0.5, 0.5, true)
+        tip:AddLine("Rests on " .. ns.WeightedResultsText(sp.weight, sp.few) .. " of this band (recent ones weigh "
+            .. "more)", 0.5, 0.5, 0.5, true)
+    end
     tip:AddLine("An average is over many pieces; one disenchant gives one of the outcomes listed.", 0.5, 0.5, 0.5, true)
 end
 

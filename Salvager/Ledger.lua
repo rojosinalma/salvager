@@ -670,16 +670,16 @@ function Ledger.DepositLost(state, matID, qty, amount, why, t)
     return rec
 end
 
--- The forecast learns from your own sales of the last FORECAST_DAYS; a material with fewer than
--- FORECAST_MIN_SALES sales leans on all materials together, and with none at all on the default (SDD 3, 96).
-Ledger.FORECAST_DAYS = 30
+-- The forecast learns from your own sales, each weighted by its age (Model.Decay: half after 30 days, SDD 118); a
+-- material whose sales weigh less than FORECAST_MIN_SALES leans on all materials together, and with none at all on
+-- the default (SDD 3, 96).
 Ledger.FORECAST_MIN_SALES = 5
 
-local function recentSales(state, now, days)
-    local since = (now or 0) - (days or Ledger.FORECAST_DAYS) * 86400
+-- Every sale with its weight by age.
+local function weightedSales(state, now)
     local out = {}
     for _, s in ipairs(state.sales) do
-        if (s.t or 0) >= since then out[#out + 1] = s end
+        out[#out + 1] = { s = s, w = Model.Decay((now or 0) - (s.t or 0)) }
     end
     return out
 end
@@ -689,32 +689,37 @@ end
 --- few sales is pulled toward the median of all materials, and that one toward 1 while it has few sales.
 --- @param valueAt function(sale) -> the material's value when that sale was posted (or at the sale), or nil;
 ---   used when the sale has no `val` of its own
---- @param opts table|nil { days, minSales }
---- @return table { [id] = { ratio, n (sales), units, measured (its own median), few }, all = { ratio, n } }
+--- Each sale weighs its units × its weight by age (Model.Decay); `n` is the weight of the sales (a sale today counts
+--- 1, a month old 0.5), `count` the sales themselves.
+--- @param opts table|nil { minSales }
+--- @return table { [id] = { ratio, n (weight of its sales), count, units, measured (its own median), few },
+---   all = { ratio, n, count } }
 function Ledger.SellRatios(state, valueAt, now, opts)
     opts = opts or {}
     local floor = opts.minSales or Ledger.FORECAST_MIN_SALES
-    local per, all = {}, {}
-    for _, s in ipairs(recentSales(state, now, opts.days)) do
+    local per, all, nAll = {}, {}, 0
+    for _, e in ipairs(weightedSales(state, now)) do
+        local s = e.s
         if not s.lost and (s.count or 0) > 0 and (s.gross or 0) > 0 then
             local v = s.val or (valueAt and valueAt(s))
             if v and v > 0 then
                 local each = s.each or (s.gross / s.count)
-                local x = { r = each / v, w = s.count }
+                local x = { r = each / v, w = s.count * e.w, units = s.count, age = e.w }
                 per[s.id] = per[s.id] or {}
                 table.insert(per[s.id], x)
                 all[#all + 1] = x
+                nAll = nAll + e.w
             end
         end
     end
-    local prior = Model.Blend(Model.WeightedMedian(all), #all, 1, floor)
-    local out = { all = { ratio = prior, n = #all } }
+    local prior = Model.Blend(Model.WeightedMedian(all), nAll, 1, floor)
+    local out = { all = { ratio = prior, n = nAll, count = #all } }
     for id, list in pairs(per) do
-        local units = 0
-        for _, x in ipairs(list) do units = units + x.w end
+        local units, n = 0, 0
+        for _, x in ipairs(list) do units, n = units + x.units, n + x.age end
         local measured = Model.WeightedMedian(list)
-        out[id] = { ratio = Model.Blend(measured, #list, prior, floor), n = #list, units = units, measured = measured,
-            few = #list < floor }
+        out[id] = { ratio = Model.Blend(measured, n, prior, floor), n = n, count = #list, units = units,
+            measured = measured, few = n < floor }
     end
     return out
 end
@@ -723,7 +728,8 @@ end
 --- (units sold × deposit of one unit). A material with few sales is pulled toward all materials together, and that
 --- toward 1 (one post's deposit lost per unit sold) while it has few sales.
 --- @param unitDeposit function(id) -> the deposit of one unit in one post, copper, or nil when not known
---- @param opts table|nil { days, minSales }
+--- Lost deposits, units sold and sales weigh their weight by age (Model.Decay); `n` is the weight of the sales.
+--- @param opts table|nil { minSales }
 --- @return table { [id] = { k, perUnit (copper per unit sold), lost, sold, n, few }, all = { k, n } }
 function Ledger.DepositRates(state, unitDeposit, now, opts)
     opts = opts or {}
@@ -734,13 +740,14 @@ function Ledger.DepositRates(state, unitDeposit, now, opts)
         per[id] = m
         return m
     end
-    for _, s in ipairs(recentSales(state, now, opts.days)) do
+    for _, e in ipairs(weightedSales(state, now)) do
+        local s = e.s
         if s.lost then
             local m = mat(s.id)
-            m.lost = m.lost - (s.net or 0)
+            m.lost = m.lost - (s.net or 0) * e.w
         elseif (s.count or 0) > 0 then
             local m = mat(s.id)
-            m.sold, m.n = m.sold + s.count, m.n + 1
+            m.sold, m.n = m.sold + s.count * e.w, m.n + e.w
         end
     end
     for id, m in pairs(per) do
@@ -761,22 +768,56 @@ function Ledger.DepositRates(state, unitDeposit, now, opts)
     return out
 end
 
---- Your results per band and Salvager state, for the blend with the table (SDD 99, Model.Blended).
---- @return table { [bandKey] = { on = seen, off = seen } }, seen = { n, mats = { [id] = { hits, qty = { [q] = times } } } }
-function Ledger.Results(state)
+--- Your results per band and Salvager state, for the blend with the table (SDD 99, Model.Blended). Each disenchant
+--- weighs its weight by age (Model.Decay, SDD 118): `n`, `hits` and `qty` are weights, `count` the disenchants.
+--- @return table { [bandKey] = { on = seen, off = seen } },
+---   seen = { n, count, mats = { [id] = { hits, qty = { [q] = weight } } } }
+function Ledger.Results(state, now)
     local out = {}
     for _, r in ipairs(state.disenchants) do
         if r.got and next(r.got) and r.quality and r.classID and r.band then
+            local w = Model.Decay((now or 0) - (r.t or 0))
             local key = Ledger.BandKey(r.quality, r.classID, r.band)
-            local b = out[key] or { on = { n = 0, mats = {} }, off = { n = 0, mats = {} } }
+            local b = out[key] or { on = { n = 0, count = 0, mats = {} }, off = { n = 0, count = 0, mats = {} } }
             out[key] = b
             local seen = r.salvager and b.on or b.off
-            seen.n = seen.n + 1
+            seen.n, seen.count = seen.n + w, seen.count + 1
             for id, qty in pairs(r.got) do
                 local m = seen.mats[id] or { hits = 0, qty = {} }
                 seen.mats[id] = m
-                m.hits = m.hits + 1
-                m.qty[qty] = (m.qty[qty] or 0) + 1
+                m.hits = m.hits + w
+                m.qty[qty] = (m.qty[qty] or 0) + w
+            end
+        end
+    end
+    return out
+end
+
+--- Your results per material kind and Salvager state, at their place in the table's range of their band (SDD 118,
+--- Model.LearnedShape): a result of a material the band's table gives with m values (lo..hi) is at position
+--- quantity − lo, from 0 to m (one more than the table at the top; more than that counts as one more). Weighted by
+--- age (Model.Decay). A material the band's table does not have is left out.
+--- @return table { on = { [kind] = { n (weight), count, cells = { [m] = { [position] = weight } } } }, off = same }
+function Ledger.Shapes(state, now)
+    local out = { on = {}, off = {} }
+    for _, r in ipairs(state.disenchants) do
+        local o = r.got and r.quality and r.classID and r.band and Model.Outcomes(r.quality, r.classID, r.band)
+        if o then
+            local w = Model.Decay((now or 0) - (r.t or 0))
+            local side = out[r.salvager and "on" or "off"]
+            for id, qty in pairs(r.got) do
+                local res
+                for _, x in ipairs(o.results) do if x.id == id then res = x end end
+                local mat = Data.MATERIAL_BY_ID[id]
+                if res and mat then
+                    local m = res.max - res.min + 1
+                    local j = math.min(m, math.max(0, qty - res.min))
+                    local k = side[mat.kind] or { n = 0, count = 0, cells = {} }
+                    side[mat.kind] = k
+                    k.cells[m] = k.cells[m] or {}
+                    k.cells[m][j] = (k.cells[m][j] or 0) + w
+                    k.n, k.count = k.n + w, k.count + 1
+                end
             end
         end
     end
@@ -797,37 +838,42 @@ local function postTime(s, posted, soldAt)
     return nil
 end
 
---- Time to sell per material (SDD 100): from the post to the sale, the median of your sales of the last 30 days
---- by units. The sale is at its money's due time less the mail delay when that is known, else when it was booked.
+--- Time to sell per material (SDD 100): from the post to the sale, the median of your sales by units × their weight
+--- by age (Model.Decay, SDD 118); `n` is the weight of the sales, `count` the sales. The sale is at its money's due
+--- time less the mail delay when that is known, else when it was booked.
 --- A material with few sales is pulled toward all materials together (as the sell price ratio, SDD 3).
 --- Only sales of posts made through Salvager count (`SalvagerDB.posted`).
---- @param opts table|nil { days, minSales, mailDelay }
---- @return table { [id] = { seconds, n (sales), measured (its own median), few }, all = { seconds, n } (seconds nil
----   without a sale) }
+--- @param opts table|nil { minSales, mailDelay }
+--- @return table { [id] = { seconds, n (weight of its sales), count, measured (its own median), few },
+---   all = { seconds, n, count, few } (seconds nil without a sale) }
 function Ledger.TimesToSell(state, posted, now, opts)
     opts = opts or {}
     local floor = opts.minSales or Ledger.FORECAST_MIN_SALES
     local delay = opts.mailDelay or Ledger.MAIL_DELAY
-    local per, all = {}, {}
-    for _, s in ipairs(recentSales(state, now, opts.days)) do
+    local per, all, nAll = {}, {}, 0
+    for _, e in ipairs(weightedSales(state, now)) do
+        local s = e.s
         if not s.lost and (s.count or 0) > 0 and (s.gross or 0) > 0 then
             local soldAt = s.t or 0
             if s.due then soldAt = math.min(soldAt, s.due - delay) end
             local at = postTime(s, posted or {}, soldAt)
             if at then
-                local x = { r = math.max(0, soldAt - at), w = s.count }
+                local x = { r = math.max(0, soldAt - at), w = s.count * e.w, age = e.w }
                 per[s.id] = per[s.id] or {}
                 table.insert(per[s.id], x)
                 all[#all + 1] = x
+                nAll = nAll + e.w
             end
         end
     end
     local allMedian = Model.WeightedMedian(all)
-    local out = { all = { seconds = allMedian, n = #all, few = #all < floor } }
+    local out = { all = { seconds = allMedian, n = nAll, count = #all, few = nAll < floor } }
     for id, list in pairs(per) do
+        local n = 0
+        for _, x in ipairs(list) do n = n + x.age end
         local measured = Model.WeightedMedian(list)
-        out[id] = { seconds = Model.Blend(measured, #list, allMedian or measured, floor), n = #list, measured = measured,
-            few = #list < floor }
+        out[id] = { seconds = Model.Blend(measured, n, allMedian or measured, floor), n = n, count = #list,
+            measured = measured, few = n < floor }
     end
     return out
 end

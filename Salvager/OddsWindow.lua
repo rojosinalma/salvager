@@ -173,6 +173,9 @@ end
 
 local DISENCHANTS_HELP = { "Disenchants", "How many of your disenchants are in this band (as the Salvager filter "
     .. "says). With \"Show with and without the Salvager\" on: without the Salvager, then with it." }
+local WEIGHT_HELP = { "Weighted results", "The weight of your disenchants of this band that the rates, the range and "
+    .. "Loss chance use (with or without the Salvager as buying counts it): each counts 0.5^(its age in days / 30), so "
+    .. "today's count 1 and a month old 0.5. \"few results\" under " .. Model.FEW_RESULTS .. ": the table weighs more." }
 local LOSS_HELP = { "Loss chance", "The chance that one disenchant is worth less than Buy below (the most the addon "
     .. "lets you pay), so the risk when you pay the full limit. \"-\" when the limit is 0. The \"?\" has the rest." }
 
@@ -199,9 +202,27 @@ local function moreLines(band)
             .. "for a rule not measured on Forever), or the limit you set in the Limits window.",
         "Your average: " .. (band.average and ns.Money(band.average) or "-") .. ". What your " .. band.allN
             .. " disenchants of this band gave on average, at the prices of the moment.",
-        "Rates used from: " .. o.n .. (o.salvager and " disenchants with the Salvager" or " disenchants without the "
-            .. "Salvager") .. " (as buying counts it): Avg value now, Buy below and Loss chance rest on the table blended "
-            .. "with them." }
+        "Rates used from: " .. ns.WeightedResultsText(o.n, o.few) .. " (" .. (o.count or 0)
+            .. (o.salvager and " disenchants with the Salvager" or " disenchants without the Salvager")
+            .. ", as buying counts it): Avg value now, Buy below and Loss chance rest on the table blended with them.",
+        ns.LEARNING_LINES[1], ns.LEARNING_LINES[2] }
+    -- The learned Salvager shape each material of the band starts from with the Salvager (SDD 118): dust and essence.
+    do
+        for _, r in ipairs(o.results) do
+            if r.bonus and not r.unexpected then
+                local dist, shape = ns.SalvagerShape(r)
+                if dist then
+                    local parts = {}
+                    for q = r.min, r.max + 1 do
+                        if (dist[q] or 0) > 0 then parts[#parts + 1] = q .. ": " .. pct(dist[q]) end
+                    end
+                    lines[#lines + 1] = "Salvager shape, " .. ns.MaterialName(r.id) .. ": " .. table.concat(parts, ", ")
+                        .. " (its kind in all bands: " .. ns.WeightedResultsText(shape.n, shape.few) .. "; the band's "
+                        .. "own results refine it)"
+                end
+            end
+        end
+    end
     for _, r in ipairs(band.rows) do
         lines[#lines + 1] = "Price now, " .. tostring(r.cells[1]) .. ": " .. (r.price and ns.Money(r.price) or "no price")
     end
@@ -228,6 +249,8 @@ function Odds.Cards()
                 .. "Salvager|r") or (band.n > 0 and tostring(band.n) or grey("0"))
             cards[#cards + 1] = { title = r.cells[1], indent = r.indent, pair = true, rows = band.rows, band = band,
                 facts = { { GREY .. "Disenchants|r " .. count, help = DISENCHANTS_HELP },
+                    { GREY .. "Weighted|r " .. ns.WeightText(band.outcomes.n) .. (band.outcomes.few and grey(" few results")
+                        or ""), help = WEIGHT_HELP },
                     { GREY .. "Loss chance|r " .. (band.lose and ns.LoseText(band.lose) or grey("-")), help = LOSS_HELP } },
                 more = function() return moreLines(band) end }
         end
