@@ -1010,6 +1010,21 @@ end
 ns.On("ADDON_ACTION_BLOCKED", blocked)
 ns.On("ADDON_ACTION_FORBIDDEN", blocked)
 
+-- After a purchase its gear is searched again only once the buying has stopped (0.3.144, the user: the search right
+-- after each purchase kept the auction house busy for the next click; measured 2026-11-27 04:00-04:16: 110 such
+-- searches for 106 purchases, and 111 of the 132 clicks that found the auction house busy came within 2 s after
+-- one). The bought auction leaves the list at once; the rest of its gear's rows wait for this one search, made when
+-- no Buy was clicked for RECHECK_QUIET and nothing is on its way.
+local RECHECK_QUIET = 8
+local toRecheck = {}   -- [keyString] = the deal to search again
+local function recheckLater(d) if d and d.keyString then toRecheck[d.keyString] = d end end
+ns.OnTick(function()
+    if not next(toRecheck) or Scanner.Buying() or GetTime() - lastBuyAt < RECHECK_QUIET then return end
+    local key, d = next(toRecheck)
+    toRecheck[key] = nil
+    Scanner.Recheck(d)
+end)
+
 ns.On("AUCTION_HOUSE_PURCHASE_COMPLETED", function(auctionID)
     -- (A purchase given up as dropped that went through after all is still booked.)
     local d = pendingBuys[auctionID] or dropped[auctionID]
@@ -1023,7 +1038,7 @@ ns.On("AUCTION_HOUSE_PURCHASE_COMPLETED", function(auctionID)
             { q = d.quality, cls = d.classID, band = o and o.band, ilvl = d.ilvl, v = ns.VERSION })
         ns.Log("bought %s for %s, value %s", d.link or d.itemID, ns.Money(d.buyout), ns.Money(d.value))
         ns.Fire("SALVAGER_LEDGER")
-        Scanner.Recheck(d)
+        recheckLater(d)
     end
     ns.Fire("SALVAGER_DEALS")
 end)
@@ -1041,7 +1056,7 @@ ns.On("AUCTION_HOUSE_SHOW_ERROR", function()
     removeDeal(d.auctionID)
     ns.Print("could not buy %s (sold or changed)", d.link or "the gear")
     ns.Log("could not buy %s for %s", d.link or d.itemID, ns.Money(d.buyout))
-    Scanner.Recheck(d)
+    recheckLater(d)
     ns.Fire("SALVAGER_DEALS")
 end)
 

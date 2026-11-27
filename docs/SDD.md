@@ -867,6 +867,11 @@ flipping is out of scope for now.
        Details) is searched again the moment the mouse is there (`Scanner.Prefetch`, once per gear and browse, first
        in line past the hold), so the click that follows is on a current search and buys at once. "Buy now" stays
        only for a click faster than that search, or one while the auction house is busy. The search goes for the
+    - l. No search right after a purchase (0.3.144, the user: the checks after buying made more delays than they
+       solved). Measured 2026-11-27 04:00-04:16: 110 such searches for 106 purchases; 111 of the 132 clicks that
+       found the auction house busy came within 2 s after one. The bought auction leaves the list at once; its gear
+       is searched again once, when no Buy was clicked for 8 s and nothing is on its way (also after a failed
+       purchase).
        deal under the mouse anywhere over its row, Buy Top or Gear Details; it holds no scan (b).
     - j. Never sent while busy (0.3.142, measured 2026-11-27 04:00–04:16: 224 Buy clicks, 106 bought, 132 on a busy
        auction house, 30 of them on "Buy now" while it was busy again, and those were sent and lost). A "Buy now"

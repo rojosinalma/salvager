@@ -1360,9 +1360,18 @@ describe("Salvager deals list", function()
         assert.are.equal(1, env.ah.bids[#env.ah.bids].id)
         assert.are.equal(500, env.ah.bids[#env.ah.bids].amount)
         for _, id in ipairs({ 11083, 11082, 11084 }) do ns.db.prices[id] = { p = 433, t = env.clock } end   -- a band with a value
-        local queued = #ns.Queue.items
+        local function rechecked()
+            for _, l in ipairs(ns.db.log) do
+                if l:find("rechecking item 5001:28:0 after a purchase", 1, true) then return true end
+            end
+            return false
+        end
         wow.fire(ns, "AUCTION_HOUSE_PURCHASE_COMPLETED", 1)
-        assert.are.equal(queued + 1, #ns.Queue.items)    -- searched again for price changes
+        assert.is_false(rechecked())                     -- not at once: the next click finds the auction house free
+        wow.tick(ns, 3)
+        assert.is_false(rechecked())                     -- still buying (a click less than 8 s ago)
+        wow.tick(ns, 6)
+        assert.is_true(rechecked())                      -- searched again once the buying stopped
         assert.are.equal(1, #ns.db.ledger.purchases[5001])
         assert.is_nil(row)
     end)
