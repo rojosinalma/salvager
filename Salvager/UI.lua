@@ -560,8 +560,19 @@ function UI.Refresh()
             UI.fitting = true
             f:SetWidth(want)
             UI.fitting = false
+            UI.fitW = want
+            w = layout(view, data)
+        elseif UI.fitView ~= UI.view and UI.fitW and math.abs((tonumber((f:GetWidth())) or 0) - UI.fitW) < 1
+            and UI.fitW > want then
+            -- A width that only came from another tab's table shrinks back to this one's (SDD 113); a width the
+            -- player chose stays.
+            UI.fitting = true
+            f:SetWidth(want)
+            UI.fitting = false
+            UI.fitW = want
             w = layout(view, data)
         end
+        UI.fitView = UI.view
     end
     UI.offset = math.max(0, math.min(UI.offset, #data - ROWS))
     UI.UpdateScrollBar(#data)

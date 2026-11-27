@@ -9,6 +9,7 @@ local Breakdown = {}
 ns.Breakdown = Breakdown
 
 local GREY, GOLD, GREEN, RED = "|cff808080", "|cffffd100", "|cff40ff40", "|cffff4040"
+local MIN_W = 720   -- the smallest width: the heading's two lines
 
 local function help(title, text) return { title, text } end
 local SHARED = {
@@ -123,6 +124,10 @@ function Breakdown.BandRows(matID)
         or Breakdown.Rows(b.bands, matID, bandLabel)
 end
 
+--- The height the two tables share: the window less the heading and the upper title (122 px), the lower title (24)
+--- and the bottom (14).
+function Breakdown.Room() return math.max(0, (tonumber((f:GetHeight())) or 0) - 122 - 24 - 14) end
+
 function Breakdown.Refresh()
     if not f or not f:IsShown() or not Breakdown.matID then return end
     local matID = Breakdown.matID
@@ -134,19 +139,20 @@ function Breakdown.Refresh()
     summary[2]:SetText(c)
     parts[1]:SetText(GOLD .. "By gear|r" .. GREY .. "  the worst first|r")
     parts[3]:SetText(GOLD .. "By item level band|r")
-    -- The upper table takes a little over half of the room.
-    local room = (f:GetHeight() or 0) - 104 - 14 - 2 * 20
-    parts[2]:SetHeight(math.max(66, math.floor(room * 0.55)))
+    -- The upper table takes a little over half of the room at first; the bar between the tables moves it (SDD 113).
+    parts[2]:SetHeight(W.SplitHeight(Breakdown.Room(), f.saved.split or 0.55))
     local items = Breakdown.Rows(b.items, matID, itemLabel)
     parts[2]:SetSource(#items, function(i) return items[i] end)
     parts[2]:Refresh()
     local bands = Breakdown.BandRows(matID)
     parts[4]:SetSource(#bands, function(i) return bands[i] end)
     parts[4]:Refresh()
+    -- As wide as its tables need, at least MIN_W, no wider; a new material is a new view (SDD 113).
+    if W.FitTables(f, MIN_W, { parts[2], parts[4] }, matID) then parts[2]:Refresh() parts[4]:Refresh() end
 end
 
 local function build()
-    f = W.Window("SalvagerBreakdownFrame", "Salvager Breakdown", "breakdown", 800, 480, 720, 320)
+    f = W.Window("SalvagerBreakdownFrame", "Salvager Breakdown", "breakdown", 800, 480, MIN_W, 320)
     icon = f:CreateTexture(nil, "ARTWORK")
     icon:SetSize(26, 26)
     icon:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -30)
@@ -173,7 +179,10 @@ local function build()
     listB:SetColumns(columns("Band"), "breakdown.band")
     listB:SetPoint("TOPLEFT", listA, "BOTTOMLEFT", 0, -24)
     listB:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
-    parts = { titleA, listA, titleB, listB }
+    parts = { titleA, listA, titleB, listB, W.SplitBar(f, listA, Breakdown.Room, function(part)
+        f.saved.split = part
+        Breakdown.Refresh()
+    end) }
     f.onResize = Breakdown.Refresh
     f:HookScript("OnShow", Breakdown.Refresh)
 end

@@ -993,26 +993,42 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
     end
     -- A window whose width fits its content: the content sets it (and the player still sizes the height).
     -- The bounds first: the client keeps a frame inside its resize bounds, SetWidth included (SDD 91).
-    -- A window sized both ways: `width` is its smallest width from now on (the player can make it wider), and
-    -- it widens to it when narrower.
-    function f.FitWidth(width)
+    -- `view`: the view on show (a tab, a subtab, the material shown); a new one is a view change (SDD 113).
+    -- A window sized both ways (SDD 113): `width` (what the view's tables need) is its widest width, and its width
+    -- after a view change; the player can make it narrower, down to its smallest width (`minW`), until the next view
+    -- change. With `f.fitGrows` (a window with a chart: Market), `width` is its smallest width instead (the player can
+    -- make it wider, and that width stays); a width it only had from the fit shrinks back on a view change.
+    local function bounds(lo, hi)
+        if f.SetResizeBounds then
+            f:SetResizeBounds(lo, minH, hi, maxH)
+        elseif f.SetMinResize then
+            f:SetMinResize(lo, minH)
+            if f.SetMaxResize then f:SetMaxResize(hi, maxH) end
+        end
+    end
+    function f.FitWidth(width, view)
         if vertical then
-            if f.SetResizeBounds then
-                f:SetResizeBounds(width, minH, width, maxH)
-            elseif f.SetMaxResize then
-                f:SetMinResize(width, minH)
-                f:SetMaxResize(width, maxH)
-            end
+            bounds(width, width)
             f:SetWidth(width)
+            f.fitNeed = width
             return
         end
-        if f.SetResizeBounds then
-            f:SetResizeBounds(width, minH, math.max(width, maxW), maxH)
-        elseif f.SetMinResize then
-            f:SetMinResize(width, minH)
+        local changed = view ~= rawget(f, "fitView")
+        f.fitView = view
+        local now = tonumber((f:GetWidth())) or 0
+        local lo, hi, want
+        if rawget(f, "fitGrows") then
+            lo, hi = width, math.max(width, maxW)
+            if changed and not rawget(f, "userW") then want = width else want = math.max(now, width) end
+        else
+            lo, hi = minW, math.max(minW, width)
+            if changed then f.userW = nil end
+            want = math.max(lo, math.min(hi, rawget(f, "userW") or hi))
         end
-        f.minWidth = width
-        if (f:GetWidth() or 0) < width then f:SetWidth(width) end
+        bounds(lo, hi)
+        f.minWidth, f.fitNeed = lo, (not rawget(f, "fitGrows")) and hi or nil
+        -- (While the player drags the corner, only the bounds change: the drag sets the width.)
+        if not rawget(f, "sizing") and math.abs(now - want) >= 1 then f:SetWidth(want) end
     end
     local grip = CreateFrame("Button", nil, f)
     grip:SetSize(16, 16)
@@ -1020,13 +1036,19 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
     grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
     grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
     grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+    local startW
     grip:SetScript("OnMouseDown", function()
         pin()
+        startW = tonumber((f:GetWidth()))
+        f.sizing = true
         f:StartSizing(vertical and "BOTTOM" or "BOTTOMRIGHT", true)
     end)
     grip:SetScript("OnMouseUp", function()
         f:StopMovingOrSizing()
+        f.sizing = nil
         saved.w, saved.h = math.floor(f:GetWidth()), math.floor(f:GetHeight())
+        -- The width the player chose (SDD 113): kept until the next view change (with `fitGrows`, kept).
+        if not vertical and startW and math.abs(startW - (tonumber((f:GetWidth())) or 0)) >= 1 then f.userW = saved.w end
         pin()
         if f.onResize then f.onResize() end
     end)
@@ -1043,20 +1065,24 @@ function Widgets.ScreenWidth()
     return tonumber((UIParent:GetWidth())) or tonumber((GetScreenWidth and GetScreenWidth())) or 1024
 end
 
---- A window that fits its tables (SDD 107, UI.md Tables 2): at least `base` wide, and as wide as each of `lists`
+--- A window that fits its tables (SDD 107, 113, UI.md Tables 2): at least `base` wide, and as wide as each of `lists`
 --- needs to leave no column out (`list.fitWidth`, plus the room around the list in the window), at most the
---- screen. Only where the screen is too narrow does a table leave columns out, and its note says so.
+--- screen. Only where the screen is too narrow does a table leave columns out, and its note says so. `view` names
+--- the view on show: after a change the window takes the new view's width (it shrinks back where it needs less).
+--- `full`: the first column at its full width too (`list.neededWidth`: the Ledger, SDD 91).
 --- @return boolean changed  the width changed: refresh the lists again
-function Widgets.FitTables(f, base, lists)
+function Widgets.FitTables(f, base, lists, view, full)
     local w = base
     local fw = tonumber((f:GetWidth())) or 0
     for _, l in ipairs(lists) do
-        local n, lw = rawget(l, "fitWidth"), tonumber((l:GetWidth()))
-        if type(n) == "number" and lw and lw > 0 then w = math.max(w, math.ceil(n + fw - lw)) end
+        -- (The room around a table is a constant, 12 px each side, or its `margin`: read live, a table's width lags
+        -- its window's for a frame after a change, as the main window's did in 0.3.143.)
+        local n = full and rawget(l, "neededWidth") or rawget(l, "fitWidth")
+        if type(n) == "number" then w = math.max(w, math.ceil(n + (rawget(l, "margin") or 24))) end
     end
     w = math.min(w, math.floor(Widgets.ScreenWidth()))
     local before = fw
-    f.FitWidth(w)
+    f.FitWidth(w, view)
     return math.abs((tonumber((f:GetWidth())) or 0) - before) >= 1
 end
 
@@ -1064,6 +1090,50 @@ function Widgets.Label(parent, text, template)
     local l = parent:CreateFontString(nil, "OVERLAY", template or "GameFontNormalSmall")
     l:SetText(text)
     return l
+end
+
+-- The least height of a table (its titles and two rows, SDD 113), and the share of a split's upper table.
+Widgets.TABLE_MIN, Widgets.SPLIT_LO, Widgets.SPLIT_HI = 66, 0.1, 0.9
+
+--- The upper table's height when two tables share `room` px at `share` (0.1 to 0.9): each keeps `least` (TABLE_MIN).
+function Widgets.SplitHeight(room, share, least)
+    least = least or Widgets.TABLE_MIN
+    share = math.max(Widgets.SPLIT_LO, math.min(Widgets.SPLIT_HI, share))
+    return math.max(least, math.min(room - least, math.floor(room * share)))
+end
+
+--- The bar between two stacked tables (SDD 52, 113): the player drags it up or down to make one table taller and
+--- the other shorter; a right-click puts it back. It lies under `upper` (over the lower table's title). `room()` =
+--- the height both tables share; `set(share)` keeps the upper table's share (nil = the default) and lays out again.
+function Widgets.SplitBar(parent, upper, room, set)
+    local bar = CreateFrame("Button", nil, parent)
+    bar:SetPoint("TOPLEFT", upper, "BOTTOMLEFT", 0, -1)
+    bar:SetPoint("TOPRIGHT", upper, "BOTTOMRIGHT", 0, -1)
+    bar:SetHeight(22)
+    local handle = bar:CreateTexture(nil, "ARTWORK")
+    handle:SetSize(60, 3)
+    handle:SetPoint("TOP", bar, "TOP", 0, -2)
+    handle:SetColorTexture(1, 0.82, 0, 0.45)
+    local glow = bar:CreateTexture(nil, "HIGHLIGHT")
+    glow:SetAllPoints()
+    glow:SetColorTexture(1, 1, 1, 0.08)
+    Widgets.Tooltip(bar, "Resize", "Drag up or down to make one table taller and the other shorter. Right-click: back to "
+        .. "the default.")
+    bar:RegisterForClicks("RightButtonUp")
+    bar:SetScript("OnClick", function() set(nil) end)
+    bar:SetScript("OnMouseDown", function(self, button)
+        if button ~= "LeftButton" then return end
+        self:SetScript("OnUpdate", function()
+            local top, r = upper:GetTop(), room()
+            local _, y = GetCursorPosition()
+            if type(top) ~= "number" or type(y) ~= "number" or r <= 0 then return end
+            y = y / (parent:GetEffectiveScale() or 1)
+            set(math.max(Widgets.SPLIT_LO, math.min(Widgets.SPLIT_HI, (top - y - 4) / r)))
+        end)
+    end)
+    bar:SetScript("OnMouseUp", function(self) self:SetScript("OnUpdate", nil) end)
+    bar:SetScript("OnHide", function(self) self:SetScript("OnUpdate", nil) end)
+    return bar
 end
 
 --- The arrow of a group heading that opens and closes (UI.md Tables 15), one look in every table: the game's gold

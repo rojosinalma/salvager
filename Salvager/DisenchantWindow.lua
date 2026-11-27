@@ -244,7 +244,10 @@ function Panel.Refresh()
     lootNote:SetShown(off)
     if off then y = y + 18 end
     local room = math.max(0, (tonumber((f:GetHeight())) or H0) - y - FOOT - 2 * TITLE_H - 8)
-    local hTop = math.max(3 * 22, math.min(math.floor(room * 0.45), (#top + 1) * 22 + 6))
+    Panel.room = room
+    -- The top table as tall as its rows, up to 45% of the room; the bar between the tables moves it (SDD 113).
+    local hTop = f.saved.split and W.SplitHeight(room, f.saved.split)
+        or math.max(W.TABLE_MIN, math.min(W.SplitHeight(room, 0.45), (#top + 1) * 22 + 6))
     bagsTitle:ClearAllPoints()
     bagsTitle:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -y)
     bagsTitle:SetText(GOLD .. "In your bags|r" .. GREY .. "  " .. #pieces .. (#pieces == 1 and " piece" or " pieces")
@@ -263,7 +266,7 @@ function Panel.Refresh()
         x[1]:SetSource(#x[3], function(i) return x[3][i] end)
         x[1]:Refresh()
     end
-    if W.FitTables(f, MIN_W, { bags, results }) then bags:Refresh() results:Refresh() end
+    if W.FitTables(f, MIN_W, { bags, results }, "disenchant") then bags:Refresh() results:Refresh() end
 end
 
 ------------------------------------------------------------------ the window
@@ -300,6 +303,10 @@ local function build()
         "GameFontNormal")
     results = W.List(f, { rowHeight = 22 })
     for _, l in ipairs({ bags, results }) do l.onColumnsChanged = function() Panel.Refresh() end end
+    Panel.splitBar = W.SplitBar(f, bags, function() return Panel.room or 0 end, function(part)
+        f.saved.split = part
+        Panel.Refresh()
+    end)
     -- The footer: the next piece and how many are left at the left; Disenchant (the main action), then Close.
     local footer = W.Bar(f, "footer"):PlaceBottom(10, 12, 24)
     local close = W.Button(footer, "Close", CLOSE_W, function() f.UserHide() end, "Closes the panel. It opens again "

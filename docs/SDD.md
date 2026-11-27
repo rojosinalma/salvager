@@ -219,7 +219,7 @@ flipping is out of scope for now.
 51. **Odds band filter:** the scan's item level bands as ranges (`windows.ledger.oddsBandsOff`); a rare or
     epic band shows when it overlaps a ticked range.
 52. **Sales tables share their height by a draggable bar** (`windows.ledger.salesSplit`, 0.1 to 0.9, default
-    0.45; right-click resets).
+    0.45; right-click resets). Since 0.3.147 the same bar (`Widgets.SplitBar`) is in every view with two tables (113d).
 53. **The Post window shows the other sellers** (`Post.Market`, `Post.MarketRows`): their listings cheapest
     first, read from the search Post just made, with "Your price" and "Your break-even" in their place, the
     units ahead of your price and the units under your break-even. Two buttons set the price: Undercut lowest,
@@ -238,7 +238,8 @@ flipping is out of scope for now.
     The window charts one material: price and lowest listing as lines, your break-even as a level, units
     listed as bars; ranges 6 hours, 24 hours, 7 days, all.
 58. **Window sizing:** Ledger and popped-out Odds have a fixed width and a free height (`Widgets.Window`,
-    `fixed = "vertical"`); Materials fits its content; the main, Log, Breakdown and Market windows are free.
+    `fixed = "vertical"`); Materials fits its content; the main, Log, Breakdown and Market windows are free. Each
+    view sets the width again (113).
 59. **A round only removes what it has read.** Deals leave the list when their quality and gear type was
     browsed in full and the item is no longer under its limit. A browse that did not load in full (measured
     2026-11-26: "0 items in 0 pages, no page for 4s, given up") leaves that pass's deals as they are. A browse
@@ -1130,6 +1131,40 @@ flipping is out of scope for now.
        changed).
     - i. Size: 640 × 440 by default, at least 520 × 320, place and size remembered; as wide as its tables need
        (`Widgets.FitTables`). The top table is as tall as its rows up to 45% of the room.
+
+113. **Window widths and heights per view** (0.3.147, the user, 2026-11-27: the Ledger was too wide on the Odds tab).
+    - a. A window is as wide as the widest table of the view on show needs, at least its smallest width, up to the
+       screen, and no wider. A view change (a tab, a subtab, another material in the Breakdown, another auction in
+       Gear Details) gives the window that view's width: it shrinks back where the new view needs less, down to its
+       smallest width (`Widgets.FitTables(f, base, lists, view)`, `f.FitWidth(width, view)`). Before, a window sized
+       both ways only widened, and the Ledger on Odds kept the width of the view before (Odds had no list it read).
+    - b. A window sized both ways (Reports, Breakdown, Disenchant): the view's width is also its widest width; the
+       player can make it narrower, down to its smallest width (a table then leaves columns out with its note, 107d),
+       and that width (`f.userW`) holds until the next view change. While the corner is dragged only the bounds
+       change. Windows sized up and down only (Ledger, Gear Details, the Odds pop-out until 0.3.148, Stand, Limits)
+       are exactly that wide. The Ledger keeps the first column at its full width (`list.neededWidth`, 91); the
+       others give the first column room for its text up to 90 px (`list.fitWidth`, 107d). The room around a table
+       is a constant 24 px (`list.margin`), not read live (0.3.143).
+    - c. Windows with more than a table: the Market (`f.fitGrows`: the view's width is its smallest, the chart takes
+       more; a width the player chose stays, one that came only from another view's list shrinks back) and the main
+       window (its smallest width grows to its table, 108h; a width the fit set shrinks back on a tab change, one
+       the player chose stays).
+    - d. Two or more tables in a view share the window's height, each at least `Widgets.TABLE_MIN` (66 px: the
+       titles and two rows): the Ledger's Sales (Open and sold) and Accuracy, the Breakdown, the Disenchant panel, the
+       Reports' Competition (per competitor and per material; the summary as tall as its rows up to 45%), Gear Details
+       (the upper four as tall as their rows; where the window is too low they give way in proportion, each keeping
+       TABLE_MIN or its rows, and the last keeps TABLE_MIN). A bar between two tables moves the border
+       (`Widgets.SplitBar`, `Widgets.SplitHeight`; 52 generalised): the share is saved per window (`salesSplit`, one
+       for Sales and Accuracy, `split` for Breakdown and Disenchant, `compSplit` for Competition), 0.1 to 0.9, a
+       right-click resets it. The Disenchant panel's top table stays as tall as its rows (up to 45%) until the bar
+       is moved. Smallest heights: Ledger 330 (was 260: the Sales tables overlapped), Reports 352 (was 300).
+    - e. Checked by the fit spec: no two tables of a window overlap and each is at least its titles and two rows
+       high (one row where it has one); at the default size no window is wider than its view needs, and each view
+       comes back at its own width after the other tabs (every tab twice); at the smallest size every view is
+       checked at the smallest width (the spec sizes it down again after each tab, as the player would); the main
+       window, the Ledger, the Reports and the Market shrink back after a wider tab. The stand-in found a bug of
+       its own: `Widgets.CardList` kept its column flags in `stack.shown`, the field the stand-in's `IsShown` reads,
+       so a hidden stack counted as shown (renamed `colShown`).
 
 ## Data
 

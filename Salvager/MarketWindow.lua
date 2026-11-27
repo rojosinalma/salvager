@@ -421,9 +421,11 @@ function Market.Refresh()
     local need = rawget(list, "fitWidth")
     local lw = math.max(LIST_W, type(need) == "number" and need or 0)
     lw = math.min(lw, math.floor(W.ScreenWidth()) - (MIN_W - LIST_W))
+    -- (The width is the smallest one the view needs; one the player widened to stays, one that only came from
+    -- another view's list shrinks back to this one's, SDD 113.)
+    f.FitWidth(MIN_W + lw - LIST_W, Market.view)
     if math.abs((list:GetWidth() or 0) - lw) >= 1 then
         list:SetWidth(lw)
-        f.FitWidth(MIN_W + lw - LIST_W)
         list:Refresh()
     end
     rangeDrop:Update()
@@ -453,6 +455,9 @@ end
 
 local function build()
     f = W.Window("SalvagerMarketFrame", "Salvager Market", "market", MIN_W, 480, MIN_W, 320)
+    -- The chart takes the width the list leaves: the player may make the window wider, and that width stays.
+    f.fitGrows = true
+    if (tonumber(f.saved.w) or 0) > MIN_W then f.userW = f.saved.w end
     if VIEWS[f.saved.view] then Market.view = f.saved.view end
     for key, value in pairs(f.saved.pick or {}) do Market.pick[key] = value end
     for _, r in ipairs(RANGES) do if r[1] == f.saved.range then Market.range = r[1] end end

@@ -64,8 +64,9 @@ reply must say so.
    too); in a stack of cards, the columns line up
    at the cards' right edge. Text that does not fit ends with "..." and shows in full on hover. A column of live
    values is as wide as its widest possible value (`sample`). A window is as wide as its tables' shown columns need,
-   up to the screen; a column is never left out silently: where the screen is too narrow, a note at the right end of
-   the titles says how many are left out, and its tooltip which ones.
+   up to the screen, and no wider: a tab change gives it the new view's width (narrower too), never the width of
+   the view before; a column is never left out silently: where the screen (or a window the player made narrower) is
+   too narrow, a note at the right end of the titles says how many are left out, and its tooltip which ones.
 3. A table with sections is one inset per section, or a heading row per section with its own
    totals. A value that is the same for every row of a section goes in the heading, not in the rows.
 4. Rows the player acts on first come first (open before sold, newest before oldest).
@@ -141,7 +142,8 @@ reply must say so.
    opened from the mini panel, or while the main window is closed, are independent of it. The game's auction
    house is one click away (Auction house button), and Salvager one click back (its button under the
    auction house). Hiding windows never stops a scan.
-6. Nothing overlaps, at the smallest size a window allows. A filter row that is full wraps to a second filter row,
+6. Nothing overlaps, at the smallest size a window allows. Two or more tables in a view share the height, each at
+   least its titles and two rows; a bar between two of them moves the border (drag it; a right-click resets it). A filter row that is full wraps to a second filter row,
    or the window's smallest width grows; a control never moves to a row of tabs. A text that can grow either wraps
    and pushes what is under it down, or is one line cut at the next control.
 7. A window can be dragged partly off the screen, until 40 px of its title bar are left, so it can always be

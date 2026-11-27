@@ -224,21 +224,43 @@ function Gear.Refresh()
     local buildRows, from = Gear.BuildRows(d)
     local rows = { deal = Gear.DealRows(d), measures = Gear.MeasureRows(d), build = buildRows,
         history = Gear.HistoryRows(d), others = Gear.OtherRows(d) }
-    -- Top to bottom; each table as tall as its rows, the last one takes the rest and scrolls.
+    -- Top to bottom; each table as tall as its rows, the last one takes the rest and scrolls. Where the window is too
+    -- low for that, the upper tables give way in proportion, each down to TABLE_MIN (or its rows), so the last one
+    -- keeps TABLE_MIN and nothing overlaps (SDD 113).
+    local titleH, want, sum, least = {}, {}, 0, 0
+    for i, key in ipairs(ORDER) do
+        local part = parts[key]
+        part.title:ClearAllPoints()
+        part.title:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -TOP)
+        part.title:SetPoint("RIGHT", f, "RIGHT", -14, 0)
+        part.title:SetJustifyH("LEFT")
+        part.title:SetText(GOLD .. SECTIONS[key].title .. "|r" .. (key == "build" and (GREY .. "  " .. from .. "|r") or ""))
+        -- A long title wraps and pushes its table down (UI.md Layout 6).
+        titleH[i] = math.max(18, math.ceil(tonumber((part.title:GetStringHeight())) or 12) + 6)
+        if i < #ORDER then
+            want[i] = (#rows[key] + 1) * ROW_H + 4
+            sum, least = sum + want[i], least + math.min(want[i], W.TABLE_MIN)
+        end
+    end
+    local room = (tonumber((f:GetHeight())) or HEIGHT) - TOP - 40 - 6 * (#ORDER - 1)
+    for i = 1, #ORDER do room = room - titleH[i] end
+    local spare = room - W.TABLE_MIN   -- (what the upper tables may take)
     local y = TOP
     for i, key in ipairs(ORDER) do
         local part = parts[key]
         part.title:ClearAllPoints()
         part.title:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -y)
         part.title:SetPoint("RIGHT", f, "RIGHT", -14, 0)
-        part.title:SetJustifyH("LEFT")
-        part.title:SetText(GOLD .. SECTIONS[key].title .. "|r" .. (key == "build" and (GREY .. "  " .. from .. "|r") or ""))
-        -- A long title wraps and pushes its table down (UI.md Layout 6).
-        y = y + math.max(18, math.ceil(tonumber((part.title:GetStringHeight())) or 12) + 6)
+        y = y + titleH[i]
         part.list:ClearAllPoints()
         part.list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -y)
         if i < #ORDER then
-            local h = (#rows[key] + 1) * ROW_H + 4
+            local h = want[i]
+            if sum > spare then
+                -- Each keeps its least height; what is left goes in proportion to what each wants more.
+                local m = math.min(want[i], W.TABLE_MIN)
+                h = m + math.floor((want[i] - m) * math.max(0, spare - least) / math.max(1, sum - least))
+            end
             part.list:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -y)
             part.list:SetHeight(h)
             y = y + h + 6
@@ -250,7 +272,7 @@ function Gear.Refresh()
     -- As wide as its tables' columns need, up to the screen (SDD 107).
     local lists = {}
     for _, key in ipairs(ORDER) do lists[#lists + 1] = parts[key].list end
-    if W.FitTables(f, WIDTH, lists) then for _, l in ipairs(lists) do l:Refresh() end end
+    if W.FitTables(f, WIDTH, lists, d.auctionID) then for _, l in ipairs(lists) do l:Refresh() end end
     local why = Gear.BuyReason(now)
     buyButton:SetEnabled(why == nil)
     buyButton.reason = why

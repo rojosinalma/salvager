@@ -701,7 +701,7 @@ function Widgets.CardList(parent)
     -- The first column (the row's label) takes the card's spare width (`extra`), so the other columns end at the
     -- card's right edge and line up over cards of any indent.
     local function place(region, card, i, forTitle, extra)
-        local cols, ws, shown = stack.columns, stack.widths, stack.shown
+        local cols, ws, shown = stack.columns, stack.widths, stack.colShown
         extra = extra or 0
         local x = 30
         for c = 1, i - 1 do if shown[c] then x = x + ws[c] + (c == 1 and extra or 0) + 8 end end
@@ -839,11 +839,11 @@ function Widgets.CardList(parent)
             for _, row in ipairs(data.rows or {}) do all[#all + 1] = row.cells end
         end
         local need = Widgets.FitColumns(titles, #all, function(r) return all[r] end, nil, samples)
-        self.widths, self.shown = {}, {}
+        self.widths, self.colShown = {}, {}
         local setId = rawget(self, "columnSet")
         for i, col in ipairs(cols) do
             self.widths[i] = need and need[i] or col[2]
-            self.shown[i] = i == 1 or Widgets.ColumnShown(setId, Widgets.ColumnKey(col))
+            self.colShown[i] = i == 1 or Widgets.ColumnShown(setId, Widgets.ColumnKey(col))
         end
         chooser:SetShown(setId ~= nil)
         content:SetWidth(math.max(10, (scroll:GetWidth() or 0)))
@@ -888,7 +888,7 @@ function Widgets.CardList(parent)
             card.factsHelp:SetShown(data.factsHelp ~= nil)
             -- The room the columns leave in this card: the first column takes it.
             local used = 30 + 8
-            for i = 1, #cols do if self.shown[i] then used = used + self.widths[i] + 8 end end
+            for i = 1, #cols do if self.colShown[i] then used = used + self.widths[i] + 8 end end
             local extra = math.max(0, math.floor(((scroll:GetWidth() or 0) - (data.indent or 0)) - used))
             if not need then extra = 0 end
             card.heads:SetShown(#rows > 0)
@@ -897,14 +897,14 @@ function Widgets.CardList(parent)
             card.heads:SetPoint("TOPRIGHT", card, "TOPRIGHT", 0, -titleH - 1)
             for i = 1, MAX_COLS do
                 local h, col = card.headTexts[i], cols[i]
-                if col and self.shown[i] then
+                if col and self.colShown[i] then
                     place(h, card.heads, i, i == 1, extra)
                     h:SetText(col[1])
                     h:Show()
                 else
                     h:Hide()
                 end
-                card.headHelps[i]:SetShown(col ~= nil and self.shown[i] and col.help ~= nil)
+                card.headHelps[i]:SetShown(col ~= nil and self.colShown[i] and col.help ~= nil)
             end
             for r = 1, math.max(#rows, #card.rows) do
                 local row, rowData = card.rows[r], rows[r]
@@ -920,7 +920,7 @@ function Widgets.CardList(parent)
                         if icon then row.icon:SetTexture(icon) row.icon:Show() else row.icon:Hide() end
                         for i = 1, MAX_COLS do
                             local fs = row.cells[i]
-                            if cols[i] and self.shown[i] then
+                            if cols[i] and self.colShown[i] then
                                 place(fs, row, i, nil, extra)
                                 fs:SetText(rowData.cells[i] or "")
                                 fs:Show()
@@ -935,6 +935,13 @@ function Widgets.CardList(parent)
             y = y + height + GAP
         end
         for n = #self.data + 1, #self.cards do self.cards[n]:Hide() end
+        -- The narrowest width that fits every card's columns (a window that fits its tables reads it).
+        if need then
+            local used, indent = 30 + 8, 0
+            for i = 1, #cols do if self.colShown[i] then used = used + self.widths[i] + 8 end end
+            for _, data in ipairs(self.data) do indent = math.max(indent, data.indent or 0) end
+            self.fitWidth = math.ceil(used + indent + BAR_W)
+        end
         content:SetHeight(math.max(10, y))
         self.contentHeight = math.max(0, y - GAP)   -- what the cards need, for a window that fits them
         -- Scrolling goes in steps of one row.

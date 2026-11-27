@@ -51,8 +51,14 @@ local function isList(obj)
 end
 
 -- The problems of one window as it is drawn now; `where` names the window, the view and the size.
+local function tableName(obj)
+    if isList(obj) then return tostring(obj.columns[1] and obj.columns[1][1]) end
+    return "of cards"
+end
+
 local function problems(win, where, out, atDefault)
     local box = rect(win)
+    local tables = {}
     local function add(msg) out[#out + 1] = where .. ": " .. msg end
     local function visit(obj, clip, list)
         if not obj:IsShown() then return end
@@ -183,12 +189,33 @@ local function problems(win, where, out, atDefault)
                 if os.getenv("FIT_DEBUG") then print(where .. ": " .. text) end
             end
         end
+        -- The tables of the window (lists and stacks of cards), for the check that none overlaps another.
+        if r and not clip and (isList(obj) or rawget(obj, "cards")) then tables[#tables + 1] = { obj = obj, r = r } end
         local within = list
         if isList(obj) then within = obj end
         for _, c in ipairs(obj._children) do visit(c, inner, within) end
         for _, t in ipairs(obj._regions) do visit(t, inner, within) end
     end
     visit(win, nil)
+    -- No table overlaps another, and each is at least as tall as its titles and two rows (SDD 113).
+    for i, a in ipairs(tables) do
+        local least = 3 * 22
+        if isList(a.obj) then
+            local rowH = rawget(a.obj.rows[1], "_h") or 22
+            -- (A table of one row may be as tall as that row.)
+            least = ((a.obj.headers[1]:IsShown() and 1 or 0) + math.min(2, math.max(1, rawget(a.obj, "count") or 2))) * rowH
+        end
+        if a.r.h < least - EPS then
+            add(string.format("table %s: %.0f px high, less than its titles and two rows (%.0f)", tableName(a.obj), a.r.h, least))
+        end
+        for j = i + 1, #tables do
+            local b = tables[j]
+            if not apart(a.r, b.r) then
+                add(string.format("table %s overlaps table %s (%.0f..%.0f and %.0f..%.0f high)", tableName(a.obj),
+                    tableName(b.obj), a.r.b, a.r.t, b.r.b, b.r.t))
+            end
+        end
+    end
 end
 
 -- Every size change reaches the frames that watch it, as in the client.
@@ -410,14 +437,52 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
         }
     end)
 
-    local function each(win, where, atDefault)
+    -- The smallest size, as the player drags the corner to it (the window keeps that width until a view change),
+    -- or the default size (the width the view needs).
+    local function smallest(win)
+        local bounds = rawget(win, "_bounds")
+        local minW = bounds and bounds[1] or rawget(win, "minWidth") or win:GetWidth()
+        local minH = bounds and bounds[2] or win:GetHeight()
+        rawset(win, "userW", minW)
+        win:SetSize(minW, minH)
+        sized(win)
+    end
+    local function default(win)
+        rawset(win, "userW", nil)
+        win:SetSize(rawget(win, "_firstW") or win:GetWidth(), rawget(win, "_firstH") or win:GetHeight())
+        sized(win)
+    end
+    -- A tab change: at the smallest size the player sizes it down again (a view change gives the window the new view's
+    -- width, SDD 113); at the default size each view's width is noted, to check it comes back (no other view's width).
+    local widths = {}
+    local function view(win, where, atDefault)
+        if not atDefault then smallest(win) end
         problems(win, where, found, atDefault)
-        for _, tab in ipairs(tabsOf(win, "tab")) do
-            tab:Click()
-            problems(win, where .. " / " .. tostring(tab.text), found, atDefault)
-            for _, sub in ipairs(tabsOf(win, "subtab")) do
-                sub:Click()
-                problems(win, where .. " / " .. tostring(tab.text) .. " / " .. tostring(sub.text), found, atDefault)
+        if atDefault then
+            local w, need = win:GetWidth(), rawget(win, "fitNeed")
+            if type(need) == "number" and w > need + EPS then
+                found[#found + 1] = string.format("%s: %.0f wide, its view needs %.0f", where, w, need)
+            end
+            local vkey = where:gsub(" at %d+x%d+", "")
+            if widths[vkey] and math.abs(widths[vkey] - w) > EPS then
+                found[#found + 1] = string.format("%s: %.0f wide, %.0f the first time (another view's width kept)",
+                    where, w, widths[vkey])
+            end
+            widths[vkey] = w
+        end
+    end
+    local function each(win, where, atDefault)
+        local tabbed = #tabsOf(win, "tab") > 0
+        -- (Twice at the default size: each view comes back at its own width.)
+        for pass = 1, (atDefault and tabbed) and 2 or 1 do
+            if pass == 1 then view(win, where, atDefault) end
+            for _, tab in ipairs(tabsOf(win, "tab")) do
+                tab:Click()
+                view(win, where .. " / " .. tostring(tab.text), atDefault)
+                for _, sub in ipairs(tabsOf(win, "subtab")) do
+                    sub:Click()
+                    view(win, where .. " / " .. tostring(tab.text) .. " / " .. tostring(sub.text), atDefault)
+                end
             end
         end
     end
@@ -428,18 +493,10 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
             open[global]()
             local win = _G[global]
             assert.is_true(win ~= nil and win:IsShown(), global .. " is not open")
-            do
-                local bounds = rawget(win, "_bounds")
-                local minW = bounds and bounds[1] or rawget(win, "minWidth") or win:GetWidth()
-                local minH = bounds and bounds[2] or win:GetHeight()
-                local w0, h0 = rawget(win, "_firstW") or win:GetWidth(), rawget(win, "_firstH") or win:GetHeight()
-                win:SetSize(minW, minH)
-                sized(win)
-                each(win, global .. " at " .. math.floor(win:GetWidth()) .. "x" .. math.floor(win:GetHeight()), false)
-                win:SetSize(w0, h0)
-                sized(win)
-                each(win, global .. " at " .. math.floor(win:GetWidth()) .. "x" .. math.floor(win:GetHeight()), true)
-            end
+            smallest(win)
+            each(win, global .. " at " .. math.floor(win:GetWidth()) .. "x" .. math.floor(win:GetHeight()), false)
+            default(win)
+            each(win, global .. " at " .. math.floor(win:GetWidth()) .. "x" .. math.floor(win:GetHeight()), true)
         end
         assert.are.equal("", table.concat(found, "\n"))
     end)
@@ -449,6 +506,88 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
         assert.is_true(#ns.Reports.CompetitionMaterialRows() > 5)
         local seen = {}
         for _, f in ipairs(found) do seen[#seen + 1] = f end
+        assert.are.equal("", table.concat(seen, "\n"))
+    end)
+    it("gives each view its own width after a tab change, narrower too (SDD 113)", function()
+        local function tab(win, text)
+            for _, t in ipairs(tabsOf(win, "tab")) do if t.text == text then t:Click() return end end
+            error("no tab " .. text)
+        end
+        local function sub(win, text)
+            for _, t in ipairs(tabsOf(win, "subtab")) do if t.text:find(text, 1, true) == 1 then t:Click() return end end
+            error("no subtab " .. text)
+        end
+        -- The main window: the Materials tab widens it, back on Gear it is as wide as Gear needs; a width the player
+        -- chose stays.
+        ns.UI.Show()
+        local main = _G.SalvagerFrame
+        tab(main, "Gear")
+        local gearW = rawget(main, "minWidth")
+        tab(main, "Materials")
+        local matW = main:GetWidth()
+        assert.is_true(matW > gearW, matW .. " " .. gearW)
+        tab(main, "Gear")
+        assert.are.equal(gearW, main:GetWidth())
+        main:SetWidth(gearW + 300)
+        tab(main, "Materials")
+        tab(main, "Gear")
+        assert.are.equal(gearW + 300, main:GetWidth())
+        -- The Ledger: Competition, then History (860, its smallest).
+        ns.LedgerWindow.Show()
+        local ledger = _G.SalvagerLedgerFrame
+        tab(ledger, "Sales") sub(ledger, "Competition")
+        assert.is_true(ledger:GetWidth() > 860)
+        sub(ledger, "History")
+        assert.are.equal(860, ledger:GetWidth())
+        -- The Reports: Competition, then Gold (its smallest); narrowed by the player, the next tab is as wide as it needs.
+        ns.Reports.Show()
+        local reports = _G.SalvagerReportsFrame
+        rawset(reports, "userW", nil)
+        tab(reports, "Competition")
+        local compW = reports:GetWidth()
+        assert.is_true(compW > 1050)
+        tab(reports, "Gold")
+        assert.are.equal(1050, reports:GetWidth())
+        tab(reports, "Competition")
+        rawset(reports, "userW", 1050)
+        reports:SetWidth(1050)
+        sized(reports)
+        assert.are.equal(1050, reports:GetWidth())
+        tab(reports, "Gold")
+        tab(reports, "Competition")
+        assert.are.equal(compW, reports:GetWidth())
+        -- The Market: Essences is wider than Materials; back on Materials it shrinks back.
+        if not _G.SalvagerMarketFrame or not _G.SalvagerMarketFrame:IsShown() then ns.Market.Toggle() end
+        local market = _G.SalvagerMarketFrame
+        rawset(market, "userW", nil)
+        tab(market, "Materials")
+        local mw = market:GetWidth()
+        tab(market, "Essences")
+        assert.is_true(market:GetWidth() > mw)
+        tab(market, "Materials")
+        assert.are.equal(mw, market:GetWidth())
+    end)
+    it("shares the height of two tables by the bar between them, each keeping two rows (SDD 113)", function()
+        local mat = ns.Data.MATERIALS[#ns.Data.MATERIALS].id
+        local cases = {
+            { "SalvagerBreakdownFrame", function() ns.Breakdown.Open(mat) end },
+            { "SalvagerDisenchantFrame", function() ns.DisenchantPanel.Show() end },
+            { "SalvagerLedgerFrame", function() ns.LedgerWindow.Show() ns.LedgerWindow.view = "accuracy" ns.LedgerWindow.Refresh() end },
+            { "SalvagerReportsFrame", function() ns.Reports.Show() ns.Reports.view = "competition" ns.Reports.Refresh() end },
+        }
+        local seen = {}
+        for _, c in ipairs(cases) do
+            c[2]()
+            local win = _G[c[1]]
+            for _, share in ipairs({ 0.9, 0.1 }) do
+                win.saved.split, win.saved.salesSplit, win.saved.compSplit = share, share, share
+                for _, size in ipairs({ "smallest", "default" }) do
+                    if size == "smallest" then smallest(win) else default(win) end
+                    problems(win, c[1] .. " split " .. share .. " " .. size, seen, false)
+                end
+            end
+            win.saved.split, win.saved.salesSplit, win.saved.compSplit = nil, nil, nil
+        end
         assert.are.equal("", table.concat(seen, "\n"))
     end)
     it("drew the Disenchant panel with pieces and results", function()

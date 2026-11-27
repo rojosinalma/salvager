@@ -740,6 +740,9 @@ function Reports.Save()
 end
 local FILTERED = { gear = true }
 local MIN_W = 1050   -- the smallest width: the longest filter row (Gear: Search, Period, Gear, Quality, Bands, Salvager)
+local COMP_ROOM = 14 + 2 * 20 + 6 + 4   -- under the tables (14), two titles, the gaps
+-- The least height (SDD 113): the Competition view's three tables of TABLE_MIN each under the tabs and the filter row.
+local MIN_H = TABS_TOP + W.BAR_H.tabs + 4 + W.BAR_H.filters + 4 + 3 * W.TABLE_MIN + COMP_ROOM
 
 local function show(l, cols, rows, setId)
     l:SetColumns(cols, setId)
@@ -748,14 +751,18 @@ local function show(l, cols, rows, setId)
 end
 
 --- The Competition view, from `top` down: the summary (a statement, as tall as its rows up to 45% of the room), then
---- the table per competitor and the table per material, each with its title, sharing the rest (60/40).
+--- the table per competitor and the table per material, each with its title, sharing the rest (60/40 at first; the
+--- bar between them moves it, SDD 113). Each table keeps TABLE_MIN.
+local function compRest(top)
+    return math.max(0, (tonumber((f:GetHeight())) or 0) - top - COMP_ROOM)
+end
 function Reports.LayoutCompetition(top)
     local summary, names, mats = Reports.CompetitionSummaryRows(), Reports.CompetitorRows(), Reports.CompetitionMaterialRows()
     local ROW, TITLE = 22, 20
-    local room = math.max(0, (tonumber((f:GetHeight())) or 0) - top - 14 - 2 * TITLE)
-    local hSum = math.max(2 * ROW, math.min(math.floor(room * 0.45), (#summary + 1) * ROW + 4))
-    local rest = math.max(4 * ROW, room - hSum - 6)
-    local hNames = math.floor(rest * 0.6)
+    local room = compRest(top)
+    local hSum = math.max(W.TABLE_MIN, math.min(math.floor(room * 0.45), (#summary + 1) * ROW + 4, room - 2 * W.TABLE_MIN))
+    comp.rest = function() return compRest(top) - hSum end
+    local hNames = W.SplitHeight(room - hSum, f.saved.compSplit or 0.6)
     comp.summary:ClearAllPoints()
     comp.summary:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -top)
     comp.summary:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -top)
@@ -828,7 +835,9 @@ function Reports.Refresh()
     end
     -- As wide as the table's columns need, up to the screen (SDD 107).
     local shown = competition and { comp.summary, comp.names, comp.mats } or { list }
-    if W.FitTables(f, MIN_W, shown) then for _, l in ipairs(shown) do l:Refresh() end end
+    if W.FitTables(f, MIN_W, shown, Reports.SearchKey() or Reports.view .. "." .. Reports.goldTab) then
+        for _, l in ipairs(shown) do l:Refresh() end
+    end
     if competition then comp.drop:Update() end
     for key, b in pairs(tabs) do b:SetSelected(key == Reports.view) end
     rangeDrop:SetOptions(Reports.PeriodOptions(), 190)
@@ -836,7 +845,7 @@ function Reports.Refresh()
 end
 
 local function build()
-    f = W.Window("SalvagerReportsFrame", "Salvager Reports", "reports", MIN_W, 480, MIN_W, 300)
+    f = W.Window("SalvagerReportsFrame", "Salvager Reports", "reports", MIN_W, 480, MIN_W, MIN_H)
     local old = OLD_VIEW[f.saved.view]
     if old then f.saved.view, f.saved.gearTab = old[1], old[2] end
     if TITLES[f.saved.view] then Reports.view = f.saved.view end
@@ -1011,7 +1020,12 @@ local function build()
     comp.matsTitle = W.Label(f, GOLD .. "Per material|r" .. GREY .. "  in the materials' order; click one for its "
         .. "competitors|r", "GameFontNormal")
     comp.mats = W.List(f, { rowHeight = 22 })
-    comp.parts = { comp.summary, comp.namesTitle, comp.names, comp.matsTitle, comp.mats }
+    -- The bar between the tables per competitor and per material (SDD 113).
+    comp.bar = W.SplitBar(f, comp.names, function() return comp.rest and comp.rest() or 0 end, function(part)
+        f.saved.compSplit = part
+        Reports.Refresh()
+    end)
+    comp.parts = { comp.summary, comp.namesTitle, comp.names, comp.matsTitle, comp.mats, comp.bar }
     Reports.comp = comp   -- (the specs read it)
     for _, l in ipairs({ comp.summary, comp.names, comp.mats }) do
         l.onColumnsChanged = function() Reports.Refresh() end

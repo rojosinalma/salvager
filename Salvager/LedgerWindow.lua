@@ -1180,25 +1180,28 @@ function newOddsView(parent, bar, checkBar)
 end
 
 -- The Sales view's two tables share the height under the tabs; the bar between them moves the border.
-local SPLIT_DEFAULT, SPLIT_MIN, SPLIT_MAX, TABLE_MIN = 0.45, 0.1, 0.9, 66
+local SPLIT_DEFAULT = 0.45
 -- From the top (UI.md Controls 1): the tabs (24 to 54 px), the view's subtabs, its filter row, the tables; the
 -- footer (FOOT px) has two lines: the totals (one line of the whole width), and under them the view's actions.
 local TABS_TOP, FOOT = 24, 70
 local bars = {}          -- the rows: tabs, sales and purchases (subtabs), purchaseFilters, accuracyFilters, totals, footer
 local contentTop = 86    -- where the tables of the view on show start (set by Window.Refresh)
 local function salesRoom()
-    return (f:GetHeight() or 0) - contentTop - FOOT - 2 * 20
+    return (f:GetHeight() or 0) - contentTop - FOOT - 44   -- (the titles: the upper one 20 px, the lower one 24)
 end
 
 --- Sets how much of the room the upper Sales table takes (0.1 to 0.9), and remembers it.
 function Window.SetSalesSplit(part)
     if not f then return end
-    f.saved.salesSplit = math.max(SPLIT_MIN, math.min(SPLIT_MAX, part))
+    f.saved.salesSplit = math.max(W.SPLIT_LO, math.min(W.SPLIT_HI, part))
     Window.Refresh()
 end
 
 local ODDS_TOP, ODDS_W = 28 + 2 * 26 + 2 + 6, 740
 local WIDTH = 860   -- the ledger window's width; wider where the tables on show need it
+-- The least height (SDD 113): the rows above the tables (the tabs, a subtab row or a filter row), two titles, two
+-- tables of TABLE_MIN each and the footer, so the Sales and Accuracy tables never overlap.
+local MIN_H = TABS_TOP + W.BAR_H.tabs + 4 + W.BAR_H.filters + 4 + 44 + 2 * W.TABLE_MIN + FOOT
 
 function Window.Refresh()
     if oddsFrame and oddsFrame:IsShown() then oddsOut:Refresh() end
@@ -1256,9 +1259,7 @@ function Window.Refresh()
     for _, part in ipairs(salesParts) do part:SetShown(split) end
     if split then
         -- The upper table takes the share of the room that the bar between the tables was dragged to.
-        local room = salesRoom()
-        local share_ = f.saved.salesSplit or SPLIT_DEFAULT
-        salesParts[2]:SetHeight(math.max(TABLE_MIN, math.min(room - TABLE_MIN, math.floor(room * share_))))
+        salesParts[2]:SetHeight(W.SplitHeight(salesRoom(), f.saved.salesSplit or SPLIT_DEFAULT))
     end
     if accuracy then
         salesParts[1]:SetText(GOLD .. "By band|r" .. GREY .. "  expected value, disenchant value, sold value|r")
@@ -1329,20 +1330,10 @@ function Window.Refresh()
         list:SetSource(#rows, function(i) return rows[i] end)
         list:Refresh()
     end
-    -- As wide as the tables on show need (all their columns, the first one not cut), at least its own width.
-    local shown = split and { salesParts[2], salesParts[4] } or (not odds and { list }) or {}
-    local needed = 0
-    for _, l in ipairs(shown) do
-        local n = rawget(l, "neededWidth")
-        if type(n) == "number" and n > needed then needed = n end
-    end
-    if needed > 0 then
-        local w = math.min(math.floor(W.ScreenWidth()), math.max(WIDTH, math.ceil(needed) + 24))
-        if math.abs((f:GetWidth() or 0) - w) >= 1 then
-            f.FitWidth(w)
-            for _, l in ipairs(shown) do l:Refresh() end
-        end
-    end
+    -- As wide as the tables on show need (all their columns, the first one not cut, SDD 91), at least its own width,
+    -- and no wider (SDD 113): each view sets it again, so a view that needs less makes it narrower.
+    local shown = split and { salesParts[2], salesParts[4] } or (odds and { oddsView.stack }) or { list }
+    if W.FitTables(f, WIDTH, shown, Window.view, true) then for _, l in ipairs(shown) do l:Refresh() end end
     summary:SetText((Window.Summary()))
     for name, button in pairs(tabs) do button:SetSelected(name == Window.view) end
     -- The two listing buttons belong to the Sales view; the bag space to the Purchases view. The totals have a
@@ -1379,7 +1370,7 @@ end
 
 local function build()
     -- As wide as its tables need; the height is the player's.
-    f = W.Window("SalvagerLedgerFrame", "Salvager Ledger", "ledger", WIDTH, 480, WIDTH, 260, "vertical")
+    f = W.Window("SalvagerLedgerFrame", "Salvager Ledger", "ledger", WIDTH, 480, WIDTH, MIN_H, "vertical")
     -- The footer, two lines: the ledger's totals (one short line of the whole width, all of them behind the chart
     -- button before it), and under them the view's actions or its bag space at the right.
     bars.footer = W.Bar(f, "footer"):PlaceBottom(8, 12, 24)
@@ -1511,36 +1502,9 @@ local function build()
     -- A column shown or hidden with a table's chooser: the window fits its tables again.
     for _, l in ipairs({ list, listA, listB }) do l.onColumnsChanged = function() Window.Refresh() end end
     -- The bar between the two tables: drag it up or down to make one table taller and the other shorter.
-    local bar = CreateFrame("Button", nil, f)
-    bar:SetPoint("TOPLEFT", listA, "BOTTOMLEFT", 0, -1)
-    bar:SetPoint("TOPRIGHT", listA, "BOTTOMRIGHT", 0, -1)
-    bar:SetHeight(22)
-    local handle = bar:CreateTexture(nil, "ARTWORK")
-    handle:SetSize(60, 3)
-    handle:SetPoint("TOP", bar, "TOP", 0, -2)
-    handle:SetColorTexture(1, 0.82, 0, 0.45)
-    local glow = bar:CreateTexture(nil, "HIGHLIGHT")
-    glow:SetAllPoints()
-    glow:SetColorTexture(1, 1, 1, 0.08)
-    W.Tooltip(bar, "Resize", "Drag up or down to make one table taller and the other shorter. Right-click: back to "
-        .. "the default.")
-    bar:RegisterForClicks("RightButtonUp")
-    bar:SetScript("OnClick", function()
-        f.saved.salesSplit = nil
-        Window.Refresh()
+    local bar = W.SplitBar(f, listA, salesRoom, function(part)
+        if part then Window.SetSalesSplit(part) else f.saved.salesSplit = nil Window.Refresh() end
     end)
-    bar:SetScript("OnMouseDown", function(self, button)
-        if button ~= "LeftButton" then return end
-        self:SetScript("OnUpdate", function()
-            local top, room = listA:GetTop(), salesRoom()
-            local _, y = GetCursorPosition()
-            if type(top) ~= "number" or type(y) ~= "number" or room <= 0 then return end
-            y = y / (f:GetEffectiveScale() or 1)
-            Window.SetSalesSplit((top - y - 4) / room)
-        end)
-    end)
-    bar:SetScript("OnMouseUp", function(self) self:SetScript("OnUpdate", nil) end)
-    bar:SetScript("OnHide", function(self) self:SetScript("OnUpdate", nil) end)
     salesParts = { titleA, listA, titleB, listB, bar }
     -- The subtabs of the Sales view: what is open and what is sold; and the history.
     bars.sales = W.Bar(f, "subtabs"):Place(TABS_TOP + W.BAR_H.tabs + 4, 12, 12)
