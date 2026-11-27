@@ -173,6 +173,26 @@ describe("The Disenchant panel", function()
         assert.is_false(P.lootNote:IsShown())
     end)
 
+    it("offers only the gear the Options' filter lets in: quality, gear type, item level (SDD 112b)", function()
+        local n = #P.Pieces()
+        assert.is_true(n >= 1)
+        local x = ns.db.settings.disenchantFilter
+        x.qualities[2] = false                                   -- the test gear is Uncommon: out
+        assert.are.equal(0, #P.Pieces())
+        x.qualities[2] = true
+        x.classes[ns.ClassOf(GEAR) or 4] = false                 -- its gear type: out
+        assert.are.equal(0, #P.Pieces())
+        x.classes[ns.ClassOf(GEAR) or 4] = true
+        x.minIlvl = 26                                           -- item level 25: under the range
+        assert.are.equal(0, #P.Pieces())
+        x.minIlvl, x.maxIlvl = 20, 25                            -- inside it
+        assert.are.equal(n, #P.Pieces())
+        x.minIlvl, x.maxIlvl = 0, 24                             -- over it
+        assert.are.equal(0, #P.Pieces())
+        x.maxIlvl = 0
+        assert.are.equal(n, #P.Pieces())
+    end)
+
     it("is off with nothing left, and opens from the mini panel, the main window and /salv disenchant", function()
         local b = P.button
         put(1, 4, nil)

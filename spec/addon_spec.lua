@@ -1425,7 +1425,10 @@ describe("Salvager deals list", function()
     it("picks qualities in the drop-down and keeps at least one", function()
         local drop
         for _, fr in ipairs(env.frames) do
-            if rawget(fr, "checks") and #fr.checks == 3 and not drop then drop = fr end
+            -- (the main window's: the Options have one with three qualities too)
+            local inMain, x = false, fr
+            while type(x) == "table" do if x == _G.SalvagerFrame then inMain = true end x = rawget(x, "parent") end
+            if rawget(fr, "checks") and #fr.checks == 3 and inMain and not drop then drop = fr end
         end
         assert.is_table(drop)
         drop.scripts.OnClick(drop)

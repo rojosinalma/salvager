@@ -37,6 +37,24 @@ local function disenchantable(itemID, link)
     return q == nil or (q >= 2 and q <= 4)
 end
 
+--- Does the Options' Disenchant panel filter let this gear in? (Quality, gear type, item level; what is not known
+--- passes.) SDD 112b.
+function Panel.Passes(itemID, link, p)
+    local x = ns.db.settings.disenchantFilter
+    if not x then return true end
+    local j = p and p.j or {}
+    local q = ns.QualityOf(link or itemID) or j.q
+    if q and x.qualities and not x.qualities[q] then return false end
+    local cls = ns.ClassOf(link or itemID) or j.cls
+    if cls and x.classes and not x.classes[cls] then return false end
+    local ilvl = ns.ItemLevelOf(link or itemID) or j.ilvl
+    if ilvl then
+        if (x.minIlvl or 0) > 0 and ilvl < x.minIlvl then return false end
+        if (x.maxIlvl or 0) > 0 and ilvl > x.maxIlvl then return false end
+    end
+    return true
+end
+
 --- The pieces of the Current batch in the bags (not the bank, not worn), in bag order: the next one first. Each is
 --- paired with a purchase of the batch of the same gear, the oldest first (the one a disenchant books, Ledger.TakePurchase).
 --- @return table { { bag, slot, itemID, link, p = the batch's purchase entry }, ... }, table batch (Ledger.Batch)
@@ -56,7 +74,7 @@ function Panel.Pieces()
             local list = id and byItem[id]
             if list and #list > 0 then
                 local link = C_Container.GetContainerItemLink(bag, slot)
-                if disenchantable(id, link) then
+                if disenchantable(id, link) and Panel.Passes(id, link, list[1]) then
                     local p = table.remove(list, 1)
                     out[#out + 1] = { bag = bag, slot = slot, itemID = id, link = link or p.link, p = p }
                 end

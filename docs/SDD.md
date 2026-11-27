@@ -1134,6 +1134,11 @@ flipping is out of scope for now.
        changed).
     - i. Size: 640 × 440 by default, at least 520 × 320, place and size remembered; as wide as its tables need
        (`Widgets.FitTables`). The top table is as tall as its rows up to 45% of the room.
+    - j. Filter (0.3.150, the user): Options, "Disenchant panel": Quality (Uncommon, Rare, Epic), Gear (Armor,
+       Weapons), Item level from / to (0 = no limit), in `settings.disenchantFilter`; at least one quality and one
+       gear type stay ticked. The panel (and so its auto-open and its button) offers only the bought gear that
+       passes (`DisenchantPanel.Passes`: the link's quality, type and item level, else the purchase's judgment);
+       it still never offers gear you did not buy. The Current batch in the Ledger is not filtered.
 
 113. **Window widths and heights per view** (0.3.147, the user, 2026-11-27: the Ledger was too wide on the Odds tab).
     - a. A window is as wide as the widest table of the view on show needs, at least its smallest width, up to the

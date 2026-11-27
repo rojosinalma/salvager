@@ -35,6 +35,9 @@ local DEFAULTS = {
         postDuration = 2,          -- auction length for Post: 1, 2 or 3 (the game's three choices)
         limitOverride = {},        -- ["<quality>:<a|w>:<band>"] = copper: buy limits set by hand
         timeZone = "local",        -- "local" | "server": the clock every shown time follows (SDD 110)
+        -- The Disenchant panel's filter (Options, SDD 112b): which bought gear it offers. Item levels 0 = no limit.
+        disenchantFilter = { qualities = { [2] = true, [3] = true, [4] = true },
+            classes = { [2] = true, [4] = true }, minIlvl = 0, maxIlvl = 0 },
     },
     prices = {},                   -- [matID] = { p = copper each, units, listings, t }
     history = {},                  -- [matID] = { { t, p, lo, n }, ... }: the price at each scan (History.lua)

@@ -95,6 +95,50 @@ local function populate(panel, standalone)
         "Community data says 50%. The Reports window (Odds) shows your own results, with and without it.")
     at(chL, 24)
 
+    -- Which bought gear the Disenchant panel offers (SDD 112b): it never offers gear you did not buy.
+    heading("Disenchant panel")
+    local dx = s.disenchantFilter
+    local function dChanged(what) changed("disenchantFilter." .. what, true) if ns.DisenchantPanel then
+        ns.DisenchantPanel.Refresh() end end
+    -- At least one stays ticked (as in every filter).
+    local function lastOne(set, v)
+        for k, on in pairs(set) do if on and k ~= v then return false end end
+        return true
+    end
+    local dqL = W.Label(panel, "Quality", "GameFontHighlightSmall")
+    at(dqL, 24)
+    local dq = W.Dropdown(panel, 200, { { 2, "|cff1eff00Uncommon|r" }, { 3, "|cff0070ddRare|r" }, { 4, "|cffa335eeEpic|r" } },
+        function(v) return dx.qualities[v] and true or false end,
+        function(v, on)
+            if not on and lastOne(dx.qualities, v) then return end
+            dx.qualities[v] = on or false
+            dChanged("qualities")
+        end, "Which qualities of the gear you bought the Disenchant panel offers.", "Quality")
+    dq:SetPoint("LEFT", dqL, "RIGHT", 12, 0)
+    local dgL = W.Label(panel, "Gear", "GameFontHighlightSmall")
+    dgL:SetPoint("LEFT", dq, "RIGHT", 20, 0)
+    local dg = W.Dropdown(panel, 130, { { 4, "Armor" }, { 2, "Weapons" } },
+        function(v) return dx.classes[v] and true or false end,
+        function(v, on)
+            if not on and lastOne(dx.classes, v) then return end
+            dx.classes[v] = on or false
+            dChanged("classes")
+        end, "Which gear types the Disenchant panel offers.", "Gear")
+    dg:SetPoint("LEFT", dgL, "RIGHT", 12, 0)
+    local dMinL, dMinE = numberBox(panel, "Item level from", 36,
+        function() return dx.minIlvl end,
+        function(n) dx.minIlvl = math.max(0, math.floor(n)) dChanged("minIlvl") end,
+        "The lowest item level the Disenchant panel offers. 0 = no limit.")
+    at(dMinL, 24)
+    local dToL = numberBox(panel, "to", 36,
+        function() return dx.maxIlvl end,
+        function(n) dx.maxIlvl = math.max(0, math.floor(n)) dChanged("maxIlvl") end,
+        "The highest item level the Disenchant panel offers. 0 = no limit.")
+    dToL:SetPoint("LEFT", dMinE, "RIGHT", 12, 0)
+    local dHint = W.Label(panel, "0 = no limit. The panel only ever offers gear you bought.", "GameFontDisableSmall")
+    at(dHint, 24, -6)
+    controls[#controls + 1] = { refresh = function() dq:Update() dg:Update() end }
+
     heading("Prices and window")
     local unL = numberBox(panel, "Material price = average of the cheapest units", 36,
         function() return s.priceUnits end,
