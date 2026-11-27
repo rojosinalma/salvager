@@ -66,7 +66,15 @@ def git(*args):
     return r.returncode, r.stdout.strip()
 
 
-def changelog():
+def changelog(version):
+    """The version's section of CHANGELOG.md (written for players); else the commit subjects since the last tag."""
+    path = os.path.join(ROOT, "CHANGELOG.md")
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        m = re.search(rf"^## (?:{ADDON} )?{re.escape(version)}\s*\n(.*?)(?=^## |\Z)", text, re.M | re.S)
+        if m and m.group(1).strip():
+            return m.group(1).strip()
     code, last = git("describe", "--tags", "--match", "v*", "--abbrev=0")
     if code != 0:
         return "First public release."
@@ -133,7 +141,7 @@ def release(fields):
 
     zip_path = package(version)
     metadata = {
-        "changelog": changelog(),
+        "changelog": changelog(version),
         "changelogType": "markdown",
         "displayName": f"{ADDON} {version}",
         "gameVersions": [game_version_id(token, game_version_name(fields["Interface"]))],
