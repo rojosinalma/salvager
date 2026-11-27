@@ -113,11 +113,13 @@ your minimum profit.
 
 ## Cost tracking
 
-- Purchases come from the "Auction won" mail (any addon or window), oldest first per piece of gear.
+- Purchases are booked when Salvager's Buy goes through, and from the "Auction won" mail (any addon or window),
+  oldest first per piece of gear.
 - On disenchant, the gear's cost goes into its band: each band's cost is shared over its unsold materials by
   their value at the disenchants.
 - Each material keeps an average cost. Break-even = average cost ÷ 0.95.
-- Sales come from the "Auction successful" mail.
+- Sales are booked when your auctions list shows them sold; the "Auction successful" mail marks them paid (and
+  books a sale the list did not show).
 - Materials you had before: `/salv stock <material> <quantity> <cost each>`.
 
 ## Commands
@@ -137,8 +139,9 @@ settings from `.env` (copy `.env.example`):
    `/reload` as a PNG in `.agents/tmp/layout/`, with a list of layout problems (Docker for the PNG).
 3. `make package` builds `dist/Salvager-<version>.zip`.
 4. `make release` uploads that zip to CurseForge as the TOC's version (`CURSEFORGE_TOKEN`,
-   `CURSEFORGE_PROJECT_ID`, `RELEASE_TYPE`), with the commit subjects since the last release as the
-   changelog, tags `v<version>` and pushes the tag to GitHub. The working tree must be committed.
+   `CURSEFORGE_PROJECT_ID`, `RELEASE_TYPE`), with the version's section of `CHANGELOG.md` as the changelog (else
+   the commit subjects since the last release), tags `v<version>` and pushes the tag to GitHub. The working tree
+   must be committed.
 
 ## License
 

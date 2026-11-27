@@ -28,3 +28,5 @@ The biggest update since 0.3.113: a new forecast, honest books, and a new interf
   button and a filter in Options.
 - Windows fit their tables, resize smoothly, can be dragged partly off the screen (/salv windows reset), and
   remember their place. Search boxes in Reports and Market.
+- Faster with a long history: a settings change, the Ledger's Current batch, Accuracy and purchases, and the
+  Disenchant panel redraw several times faster with thousands of records.

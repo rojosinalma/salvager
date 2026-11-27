@@ -688,12 +688,16 @@ end
 
 --- The item level bands, as the scan's level filter offers them: { { up, label }, ... }.
 --- They are the bands of green gear: 1-15, 16-20, ... 61+.
+--- (Made once: the table is fixed, and every filter reads it per row. Read only.)
+local levelBands
 function ns.LevelBands()
+    if levelBands then return levelBands end
     local out, lo = {}, 1
     for _, row in ipairs(Data.GREEN) do
         out[#out + 1] = { up = row.up, label = lo .. (row.up >= 999 and "+" or ("-" .. row.up)) }
         lo = row.up + 1
     end
+    levelBands = out
     return out
 end
 

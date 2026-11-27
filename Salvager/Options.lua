@@ -201,7 +201,8 @@ local function populate(panel, standalone)
     restoreButton:SetMotionScriptsWhileDisabled(true)
     local last = W.Label(panel, "", "GameFontDisableSmall")
     last:SetPoint("LEFT", restoreButton, "RIGHT", 8, 0)
-    controls[#controls + 1] = { refresh = function()
+    -- (The size walks the whole saved data: on show only, not on every settings change.)
+    controls[#controls + 1] = { onShow = true, refresh = function()
         local data, backups = ns.Backup.Sizes()
         size:SetText(string.format("Saved data: about %s (log %d lines, gold journal %d changes). Backups: %s.",
             ns.Util.FormatBytes(data), #ns.db.log, #(ns.db.money.entries or {}), ns.Util.FormatBytes(backups)))
@@ -218,17 +219,20 @@ local function populate(panel, standalone)
     local version = W.Label(panel, "Version " .. ns.VERSION, "GameFontDisableSmall")
     version:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 16, 16)
     panel.contentHeight = -y
-    panel:SetScript("OnShow", function() Options.Refresh() end)
+    panel:SetScript("OnShow", function() Options.Refresh(true) end)
 end
 
-local function refresh(panel)
+local function refresh(panel, shown)
     if not panel or not panel:IsShown() then return end
-    for _, c in ipairs(panel.controls) do if c.refresh then c.refresh() end end
+    for _, c in ipairs(panel.controls) do
+        if c.refresh and (shown or not c.onShow) then c.refresh() end
+    end
 end
 
-function Options.Refresh()
-    refresh(gamePanel)
-    refresh(ownWindow)
+--- Draws the options on show. `shown`: the panel has just opened (the saved data size is measured then too).
+function Options.Refresh(shown)
+    refresh(gamePanel, shown)
+    refresh(ownWindow, shown)
 end
 
 --- Opens the addon's own options window. Nothing else closes.

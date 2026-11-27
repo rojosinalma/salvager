@@ -49,7 +49,7 @@ reply must say so.
     buttons: two columns (Salvager, Ledger, Materials; Reports, Market, Log), Disenchant across both under them.
 14. Checked by the specs (rows of tabs hold tabs only; filters under the subtabs; every row fits the smallest width;
     `spec/fit_spec.lua`: no cut text, no overlap in a row, nothing outside its window, at the smallest and the
-    default size, SDD 105)
+    default size, SDD 106)
     and by `make layout` (a row of tabs with another control; a statement's amounts not at the panel's right edge; a
     tab, subtab or dropdown with the red button's art).
 15. Start and stop of one thing is one toggle button: the play arrow while it is off, the stop square while it runs;

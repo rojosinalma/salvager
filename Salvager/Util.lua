@@ -24,9 +24,27 @@ end
 --- With `icons`, coin icons replace the letters.
 --- `aligned`: the form for a column of amounts (UI.md Tables 8): every unit under the largest one is shown, with two
 --- digits ("12g 05s 00c", "5s 03c"), so right-aligned amounts keep their coins under each other.
+-- (The texts made, per form: a table of thousands of rows asks for the same amounts again on every refresh.
+-- Bounded: emptied past MONEY_MEMO_MAX.)
+local MONEY_MEMO_MAX = 4096
+local moneyMemo, moneyMemoN = { {}, {}, {}, {} }, 0
+local formatMoney
 function Util.FormatMoney(copper, icons, aligned)
     if copper == nil then return "-" end
     copper = math.floor(copper + 0.5)
+    local memo = moneyMemo[(icons and 2 or 1) + (aligned and 2 or 0)]
+    local text = memo[copper]
+    if text then return text end
+    if moneyMemoN >= MONEY_MEMO_MAX then
+        moneyMemo, moneyMemoN = { {}, {}, {}, {} }, 0
+        memo = moneyMemo[(icons and 2 or 1) + (aligned and 2 or 0)]
+    end
+    text = formatMoney(copper, icons, aligned)
+    memo[copper], moneyMemoN = text, moneyMemoN + 1
+    return text
+end
+
+function formatMoney(copper, icons, aligned)
     local sign = ""
     if copper < 0 then sign, copper = "-", -copper end
     local g = math.floor(copper / GOLD)

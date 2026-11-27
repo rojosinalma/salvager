@@ -61,10 +61,11 @@ local function checkItem(c, itemKey, onResult, onFail, forBuy)
 end
 
 --- The value and buy limit of a quality, gear type and item level now. nil when the band is blocked.
-local function currentBand(quality, classID, ilvl)
+--- `limits`: ns.Limits() when the caller has it (one table for many deals).
+local function currentBand(quality, classID, ilvl, limits)
     local s = ns.db.settings
     local cap = s.maxPrice > 0 and s.maxPrice or math.huge
-    for _, row in ipairs(ns.Limits()) do
+    for _, row in ipairs(limits or ns.Limits()) do
         if row.quality == quality and ilvl >= row.lo and ilvl <= row.up then
             local x = classID == Data.CLASS_WEAPON and row.weapon or row.armor
             if not x or x.blocked then return nil end
@@ -1067,10 +1068,11 @@ end)
 
 -- New settings (a buy limit, the most to pay, the gear type): rows that are no deal under them go at once.
 ns.On("SALVAGER_SETTINGS", function()
-    local gone = 0
+    local gone, limits = 0, nil
     for i = #Scanner.deals, 1, -1 do
         local d = Scanner.deals[i]
-        local band = not inHand(d) and currentBand(d.quality, d.classID, d.ilvl)
+        if not limits and not inHand(d) then limits = ns.Limits() end
+        local band = not inHand(d) and currentBand(d.quality, d.classID, d.ilvl, limits)
         if not inHand(d) and (not band or d.buyout > band.limit) then
             table.remove(Scanner.deals, i)
             gone = gone + 1

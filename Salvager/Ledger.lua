@@ -35,8 +35,16 @@ local function splitNet(rec)
 end
 
 --- Same key as ns.BandKey: "<quality>:<a|w>:<band>".
+local bandKeys = {}   -- (made once each: every list of records asks per record)
 function Ledger.BandKey(quality, classID, band)
-    return string.format("%d:%s:%d", quality or 0, classID == Data.CLASS_WEAPON and "w" or "a", band or 0)
+    local kind = classID == Data.CLASS_WEAPON and "w" or "a"
+    local id = tostring(quality or 0) .. kind .. tostring(band or 0)
+    local key = bandKeys[id]
+    if not key then
+        key = string.format("%d:%s:%d", quality or 0, kind, band or 0)
+        bandKeys[id] = key
+    end
+    return key
 end
 
 --- quality, classID, band from a Ledger.BandKey.
@@ -800,8 +808,14 @@ end
 --- @return table { on = { [kind] = { n (weight), count, cells = { [m] = { [position] = weight } } } }, off = same }
 function Ledger.Shapes(state, now)
     local out = { on = {}, off = {} }
+    local tables = {}   -- (each band's table once: Model.Outcomes builds a new one per call)
     for _, r in ipairs(state.disenchants) do
-        local o = r.got and r.quality and r.classID and r.band and Model.Outcomes(r.quality, r.classID, r.band)
+        local o
+        if r.got and r.quality and r.classID and r.band then
+            local key = r.quality .. ":" .. r.classID .. ":" .. r.band
+            if tables[key] == nil then tables[key] = Model.Outcomes(r.quality, r.classID, r.band) or false end
+            o = tables[key] or nil
+        end
         if o then
             local w = Model.Decay((now or 0) - (r.t or 0))
             local side = out[r.salvager and "on" or "off"]
@@ -826,14 +840,27 @@ end
 
 Ledger.MAIL_DELAY = 3600   -- a sold auction's money comes about this long after the sale (SDD 97c)
 
+--- The posts of each material, in the order of `posted` (postTime reads one material's only).
+local function postsByItem(posted)
+    local by = {}
+    for _, p in ipairs(posted or {}) do
+        if p.itemID then
+            by[p.itemID] = by[p.itemID] or {}
+            by[p.itemID][#by[p.itemID] + 1] = p
+        end
+    end
+    return by
+end
+
 --- The post a sale came from: its `postedAt`, else the last post of that material at that price each made at or
---- before the sale. @return number|nil the time of the post
-local function postTime(s, posted, soldAt)
+--- before the sale. `byItem`: postsByItem(posted). @return number|nil the time of the post
+local function postTime(s, byItem, soldAt)
     if s.postedAt then return s.postedAt end
     local each = s.each or (s.gross / s.count)
-    for i = #posted, 1, -1 do
-        local p = posted[i]
-        if p.itemID == s.id and p.each and math.abs(p.each - each) < 1 and (p.t or 0) <= soldAt then return p.t end
+    local mine = byItem[s.id] or {}
+    for i = #mine, 1, -1 do
+        local p = mine[i]
+        if p.each and math.abs(p.each - each) < 1 and (p.t or 0) <= soldAt then return p.t end
     end
     return nil
 end
@@ -851,12 +878,13 @@ function Ledger.TimesToSell(state, posted, now, opts)
     local floor = opts.minSales or Ledger.FORECAST_MIN_SALES
     local delay = opts.mailDelay or Ledger.MAIL_DELAY
     local per, all, nAll = {}, {}, 0
+    local byItem = postsByItem(posted)
     for _, e in ipairs(weightedSales(state, now)) do
         local s = e.s
         if not s.lost and (s.count or 0) > 0 and (s.gross or 0) > 0 then
             local soldAt = s.t or 0
             if s.due then soldAt = math.min(soldAt, s.due - delay) end
-            local at = postTime(s, posted or {}, soldAt)
+            local at = postTime(s, byItem, soldAt)
             if at then
                 local x = { r = math.max(0, soldAt - at), w = s.count * e.w, age = e.w }
                 per[s.id] = per[s.id] or {}
@@ -1063,18 +1091,26 @@ function Ledger.Batch(state, posted, held)
     for _, p in ipairs(posted) do
         if p.itemID and p.qty then gone[#gone + 1] = { id = p.itemID, n = p.qty, t = p.t or 0 } end
     end
+    local byItem = postsByItem(posted)
     for _, sale in ipairs(state.sales) do
-        if not sale.lost and sale.id and (sale.count or 0) > 0 and not postTime(sale, posted, sale.t or 0) then
+        if not sale.lost and sale.id and (sale.count or 0) > 0 and not postTime(sale, byItem, sale.t or 0) then
             gone[#gone + 1] = { id = sale.id, n = sale.count, t = sale.t or 0 }
         end
     end
     table.sort(gone, function(a, b) return a.t < b.t end)
+    -- (First in, first out: the disenchants used up are always the first of their material's list, so each
+    -- material's next one is kept and the used ones are not walked again.)
+    local first = {}
     for _, g in ipairs(gone) do
-        local n = g.n
-        for _, x in ipairs(byMat[g.id] or {}) do
-            if n <= 0 or (x.r.t or 0) > g.t then break end
+        local n, list = g.n, byMat[g.id] or {}
+        local i = first[g.id] or 1
+        while list[i] and left[list[i].r][g.id] <= 0 do i = i + 1 end
+        first[g.id] = i
+        while n > 0 and list[i] and (list[i].r.t or 0) <= g.t do
+            local x = list[i]
             local take = math.min(n, left[x.r][g.id])
             left[x.r][g.id], n = left[x.r][g.id] - take, n - take
+            i = i + 1
         end
     end
     if held then
@@ -1099,6 +1135,19 @@ function Ledger.Batch(state, posted, held)
     end
     table.sort(done, function(a, b) return (a.rec.t or 0) > (b.rec.t or 0) end)
     return { mail = mail, waiting = waiting, done = done }
+end
+
+--- What Ledger.History counts, without its order or its materials: { { itemID, paid, done, got }, ... } (the
+--- Ledger's summary line reads only these, and History sorts and shares every disenchant's cost).
+function Ledger.HistoryTotals(state)
+    local out = {}
+    for itemID, list in pairs(state.purchases) do
+        for _, p in ipairs(list) do out[#out + 1] = { itemID = itemID, paid = p.each, done = false } end
+    end
+    for _, r in ipairs(state.disenchants) do
+        out[#out + 1] = { itemID = r.itemID, paid = r.costKnown and r.cost or nil, done = true, got = r.value }
+    end
+    return out
 end
 
 --- Every item bought or disenchanted, newest first: one entry per item, with what it gave.

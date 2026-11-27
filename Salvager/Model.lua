@@ -85,9 +85,17 @@ end
 Model.HALF_LIFE_DAYS = 30
 
 --- The weight of an observation `age` seconds old (whole days: one day's results weigh the same).
+-- (One weight per whole day, made once: every record of the ledger asks for its own. Kept per half-life.)
+local decayOf, decayHalf = {}, nil
 function Model.Decay(age)
     local days = math.floor(math.max(0, age or 0) / 86400)
-    return 0.5 ^ (days / Model.HALF_LIFE_DAYS)
+    if decayHalf ~= Model.HALF_LIFE_DAYS then decayOf, decayHalf = {}, Model.HALF_LIFE_DAYS end
+    local w = decayOf[days]
+    if not w then
+        w = 0.5 ^ (days / Model.HALF_LIFE_DAYS)
+        decayOf[days] = w
+    end
+    return w
 end
 
 -- The Salvager shape (SDD 118). A result of the table with m values (lo..hi) can come at m + 1 positions with the

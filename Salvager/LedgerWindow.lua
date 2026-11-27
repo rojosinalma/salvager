@@ -899,12 +899,14 @@ local function accuracyFilter()
 end
 Window.AccuracyFilter = accuracyFilter
 
-local function accuracyKeep(r)
-    return filterPasses(accuracyFilter(), r.classID, r.quality, r.ilvl or r.band, r.salvager and true or false)
+--- The Accuracy filter as a test of one disenchant (the filter read once, not per record).
+local function accuracyKeep()
+    local x = accuracyFilter()
+    return function(r) return filterPasses(x, r.classID, r.quality, r.ilvl or r.band, r.salvager and true or false) end
 end
 
 function Window.AccuracyBandRows()
-    local acc = Ledger.Accuracy(ns.db.ledger, accuracyKeep)
+    local acc = Ledger.Accuracy(ns.db.ledger, accuracyKeep())
     local rows = {}
     local function row(b, name, group)
         local few = b.n < 20
@@ -946,7 +948,7 @@ end
 function Window.AccuracyMaterialRows()
     local rows = {}
     -- (In the materials' order, as every material list: Data.SortMaterials.)
-    for _, m in ipairs(Data.SortMaterials(Ledger.Accuracy(ns.db.ledger, accuracyKeep).mats, function(x) return x.id end)) do
+    for _, m in ipairs(Data.SortMaterials(Ledger.Accuracy(ns.db.ledger, accuracyKeep()).mats, function(x) return x.id end)) do
         local valued = m.units > 0 and m.valued / m.units or nil
         local sold = m.soldUnits > 0 and m.soldNet / m.soldUnits or nil
         rows[#rows + 1] = { itemID = m.id, cells = { ns.MaterialName(m.id), tostring(m.units),
@@ -962,7 +964,7 @@ end
 function Window.Summary()
     local bought, spent, done, got, waiting, waitingCost = 0, 0, 0, 0, 0, 0
     local waitingBy = {}
-    for _, e in ipairs(Ledger.History(ns.db.ledger)) do
+    for _, e in ipairs(Ledger.HistoryTotals(ns.db.ledger)) do
         if e.paid then bought, spent = bought + 1, spent + e.paid end
         if e.done then
             done, got = done + 1, got + (e.got or 0)

@@ -61,8 +61,9 @@ flipping is out of scope for now.
    from any addon). A mail that matches a purchase already recorded is not counted again. Matched to
    disenchants first in, first out per item ID. A disenchant with no recorded purchase adds its materials as
    units of unknown cost; they stay out of the average cost and break-even.
-7. **Sales** are recorded from the "Auction successful" invoice: net = sale − cut. Deposits lost on expired or
-   cancelled auctions are tracked (70d) and counted in the forecast (96).
+7. **Sales** are recorded from the "Auction successful" invoice: net = sale − cut (replaced by 40: a sale is booked
+   when your auctions list shows it sold, and the invoice marks it paid and books only units never seen). Deposits
+   lost on expired or cancelled auctions are tracked (70d) and counted in the forecast (96).
 8. **Opening stock** is entered by hand (`/salv stock`).
 9. **Buying** needs one click per auction (`PlaceBid` needs a hardware event). Nothing buys on its own.
 10. **Search pacing:** one search at a time, gated by `IsThrottledMessageSystemReady`; an item the client
@@ -116,12 +117,13 @@ flipping is out of scope for now.
     a dropped one with `AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED`, without saying whose. A search or page
     request of ours sent in the last 2 s is sent again at once (at most 3 times); otherwise the 3 s wait and
     one retry apply.
-23. **Clear history** (Ledger window, with a confirmation) removes disenchants, sales and the purchase record.
+23. **Clear history** (Ledger window until 0.3.106; in the Options since, 88; with a confirmation) removes disenchants, sales and the purchase record.
     Stock and its costs stay; purchases not disenchanted yet stay, except items that can never be disenchanted.
 24. **Layout is remembered.** `SalvagerDB.windows[key].open` is set only by deliberate actions (the addon's
     buttons and commands, a window's X). Escape and the auction house closing hide every window at once and
     do not change it. When the auction house opens (and `autoOpen`, `restoreWindows` are on) the Ledger, Log
-    and Materials windows that were open are shown again. The main window's tab and the Ledger's view are
+    and Materials windows that were open are shown again (now every window that was open: also Market, Reports, the
+    Odds pop-out and Limits, `UI.RestoreWindows`, 78). The main window's tab and the Ledger's view are
     kept too.
 25. **Searches that get no answer** (measured 2026-11-25, 0.3.3 to 0.3.8): about one item search in four got
     no answer on its first try and none of them reported a drop; every second try worked. Cause not known
@@ -142,7 +144,7 @@ flipping is out of scope for now.
     the deal shows its whole-unit outcomes and range, 116). Deals show `Model.LossChance`: the chance that
     one disenchant is worth less than the price (quantities equally likely, Salvager bonus included when on, a
     material without a price worth nothing). Example measured 2026-11-25: Azure Silk Hood at 11s 46c, value
-    12s 57c, lose chance 75% (every dust result loses). The Ledger's Odds view lists every band of every
+    12s 57c, lose chance 75% (every dust result loses). The Odds (the Ledger's view until 0.3.148, a Reports tab since, 114) list every band of every
     quality and gear type with the table, today's value and the player's own results where there are any.
 29. **Your auctions** (`Listings.lua`). Read on every `OWNED_AUCTIONS_UPDATED` (whoever asked), asked for at
     auction house open and after a post or cancel, kept in `SalvagerDB.listings` so the Ledger shows them
@@ -164,6 +166,7 @@ flipping is out of scope for now.
     without the Salvager as buying counts it; the filters do not change it). Buy below and Loss chance use the
     blend. `Widgets.CardList` makes 10 cells a row (was 8).
     The lose colors are in one place (`ns.LoseText`), shared with the Gear list.
+    (Replaced: the columns and facts of 114d-e (0.3.148) and the average names of 116g (0.3.152).)
 32. **The Gear list empties only for a scan started by a click** (Play, Scan gear, Scan both), and is then
     filled again. A round that Play starts by itself keeps the list: when the round has read the gear, rows of
     items no longer under their limit go, and the others are replaced as they are checked. (0.3.16 cleared at
@@ -192,7 +195,7 @@ flipping is out of scope for now.
     border, a title band, every second row shaded (zebra striping), the scroll bar inside. A row with
     `group = true` (an item with its materials under it, a band with its materials) gets a gold band. A view
     with sections is one table per section: the Ledger's Sales view is "On the auction house" and "Paid", each
-    with its own title, columns and scroll bar. The Log stays a plain text list.
+    with its own title, columns and scroll bar (Open auctions and Sold since 0.3.108, 64). The Log stays a plain text list.
 39. **Odds view: one table per band** (`Widgets.CardList`): a scrolling stack of cards, each a sunken panel
     with a gold title band (the band, then its facts: disenchants, value now, buy below, lose, your average),
     column titles and one striped row per material. Cards and rows are created as needed and reused. 0.3.148: two
@@ -221,10 +224,10 @@ flipping is out of scope for now.
     The tables (`Widgets.List`, `Widgets.CardList`) live in `Tables.lua`.
 49. **One place per setting:** what the main window sets (gear, quality, min profit, max price, cautious
     pricing, item levels, item checks per scan) is not in the options window.
-50. **Odds subtabs:** Armor and Weapons, one at a time (`windows.ledger.oddsTab`); they replace the gear type
+50. **(Replaced 0.3.99 by 83: the Gear filter; 0.3.148 Armor and Weapons headings, 114c.) Odds subtabs:** Armor and Weapons, one at a time (`windows.ledger.oddsTab`); they replace the gear type
     filter. Band names are written "Uncommon Armor", "Rare Weapons".
-51. **Odds band filter:** the scan's item level bands as ranges (`windows.ledger.oddsBandsOff`); a rare or
-    epic band shows when it overlaps a ticked range.
+51. **Odds band filter:** the scan's item level bands as ranges (`windows.ledger.oddsBandsOff`; with the Odds'
+    other filters in `windows.odds.filter` since 0.3.148, 114b); a rare or epic band shows when it overlaps a ticked range.
 52. **Sales tables share their height by a draggable bar** (`windows.ledger.salesSplit`, 0.1 to 0.9, default
     0.45; right-click resets). Since 0.3.147 the same bar (`Widgets.SplitBar`) is in every view with two tables (113d).
 53. **The Post window shows the other sellers** (`Post.Market`, `Post.MarketRows`): their listings cheapest
@@ -241,7 +244,8 @@ flipping is out of scope for now.
     cost count as zero in it.
 56. **Cancel is the last button** of any group of buttons, everywhere (the user's rule).
 57. **Market window** (`MarketWindow.lua`, `Chart.lua`, `History.lua`): every material scan adds a point to
-    `SalvagerDB.history` (price, lowest listing, units listed; one point per 10 minutes, 600 per material).
+    `SalvagerDB.history` (price, lowest listing, units listed; one point per minute, `History.SLOT`, at most 1000 per
+    material, `History.MAX_POINTS`: past it the older half keeps every second point; it was one per 10 minutes, 600).
     The window charts one material: price and lowest listing as lines, your break-even as a level, units
     listed as bars; ranges 6 hours, 24 hours, 7 days, all.
 58. **Window sizing:** Ledger and popped-out Odds have a fixed width and a free height (`Widgets.Window`,
@@ -253,7 +257,7 @@ flipping is out of scope for now.
     with no first page is sent again (twice) before it is given up.
 60. **Market views:** Materials, Disenchant value (the band's value at each moment a material price was seen,
     with the last known price of each material, against the buy limit now), Profit (sales with a known cost,
-    added up, and per day), Essences (3 lesser against 1 greater), By hour (average price per hour of the day).
+    added up, and per day), Essences (3 lesser against 1 greater), By hour (average price per hour of the day; "Time of day" since 81).
     The history is filled once from older data (`Prices.SeedHistory`): last scans, log, disenchants, posts.
 61. **Accuracy view** (Ledger, `Ledger.Accuracy`): per band and in total, over disenchants with a recorded
     purchase: Paid, Promised (value shown when bought), Got (value at the disenchant), Sold for (the same
@@ -468,8 +472,8 @@ flipping is out of scope for now.
     under it, then each band by its range only ("26-30", never "item level 26-30"). `ns.GroupedRows` builds
     it, with totals on the headings where the table has totals: Market's Disenchant value, Ledger's
     Accuracy, Reports' Gear, Breakdown's bands. Odds cards sit under the Armor/Weapons subtab and are titled
-    "Uncommon 26-30". A sorted grouped list sorts inside each group (`section`, `head`). `/salv report` too
-    (Armor, Uncommon 26-30: ...). The main window's Limits tab is a table of two halves instead (the user,
+    "Uncommon 26-30" (until 0.3.148: since, under the gear type and quality headings, titled "26-30", 114c). A sorted grouped list sorts inside each group (`section`, `head`). `/salv report` too
+    (Armor, Uncommon 26-30: ...). The main window's Limits tab (the Limits window since 0.3.128, 101b) is a table of two halves instead (the user,
     0.3.97): an Armor title over its Recommended and Override price threshold columns, a Weapons title over
     its two; the rows are the bands of every quality (whatever the scan looks at; grey where it does not),
     under a heading per quality, the range only. Vertical lines after the Item level column and between the
@@ -499,7 +503,8 @@ flipping is out of scope for now.
 85. **Main window list** (0.3.102): the column the Gear list is sorted by has the arrow icon (as in the
     Market and the Ledger), not "v"; the "?" help is the first thing on the row of column titles, and its
     first line says what the list is sorted by and how to change it. Limits' and the Gear tab's help say the column
-    names in use (Recommended / Override price threshold; Expected value, Expected profit, Return).
+    names in use (Recommended / Override price threshold; Expected value, Expected profit, Return; since 0.3.152 "Profit:
+    low - avg - high" and Avg return, 116e).
 86. **Where a listing stands** (`StandWindow.lua`, 0.3.104): a click on an auction of yours for sale (Ledger,
     Sales, Open auctions) searches its material and shows the other sellers' price lines (`Post.MarketRows`,
     with your price and your break-even in their place), and above them: your listing, the units ahead of
@@ -524,7 +529,8 @@ flipping is out of scope for now.
 89. **Published on CurseForge** (2026-11-26, the user): MIT license (`LICENSE`, also in the zip). `make release`
     (`scripts/release.py`, Python standard library only) zips the `Salvager` folder, uploads it through the
     CurseForge upload API for the game version named after the TOC's interface (16001 = 1.60.1, Forever),
-    tags `v<version>` and pushes the tag to GitHub (`origin`); the changelog is the commit subjects since the last tag. Each upload is a new
+    tags `v<version>` and pushes the tag to GitHub (`origin`); the changelog is the version's section of
+    `CHANGELOG.md` (written for players; since 0.4.0), else the commit subjects since the last tag. Each upload is a new
     version: it refuses a dirty tree or a version already tagged. Local settings (install host, AddOns
     folder, CurseForge token and project) live in `.env`, never in the repo. Forever only: the file gets one
     game version, of the Forever type (`CURSEFORGE_GAME_VERSION_TYPE=88568`), and the TOC has only interface
@@ -561,8 +567,8 @@ flipping is out of scope for now.
 93. **Buy Top** (0.3.111, the user; 0.3.112; "Buy Top" since 0.3.129): a button at the bottom right of the main
     window, left of the resize grip, on every tab. One click buys the single best auction of the Gear list by the
     active sort, from any row
-    (`UI.TopDeal`): of every auction not being bought, the one with the highest Expected profit (profit sort) or
-    Return (return sort), each auction's own (`d.profit`, `Scanner.Return`); ties go to the other number, then the
+    (`UI.TopDeal`): of every auction not being bought, the one with the highest Average profit (profit sort) or
+    Avg return (return sort; named Expected profit and Return until 0.3.152, 116), each auction's own (`d.profit`, `Scanner.Return`); ties go to the other number, then the
     lower buyout, then the auction ID. Not the top row: after the best auction of a row of several is bought, the
     next click can buy another item's auction before that row's dearer ones (0.3.111 followed the row, a fix of
     the user's intent in 0.3.112). The list does not move. When the gold is short for the best auction, the click
@@ -571,7 +577,8 @@ flipping is out of scope for now.
     ready (65); while it is busy, "..." and off, the click does nothing (105j). Off, with the reason in its tooltip: auction house
     closed, no gear scan yet, the list empty, every deal being bought, not enough gold for any (the best one is
     named). Its tooltip shows the gear and the deal's lines of what the click buys (`UI.AddDealLines`, as a Gear
-    row's: Item level, Buyout, Expected value, Expected profit, Return, Loss chance, Time to sell, Return per day),
+    row's: Item level, Buyout, Expected value, Expected profit, Return, Loss chance, Time to sell, Return per day;
+    since 0.3.152 the outcomes and averages of 116f),
     (0.3.134, 105: while a click waits for the auction house, Buy Top is for that auction, "..." and off with the
     reason, then "Buy now", lit; 0.3.142: "..." with the reason while the auction house is busy, 105j),
     and follows the list while it shows. Above the button, right-aligned to it (0.3.112, the user): the icon and the
@@ -629,7 +636,7 @@ flipping is out of scope for now.
     No option and no slash command: Show all is the reset.
 96. **Deposits lost in the forecast** (0.3.122, the user, 2026-11-26). The Expected value of gear is net of the
     deposits the auction house keeps on expired and cancelled auctions (70d): per material, deposits lost ÷ units
-    sold over the last 30 days, as a share `k` of the deposit of one unit in one post (`Ledger.DepositRates`;
+    sold over the last 30 days (since 0.4.0 every sale, weighted by age, 118a), as a share `k` of the deposit of one unit in one post (`Ledger.DepositRates`;
     one unit's deposit = your posts of it, deposit ÷ units, else `CalculateCommodityDeposit` for one unit at your
     post duration, `ns.UnitDeposit`). Under 5 sales `k` is pulled toward all materials together, and that toward 1,
     as the sell price ratio is (3); with no data `k` = 1: one post's deposit lost per unit sold. Each result
@@ -778,7 +785,7 @@ flipping is out of scope for now.
        Quality, Bands, Salvager; Odds also "Only bands with my data"); the tables; footer, two lines (0.3.130: one line
        cut the totals in Sales): the totals line with its chart button, the whole width; under it, at the right, the
        view's part: Check undercuts and Cancel undercut (Sales), the bag
-       space (Purchases), Pop out (Odds). The totals line was above the tabs, the pop-out next to the Odds tab, the
+       space (Purchases), Pop out (Odds; the Odds left the Ledger in 0.3.148, 114a). The totals line was above the tabs, the pop-out next to the Odds tab, the
        undercut buttons and the bag space on the subtab row.
     d. Odds window: two filter rows under the title bar (the filters; "Only bands with my data"), then the cards.
     e. Materials window: filter row ("Only materials with my data", "?" at its right end); footer: status at the
@@ -807,7 +814,8 @@ flipping is out of scope for now.
     enough gold) at the right, Close last. When a scan replaces the auction's row, the window follows it by auction
     ID; when the auction leaves the list, the window keeps showing it (UI.md Actions 4) and Buy says why it is off.
     0.3.136: at least 620 wide, wider where its tables' columns need it (107; the Return of "Your history" was left
-    out at 620 with long amounts).
+    out at 620 with long amounts). 0.3.152: "The deal" says Average value and Average profit, and "What one disenchant
+    gives" (the whole-unit outcomes) replaces "How the Expected value is built" (116f).
 103. **Headings that open and close, one way** (0.3.129, the user; UI.md Tables 15): every table with groupings:
     the main window's gear groups (they start closed), Reports' Gear Bands, Market's Disenchant value, Breakdown's
     bands, the Limits window's qualities, Ledger Purchases (start closed), Accuracy and the Odds cards. An arrow at
@@ -824,7 +832,8 @@ flipping is out of scope for now.
     for a game item in general and in "item level"; what a disenchant gives is "materials". Window titles are
     "Salvager <Name>", the name capitalized (UI.md Layout 10): Salvager Ledger, Reports, Materials, Market, Log, Odds,
     Options, Breakdown, Limits, Post, Stand, Gear Details. The log keeps "item <ID>" in its lines (the Log window
-    shows the name in its place). Expected profit and Return in the Gear list: the one the list is sorted by
+    shows the name in its place). Expected profit and Return in the Gear list (the profit range and Avg return since
+    0.3.152, 116e): the one the list is sorted by
     (it drives Buy Top and the order) is green when it gains, red when it loses; since 0.3.133 the other too (0.3.132, the
     user: 0.3.129 made both grey). The same in the row's and Buy Top's tooltips. A click on the gear above Buy Top
     opens its Gear Details, as a click on its row does.
@@ -886,11 +895,6 @@ flipping is out of scope for now.
        Details) is searched again the moment the mouse is there (`Scanner.Prefetch`, once per gear and browse, first
        in line past the hold), so the click that follows is on a current search and buys at once. "Buy now" stays
        only for a click faster than that search, or one while the auction house is busy. The search goes for the
-    - l. No search right after a purchase (0.3.144, the user: the checks after buying made more delays than they
-       solved). Measured 2026-11-27 04:00-04:16: 110 such searches for 106 purchases; 111 of the 132 clicks that
-       found the auction house busy came within 2 s after one. The bought auction leaves the list at once; its gear
-       is searched again once, when no Buy was clicked for 8 s and nothing is on its way (also after a failed
-       purchase).
        deal under the mouse anywhere over its row, Buy Top or Gear Details; it holds no scan (b).
     - j. Never sent while busy (0.3.142, measured 2026-11-27 04:00–04:16: 224 Buy clicks, 106 bought, 132 on a busy
        auction house, 30 of them on "Buy now" while it was busy again, and those were sent and lost). A "Buy now"
@@ -901,6 +905,11 @@ flipping is out of scope for now.
     - k. Each scan's end (its gear checks done, or Stop) logs the time it waited for purchases by reason: "scan held
        for purchases: 4.2s (purchase 3.0s, waiting 0.2s, click 1.0s)" or "not at all" (`Scanner.holds`, counted
        each tick while a material or gear scan runs).
+    - l. No search right after a purchase (0.3.144, the user: the checks after buying made more delays than they
+       solved). Measured 2026-11-27 04:00-04:16: 110 such searches for 106 purchases; 111 of the 132 clicks that
+       found the auction house busy came within 2 s after one. The bought auction leaves the list at once; its gear
+       is searched again once, when no Buy was clicked for 8 s and nothing is on its way (also after a failed
+       purchase).
 
 107. **Purchases by day, the Current batch, windows that fit their columns** (0.3.136, the user, 2026-11-26).
     - a. All purchases: a "Show" dropdown on the filter row (after Bands) replaces the "Not disenchanted" check box:
@@ -908,7 +917,8 @@ flipping is out of scope for now.
        `hideWaiting = true` becomes "done" once). The empty table says why for the choice (nothing bought yet;
        nothing disenchanted yet; every piece disenchanted; nothing matches the search and the filters).
     - b. All purchases is grouped by the day the gear was bought (the disenchant's day where no purchase is
-       recorded), newest first: a heading "Thu 11-26  12 pieces" with Paid and Expected value of all, Disenchant
+       recorded), newest first: a heading "Thu 11-26  12 pieces" with Paid and Expected value (Avg value since
+       0.3.152, 116g) of all, Disenchant
        value and Profit of the pieces disenchanted. Under it a heading per status with its count and totals: "Not
        disenchanted" first (what the player acts on, UI.md Tables 4), then "Disenchanted"; one only shows when it has
        rows under Show and the filters. Under those the rows as before: one per item name (ordered by the column
@@ -926,7 +936,8 @@ flipping is out of scope for now.
        newest first, at most the pieces you hold. A disenchant leaves when none of its units is left; a post that
        expires or is cancelled stays posted (its units come back as stock from elsewhere). Disenchants without a
        recorded purchase take part in the first in, first out but are not listed.
-       Columns: Gear, Item level, Paid, Expected value (EV, at purchase), Expected profit, Materials got,
+       Columns: Gear, Item level, Paid, Expected value (EV, at purchase), Expected profit (since 0.3.152: Avg value
+       (EV) and "Profit: low - avg - high", 116g), Materials got,
        Disenchant value (DV), DV/EV %, Profit so far (DV - Paid), Not posted yet (units per material), Value now
        (those units at `ns.UnitValue`). Before the disenchant, Materials got says "not disenchanted yet" in grey
        and the other cells after it "-" (not known). Status headings "Not disenchanted" (first) and
@@ -1117,7 +1128,8 @@ flipping is out of scope for now.
        per gear as the batch has, armor or weapons of Uncommon to Epic, not `ns.NoDisenchant`. In bag order: the
        first row (with the highlight band) is the next piece. Each piece is paired with the batch's purchases of
        that gear, the oldest first (the one `Ledger.TakePurchase` books). Columns (the Current batch's, one name
-       and one help): Gear (icon, name, the item's tooltip), Item level, Paid, Expected value, Expected profit.
+       and one help): Gear (icon, name, the item's tooltip), Item level, Paid, Avg value, "Profit: low - avg - high"
+       (Expected value and Expected profit until 0.3.152, 116g).
        Gear you did not buy with Salvager is never in it, so a repeated click never aims at your own gear (a copy
        of the same item as a purchase counts as that purchase).
     - c. Results (the bottom table): `Ledger.Batch`'s `done` (disenchants of the batch whose materials are not all
@@ -1217,14 +1229,15 @@ flipping is out of scope for now.
        the pop-out the same, at least 760 (928 with the Salvager columns: one card).
     - d. Columns: the game's table, Material, Result rate, Quantity; a vertical line (`sep`); yours, Results (how many
        of your disenchants gave it), Result rate (Results ÷ Disenchants), Result quantity (the average units when it
-       came). The two "Result rate" titles have keys of their own for the column chooser ("Result rate (table)",
+       came; "Avg quantity" since 0.3.152, 116g). The two "Result rate" titles have keys of their own for the column chooser ("Result rate (table)",
        "Result rate (yours)"). Every title has help. Rate used, Quantity used and Price now left the columns.
     - e. The card's facts line: Disenchants and Loss chance (at the buy limit), each with its own help on hover
        (`facts` as parts). A "?" at the card's top right shows the rest on hover: Value now, Buy below, Your average
        (your average value per disenchant, all of the band's disenchants), Rates used from (99), and Price now per
        material (a tooltip, not the help panel: the cards scroll in a clipped frame).
     - f. "Show with and without the Salvager" (`filter.both`): the observed columns show the disenchants without the
-       Salvager, and two columns follow, Rate with Salvager and Quantity with Salvager, for the materials the
+       Salvager, and two columns follow, Rate with Salvager and Quantity with Salvager ("Avg quantity with Salvager"
+       since 0.3.152), for the materials the
        Salvager adds to (the table's dust and essence, `bonus`; empty for shards and for what the table does not
        have). Observed only: the game has no table of it. Disenchants then says "n without, m with the Salvager".
        The Salvager filter is off meanwhile, with the reason (UI.md Actions 3); off, the observed columns follow it
@@ -1400,17 +1413,64 @@ flipping is out of scope for now.
        83.06 → 80.16s; Epic Armor 61+ (1) 88.91 → 88.34g. Without the Salvager every band moves under 0.1%.
        Every other range is unchanged.
 
+119. **Refreshes measured, the slow ones fixed** (0.4.0, the user's brief of 2026-11-27). Timed with `os.clock` in
+    the stand-in (`spec/wow.lua`, the whole addon through its events) on the user's saved data (713 disenchants, 177
+    sale records, 755 gold changes, 5000 log lines) and on a copy grown to the code's caps (5000 disenchants,
+    purchases and sale records, `Ledger.MAX_RECORDS`; 20 000 gold changes, `Journal.MAX`). Targets: a refresh the
+    player triggers under 50 ms (saved data) and 150 ms (caps); per tick under 1 ms; one listing of a gear scan
+    under 20 µs. Before, on the caps: a settings change with every window open 441 ms, the Disenchant panel 217 ms,
+    the Current batch 132 ms, Accuracy 133 ms, All purchases 127 ms; on the saved data the settings change 129-184
+    ms. Causes and fixes (the results are the same, checked against the old code on the saved data):
+    - a. `Ledger.Batch` walked each material's disenchants from the first for every post and sale (quadratic): the
+       used-up ones are always first (first in, first out), so each material keeps its next one; a sale's post is
+       looked up among that material's posts only (`postsByItem`, also in `Ledger.TimesToSell`).
+    - b. A settings change checked each deal of the Gear list against `ns.Limits()` made anew per deal; one table
+       for all of them now. The Options' saved data size (`Util.SavedSize` of the whole saved data, 88) is measured
+       when the options show, not on every settings change.
+    - c. The Ledger's summary line built and sorted `Ledger.History` (every record, with the cost shares) on every
+       refresh; it reads `Ledger.HistoryTotals`. The Accuracy filter is read once per table, not per record.
+    - d. Made once and kept: `ns.LevelBands` (a fixed table), `Ledger.BandKey` texts, `Model.Decay` per whole day,
+       each band's table in `Ledger.Shapes`, the money texts of `Util.FormatMoney` (at most 4096, then emptied).
+       The Disenchant panel reads the bags and the batch once per refresh (it read them twice, 115b).
+    - e. The forecast cache (`forecastData` in `Core.lua`: sell price ratios, deposits, times to sell, results,
+       shapes and each band's blend) is kept until `SALVAGER_LEDGER`, `SALVAGER_PRICES_DONE` or `SALVAGER_SETTINGS`
+       (a spec: the same table until the event, a new one after it, none on other events).
+    - f. After, on the caps: every refresh under 55 ms (All purchases, the slowest), one ledger, price or settings
+       change with every window open about 70-115 ms, the forecast's first build 26-30 ms, a tick 0.004 ms (the
+       Ledger's Sales view draws again once a second for its countdowns: 2.4 ms), a listing of a gear scan 0.7 µs,
+       the load 20 ms; on the saved data every refresh under 7 ms, a change with every window open about 15 ms.
+       The layout dump at logout with every window open: about 210 KB (bound 600 KB, 94) in about 22 ms. Left: the
+       Market's Profit chart draws one segment per sale (5000 at the caps: 91-152 ms in the stand-in, most of it the
+       stand-in's own anchor check, about 11 ms the addon's); not changed, as it is drawing code.
+
+## Files
+
+The TOC's order: pure modules first (no game API, the specs load them alone: `Util`, `Data`, `NoDisenchant`,
+`Model`, `Ledger`, `History`, `Journal`, `Statement`, `Competition`), then `Core` (namespace, saved data, events,
+the forecast glue, slash commands), the game glue (`Queue` searches, `Items` item levels, `Prices`, `Scanner` the
+gear scan and buying, `Disenchant`, `Mail`, `Gold` the journal's glue, `Report` the chat report, `Backup`,
+`Tooltip`, `Listings` your auctions, `Convert` essences), the widgets (`Widgets`, `Tables`, `Chart`), and the
+windows (`Post`, `MaterialsWindow`, `LimitsWindow`, `UI` the main window, `LedgerWindow`, `StandWindow`,
+`BreakdownWindow`, `GearWindow` Gear Details, `MarketWindow`, `OddsWindow`, `ReportsWindow`, `DisenchantWindow`,
+`LogWindow`, `Options`, `MiniPanel`, `Minimap`, `Layout` the layout dump, 94). `Bindings.xml`: the Disenchant key (112g).
+
 ## Data
 
 `SalvagerBackup` (account-wide): `list` of ledger copies (88). `SalvagerDB` (account-wide): `settings` (`timeZone`, 110, `highlightReturn`, 116h), `prices`, `ledger` (`purchases`, `stock`, `pools`, `disenchants`, `sales`),
-`money` (gold journal), `sessions` (97), `competition` (109), `disenchantSeen` (112), `quality` and `ilvl` (learned item data), `auraSeen` and `auraSnapshots` (to learn the Salvager's aura spell ID; matched by name until then).
+`money` (gold journal), `sessions` (97), `competition` (109), `disenchantSeen` (112), `quality` and `ilvl` (learned item data), `auraSeen` and `auraSnapshots` (to learn the Salvager's aura spell ID; matched by name until then),
+`posted` and `listings` (29), `history` (57), `log` and `logDay` (69), `windows` and `window` (places, sizes, views and
+filters), `groups` (103), `columns` (95), `layout` (94), and one-time flags (`historySeeded`, `buyResendBlocked`, 65,
+`falseCancelsDropped`, 75, `firstSalvagerBatchFixed`, 74b).
 
 ## Open
 
 1. Whether Boosted Disenchanting (1283701) stacks with the time spent near the Salvager, and whether the
    bonus grows with it: read `salvagerStacks` and the results after the next batches (74b).
-3. The shape of the Salvager bonus (74a): neither dust nor essence looks like "+1 half of the time"; essences get
-   about half the dust's bonus (0.3.125). Since 0.4.0 it is learned per material kind from all bands (118); open:
-   whether a band of four values (Soul Dust 2-5) gets the stretched shape (9 results so far) or one more half of the
-   time; check with about 50 disenchants with the Salvager in 31-35 or 41-45.
-2. Whether Forever's disenchant results match the Classic table: the Ledger window (Odds) compares observed odds per band.
+2. Whether Forever's disenchant results match the Classic table in the bands with few results: the Reports' Odds
+   compare them per band (114). Epic 56+ rests on Classic's rule (inferred, 116c): one Epic Armor 61 disenchant so far
+   (1 Nexus Crystal, with the Salvager); 2 Nexus Crystals not proven.
+3. Whether a band of four values (Soul Dust 2-5) gets the stretched Salvager shape (118b; 9 results so far) or one more
+   half of the time: check with about 50 disenchants with the Salvager in 31-35 or 41-45.
+
+Answered: essences get the Salvager bonus, about half the dust's (74a, 0.3.125), and the shape is learned per material
+kind from all bands (118).

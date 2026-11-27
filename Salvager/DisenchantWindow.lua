@@ -122,10 +122,11 @@ local function buttonText(piece)
     return (icon and ("|T" .. icon .. ":16:16|t ") or "") .. "Disenchant"
 end
 
---- The button's state after a bag change, a cast, the loot window or the end of a fight.
-function Panel.Update()
+--- The button's state after a bag change, a cast, the loot window or the end of a fight. `pieces`: Panel.Pieces()
+--- when the caller has it (else read now). @return table|nil the pieces
+function Panel.Update(pieces)
     if not button then return end
-    local pieces = Panel.Pieces()
+    pieces = pieces or Panel.Pieces()
     local reason, short = Panel.Reason(pieces)
     button.reason = reason
     if not combat() then
@@ -211,9 +212,9 @@ end
 
 --- The rows of the two tables: In your bags (the next piece first), and Results (the disenchants of the batch, the
 --- newest first, with their totals last). Built with the Ledger's batch row builders, so both always agree.
-function Panel.Rows()
+function Panel.Rows(pieces, batch)
     local LW = ns.LedgerWindow
-    local pieces, batch = Panel.Pieces()
+    if not pieces then pieces, batch = Panel.Pieces() end
     local top = {}
     for i, piece in ipairs(pieces) do
         local row = LW.BatchWaitingRow(piece.p)
@@ -257,9 +258,12 @@ local shown = { top = {}, bottom = {}, pieces = {} }   -- the rows on show (Pane
 
 --- Builds the rows again (the bags, the batch) and lays the panel out. After a bag change, a cast, a booked purchase.
 function Panel.Refresh()
-    Panel.Update()
+    -- (The bags and the batch read once, for the button and the rows.)
+    local pieces, batch = Panel.Pieces()
+    Panel.Update(pieces)
     if not f or not f:IsShown() then return end
-    local top, bottom, pieces = Panel.Rows()
+    local top, bottom
+    top, bottom, pieces = Panel.Rows(pieces, batch)
     shown.top, shown.bottom, shown.pieces = top, bottom, pieces
     for _, x in ipairs({ { bags, BAG_COLS, top, "disenchant.bags" }, { results, RESULT_COLS, bottom, "disenchant.results" } }) do
         x[1]:SetColumns(x[2], x[4])
