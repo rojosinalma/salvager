@@ -1,15 +1,15 @@
 -- Salvager: the Gear details window. A click on an auction's row in the main window's Gear tab shows that auction
--- as a report: the gear, the deal, how its Expected value is built, your history with this gear and its band, and the
+-- as a report: the gear, the deal, every outcome of one disenchant, your history with this gear and its band, and the
 -- other auctions of the same gear in the list. Buy at the bottom right (the row's own buy path), Close last.
 local _, ns = ...
 
-local Ledger, Model, Data, W = ns.Ledger, ns.Model, ns.Data, ns.Widgets
+local Ledger, Data, W = ns.Ledger, ns.Data, ns.Widgets
 
 local Gear = {}
 ns.GearWindow = Gear
 
 local GREY, GOLD, GREEN, RED = "|cff808080", "|cffffd100", "|cff40ff40", "|cffff4040"
-local WIDTH, HEIGHT, MIN_H = 620, 700, 620
+local WIDTH, HEIGHT, MIN_H = 620, 780, 620
 local TOP, ROW_H, FEW, SUB = 78, 22, 20, 14
 local f, icon, nameText, nameArea, facts, buyButton, closeButton
 local parts = {}   -- per section: { title = label, list = Widgets.List }
@@ -56,6 +56,7 @@ function Gear.Limit(d)
             local x = d.classID == Data.CLASS_WEAPON and row.weapon or row.armor
             if not x then return nil end
             local limit, setBy = x.limit, x.manual and "You (Limits)" or (x.rule == "return" and "Min return" or "Min profit")
+            if x.fromLow and not x.manual then setBy = setBy .. " (low value)" end
             if s.maxPrice > 0 and s.maxPrice < limit then limit, setBy = s.maxPrice, "Max price" end
             return { band = x.band, limit = limit, setBy = setBy }
         end
@@ -71,25 +72,29 @@ local SECTIONS = {
         { "Amount", 90, "RIGHT", help = { "Amount", "Gold, silver and copper; + comes in, - goes out. Grey: a "
             .. "forecast at today's prices, not gold you have." } }, statement = true } },
     measures = { title = "Return and risk", columns = {
-        { "Return", 50, "RIGHT", help = { "Return", "Expected profit as a share of the buyout." } },
+        { "Avg return", 56, "RIGHT", help = { "Avg return", "The average profit as a share of the buyout (over many "
+            .. "pieces)." } },
         { "Loss chance", 60, "RIGHT", help = { "Loss chance", "The chance that ONE disenchant is worth less than "
             .. "the buyout, after the cut." } },
         { "Buy limit", 80, "RIGHT", help = { "Buy limit", "The most the scan pays for one piece of gear of this band." } },
         { "Limit set by", 80, "LEFT", help = { "Limit set by", "What sets the buy limit: your Min profit, your Min "
-            .. "return (when that asks for more), a limit you typed in the Limits window, or your Max price." } },
+            .. "return (when that asks for more), a limit you typed in the Limits window, or your Max price. \"(low "
+            .. "value)\": the band's rule is not measured on Forever, so the limit rests on its pessimistic value, "
+            .. "not the average." } },
         { "Time to sell", 90, "RIGHT", help = { "Time to sell", "How long its materials take to sell, from the post "
             .. "to the sale, by their part of the value (counted as 1 day at least)." } },
-        { "Return per day", 80, "RIGHT", help = { "Return per day", "Return divided by the days until the materials "
-            .. "sell (at least 1)." } } } },
-    build = { title = "How the Expected value is built", columns = { { "Material", 170 },
-        { "Rate used", 60, "RIGHT", help = { "Rate used", "How often one disenchant of this band gives it: the "
-            .. "table blended with your own results of the band." } },
-        { "Quantity used", 76, "RIGHT", help = { "Quantity used", "How many come on average when it comes, by the "
-            .. "same blend (the Salvager bonus in it when buying counts it)." } },
-        { "Value each", 80, "RIGHT", help = { "Value each", "What one unit is worth to the forecast: its price times "
-            .. "its sell price ratio, after the auction house cut, less the deposits lost per unit sold." } },
-        { "Part of the value", 90, "RIGHT", help = { "Part of the value", "Rate used × Quantity used × Value each. "
-            .. "The parts add up to the Expected value." } } } },
+        { "Avg return per day", 80, "RIGHT", help = { "Avg return per day", "The average return divided by the days "
+            .. "until the materials sell (at least 1)." } } } },
+    build = { title = "What one disenchant gives", columns = {
+        { "Outcome", 170, help = { "Outcome", "One disenchant gives whole units of one material: each line is one "
+            .. "outcome, the lowest value first; the pessimistic and the optimistic one say so. The last row is the "
+            .. "average over many pieces, which no single disenchant gives." } },
+        { "Chance", 50, "RIGHT", help = { "Chance", "How often one disenchant of this band gives exactly this: the "
+            .. "table blended with your own results of the band (the Salvager bonus in it when buying counts it)." } },
+        { "Value", 80, "RIGHT", help = { "Value", "What it is worth to the forecast: its units at the price times the "
+            .. "sell price ratio, after the auction house cut, less the deposits lost per unit sold." } },
+        { "Profit", 80, "RIGHT", help = { "Profit", "Value minus the buyout of this auction: green a gain, red a "
+            .. "loss." } } } },
     history = { title = "Your history with this gear and its band", columns = { { "Gear or band", 200 },
         { "Disenchanted", 70, "RIGHT", help = { "Disenchanted", "Pieces you bought and disenchanted, with a recorded "
             .. "price. Grey: fewer than 20, too few to trust." } },
@@ -99,7 +104,7 @@ local SECTIONS = {
         { "Profit", 80, "RIGHT", help = { "Profit", "Sold value minus Paid." } },
         { "Return", 50, "RIGHT", help = { "Return", "Profit as a share of Paid." } } } },
     others = { title = "Other auctions of this gear in the list", columns = { { "Buyout", 90, "RIGHT" },
-        { "Expected profit", 90, "RIGHT" },
+        { "Avg profit", 90, "RIGHT", help = { "Avg profit", "The average value minus its buyout, over many pieces." } },
         { "Under the limit by", 100, "RIGHT", help = { "Under the limit by", "The buy limit minus the buyout: how much "
             .. "dearer it could be and still be a deal. A - sign: over the limit." } },
         { "State", 90, "LEFT" } } },
@@ -108,12 +113,13 @@ local ORDER = { "deal", "measures", "build", "history", "others" }
 
 function Gear.DealRows(d)
     return {
-        { cells = { "Expected value of one disenchant", est(d.value) }, indent = SUB, tip = { "Expected value",
-            "What one disenchant of this gear is worth on average over many, after the cut: the table below." } },
+        { cells = { "Average value of one disenchant", est(d.value) }, indent = SUB, tip = { "Average value",
+            "What one disenchant of this gear is worth on average over many pieces, after the cut. One disenchant "
+            .. "gives one of the outcomes below, not this." } },
         { cells = { "Buyout", "-" .. ns.MoneyColumn(d.buyout) }, indent = SUB, tip = { "Buyout",
             "What this auction costs: it goes out." } },
-        { cells = { "Expected profit", est(d.profit) }, rule = "final", bold = true, tip = { "Expected profit",
-            "Expected value minus the buyout. An average over many disenchants, not what one gives." } },
+        { cells = { "Average profit", est(d.profit) }, rule = "final", bold = true, tip = { "Average profit",
+            "The average value minus the buyout: the average over many pieces, not what one gives." } },
     }
 end
 
@@ -128,23 +134,33 @@ function Gear.MeasureRows(d)
         perDay and grey(string.format("%+.1f%%", perDay * 100)) or grey("not known yet") } } }
 end
 
---- The rows of the Expected value's build, and the facts for its title (how many of your results the rates rest on).
+--- Every outcome of one disenchant (SDD 116): one row per whole-unit outcome, lowest value first, with its chance,
+--- value and profit against the buyout, the pessimistic and the optimistic one marked on their rows; the average last
+--- (the total of chance × value). The facts for the title: what the rates rest on and the rule's evidence.
 function Gear.BuildRows(d)
     local opts = ns.ValueOptions()
     local outcomes = ns.Outcomes(d.quality, d.classID, d.ilvl, opts.salvager)
-    if not outcomes then return { { cells = { grey("Not known: this gear's band has no disenchant table."), "" } } }, "" end
-    local b = Model.ValueBuild(outcomes, ns.PriceOf, opts)
+    if not outcomes then return { { cells = { grey("Not known: this gear's band has no disenchant table."), "", "", "" } } }, "" end
+    local sp = ns.Spread(outcomes)
     local rows = {}
-    for _, r in ipairs(b.rows) do
-        rows[#rows + 1] = { itemID = r.id, cells = { ns.MaterialName(r.id),
-            string.format("%d%%", math.floor(r.chance * 100 + 0.5)), string.format("%.2f", r.qty),
-            r.unit and money(r.unit) or grey("no price"), r.part and money(r.part) or grey("-") } }
+    -- (The pessimistic and optimistic outcomes are marked on their own rows: real outcomes, UI.md Tables 5.)
+    for _, x in ipairs(sp.list) do
+        local mark = (x == sp.low and x == sp.high) and "pessimistic and optimistic"
+            or x == sp.low and "pessimistic: 9 in 10 get this or more"
+            or x == sp.high and ("optimistic: 1 in 10 gets this or more" .. (sp.unproven and (", " .. ns.NOT_PROVEN) or ""))
+            or nil
+        rows[#rows + 1] = { itemID = x.id, cells = { ns.OutcomeWhat(x) .. (mark and grey("  " .. mark) or ""),
+            string.format("%d%%", math.floor(x.chance * 100 + 0.5)), x.missing and grey("no price") or money(x.value),
+            real(x.value - d.buyout) }, mark = mark and true or nil }
     end
     -- The totals row is the last one (UI.md Tables 13); what is the same for every row is in the title (Tables 3).
-    rows[#rows + 1] = { rule = "total", bold = true, cells = { "Expected value, now", "", "", "", money(b.total) } }
-    local from = string.format("rates from the table and %d of your disenchants of this band%s, %s", outcomes.n,
-        outcomes.few and " (few results)" or "", outcomes.salvager and "with the Salvager" or "without the Salvager")
-    if math.abs(math.floor(b.total + 0.5) - (d.value or 0)) >= 1 then
+    rows[#rows + 1] = { rule = "total", bold = true, cells = { "Average (over many pieces), now", "",
+        money(sp.average), real(sp.average - d.buyout) }, tip = { "Average", "The average over many pieces: the sum "
+            .. "of each outcome's chance × its value. One disenchant gives one of the outcomes above, not this." } }
+    local from = string.format("rates from the table and %d of your disenchants of this band%s, %s; rule %s", outcomes.n,
+        outcomes.few and " (few results)" or "", outcomes.salvager and "with the Salvager" or "without the Salvager",
+        ns.EVIDENCE_TEXT[sp.evidence])
+    if math.abs(math.floor(sp.average + 0.5) - (d.value or 0)) >= 1 then
         from = from .. "; prices moved since the scan (it showed " .. ns.Money(d.value) .. ")"
     end
     return rows, from

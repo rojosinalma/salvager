@@ -24,29 +24,34 @@ local VIEWS = {
         icon = true,
         indent = 46,
         actionTitle = "Buy",
-        header = { "Gear", "Type", "Item level", "Buyout", "Expected value", "Expected profit", "Return", "Loss chance" },
-        sortable = { [6] = "profit", [7] = "return" },
+        header = { "Gear", "Type", "Item level", "Buyout", "Profit: low - avg - high", "Avg return", "Loss chance" },
+        sortable = { [5] = "profit", [6] = "return" },
+        -- (The range cell holds three amounts: as wide as the widest it can be, SDD 116.)
+        samples = { [5] = ns.RANGE_SAMPLE },
         -- Shown when the mouse is over a column's title.
         help = {
-            [5] = { "Expected value", "What one disenchant of this gear is worth on average over many disenchants, at the "
-                .. "scanned material prices times each material's sell price ratio (what your sales really got against the price), "
-                .. "after the 5% auction house cut, less the deposits you lose per unit sold. One disenchant gives less or "
-                .. "more than this." },
-            [6] = { "Expected profit", "Expected value minus the buyout: the average profit per piece of gear over many "
-                .. "disenchants. It is not what one piece will give. Grey: a forecast, not gold you made.\n\n"
-                .. "Click to list the deals by Expected profit." },
-            [7] = { "Return", "Expected profit as a share of the buyout: what each gold you pay brings back on top. "
-                .. "When your gold is what limits you, buy the highest Return first. Grey: a forecast.\n\n"
-                .. "Click to list the deals by Return." },
-            [8] = { "Loss chance", "The chance that ONE disenchant of this gear is worth less than its buyout, after the cut.\n\n"
+            [4] = { "Buyout", "What this auction costs. \"!\" after it, on an orange row: an unusually high average "
+                .. "return (from the percent set in the options): check the gear before you buy." },
+            [5] = { "Profit: pessimistic - average - optimistic", "What one disenchant of this gear makes against its "
+                .. "buyout. One disenchant gives whole units of one material, so there are three numbers: pessimistic "
+                .. "(9 in 10 disenchants give this or more), the average over many pieces, and optimistic (1 in 10 "
+                .. "gives this or more). Each is a material's value at the scanned price times its sell price ratio, "
+                .. "after the 5% auction house cut, less the deposits you lose per unit sold. Green: a gain, red: a "
+                .. "loss. A grey \"?\" after the optimistic one: not proven on Forever.\n\n"
+                .. "Hover a value for every outcome of one disenchant. The average is over many pieces; one disenchant "
+                .. "gives one of the outcomes.\n\nClick to list the deals by the average profit." },
+            [6] = { "Avg return", "The average profit as a share of the buyout: what each gold you pay brings back on top, "
+                .. "on average over many pieces. When your gold is what limits you, buy the highest first.\n\n"
+                .. "Click to list the deals by the average return." },
+            [7] = { "Loss chance", "The chance that ONE disenchant of this gear is worth less than its buyout, after the cut.\n\n"
                 .. "Example: you pay 10s for a piece of gear. 3 times out of 4 it gives dust worth 5s: you lose 5s. 1 time "
                 .. "out of 4 it gives an essence worth 30s: you gain 20s. Loss chance is 75%. Over many pieces you still "
                 .. "gain: the average is 11s 25c per piece, so 1s 25c of profit each.\n\n"
                 .. "Green: under 30%. Yellow: 30% or more. Red: 60% or more.\n\n"
-                .. "A high Loss chance with a good Profit needs many pieces before the average shows. A low Loss chance is safe "
-                .. "even for a few pieces." },
+                .. "A high Loss chance with a good average profit needs many pieces before the average shows. A low "
+                .. "Loss chance is safe even for a few pieces." },
         },
-        cols = { { 205, "LEFT" }, { 46, "CENTER" }, { 34, "CENTER" }, { 80, "RIGHT" }, { 80, "RIGHT" }, { 80, "RIGHT" },
+        cols = { { 205, "LEFT" }, { 46, "CENTER" }, { 34, "CENTER" }, { 80, "RIGHT" }, { 240, "RIGHT" },
             { 44, "RIGHT" }, { 54, "CENTER" } },
     },
     materials = {
@@ -79,8 +84,8 @@ local function dealName(d)
     return (d.link and d.link:match("%[(.-)%]")) or (ns.GetItemInfo(d.itemID)) or ("gear " .. d.itemID)
 end
 
--- Expected profit and Return, with their sign: green when they gain, red when they lose (UI.md Tables 7).
-local GREY, GREEN, RED = "|cff808080", "|cff40ff40", "|cffff4040"
+-- The average profit and return, with their sign: green when they gain, red when they lose (UI.md Tables 7).
+local GREY, GREEN, RED, ORANGE = "|cff808080", "|cff40ff40", "|cffff4040", "|cffff8040"
 local function driverColor(_, gain) return gain and GREEN or RED end
 local function byReturn() return ns.db.settings.dealSort == "return" end
 local function profitText(d)
@@ -93,9 +98,26 @@ local function returnText(d)
 end
 UI.ProfitText, UI.ReturnText = profitText, returnText
 
+--- The deal's profit range: pessimistic - average - optimistic (SDD 116).
+local function rangeText(d)
+    local sp = d.spread
+    return ns.RangeText(d.low and d.low - d.buyout, d.profit, d.high and d.high - d.buyout, sp and sp.unproven)
+end
+UI.RangeText = rangeText
+
+--- Is the deal's average return unusually high (Options, "Highlight returns from (%)"; 0 = off)? SDD 116.
+function UI.HighReturn(d)
+    local from = tonumber(ns.db.settings.highlightReturn) or 0
+    return from > 0 and d ~= nil and ns.Scanner.Return(d) >= from / 100
+end
+UI.HIGH_HELP = "Unusually high return (%d%% or more): check the gear, its item level and the rule behind its value "
+    .. "before you buy (see the outcomes)."
+local function highHelp() return string.format(UI.HIGH_HELP, tonumber(ns.db.settings.highlightReturn) or 0) end
+
 local function dealCells(d, label)
-    return { label, CLASS_NAME[d.classID or ns.ClassOf(d.itemID)] or "", tostring(d.ilvl or ""), ns.Money(d.buyout),
-        ns.Money(d.value), profitText(d), returnText(d), ns.LoseText(d.lose) }
+    return { label, CLASS_NAME[d.classID or ns.ClassOf(d.itemID)] or "", tostring(d.ilvl or ""),
+        ns.Money(d.buyout) .. (UI.HighReturn(d) and (" " .. ORANGE .. "!|r") or ""), rangeText(d), returnText(d),
+        ns.LoseText(d.lose) }
 end
 
 --- The Gear tab's rows: auctions grouped by the gear's name, best profit first. A group with more than one auction
@@ -124,15 +146,18 @@ local function dealRows()
         local first = ns.Scanner.Cheapest(g.deals) or g.deals[1]
         if #g.deals == 1 then
             out[#out + 1] = { cells = dealCells(first, first.link or g.name), link = first.link, itemID = first.itemID,
-                deal = first }
+                deal = first, high = UI.HighReturn(first) }
         else
+            -- (A heading takes the highlight when any auction under it has it.)
+            local high = false
+            for _, d in ipairs(g.deals) do high = high or UI.HighReturn(d) end
             local head = { cells = dealCells(first, (first.link or g.name) .. " |cffffd100x" .. #g.deals .. "|r"),
-                link = first.link, itemID = first.itemID, group = g }
+                link = first.link, itemID = first.itemID, group = g, high = high }
             out[#out + 1] = head
             if ns.HeadingToggle(head, ns.GroupState("main.gear"), g.name, function() UI.Refresh() end, true) then
                 for _, d in ipairs(g.deals) do
                     out[#out + 1] = { cells = dealCells(d, "   " .. (d.link or g.name)), link = d.link, itemID = d.itemID,
-                        deal = d, child = true }
+                        deal = d, child = true, high = UI.HighReturn(d) }
                 end
             end
         end
@@ -246,17 +271,20 @@ UI.TopDeal = topDeal
 local function helpLines()
     if UI.view == "materials" then return ns.Materials.HelpLines() end
     local cut = math.floor(ns.Cut() * 100 + 0.5) .. "%"
-    local by = ns.db.settings.dealSort == "return" and "Return" or "Expected profit"
+    local by = ns.db.settings.dealSort == "return" and "the average return" or "the average profit"
     return {
-        "Sorted by: " .. by .. ", highest first (the title with the arrow). Click the Return or the Expected profit "
+        "Sorted by: " .. by .. ", highest first (the title with the arrow). Click the Avg return or the Profit "
             .. "title to sort by it. Each scan checks the gear in this order too.",
-        "Expected value: what one disenchant of the gear is worth on average over many, after the " .. cut .. " cut.",
-        "Expected profit: Expected value minus the buyout. An average, not what one piece gives. Grey: a forecast.",
-        "Return: Expected profit as a share of the buyout.",
+        "One disenchant gives whole units of one material: hover the profit for every outcome and its chance.",
+        "Profit: pessimistic (9 in 10 give this or more) - average (over many pieces) - optimistic (1 in 10), "
+            .. "after the " .. cut .. " cut.",
+        "A grey ? after the optimistic profit: that outcome rests on a rule not measured on Forever.",
+        "Avg return: the average profit as a share of the buyout.",
         "Loss chance: the chance that one disenchant is worth less than its buyout.",
+        "An orange row with ! after its buyout: an unusually high average return. Check it before you buy.",
         "A name with x3 stands for three auctions of the same gear. Its numbers and its Buy are for the cheapest one.",
         "Click such a row to open or close it (the arrow shows which); it stays as you left it.",
-        "Click an auction's row to see its Gear details: how its Expected value is made, your history with it.",
+        "Click an auction's row to see its Gear details: every outcome of one disenchant, your history with it.",
         "Buy needs one click per auction. After a purchase that gear is searched again.",
         "Buy now (lit): the auction house could not take your click at once (busy, or a scan browse came after the "
             .. "gear's search). Nothing was sent; click Buy now to buy it.",
@@ -288,7 +316,7 @@ local function widths(view, data)
     local titles = {}
     for i, title in ipairs(view.measure or view.header) do titles[i] = shownTitle(view, i, title) end
     -- (A column of live values is as wide as its widest possible value: the Materials tab's Age.)
-    local samples
+    local samples = view.samples
     if view.help == "materials" then
         samples = {}
         for i, col in ipairs(ns.Materials.COLUMNS) do samples[i] = col.sample end
@@ -445,24 +473,55 @@ function UI.BuyLook(b, d, label)
     if d and d.buyNow then b:LockHighlight() else b:UnlockHighlight() end
 end
 
---- A deal's numbers in a tooltip, one line each: Item level, Buyout, Expected value, Expected profit, Return, Loss
---- chance, Time to sell, Return per day. One function for a Gear row, the gear above "Buy Top" and the Buy Top button,
---- so they always match.
+--- A deal's numbers in a tooltip: Item level, Buyout (and the high return note), every outcome of one disenchant in
+--- whole units with its chance, value and profit against the buyout, lowest first; then the range (pessimistic,
+--- optimistic, each a real outcome) and the averages, labelled as averages; Avg return, Loss chance, Time to sell, Avg
+--- return per day (SDD 116). One function for a Gear row, its profit cell, the gear above "Buy Top" and the Buy Top
+--- button, so they always match.
 function UI.AddDealLines(tip, d)
     local function line(label, value) tip:AddDoubleLine(label, value, 1, 0.82, 0, 1, 1, 1) end
     tip:AddLine(" ")
     line("Item level", tostring(d.ilvl or "-"))
     line("Buyout", ns.Money(d.buyout))
-    line("Expected value", ns.Money(d.value))
-    line("Expected profit", profitText(d))
-    line("Return", returnText(d))
+    if UI.HighReturn(d) then tip:AddLine(ORANGE .. "! |r" .. highHelp(), 1, 0.5, 0.25, true) end
+    local sp = d.spread
+    if sp and #sp.list > 0 then
+        tip:AddLine(" ")
+        tip:AddDoubleLine("Chance   What one disenchant gives", "Value   Profit", 1, 0.82, 0, 1, 0.82, 0)
+        for _, x in ipairs(sp.list) do
+            tip:AddDoubleLine(string.format("%3d%%   %s", math.floor(x.chance * 100 + 0.5), ns.OutcomeWhat(x)),
+                (x.missing and (GREY .. "no price|r") or ns.Money(x.value)) .. "   " .. ns.SignedShort(x.value - d.buyout),
+                1, 1, 1, 1, 1, 1)
+        end
+        tip:AddLine(" ")
+        local function outcome(label, x, note)
+            if not x then return end
+            line(label, ns.OutcomeWhat(x) .. ": " .. ns.Money(x.value) .. ", profit " .. ns.SignedShort(x.value - d.buyout)
+                .. (note and (GREY .. " (" .. note .. ")|r") or ""))
+        end
+        outcome("Pessimistic (9 in 10 get this or more)", sp.low)
+        outcome("Optimistic (1 in 10 gets this or more)", sp.high, sp.unproven and ns.NOT_PROVEN or nil)
+    end
+    line("Average value (over many pieces)", ns.Money(d.value))
+    line("Average profit (over many pieces)", profitText(d))
+    line("Avg return", returnText(d))
     line("Loss chance", ns.LoseText(d.lose))
     -- Return per day (SDD 100): in the tooltip, not a column, while it equals Return for nearly every deal.
     local perDay = ns.Scanner.ReturnPerDay(d)
     local few = d.daysFew and " (few sales)" or ""
     line("Time to sell (its materials)", d.days and (ns.DurationText(d.sellSeconds)
         .. string.format(", counted as %.1f %s", d.days, d.days == 1 and "day" or "days") .. few) or "not known yet")
-    line("Return per day", perDay and (string.format("%s%+.1f%%|r", GREY, perDay * 100) .. few) or "not known yet")
+    line("Avg return per day", perDay and (string.format("%s%+.1f%%|r", GREY, perDay * 100) .. few) or "not known yet")
+    if sp then tip:AddLine("Rule: " .. ns.EVIDENCE_TEXT[sp.evidence], 0.5, 0.5, 0.5, true) end
+    tip:AddLine("An average is over many pieces; one disenchant gives one of the outcomes listed.", 0.5, 0.5, 0.5, true)
+end
+
+--- The tooltip of a deal's profit cell: the gear, then its deal lines (the outcomes first of all).
+function UI.RangeTooltip(owner, d)
+    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+    GameTooltip:SetText(d.link or dealName(d), 1, 1, 1)
+    UI.AddDealLines(GameTooltip, d)
+    GameTooltip:Show()
 end
 
 --- The "Buy Top" button's tooltip: what the click buys now, or why it is off.
@@ -478,7 +537,7 @@ local function buyTopTooltip(self)
         GameTooltip:AddLine(d.link or dealName(d), 1, 1, 1)
         UI.AddDealLines(GameTooltip, d)
     elseif d then
-        GameTooltip:AddLine("Buys the auction with the highest " .. (byReturn() and "Return" or "Expected profit")
+        GameTooltip:AddLine("Buys the auction with the highest " .. (byReturn() and "average return" or "average profit")
             .. " in the Gear tab (the sort), from any row. Each click buys the next best one.", 1, 0.82, 0, true)
         if skipped then
             GameTooltip:AddLine(string.format("The best one, %s (%s), is skipped: not enough gold.", dealName(skipped),
@@ -603,6 +662,10 @@ function UI.Refresh()
                 fs:Hide()
             end
         end
+        local deals = UI.view == "deals" and item ~= nil
+        row.tint:SetShown(deals and item.high and true or false)
+        row.rangeArea:SetShown(deals and colShown(view, 5))
+        row.buyoutArea:SetShown(deals and colShown(view, 4))
         local icon = item and view.icon and W.IconOf(item.itemID)
         row.icon:ClearAllPoints()
         row.icon:SetPoint("LEFT", row, "LEFT", (view.indent and 22 or 4) + (item and item.child and 10 or 0), 0)
@@ -1262,6 +1325,11 @@ local function build()
             stripe:SetAllPoints()
             stripe:SetColorTexture(1, 1, 1, 0.035)
         end
+        -- An unusually high average return (UI.HighReturn): an orange tint over the row, with "!" after its buyout.
+        row.tint = row:CreateTexture(nil, "BACKGROUND", nil, 1)
+        row.tint:SetAllPoints()
+        row.tint:SetColorTexture(1, 0.5, 0.15, 0.16)
+        row.tint:Hide()
         row.icon = row:CreateTexture(nil, "ARTWORK")
         row.icon:SetSize(20, 20)
         row.icon:SetPoint("LEFT", row, "LEFT", 4, 0)
@@ -1273,6 +1341,40 @@ local function build()
             if i == 1 then fs.canCut = true end   -- (the label gives way on a narrow screen: "...", the name on hover)
             row.cells[i] = fs
         end
+        -- Over the profit cell, the deal's outcomes; over a highlighted buyout, why it is highlighted (SDD 116). The
+        -- rest of the row keeps the item's tooltip. A click on them is a click on the row.
+        local function cellArea(i, show)
+            local a = CreateFrame("Button", nil, row)
+            a:SetAllPoints(row.cells[i])
+            a:SetScript("OnEnter", function(self)
+                row:LockHighlight()
+                if not show(self, row.item) then rowTooltip(row) end
+            end)
+            a:SetScript("OnLeave", function()
+                row:UnlockHighlight()
+                GameTooltip:Hide()
+            end)
+            a:SetScript("OnClick", function() local fn = row:GetScript("OnClick") if fn then fn(row) end end)
+            a:Hide()
+            return a
+        end
+        local function itemDeal(item)
+            return UI.view == "deals" and item and (item.deal or (item.group and ns.Scanner.Cheapest(item.group.deals)))
+        end
+        row.rangeArea = cellArea(5, function(self, item)
+            local d = itemDeal(item)
+            if not d then return false end
+            UI.RangeTooltip(self, d)
+            return true
+        end)
+        row.buyoutArea = cellArea(4, function(self, item)
+            if not (itemDeal(item) and item.high) then return false end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText("Unusually high return", 1, 0.5, 0.25)
+            GameTooltip:AddLine(highHelp(), 1, 0.82, 0, true)
+            GameTooltip:Show()
+            return true
+        end)
         row.buy = W.Button(row, "Buy", 64, function()
             local item = row.item
             if not item then return end

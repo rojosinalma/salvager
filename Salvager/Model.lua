@@ -43,7 +43,8 @@ function Model.Outcomes(quality, classID, ilvl)
         return { band = row.up, results = { { id = row.shard, chance = 1, min = 1, max = 1, bonus = false } } }
     elseif quality == 4 then
         local row = bandOf(Data.PURPLE, ilvl)
-        return { band = row.up, results = { { id = row.res[1], chance = 1, min = row.res[2], max = row.res[3], bonus = false } } }
+        return { band = row.up, inferred = row.inferred or nil,
+            results = { { id = row.res[1], chance = 1, min = row.res[2], max = row.res[3], bonus = false } } }
     end
     return nil
 end
@@ -101,7 +102,7 @@ function Model.Blended(outcomes, seen, opts)
     local n = seen and seen.n or 0
     local mats = seen and seen.mats or {}
     local out = { band = outcomes.band, results = {}, n = n, few = n < Model.FEW_RESULTS, salvager = opts.salvager and true
-        or false }
+        or false, inferred = outcomes.inferred }
     local function add(base, mine)
         local w, total = {}, 0
         if base then
@@ -120,6 +121,7 @@ function Model.Blended(outcomes, seen, opts)
             id = base and base.id or mine.id, chance = total / (K + n), dist = dist, mean = mean,
             min = base and base.min or lo, max = base and base.max or hi, bonus = base and base.bonus or false,
             tableChance = base and base.chance or 0, hits = mine and mine.hits or 0, unexpected = base == nil,
+            seenQty = mine and mine.qty or nil,   -- ({ [quantity] = times you got it }: Model.Spread marks them seen)
         }
     end
     local inTable = {}
@@ -244,6 +246,77 @@ function Model.LossChance(outcomes, priceOf, opts, paid)
         end
     end
     return lose
+end
+
+-- One disenchant gives whole units of one material (the user, 2026-11-27: "we never get 1.5 materials"). The range
+-- of a deal is two real outcomes: the pessimistic one (in 9 of 10 disenchants you get this or more) and the
+-- optimistic one (1 in 10 gets this or more), SDD 116.
+Model.P_LOW, Model.P_HIGH = 0.10, 0.90
+-- A band whose rates rest on this many of your disenchants (the blend's K) is "observed"; below, the table speaks.
+Model.OBSERVED = Model.RESULT_PRIOR
+local EPS = 1e-9
+
+--- Where a band's rule comes from (SDD 116): "observed" (at least Model.OBSERVED of your disenchants), "inferred"
+--- (the rule is marked so in Data.lua and your disenchants are fewer: not measured on Forever), else "documented"
+--- (the game's table).
+function Model.Evidence(outcomes)
+    if (outcomes.n or 0) >= Model.OBSERVED then return "observed" end
+    if outcomes.inferred then return "inferred" end
+    return "documented"
+end
+
+--- Every outcome of one disenchant in whole units: which material, how many, its chance and its value
+--- (quantity × price × sell price ratio after the cut less the deposits lost per unit: the value Model.Value counts),
+--- lowest value first (ties: the more likely first, then the materials' order). A material without a price is worth
+--- 0 (`missing`). `seen` = you got exactly that in a disenchant of the band (blended outcomes only). Chances of 0 are
+--- left out. (opts as Model.Value)
+--- @return table  { { id, qty, chance, value, seen, missing }, ... }
+function Model.Results(outcomes, priceOf, opts)
+    opts = opts or {}
+    local keep = 1 - (opts.cut or Model.DEFAULT_CUT)
+    local ratioOf, depositOf = opts.ratio or one, opts.deposit or none
+    local bonusChance = opts.salvager and (opts.salvagerChance or 0.5) or 0
+    local list = {}
+    for _, r in ipairs(outcomes.results) do
+        local price = priceOf(r.id)
+        local unit = price and (price * ratioOf(r.id) * keep - depositOf(r.id)) or 0
+        for q, p in pairs(r.dist or Model.TableDist(r, bonusChance)) do
+            local chance = r.chance * p
+            if chance > EPS and q > 0 then
+                list[#list + 1] = { id = r.id, qty = q, chance = chance, value = math.floor(q * unit + 0.5),
+                    seen = ((r.seenQty and r.seenQty[q]) or 0) > 0, missing = price == nil }
+            end
+        end
+    end
+    table.sort(list, function(a, b)
+        if a.value ~= b.value then return a.value < b.value end
+        if math.abs(a.chance - b.chance) > EPS then return a.chance > b.chance end
+        local ra, rb = Data.MaterialRank(a.id), Data.MaterialRank(b.id)
+        if ra ~= rb then return ra < rb end
+        return a.qty < b.qty
+    end)
+    return list
+end
+
+--- The range of one disenchant (SDD 116): every outcome (Model.Results), the pessimistic one (the 10th percentile:
+--- the best outcome with at most 10% of the chance below it) and the optimistic one (the 90th: the worst with at most
+--- 10% above it), the average (Σ chance × value: Model.Value's net before its rounding), the evidence
+--- (Model.Evidence), and `unproven`: the optimistic outcome rests on a rule not measured on Forever and you never got it.
+--- @return table  { list, low, high, average, evidence, unproven } (low and high are entries of list; nil when empty)
+function Model.Spread(outcomes, priceOf, opts)
+    local list = Model.Results(outcomes, priceOf, opts)
+    local total, average = 0, 0
+    for _, x in ipairs(list) do total, average = total + x.chance, average + x.chance * x.value end
+    local low, high
+    local below = 0
+    for _, x in ipairs(list) do
+        if below <= Model.P_LOW * total + EPS then low = x end
+        below = below + x.chance
+        if not high and below >= Model.P_HIGH * total - EPS then high = x end
+    end
+    local evidence = Model.Evidence(outcomes)
+    return { list = list, low = low, high = high, average = average, evidence = evidence,
+        unproven = evidence == "inferred" and high ~= nil and not high.seen }
 end
 
 --- Value of materials actually received, after the cut.

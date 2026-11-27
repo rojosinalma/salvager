@@ -23,8 +23,9 @@ flipping is out of scope for now.
    it is pulled toward the median of all materials, (n × own + (5 − n) × all) ÷ 5 (`Model.Blend`), and the median
    of all toward 1 the same way; no sales at all = 1. The price at the post is recorded from 0.3.122 on
    (`SalvagerDB.posted[].val`, copied to the sale as `val`); older sales take the price history (57) at the
-   post of that material at that price each made before the sale, else at the sale. Used in the Expected value of
-   gear (`Model.Value`, `ns.ValueOptions`; with the result rates of 99), so in buy limits (`Model.MaxBuy`), the Gear list, Lose %, Odds, the
+   post of that material at that price each made before the sale, else at the sale. Used in the Average value of
+   gear (`Model.Value`, `ns.ValueOptions`; with the result rates of 99) and in each whole-unit outcome's value (116),
+   so in buy limits (`Model.MaxBuy`), the Gear list, Lose %, Odds, the
    Market's disenchant value, the `planned` value of a disenchant and the value of what is held and listed (Reports, Materials view; the
    statement's stock, 97b).
    Not in the Disenchant value (`vals`, `value` of a disenchant: the market at the disenchant), nor in the cost
@@ -134,7 +135,8 @@ flipping is out of scope for now.
     reported drop is not answered with a resend: the dropped request may be the purchase. (Since 0.3.134 also while
     a click waits: 105. The hold for the mouse position of 0.3.134–0.3.141 is gone, 105b.)
 27. **The Post window** is a window of its own (`Widgets.Window`, fixed size), not pinned to the main window.
-28. **Value is an average; Lose % is the chance for one item.** Deals show `Model.LossChance`: the chance that
+28. **Value is an average; Lose % is the chance for one item** (since 0.3.152 the average is labelled as one and
+    the deal shows its whole-unit outcomes and range, 116). Deals show `Model.LossChance`: the chance that
     one disenchant is worth less than the price (quantities equally likely, Salvager bonus included when on, a
     material without a price worth nothing). Example measured 2026-11-25: Azure Silk Hood at 11s 46c, value
     12s 57c, lose chance 75% (every dust result loses). The Ledger's Odds view lists every band of every
@@ -258,6 +260,7 @@ flipping is out of scope for now.
     window was too wide; abbreviations, UI.md Words 2): By band `Band | Disenchanted | Paid | Expected value (EV) |
     Disenchant value (DV) | DV/EV % | Sold value (SV) | SV/DV % | Expected profit (EP) | Actual profit (AP) | AP/EP %`;
     By material `Material | Units | Disenchant value each (DV) | Sold value each (SV) | SV - DV | SV/DV % | Units sold`.
+    (0.3.152: Expected value (EV) and Expected profit (EP) are Average value (EV) and Average profit (EP), 116g.)
     DV/EV % = Disenchant value against Expected value, SV/DV % = Sold value against Disenchant value (the same name
     in both tables), AP/EP % = (Actual profit − Expected profit) / |Expected profit|, "-" where Expected profit is 0;
     all in percent, green above and red below with "+" or "-" (0.3.133; 0.3.123 to 0.3.132 grey: a gap from a forecast was not counted as gold gained or lost;
@@ -374,7 +377,8 @@ flipping is out of scope for now.
 73. **Min return** (`minReturn`, percent, 0 = off) next to the min profit: the recommended limit is the lower
     of value − min profit and value ÷ (1 + min return) (`Model.MaxBuy`, which also says which rule set it; the
     value is the forecast's: price × sell price ratio after the cut, less deposits lost, 3 and 96; the
-    Limits tab marks a limit set by the return with "%"). Deals have a Return column (expected profit ÷
+    Limits tab marks a limit set by the return with "%"; for an inferred band the value is the pessimistic one, 116d).
+    Deals have a Return column (Avg return since 0.3.152, 116e) (expected profit ÷
     buyout; Return per day is in the row's tooltip, 100); a click on Expected profit or Return orders the list (`dealSort`, remembered), and the item
     checks of a scan go in the same order. Reason: with more supply than gold, return on each gold paid is
     what grows the gain (measured 2026-11-26: 82 of 361 Azure Silk Hoods under the limit in one check).
@@ -713,8 +717,9 @@ flipping is out of scope for now.
     of that quantity (min..max equally likely; with the Salvager, dust and essence one more with `salvagerChance`),
     plus the times you got it. A material's rate = (K × table rate + your hits) ÷ (K + your disenchants); its
     quantities follow the same counts (a Dirichlet with the table as its mean); a material the table does not have
-    comes in with your hits only. With no results the blend is the table, to the copper. Expected value
-    (`Model.Value`: chance × mean quantity × unit value), buy limits, Deals, Loss chance (`Model.LossChance`: each
+    comes in with your hits only. With no results the blend is the table, to the copper. Average value
+    (`Model.Value`: chance × mean quantity × unit value; the mean quantity is an average, never shown as an outcome:
+    the outcomes are whole units, 116), buy limits, Deals, Loss chance (`Model.LossChance`: each
     quantity's own chance), the Odds, the Market's disenchant value and a disenchant's `planned` value use it, with
     your results with the Salvager when buying counts its bonus and without it otherwise. Cautious pricing still
     takes the table's lowest amount. "few results" under `Model.FEW_RESULTS` = 50 of yours (the table still weighs
@@ -1265,9 +1270,72 @@ flipping is out of scope for now.
        not the Rare blue); grey ("-", none) stays grey; their help says what the color means. Their chooser keys stay
        the plain titles. The main window's "Arcane Salvager bonus included" takes the same color (was the gain green).
 
+116. **Whole-unit outcomes, the range, labelled averages, the high-return highlight** (0.3.152, the user, 2026-11-27:
+    "You're calculating averages for materials that will never be output. We never get 1.5 materials, we get round
+    numbers, so giving me prices based on average is misleading." and "It's ok to show the range and an average, but
+    never show average numbers without reflecting that they are averages." Changes 3, 28, 99 and UI.md Words 2).
+    - a. Outcomes (`Model.Results`, pure): one disenchant gives whole units of one material. For a band (the blended
+       outcomes of 99: the table, the Salvager rule, your results) every (material, quantity) with its chance
+       (result chance × quantity chance) and its value = quantity × (price × sell price ratio × (1 − cut) − deposits
+       lost per unit), rounded to the copper; lowest value first; a material without a price is worth 0
+       (`missing`); `seen` = you got exactly that in the band. Never a fraction of a unit. The chances add up to 1.
+    - b. The range (`Model.Spread`, `ns.Spread`): pessimistic = the 10th percentile outcome (the best outcome with at
+       most 10% of the chance below it: in 9 of 10 disenchants you get it or more), optimistic = the 90th (the worst
+       with at most 10% above it). Both are real outcomes, named with their units ("1 Nexus Crystal: 59g 66s"). Two
+       outcomes half and half: low and high. The average = Σ chance × value (`Model.Value`'s net before rounding).
+       A deal keeps `spread`, `low`, `high` (values); its profits are each minus the buyout.
+    - c. Evidence (`Model.Evidence`): observed (at least `Model.OBSERVED` = 50 of your disenchants of the band in the
+       Salvager state buying uses: the blend's K), inferred (the rule is marked `inferred` in `Data.lua` and yours are
+       fewer: Epic 56+, Classic's Nexus Crystal rule, not measured on Forever), else documented (the table). Where
+       the rule is inferred and you never got the optimistic outcome, it is "not proven on Forever" (`unproven`):
+       a grey "?" after it in the Gear list, a grey note in the tooltip, Gear Details and the Odds' "?". The user's
+       Ironfeather Leggings disenchant (Epic Armor 61, 1 Nexus Crystal, with the Salvager) is in the blend and marks
+       1 Nexus Crystal seen; 2 is not.
+    - d. Buy limits (`ns.LimitBasis(v, outcomes)`): the rule of 73 on the average, but for an inferred band on the
+       pessimistic value when lower (no unproven upside in the limit); `ns.Limits` rows say `fromLow`, Gear Details'
+       "Limit set by" adds "(low value)". A hand-set limit is capped at that value too (67d). On the saved data of
+       2026-11-27: Epic Armor 61+ recommended 49g 72s (1 Nexus Crystal 59g 66s, min return 20%) where the average
+       was 88g 91s.
+    - e. Gear list (the user's decision): one profit column "Profit: low - avg - high" (help in full), each cell one
+       text "-4g 33s - +24g 92s - +55g 33s" (`ns.RangeText`, short money `Util.MoneyShort`: gold and silver from 1g,
+       else silver and copper), each part green or red by its sign. Columns: Gear, Type, Item level, Buyout, Profit
+       range, Avg return, Loss chance, Buy; Expected value left the list (its value is in the tooltip). The column
+       sorts by the average (`dealSort` "profit"), Avg return by the average return; Buy Top as before. Width: the
+       widest of its titles, cells and its `sample` (`ns.RANGE_SAMPLE`, 4-digit gold). Hovering the cell
+       (`row.rangeArea`, a click passes to the row) shows the breakdown tooltip; the rest of the row the item's.
+       UI.md Tables 1 has the exception.
+    - f. The deal's tooltip (`UI.AddDealLines`: row, profit cell, Buy Top, the gear above it): Item level, Buyout,
+       then every outcome (chance, units + material, value, profit against the buyout, lowest first), Pessimistic
+       and Optimistic with their outcome, Average value and Average profit "(over many pieces)", Avg return, Loss
+       chance, Time to sell, Avg return per day, the rule's evidence and "An average is over many pieces; one
+       disenchant gives one of the outcomes listed." Gear Details: "How the Expected value is built" became "What
+       one disenchant gives" (Outcome, Chance, Value, Profit; the pessimistic and optimistic rows say so; the
+       average the last row); the deal statement says Average value and Average profit. Its default height is 780
+       (was 700) so the outcomes show.
+    - g. Every average says so (UI.md Words 2): Gear list, tooltips, Gear Details, Odds (Avg quantity, Avg quantity
+       with Salvager, Avg value now, the range and the rule in the "?"), Market (Avg value now), Ledger (Purchases
+       and Not picked up: Avg value; Current batch: Avg value (EV), and "Profit: low - avg - high", the range kept
+       with the purchase, `j.lo`, `j.hi`, else the average; Accuracy: Average value (EV), Average profit (EP)),
+       Reports (the stock's gear at its average value), the Disenchant panel (Avg value), the item tooltip (Salvager
+       avg disenchant value, low - high), the chat ("avg profit"). A spec scans every string of the addon for
+       "Expected", "expected value/profit", "Rate used", "Quantity used", "Result quantity" without "avg" or
+       "average".
+    - h. High returns (the user: "show any prices that are above 50% return or profit highlighted"): a deal whose
+       average return is `settings.highlightReturn` percent or more (default `ns.HIGH_RETURN` = 0.5 → 50; Options,
+       "Prices and window", "Highlight returns from (%)", 0 = off; `UI.HighReturn`) gets an orange row tint and an
+       orange "!" after its buyout; the "!" has its help on hover ("Unusually high return (50% or more): check the
+       gear, its item level and the rule behind its value before you buy (see the outcomes)."). A group heading has
+       it when any auction under it has it; Buy Top's tooltip and the row's say it too. The Options window is 706
+       high (was 680).
+    - i. Measured 2026-11-27 on the saved data (prices of 22:07): Ironfeather Leggings (Epic Armor 61, bought at
+       63g 99s 67c): 1 Nexus Crystal 51% (59g 66s, seen), 2 Nexus Crystals 49% (119g 33s, not proven); profit
+       -4g 33s - +24g 92s - +55g 33s?; it would no longer be listed (over the 49g 72s limit). Azure Silk Hood
+       (Uncommon Armor 26-30, 539 of your disenchants with the Salvager: observed) at 11s 99c: -7s 17c - +3s 69c -
+       +35s 49c (1 Soul Dust 4s 82c; average 15s 68c; 1 Large Glimmering Shard 47s 48c).
+
 ## Data
 
-`SalvagerBackup` (account-wide): `list` of ledger copies (88). `SalvagerDB` (account-wide): `settings` (`timeZone`, 110), `prices`, `ledger` (`purchases`, `stock`, `pools`, `disenchants`, `sales`),
+`SalvagerBackup` (account-wide): `list` of ledger copies (88). `SalvagerDB` (account-wide): `settings` (`timeZone`, 110, `highlightReturn`, 116h), `prices`, `ledger` (`purchases`, `stock`, `pools`, `disenchants`, `sales`),
 `money` (gold journal), `sessions` (97), `competition` (109), `disenchantSeen` (112), `quality` and `ilvl` (learned item data), `auraSeen` and `auraSnapshots` (to learn the Salvager's aura spell ID; matched by name until then).
 
 ## Open

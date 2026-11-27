@@ -145,6 +145,12 @@ local function populate(panel, standalone)
         function(n) s.priceUnits = math.max(1, math.floor(n)) changed("priceUnits", s.priceUnits) end,
         "More units = a price that one cheap listing moves less.")
     at(unL, 24)
+    local hiL = numberBox(panel, "Highlight returns from (%)", 36,
+        function() return s.highlightReturn end,
+        function(n) s.highlightReturn = math.max(0, math.floor(n)) changed("highlightReturn", s.highlightReturn) end,
+        "The Gear list marks a deal whose average return is this or more (orange, with \"!\" after its buyout): "
+            .. "check it before you buy. 0 = off.")
+    at(hiL, 24)
     -- The clock of every time shown (SDD 110): one choice.
     local TIMES_HELP = "Local time: your computer's clock. Server time: the realm's clock, read at login and every "
         .. "hour. Every time and day in the windows, the log and the chat follows it; what is saved does not change."
@@ -227,7 +233,7 @@ end
 --- Opens the addon's own options window. Nothing else closes.
 function Options.Open()
     if not ownWindow then
-        ownWindow = W.Window("SalvagerOptionsFrame", "Salvager Options", "options", 560, 680, 560, 680, true)
+        ownWindow = W.Window("SalvagerOptionsFrame", "Salvager Options", "options", 560, 706, 560, 706, true)
         populate(ownWindow, true)
         ownWindow:SetHeight(ownWindow.contentHeight + 44)   -- as tall as its content, plus the version line
     end

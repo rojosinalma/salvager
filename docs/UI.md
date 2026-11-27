@@ -57,7 +57,11 @@ reply must say so.
 
 ## Tables
 
-1. One value per cell. A number and its percentage, or a rate and a quantity, are two columns.
+1. One value per cell. A number and its percentage, or a rate and a quantity, are two columns. One exception (the
+   user, 2026-11-27): the Gear list's profit is one range cell, "pessimistic - average - optimistic" (title "Profit:
+   low - avg - high", its help in full), each part green or red by its sign; the column sorts by the average, and
+   the cell's hover lists every outcome. A range is never a single number in disguise: its parts are real outcomes
+   and the average, each named.
 2. A column is as wide as its widest content, title included (with its sort arrow). No fixed spare width, the button
    column included. The first column (the row's label) takes the spare width, so the last column ends at the
    table's right edge, in every table (as in a statement, Statements 2; the main window's own Gear and Materials tables
@@ -73,7 +77,9 @@ reply must say so.
 5. A marker that belongs to a row (your price, your break-even) is on that row, not on a line
    next to it.
 6. An empty table says why it is empty and what fills it, in full: the note spans the row, never cut.
-7. Money has coin icons, right-aligned. Every signed number (gold, a profit, a forecast, a gap from a forecast,
+7. Money has coin icons, right-aligned. An unusually high average return (Options, "Highlight returns from (%)",
+   default 50) tints the Gear row orange with "!" after its buyout and its reason on hover (orange: a warning, as
+   everywhere). Every signed number (gold, a profit, a forecast, a gap from a forecast,
    a percent change) is green when it is good (a gain, more than planned) and red when it is bad, with its + or -
    (the user, 2026-11-26: grey forecasts read as "nothing there"). Grey is only for what is not known, rests on
    too few samples, or is a note. Color is never the only signal: the sign or a word says it too.
@@ -114,13 +120,18 @@ reply must say so.
    Gear = what you buy and disenchant (armor, weapons): "gear", "a piece of gear", "the Gear tab". Materials = what a
    disenchant gives (dust, essence, shard). Never "item" for gear ("All gear you bought", not "Every item you
    bought"), never "mats" or "resources" for materials. "Item" stays for a game item in general (a tooltip, a link).
-2. Trading terms, the same everywhere: Expected value, Disenchant value, Sold value, Expected
-   profit, Profit, Loss chance, Break-even, Result rate, Rate used (the result rate the forecast uses: the table
-   blended with your results), Sell price ratio (what a unit really sold for against its price when posted), Time to
-   sell (from the post to the sale), Return per day (Return ÷ the days until the materials sell, at least 1). One
+2. Trading terms, the same everywhere: Average value (Avg value in a tight title), Disenchant value, Sold value,
+   Average profit (Avg profit), Avg return, Profit, Loss chance, Break-even, Result rate, Avg quantity (the average
+   units when a result came), Pessimistic and Optimistic (the outcomes 9 in 10 and 1 in 10 disenchants reach), Sell
+   price ratio (what a unit really sold for against its price when posted), Time to
+   sell (from the post to the sale), Avg return per day (Avg return ÷ the days until the materials sell, at least 1). One
    thing has one name in every window.
    What a disenchant gives is a result, never a "drop".
-   Their abbreviations: EV (Expected value), DV (Disenchant value), SV (Sold value), EP (Expected profit),
+   An average is never shown without saying it is one (the user, 2026-11-27: "never show average numbers without
+   reflecting that they are averages"): its title or label says "average" or "avg", and its help says it is the
+   average over many pieces while one disenchant gives one of the outcomes; a sum of averages is an average too. A
+   quantity is whole units; an average of units says "Avg quantity". "Expected" is not used (a spec scans for it).
+   Their abbreviations: EV (Average value), DV (Disenchant value), SV (Sold value), EP (Average profit),
    AP (Actual profit). A column that compares two values is named for them, with the abbreviations:
    "SV/DV %" (percent), "SV - DV" (coins), never "Diff" or a nickname. A value title shows its abbreviation in
    parentheses ("Sold value (SV)") where a comparison column of the same table uses it, and only there. The

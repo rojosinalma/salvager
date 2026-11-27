@@ -525,7 +525,9 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
         local gearW = rawget(main, "minWidth")
         tab(main, "Materials")
         local matW = main:GetWidth()
-        assert.is_true(matW > gearW, matW .. " " .. gearW)
+        assert.is_true(matW ~= gearW, matW .. " " .. gearW)
+        tab(main, "Materials")
+        assert.are.equal(matW, main:GetWidth())
         tab(main, "Gear")
         assert.are.equal(gearW, main:GetWidth())
         main:SetWidth(gearW + 300)
@@ -791,6 +793,25 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
         end
         ns.Odds.Filter().both = nil
         assert.are.equal("", table.concat(seen, "\n"))
+    end)
+    it("keeps the Gear list's profit range as wide as its widest value, every range cell in full (SDD 116)", function()
+        ns.UI.Show()
+        local win = _G.SalvagerFrame
+        for _, t in ipairs(tabsOf(win, "tab")) do if t.text == "Gear" then t:Click() end end
+        local h = ns.UI.headers[5]
+        assert.is_truthy(h.text:find("Profit: low - avg - high", 1, true))
+        local sample = wow.textWidth(ns.Widgets.WidestDigits(ns.RANGE_SAMPLE), 10)
+        assert.is_true(rect(h).w >= sample, string.format("%.0f < %.0f", rect(h).w, sample))
+        local n = 0
+        for _, row in ipairs(ns.UI.rows) do
+            local cell = row.cells[5]
+            if row:IsShown() and cell:IsShown() then
+                n = n + 1
+                assert.is_false(wow.isCut(cell), cell.text)
+                assert.is_truthy(cell.text:find(" - ", 1, true), cell.text)   -- a range: low - avg - high
+            end
+        end
+        assert.is_true(n > 0)
     end)
     it("shows the gold in full right next to the bag space, as wide as its text, at any amount (0.3.151)", function()
         ns.UI.Show()

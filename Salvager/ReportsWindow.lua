@@ -334,7 +334,7 @@ function Reports.StatementRows()
             string.format("At the end: worth %s, cost %s. At the start: worth %s, cost %s.", ns.Money(sk.v1),
                 ns.Money(sk.c1), ns.Money(sk.v0), ns.Money(sk.c0)),
             "Materials at their price now times their sell price ratio, after the cut, less the deposits lost per unit "
-                .. "sold; gear at its expected value. Grey: it rests on prices, not on gold you have." }
+                .. "sold; gear at its average value (when bought, over many pieces). Grey: it rests on prices, not on gold you have." }
         local label = "Change in your stock's value, at today's prices"
         if not sk.known then
             label = "Change in your stock's value since " .. when(sk.since) .. ", at today's prices"

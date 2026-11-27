@@ -46,19 +46,22 @@ local function addLines(tooltip, link)
     if not v then return end
     local text = ns.Money(v.net)
     if #v.missing > 0 then text = text .. " (some prices missing)" end
-    tooltip:AddDoubleLine(COLOR .. "Salvager disenchant value|r", text, 1, 1, 1, 1, 1, 1)
-    tooltip:AddDoubleLine(COLOR .. "Salvager buy below|r",
-        (function()
-            local limit, manual = ns.BuyLimit(ns.QualityOf(link), classID, outcomes and outcomes.band, ns.LimitBasis(v))
-            return ns.Money(limit) .. (manual and " (set by hand)" or "")
-                .. (ns.SalvagerForBuy() and " (Arcane Salvager bonus)" or "")
-        end)(),
-        1, 1, 1, 1, 1, 1)
+    tooltip:AddDoubleLine(COLOR .. "Salvager avg disenchant value|r", text, 1, 1, 1, 1, 1, 1)
+    -- The range of one disenchant: two real outcomes in whole units (SDD 116).
+    local sp = outcomes and ns.Spread(outcomes)
+    if sp and sp.low and sp.high then
+        tooltip:AddDoubleLine(COLOR .. "Salvager low - high|r", string.format("%s %s - %s %s%s", ns.OutcomeWhat(sp.low),
+            ns.Money(sp.low.value), ns.OutcomeWhat(sp.high), ns.Money(sp.high.value),
+            sp.unproven and (" (" .. ns.NOT_PROVEN .. ")") or ""), 1, 1, 1, 1, 1, 1)
+    end
+    local basis = ns.LimitBasis(v, outcomes)
+    local limit, manual = ns.BuyLimit(ns.QualityOf(link), classID, outcomes and outcomes.band, basis)
+    tooltip:AddDoubleLine(COLOR .. "Salvager buy below|r", ns.Money(limit) .. (manual and " (set by hand)" or "")
+        .. (ns.SalvagerForBuy() and " (Arcane Salvager bonus)" or ""), 1, 1, 1, 1, 1, 1)
     if outcomes and IsShiftKeyDown() then
-        for _, r in ipairs(outcomes.results) do
-            local range = r.min == r.max and tostring(r.min) or (r.min .. "-" .. r.max)
-            tooltip:AddDoubleLine("   " .. math.floor(r.chance * 100 + 0.5) .. "% " .. range .. "x " .. ns.MaterialName(r.id),
-                ns.Money(ns.PriceOf(r.id)), 0.8, 0.8, 0.8, 0.8, 0.8, 0.8)
+        for _, x in ipairs(sp and sp.list or {}) do
+            tooltip:AddDoubleLine("   " .. math.floor(x.chance * 100 + 0.5) .. "% " .. ns.OutcomeWhat(x),
+                ns.Money(x.value), 0.8, 0.8, 0.8, 0.8, 0.8, 0.8)
         end
     end
 end

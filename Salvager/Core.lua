@@ -6,8 +6,14 @@ local Util, Data, Model, Ledger = ns.Util, ns.Data, ns.Model, ns.Ledger
 ns.NAME = ADDON
 ns.VERSION = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(ADDON, "Version")) or "dev"
 
+-- The Gear list highlights a deal whose average return is this or more (SDD 116, the user 2026-11-27: "show any
+-- prices that are above 50% return or profit highlighted"): unusual, so check it before you buy.
+local HIGH_RETURN = 0.5
+ns.HIGH_RETURN = HIGH_RETURN
+
 local DEFAULTS = {
     settings = {
+        highlightReturn = HIGH_RETURN * 100,   -- percent: Gear list rows with this average return or more (0 = off)
         minProfit = 1000,          -- copper; deals below this profit are hidden
         minReturn = 0,             -- percent of the price a deal must make as well (0 = off)
         dealSort = "profit",       -- Gear tab order: "profit" | "return"
@@ -735,8 +741,21 @@ ns.BandKey = Ledger.BandKey
 --- The recommended buy limit: value after cut minus the minimum profit.
 --- What a buy limit is measured from: the average value, or with cautious pricing the value with
 --- every material at its lowest amount.
-function ns.LimitBasis(v)
-    return ns.db.settings.cautious and v.low or v.net
+--- For a band whose rule is inferred (not measured on Forever, SDD 116) the pessimistic value, when lower: no unproven
+--- upside in the limit. `outcomes` (ns.Outcomes) may be nil: the average alone.
+--- @return number copper, boolean true when the pessimistic value set it
+function ns.LimitBasis(v, outcomes)
+    local basis = ns.db.settings.cautious and v.low or v.net
+    if outcomes and Model.Evidence(outcomes) == "inferred" then
+        local sp = ns.Spread(outcomes)
+        if sp.low and sp.low.value < basis then return sp.low.value, true end
+    end
+    return basis, false
+end
+
+--- The range of one disenchant of a band at today's prices (Model.Spread, SDD 116), as buying counts it.
+function ns.Spread(outcomes)
+    return Model.Spread(outcomes, ns.PriceOf, ns.ValueOptions(outcomes.salvager))
 end
 
 --- @return number limit, string rule ("profit" | "return")
@@ -752,6 +771,37 @@ function ns.BuyLimit(quality, classID, band, net)
     if o then return (net and math.min(o, net) or o), true end
     return (ns.RecommendedLimit(net)), false
 end
+
+------------------------------------------------------------------ whole-unit outcomes and the range (SDD 116)
+
+local SIGN_GREEN, SIGN_RED, SIGN_GREY = "|cff40ff40", "|cffff4040", "|cff808080"
+
+--- "2 Soul Dust": one outcome of a disenchant, in whole units.
+function ns.OutcomeWhat(x) return x.qty .. " " .. ns.MaterialName(x.id) end
+
+--- A profit in the short form (Util.MoneyShort) with its sign, green when it gains, red when it loses.
+function ns.SignedShort(c)
+    return (c >= 0 and SIGN_GREEN or SIGN_RED) .. Util.MoneyShort(c, true, true) .. "|r"
+end
+
+--- The Gear list's range cell: "pessimistic - average - optimistic" profit, each part green or red by its sign;
+--- a grey "?" after the optimistic one when it is not proven on Forever. Without a range: the average alone.
+function ns.RangeText(low, avg, high, unproven)
+    if not (low and high) then return ns.SignedShort(avg) end
+    local sep = SIGN_GREY .. " - |r"
+    return ns.SignedShort(low) .. sep .. ns.SignedShort(avg) .. sep .. ns.SignedShort(high)
+        .. (unproven and (SIGN_GREY .. "?|r") or "")
+end
+--- The widest range cell (a column of live values keeps the width of its widest one, UI.md Tables 2).
+ns.RANGE_SAMPLE = ns.RangeText(-99999000, -99999000, -99999000, true)
+
+--- Where a band's rule comes from, in words (Model.Evidence).
+ns.EVIDENCE_TEXT = {
+    observed = "observed: rests on your own disenchants of this band",
+    documented = "documented: the game's disenchant table (with the Salvager rule)",
+    inferred = "inferred: not measured on Forever (Classic's rule)",
+}
+ns.NOT_PROVEN = "not proven on Forever"
 
 --- A lose chance (0 to 1) as text: green under 30%, yellow 30% or more, red 60% or more.
 function ns.LoseText(lose)
@@ -778,10 +828,10 @@ function ns.Limits(all)
         local o = ns.Outcomes(quality, classID, ilvl, opts.salvager)
         if not o then return nil end
         local v = Model.Value(o, ns.PriceOf, opts)
-        local basis = ns.LimitBasis(v)
+        local basis, fromLow = ns.LimitBasis(v, o)
         local limit, manual = ns.BuyLimit(quality, classID, o.band, basis)
         local recommended, rule = ns.RecommendedLimit(basis)
-        return { value = v.net, recommended = recommended, rule = rule, limit = limit, manual = manual,
+        return { value = v.net, recommended = recommended, rule = rule, limit = limit, manual = manual, fromLow = fromLow,
             missing = #v.missing > 0, blocked = ns.MissingMajor(v, o), quality = quality, classID = classID,
             band = o.band }
     end

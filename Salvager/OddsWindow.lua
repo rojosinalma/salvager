@@ -82,7 +82,7 @@ function Odds.Bands()
                     -- Salvager as buying counts it (not the filter's): Buy below and the loss chance rest on them.
                     local outcomes = ns.Outcomes(quality, classID, up, opts.salvager)
                     local v = Model.Value(outcomes, ns.PriceOf, opts)
-                    local limit = ns.BuyLimit(quality, classID, up, ns.LimitBasis(v))
+                    local limit = ns.BuyLimit(quality, classID, up, (ns.LimitBasis(v, outcomes)))
                     local everything = all[key]
                     local entry = { quality = quality, classID = classID, band = up, n = n, nWith = nWith, both = both,
                         value = v, limit = limit, outcomes = outcomes, rows = {},
@@ -148,8 +148,8 @@ local COLUMNS = {
         .. "without the Salvager\" is on)." } },
     { "Result rate", 60, "CENTER", key = "Result rate (yours)", help = { "Result rate (your disenchants)",
         "How often it came in your disenchants in this band: Results ÷ Disenchants." } },
-    { "Result quantity", 70, "CENTER", help = { "Result quantity (your disenchants)", "How many came on average "
-        .. "when a disenchant of yours gave it." } },
+    { "Avg quantity", 70, "CENTER", help = { "Avg quantity (your disenchants)", "How many came on average "
+        .. "when a disenchant of yours gave it: an average of whole units (one disenchant gives a whole number)." } },
 }
 -- The Salvager's columns: after a line of their own, in the Salvager's color (titles and values; grey still says
 -- "too few" or "none"). Their keys stay the plain titles (the column chooser's saved choices).
@@ -159,9 +159,9 @@ local SALVAGER_COLUMNS = {
         "Rate with Salvager (your disenchants)", "How often it came in your disenchants with the Arcane Salvager's "
         .. "bonus. Only dust and essence: the Salvager adds to them, not to shards. The game has no table of it.",
         COLOR_HELP } },
-    { SALV .. "Quantity with Salvager|r", 80, "CENTER", key = "Quantity with Salvager", help = {
-        "Quantity with Salvager (your disenchants)", "How many came on average with the Salvager's bonus, when a "
-        .. "disenchant gave it.", COLOR_HELP } },
+    { SALV .. "Avg quantity with Salvager|r", 80, "CENTER", key = "Quantity with Salvager", help = {
+        "Avg quantity with Salvager (your disenchants)", "How many came on average with the Salvager's bonus, when a "
+        .. "disenchant gave it (an average of whole units).", COLOR_HELP } },
 }
 Odds.SALVAGER_COLUMNS = SALVAGER_COLUMNS
 function Odds.Columns()
@@ -176,19 +176,31 @@ local DISENCHANTS_HELP = { "Disenchants", "How many of your disenchants are in t
 local LOSS_HELP = { "Loss chance", "The chance that one disenchant is worth less than Buy below (the most the addon "
     .. "lets you pay), so the risk when you pay the full limit. \"-\" when the limit is 0. The \"?\" has the rest." }
 
+--- The range of one disenchant of the band at today's prices: its pessimistic and optimistic outcomes (SDD 116).
+local function rangeLine(band)
+    local sp = ns.Spread(band.outcomes)
+    if not (sp.low and sp.high) then return "Range now: -" end
+    return string.format("Range now: %s %s (pessimistic: 9 in 10 get this or more) to %s %s (optimistic: 1 in 10)%s.",
+        ns.OutcomeWhat(sp.low), ns.Money(sp.low.value), ns.OutcomeWhat(sp.high), ns.Money(sp.high.value),
+        sp.unproven and (", " .. ns.NOT_PROVEN) or "")
+end
+
 --- The "?" of a band's card: the rest of its facts, one line each.
 local function moreLines(band)
     local o, v = band.outcomes, band.value
     local lines = { "Band " .. ns.QualityText(band.quality) .. " " .. (ns.CLASS_LABEL[band.classID] or "") .. " "
         .. ns.BandRange(band.quality, band.band),
-        "Value now: " .. ns.Money(v.net) .. (#v.missing > 0 and grey(" (a material has no price)") or "")
-            .. ". What ONE disenchant is worth on average at today's prices, after the cut.",
-        "Buy below: " .. ns.Money(band.limit) .. ". Value now minus your minimum profit, or the limit you set in "
-            .. "the Limits window.",
+        "Avg value now: " .. ns.Money(v.net) .. (#v.missing > 0 and grey(" (a material has no price)") or "")
+            .. ". What one disenchant is worth on average over many pieces at today's prices, after the cut; one "
+            .. "disenchant gives one of its outcomes.",
+        rangeLine(band),
+        "Rule: " .. ns.EVIDENCE_TEXT[Model.Evidence(o)] .. ".",
+        "Buy below: " .. ns.Money(band.limit) .. ". Avg value now minus your minimum profit (the pessimistic value "
+            .. "for a rule not measured on Forever), or the limit you set in the Limits window.",
         "Your average: " .. (band.average and ns.Money(band.average) or "-") .. ". What your " .. band.allN
             .. " disenchants of this band gave on average, at the prices of the moment.",
         "Rates used from: " .. o.n .. (o.salvager and " disenchants with the Salvager" or " disenchants without the "
-            .. "Salvager") .. " (as buying counts it): Value now, Buy below and Loss chance rest on the table blended "
+            .. "Salvager") .. " (as buying counts it): Avg value now, Buy below and Loss chance rest on the table blended "
             .. "with them." }
     for _, r in ipairs(band.rows) do
         lines[#lines + 1] = "Price now, " .. tostring(r.cells[1]) .. ": " .. (r.price and ns.Money(r.price) or "no price")
@@ -271,7 +283,7 @@ function Odds.NewView(parent, bar, checkBar, poppedOut)
     row:AddCheck(view.dataOnly)
     view.both = W.Check(row, "Show with and without the Salvager",
         "Your results without the Arcane Salvager in the usual columns, and two columns more for the dust and essence "
-            .. "with it: Rate with Salvager and Quantity with Salvager. The Salvager filter has no effect meanwhile.",
+            .. "with it: Rate with Salvager and Avg quantity with Salvager. The Salvager filter has no effect meanwhile.",
         function(on)
             Odds.Filter().both = on or nil
             changed()

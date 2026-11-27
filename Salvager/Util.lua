@@ -47,6 +47,23 @@ function Util.FormatMoney(copper, icons, aligned)
     return sign .. table.concat(parts, " ")
 end
 
+--- Money in a short form for a range of three amounts in one cell (the Gear list's profit, SDD 116): from 1 gold up,
+--- gold and silver (rounded to the silver, two digits); below, silver and copper. With its sign ("+" or "-") when
+--- `signed`.
+function Util.MoneyShort(copper, icons, signed)
+    if copper == nil then return "-" end
+    copper = math.floor(copper + 0.5)
+    local sign = copper < 0 and "-" or (signed and copper > 0 and "+" or "")
+    copper = math.abs(copper)
+    if copper >= GOLD then
+        local silver = math.floor(copper / SILVER + 0.5)
+        local G, S = "g", "s"
+        if icons then G, S = Util.COIN.g, Util.COIN.s end
+        return string.format("%s%d%s %02d%s", sign, math.floor(silver / 100), G, silver % 100, S)
+    end
+    return sign .. Util.FormatMoney(copper, icons)
+end
+
 --- Parses "1g50s", "20s", "35c", "1g 2s 3c". A bare number means silver.
 --- Returns copper, or nil when the text is not money.
 function Util.ParseMoney(text)

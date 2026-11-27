@@ -5,7 +5,8 @@
 A WoW Forever addon for disenchant trading. It does three things:
 
 1. Prices the disenchanting materials (dust, essences, shards) at the auction house.
-2. Finds gear that costs less than its expected disenchant value, with the profit in gold for each auction, and buys it with one click.
+2. Finds gear that costs less than its average disenchant value, with the profit in gold for each auction (pessimistic,
+   average and optimistic: one disenchant gives whole units of one material), and buys it with one click.
 3. Follows your cost from the purchase to the disenchant to the sale, and shows a break-even price for each material.
 
 ## Install
@@ -22,12 +23,18 @@ By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_foreve
    **_** button in the main window's title bar minimizes it to that panel; the other windows stay open.
 2. Under **Scan once**, click **Both**: material prices first (about 20 seconds), then the gear.
 3. Click ▶ (play) to scan the gear again every 20 seconds; it turns into ■ (stop), which ends it.
-4. **Gear** lists every auction of gear below its buy limit, best profit first. Click **Buy**, or **Buy Top**
-   (bottom right) to buy the best single auction in the list by the current sort (profit or return), whatever
-   row it is in. The gear it will buy is shown above the button (point at it for its numbers); each click buys
-   the next best one. Click an auction's row for its **Gear details**: how its Expected value is made (one line
-   per material), its buy limit and what sets it, your history with this gear and its band, the other auctions
-   of it, and a Buy button. A row with x3 is a group of auctions: click it to open or close it.
+4. **Gear** lists every auction of gear below its buy limit, best average profit first. Its profit shows as
+   "low - avg - high": the pessimistic outcome (9 in 10 disenchants give this or more), the average over many
+   pieces and the optimistic outcome (1 in 10 gives this or more); point at it for every outcome of one
+   disenchant with its chance. A grey "?" after the optimistic one: that outcome is not proven on Forever. An
+   orange row with "!" after its buyout has an unusually high average return (50% or more, Options): check it
+   before you buy. Click **Buy**, or **Buy Top**
+   (bottom right) to buy the best single auction in the list by the current sort (average profit or return),
+   whatever row it is in. The gear it will buy is shown above the button (point at it for its numbers); each click
+   buys the next best one. Click an auction's row for its **Gear details**: every outcome of one disenchant (whole
+   units, the pessimistic and optimistic ones marked, the average last), its buy limit and what sets it, your
+   history with this gear and its band, the other auctions of it, and a Buy button. A row with x3 is a group of
+   auctions: click it to open or close it.
 5. Take your "Auction won" mail, disenchant, and sell the materials as usual. Salvager books each step.
    The **Disenchant** panel opens by itself when gear you bought lands in your bags: each click on its Disenchant
    button disenchants the next piece (only gear you bought with Salvager, never your own). Bind a key to it in Key
@@ -41,7 +48,7 @@ By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_foreve
    drag the bar between them to make one taller (right-click: back to the default).
    **Ledger** opens a window of its own: all gear you bought by day, with what each piece was disenchanted into,
    what you bought and have not picked up from the mail yet (with your free bag space), your current batch (what
-   you picked up and have not disenchanted or posted yet, with what it cost, was expected to make and has made),
+   you picked up and have not disenchanted or posted yet, with what it cost, its average value and what it has made),
    your auctions (listed, sold and waiting for the money, undercut; ▶ next to Check undercuts checks them every
    minute while the auction house is open), who undercuts you (Competition: each seller under your price, how
    often, on which materials, by how much, and what it cost you) and the sales already paid with their
@@ -65,16 +72,23 @@ By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_foreve
 
 ## How the value is calculated
 
-For a piece of gear: the chance of each material × its average quantity × its price, plus the Arcane Salvager bonus
-when you can use it, minus the 5% auction house cut. The buy limit is that value minus your minimum profit.
+One disenchant gives whole units of one material: 1, 2 or 3 Soul Dust, never 1.5. For a piece of gear the addon
+lists every such outcome with its chance and its value (units × price, minus the 5% auction house cut), with the
+Arcane Salvager bonus when you can use it. The Gear list shows three of them as profit: the pessimistic outcome (9 in
+10 disenchants give this or more), the average over many pieces (chance × value, added up; no single disenchant
+gives it) and the optimistic outcome (1 in 10 gives this or more). The buy limit is the average minus your minimum
+profit; where the band's rule is not measured on Forever (Epic item level 56 and up), the pessimistic value minus
+your minimum profit.
 
 - The table is Classic's disenchant table by item level (`Salvager/Data.lua`). Your own disenchants move it: per
   band, the table counts as 50 disenchants and yours are added to it, so a band with few of yours stays near the
-  table and a band with hundreds follows your results (Reports, Odds: a band's "?", Rates used from).
+  table and a band with hundreds follows your results (Reports, Odds: a band's "?", Rates used from). A band rests
+  on your results (observed) from 50 of yours, else on the table (documented), or on Classic's rule not measured on
+  Forever (inferred: Epic 56+).
 - Each material counts at its price × what your sales of it really got against the price, less the deposits you
   lose per unit sold.
-- Time to sell (Materials list): how long your posts of a material took to sell. A deal's tooltip shows its Return
-  per day (Return ÷ the days until its materials sell, at least one day).
+- Time to sell (Materials list): how long your posts of a material took to sell. A deal's tooltip shows its average
+  return per day (Avg return ÷ the days until its materials sell, at least one day).
 - Arcane Salvager: a 50% chance of one extra dust or essence (community data, not official). It is
   included only when you know the recipe or have the Salvager, or when you set `/salv salvager on`.
 - Material price: the average of the cheapest 20 units listed (your own listings left out).

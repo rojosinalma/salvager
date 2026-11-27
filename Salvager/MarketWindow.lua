@@ -121,7 +121,9 @@ end
 
 ------------------------------------------------------------------ Disenchant value
 
-local Value = { title = "Disenchant value", columns = { { "Band", 190 }, { "Value now", 76, "RIGHT" },
+local Value = { title = "Disenchant value", columns = { { "Band", 190 }, { "Avg value now", 76, "RIGHT", help = { "Avg value now",
+    "What one disenchant of the band is worth on average over many pieces at today's prices, after the cut. One "
+        .. "disenchant gives one of its outcomes (the Gear list's profit shows them)." } },
     { "Change", 54, "RIGHT", help = { "Change", "How much the value of one disenchant moved over the time picked." } } } }
 
 local function valueOptions()
@@ -177,8 +179,9 @@ function Value.Chart(key)
     local line = {}
     for _, pt in ipairs(series) do line[#line + 1] = { pt.t, pt.p } end
     local opts = valueOptions()
-    local v = Model.Value(ns.Outcomes(quality, classID, up, opts.salvager), ns.PriceOf, opts)
-    local limit = ns.BuyLimit(quality, classID, up, ns.LimitBasis(v))
+    local outcomes = ns.Outcomes(quality, classID, up, opts.salvager)
+    local v = Model.Value(outcomes, ns.PriceOf, opts)
+    local limit = ns.BuyLimit(quality, classID, up, (ns.LimitBasis(v, outcomes)))
     return widen({
         from = series[1] and series[1].t, to = time(),
         lines = { { points = line, color = { 1, 0.82, 0 }, label = "Value of one disenchant (average, after the cut)" } },

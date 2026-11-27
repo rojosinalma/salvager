@@ -194,7 +194,7 @@ local function columns(names, titles)
     end
     return out, names
 end
-local BAG_COLS, BAG_KEYS = columns({ "gear", "ilvl", "paid", "ev", "ep" }, { ev = "Expected value" })
+local BAG_COLS, BAG_KEYS = columns({ "gear", "ilvl", "paid", "ev", "ep" }, { ev = "Avg value" })
 local RESULT_COLS, RESULT_KEYS = columns({ "gear", "paid", "got", "dv", "profit", "dvev" })
 Panel.BAG_COLS, Panel.RESULT_COLS = BAG_COLS, RESULT_COLS
 

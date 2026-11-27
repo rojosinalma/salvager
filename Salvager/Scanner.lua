@@ -113,6 +113,8 @@ local function readAuctions(task)
     -- Days until the materials sell, by their part of the value (Return per day, SDD 100).
     local days, daysFew, sellSeconds
     if outcomes then days, daysFew, sellSeconds = ns.DaysToSell(ns.Model.Value(outcomes, ns.PriceOf, odds).parts) end
+    -- Every whole-unit outcome of one disenchant and the range (SDD 116), shared by the deals of this answer.
+    local spread = outcomes and ns.Spread(outcomes)
     local wrong, unknown = 0, 0
     for i = 1, n do
         local r = AH.GetItemSearchResultInfo(key, i)
@@ -141,6 +143,8 @@ local function readAuctions(task)
                 link = r.itemLink, itemID = key.itemID, ilvl = task.ilvl, quality = task.quality, classID = task.classID,
                 buyout = r.buyoutAmount, value = task.net, profit = task.net - r.buyoutAmount, task = task,
                 lose = outcomes and ns.Model.LossChance(outcomes, ns.PriceOf, odds, r.buyoutAmount) or nil,
+                spread = spread, low = spread and spread.low and spread.low.value,
+                high = spread and spread.high and spread.high.value,
                 days = days, daysFew = daysFew, sellSeconds = sellSeconds,
                 epoch = Scanner.browseEpoch,   -- (the browse count at its search: SDD 105)
             }
@@ -1032,10 +1036,11 @@ ns.On("AUCTION_HOUSE_PURCHASE_COMPLETED", function(auctionID)
     pendingBuys[auctionID], dropped[auctionID] = nil, nil
     removeDeal(auctionID)
     if d then
-        ns.Print("bought %s for %s (expected profit %s)", d.link or "gear", ns.Money(d.buyout), ns.Money(d.profit))
+        ns.Print("bought %s for %s (avg profit %s)", d.link or "gear", ns.Money(d.buyout), ns.Money(d.profit))
         local o = ns.Model.Outcomes(d.quality, d.classID, d.ilvl)
+        -- (`lo`, `hi`: the pessimistic and optimistic values of one disenchant when bought, SDD 116.)
         ns.Ledger.AuctionPurchase(ns.db.ledger, d.itemID, d.buyout, d.value, time(), d.link,
-            { q = d.quality, cls = d.classID, band = o and o.band, ilvl = d.ilvl, v = ns.VERSION })
+            { q = d.quality, cls = d.classID, band = o and o.band, ilvl = d.ilvl, v = ns.VERSION, lo = d.low, hi = d.high })
         ns.Log("bought %s for %s, value %s", d.link or d.itemID, ns.Money(d.buyout), ns.Money(d.value))
         ns.Fire("SALVAGER_LEDGER")
         recheckLater(d)

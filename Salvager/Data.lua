@@ -112,11 +112,12 @@ Data.BLUE = {
     { up = 55, shard = SHARD.sbril }, { up = 999, shard = SHARD.lbril },
 }
 
--- Epic (purple) gear.
+-- Epic (purple) gear. `inferred`: the rule is Classic's, not measured on Forever (SDD 116): Epic 56+ gives Nexus
+-- Crystals there; whether Forever gives 2 as often as 1 is not seen yet. Its buy limit rests on its pessimistic value.
 Data.PURPLE = {
     { up = 45, res = { SHARD.srad, 2, 4 } }, { up = 50, res = { SHARD.lrad, 2, 4 } },
-    { up = 55, res = { SHARD.sbril, 2, 4 } }, { up = 60, res = { SHARD.nexus, 1, 1 } },
-    { up = 999, res = { SHARD.nexus, 1, 2 } },
+    { up = 55, res = { SHARD.sbril, 2, 4 } }, { up = 60, res = { SHARD.nexus, 1, 1 }, inferred = true },
+    { up = 999, res = { SHARD.nexus, 1, 2 }, inferred = true },
 }
 
 Data.DISENCHANT_SPELL = 13262

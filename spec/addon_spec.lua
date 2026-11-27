@@ -280,7 +280,7 @@ describe("Salvager in a simulated client", function()
         assert.is_truthy(card.facts[2][1]:find("Loss chance", 1, true))
         assert.is_table(card.facts[1].help)
         local more = table.concat(card.more(), "\n")
-        for _, word in ipairs({ "Value now", "Buy below", "Your average", "Rates used from", "Price now" }) do
+        for _, word in ipairs({ "Avg value now", "Range now", "Rule: ", "Buy below", "Your average", "Rates used from", "Price now" }) do
             assert.is_truthy(more:find(word, 1, true), word)
         end
         -- Every column title has its help; the two groups are apart (a line before Results).
@@ -427,8 +427,8 @@ describe("Salvager in a simulated client", function()
         local titles = {}
         for i, h in ipairs(byBand.headers) do if h:IsShown() then titles[#titles + 1] = h:GetText() end
             if h:IsShown() and h:GetText() == "AP/EP %" then at = i end end
-        assert.are.same({ "Band", "Disenchanted", "Paid", "Expected value (EV)", "Disenchant value (DV)", "DV/EV %", "Sold value (SV)",
-            "SV/DV %", "Expected profit (EP)", "Actual profit (AP)", "AP/EP %" }, titles)
+        assert.are.same({ "Band", "Disenchanted", "Paid", "Average value (EV)", "Disenchant value (DV)", "DV/EV %", "Sold value (SV)",
+            "SV/DV %", "Average profit (EP)", "Actual profit (AP)", "AP/EP %" }, titles)
         -- The help of a comparison names both values in full.
         assert.is_truthy(byBand.columns[8].help[2]:find("Sold value (SV) and Disenchant value (DV)", 1, true))
         assert.is_number(at)                                  -- the title is drawn, inside the resize bounds
@@ -902,12 +902,15 @@ describe("Salvager window and options", function()
         ns.UI.view = "deals"
         ns.db.settings.dealSort = "return"
         ns.UI.Refresh()
-        assert.are.equal(want("deals", 7, "Return" .. ARROW), widths[7])          -- the title with its arrow
-        assert.are.equal(want("deals", 6, "Expected profit"), widths[6])
+        assert.are.equal(want("deals", 6, "Avg return" .. ARROW), widths[6])      -- the title with its arrow
+        local RANGE = "Profit: low - avg - high"
+        local range = math.max(want("deals", 5, RANGE), shownWidth(ns.Widgets.WidestDigits(ns.RANGE_SAMPLE)) + 10)
+        assert.are.equal(range, widths[5])                                       -- as wide as its widest value
         ns.db.settings.dealSort = "profit"
         ns.UI.Refresh()
-        assert.are.equal(want("deals", 6, "Expected profit" .. ARROW), widths[6])
-        assert.are.equal(want("deals", 7, "Return"), widths[7])
+        assert.are.equal(math.max(want("deals", 5, RANGE .. ARROW),
+            shownWidth(ns.Widgets.WidestDigits(ns.RANGE_SAMPLE)) + 10), widths[5])
+        assert.are.equal(want("deals", 6, "Avg return"), widths[6])
         -- The Materials tab's Age grows while it shows: its width stays that of "88m" (8 the widest digit here).
         ns.Widgets.TextWidth = function(text)
             return text and (shownWidth(text) + select(2, text:gsub("8", "")) * 4) or 0
@@ -2526,10 +2529,10 @@ describe("Salvager column chooser", function()
         assert.is_true(b.menu:IsShown())
         local n = 0
         for _, c in ipairs(b.checks) do if c:IsShown() then n = n + 1 end end
-        assert.are.equal(8 + 1, n)                                 -- every title, and Buy
+        assert.are.equal(7 + 1, n)                                 -- every title, and Buy
         assert.are.same({ "Gear", true, false }, { b.checks[1].key, b.checks[1]:GetChecked(), b.checks[1]:IsEnabled() })
-        assert.are.same({ "Buy", false }, { b.checks[9].key, b.checks[9]:IsEnabled() })
-        assert.is_truthy(b.checks[9].reason:find("buttons", 1, true))
+        assert.are.same({ "Buy", false }, { b.checks[8].key, b.checks[8]:IsEnabled() })
+        assert.is_truthy(b.checks[8].reason:find("buttons", 1, true))
         toggle(check(b, "Type"))                                    -- hidden at once, the menu stays open
         assert.is_false(ns.UI.headers[2]:IsShown())
         assert.is_true(ns.UI.headers[3]:IsShown())
@@ -2576,8 +2579,8 @@ describe("Salvager column chooser", function()
         function()
         load(nil)
         local byBand, byMat = openAccuracy()
-        assert.are.same({ "Band", "Disenchanted", "Paid", "Expected value (EV)", "Disenchant value (DV)", "DV/EV %",
-            "Sold value (SV)", "SV/DV %", "Expected profit (EP)", "Actual profit (AP)", "AP/EP %" }, shownTitles(byBand))
+        assert.are.same({ "Band", "Disenchanted", "Paid", "Average value (EV)", "Disenchant value (DV)", "DV/EV %",
+            "Sold value (SV)", "SV/DV %", "Average profit (EP)", "Actual profit (AP)", "AP/EP %" }, shownTitles(byBand))
         local wide = byBand.neededWidth
         assert.is_number(wide)
         local chooser = byBand.chooser
@@ -3376,17 +3379,19 @@ describe("Salvager gear, Gear details and headings that open and close (0.3.129)
         head.scripts.OnEnter(head)
         local fromRow = tip()
         head.scripts.OnLeave(head)
-        for _, want in ipairs({ "Item level = 28", "Buyout = ", "Expected value = ", "Expected profit = ", "Return = ",
-            "Loss chance = ", "Time to sell (its materials) = ", "Return per day = " }) do
+        for _, want in ipairs({ "Item level = 28", "Buyout = ", "Pessimistic (9 in 10 get this or more) = ",
+            "Optimistic (1 in 10 gets this or more) = ", "Average value (over many pieces) = ",
+            "Average profit (over many pieces) = ", "Avg return = ", "Loss chance = ", "Time to sell (its materials) = ",
+            "Avg return per day = ", "Rule: documented" }) do
             assert.is_truthy(fromTop:find(want, 1, true), want)
         end
         -- The row's tooltip is the same; each ends with the hint of its click.
         assert.are.equal((fromTop:gsub("\n[^\n]*$", "")), (fromRow:gsub("\n[^\n]*$", "")))
         assert.is_truthy(fromRow:find("Click: open or close the group", 1, true))
         assert.is_truthy(fromTop:find("Click: Gear Details", 1, true))
-        -- Expected profit and Return with their sign: green when they gain (UI.md Tables 7).
+        -- The profit range and the average return with their sign: green when they gain (UI.md Tables 7).
+        assert.is_truthy(head.item.cells[5]:find("|cff40ff40%+"))
         assert.is_truthy(head.item.cells[6]:find("^|cff40ff40%+"))
-        assert.is_truthy(head.item.cells[7]:find("^|cff40ff40%+"))
         -- A click on the gear above Buy Top opens its Gear Details.
         local realOpen, opened = ns.GearWindow.Open, nil
         ns.GearWindow.Open = function(deal) opened = deal end
@@ -3424,10 +3429,10 @@ describe("Salvager gear, Gear details and headings that open and close (0.3.129)
         assert.are.equal(301, g.deal.auctionID)
     end)
 
-    it("shows the deal as a statement, how its Expected value is built, your history and the other auctions", function()
+    it("shows the deal as a statement, every outcome of one disenchant, your history and the other auctions", function()
         local g, d = ns.GearWindow, ns.GearWindow.deal
         local deal = g.DealRows(d)
-        assert.are.same({ "Expected value of one disenchant", "Buyout", "Expected profit" },
+        assert.are.same({ "Average value of one disenchant", "Buyout", "Average profit" },
             { deal[1].cells[1], deal[2].cells[1], deal[3].cells[1] })
         assert.are.equal("|cff40ff40+" .. ns.MoneyColumn(d.value) .. "|r", deal[1].cells[2])  -- comes in: green, +
         assert.are.equal("-" .. ns.MoneyColumn(d.buyout), deal[2].cells[2])                    -- goes out: -
@@ -3436,12 +3441,20 @@ describe("Salvager gear, Gear details and headings that open and close (0.3.129)
         local m = g.MeasureRows(d)[1].cells
         assert.are.equal(6, #m)
         assert.is_truthy(m[4] == "Min profit" or m[4] == "Min return")                         -- which rule set it
-        -- One row per possible result, the totals row last: the parts add up to the Expected value.
+        -- One row per whole-unit outcome, then the pessimistic and optimistic ones, the average last.
         local build, from = g.BuildRows(d)
         local total = build[#build]
         assert.are.same({ "total", true }, { total.rule, total.bold })
-        assert.are.equal(ns.MoneyColumn(d.value), total.cells[5])
-        assert.is_true(#build >= 3)
+        assert.is_truthy(total.cells[1]:find("Average", 1, true))
+        assert.is_true(math.abs(d.value - ns.Util.ParseMoney(ns.Util.PlainMoney(total.cells[3]))) <= 1)
+        local marks = {}
+        for i = 1, #build - 1 do
+            assert.is_truthy(build[i].cells[1]:find("^%d+ "), build[i].cells[1])   -- whole units
+            if build[i].mark then marks[#marks + 1] = build[i].cells[1] end
+        end
+        assert.is_true(#build >= 4)
+        assert.is_truthy(table.concat(marks, " "):find("pessimistic", 1, true))
+        assert.is_truthy(table.concat(marks, " "):find("optimistic", 1, true))
         assert.is_truthy(from:find("0 of your disenchants of this band (few results)", 1, true))
         local hist = g.HistoryRows(d)
         assert.are.equal("Alpha Boots", hist[1].cells[1])

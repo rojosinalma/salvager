@@ -21,8 +21,9 @@ local COUNTDOWN_MAX = "00:00:00"
 
 local COLUMNS = {
     purchases = { { "Gear", 220 }, { "Bought", 82, help = ns.TimeHelp("Bought", "When you bought it.") }, { "Paid", 84, "RIGHT" },
-        { "Expected value", 84, "RIGHT", help = { "Expected value", "The value the Gear tab showed when you "
-            .. "bought: the average disenchant value at the prices of that moment, after the auction house cut." } },
+        { "Avg value", 84, "RIGHT", help = { "Avg value", "The average value the Gear tab showed when you "
+            .. "bought: the average disenchant value over many pieces at the prices of that moment, after the auction "
+            .. "house cut. One disenchant gives one of its outcomes, not this." } },
         { "Disenchant value", 96, "RIGHT", help = { "Disenchant value", "The market value of the materials you got, "
             .. "at the prices of the moment you disenchanted, after the auction house cut." } },
         { "Profit", 84, "RIGHT", help = { "Profit", "Disenchant value minus Paid." } } },
@@ -30,40 +31,48 @@ local COLUMNS = {
     waiting = { { "Gear", 220 },
         { "Item level", 60, "CENTER", help = { "Item level", "The gear's item level, as the Gear tab judged it when you bought." } },
         { "Bought", 82, help = ns.TimeHelp("Bought", "When you bought it.") }, { "Paid", 84, "RIGHT" },
-        { "Expected value", 84, "RIGHT", help = { "Expected value", "The value the Gear tab showed when you "
-            .. "bought: the average disenchant value at the prices of that moment, after the auction house cut." } } },
+        { "Avg value", 84, "RIGHT", help = { "Avg value", "The average value the Gear tab showed when you "
+            .. "bought: the average disenchant value over many pieces at the prices of that moment, after the auction "
+            .. "house cut." } } },
     -- The Purchases view's third subtab: the current batch (SDD 107).
     batch = { { "Gear", 220 },
         { "Item level", 60, "CENTER", help = { "Item level", "The gear's item level, as the Gear tab judged it when you "
             .. "bought (or as it was disenchanted)." } },
         { "Paid", 84, "RIGHT" },
-        { "Expected value (EV)", 84, "RIGHT", help = { "Expected value (EV)", "The value the Gear tab showed when you "
-            .. "bought: the average disenchant value at the prices of that moment, after the auction house cut." } },
-        { "Expected profit", 84, "RIGHT", help = { "Expected profit", "Expected value minus Paid." } },
+        { "Avg value (EV)", 84, "RIGHT", help = { "Average value (EV)", "The average value the Gear tab showed when "
+            .. "you bought: the average disenchant value over many pieces at the prices of that moment, after the "
+            .. "auction house cut. On a heading or the totals: the sum of averages, an average too." } },
+        { "Profit: low - avg - high", 84, "RIGHT", help = { "Profit: pessimistic - average - optimistic",
+            "Before the disenchant: what one disenchant makes against Paid, as the Gear tab showed it when you bought "
+            .. "(9 in 10 give the first or more, the middle is the average over many pieces, 1 in 10 gives the last "
+            .. "or more). Gear bought before 0.3.152, a disenchanted piece, a heading and the totals: the average "
+            .. "profit alone (Avg value minus Paid; summed: an average too)." } },
         { "Materials got", 120, help = { "Materials got", "What the disenchant gave. Grey \"not disenchanted yet\": "
             .. "not known until you disenchant it." } },
         { "Disenchant value (DV)", 96, "RIGHT", help = { "Disenchant value (DV)", "The market value of the materials "
             .. "you got, at the prices of the moment you disenchanted, after the auction house cut." } },
-        { "DV/EV %", 46, "RIGHT", help = { "DV/EV %", "The difference between Disenchant value (DV) and Expected value "
-            .. "(EV), in percent of the Expected value: the luck of the disenchant (or result rates that are not what "
+        { "DV/EV %", 46, "RIGHT", help = { "DV/EV %", "The difference between Disenchant value (DV) and Average value "
+            .. "(EV), in percent of the Average value: the luck of the disenchant (or result rates that are not what "
             .. "the addon assumes). On the totals: of the disenchanted pieces only." } },
         { "Profit so far", 84, "RIGHT", help = { "Profit so far", "Disenchant value minus Paid: what the disenchant "
             .. "made, before the materials sell. On the totals: of the disenchanted pieces only." } },
         { "Not posted yet", 120, help = { "Not posted yet", "The materials of this disenchant you have not posted "
             .. "yet. Your posts, sales and what you hold take them, first in, first out. When none is left, the gear "
             .. "leaves the batch." } },
-        { "Value now", 84, "RIGHT", help = { "Value now", "The materials not posted yet at what one unit is worth to "
-            .. "the forecast now: price × sell price ratio, after the cut, less the deposits lost." } } },
+        { "Value now", 84, "RIGHT", help = { "Value now", "The materials not posted yet (real units, not an average) at "
+            .. "what one unit is worth to the forecast now: price × sell price ratio, after the cut, less the deposits "
+            .. "lost." } } },
     -- The Accuracy view is two tables: by band, and by material.
     accBands = { { "Band", 170 }, { "Disenchanted", 70, "CENTER", help = { "Disenchanted", "How many disenchants with a recorded "
             .. "purchase are in the row. Grey = fewer than 20: too few to judge, one lucky shard moves it a lot." } },
         { "Paid", 70, "RIGHT" },
-        { "Expected value (EV)", 70, "RIGHT", help = { "Expected value (EV)", "The value the Gear tab showed when you "
-            .. "bought: the average disenchant value at the material prices of that moment, after the auction house cut." } },
+        { "Average value (EV)", 70, "RIGHT", help = { "Average value (EV)", "The average value the Gear tab showed "
+            .. "when you bought: the average disenchant value over many pieces at the material prices of that moment, "
+            .. "after the auction house cut; summed over the row's pieces." } },
         { "Disenchant value (DV)", 70, "RIGHT", help = { "Disenchant value (DV)", "The market value of the materials you "
             .. "got, at the prices of the moment you disenchanted, after the auction house cut." } },
         { "DV/EV %", 46, "RIGHT", help = { "DV/EV %",
-            "The difference between Disenchant value (DV) and Expected value (EV), in percent of the Expected value. The "
+            "The difference between Disenchant value (DV) and Average value (EV), in percent of the Average value. The "
             .. "gap comes from luck in the results, or from result rates that are not what the addon assumes."
             .. " Grey: a gap from a forecast, not gold you gained or lost." } },
         { "Sold value (SV)", 70, "RIGHT", help = { "Sold value (SV)", "The same materials at the average price each one "
@@ -74,12 +83,13 @@ local COLUMNS = {
             .. "gap comes from prices that moved, and from undercutting. * = more than half of the row's materials are "
             .. "not sold yet, so most of it is still the disenchant value."
             .. " Grey: a gap from a forecast, not gold you gained or lost." } },
-        { "Expected profit (EP)", 70, "RIGHT", help = { "Expected profit (EP)", "Expected value minus Paid." } },
+        { "Average profit (EP)", 70, "RIGHT", help = { "Average profit (EP)", "Average value minus Paid: the average "
+            .. "profit the Gear tab showed, over many pieces." } },
         { "Actual profit (AP)", 70, "RIGHT", help = { "Actual profit (AP)", "Sold value minus Paid." } },
         { "AP/EP %", 46, "RIGHT", help = { "AP/EP %",
-            "The difference between Actual profit (AP) and Expected profit (EP), in percent of the Expected profit: how "
+            "The difference between Actual profit (AP) and Average profit (EP), in percent of the Average profit: how "
             .. "much more (+) or less (-) the gear made than the Gear tab said when you bought it. "
-            .. "- = no expected profit to compare with."
+            .. "- = no average profit to compare with."
             .. " Grey: a gap from a forecast, not gold you gained or lost." } } },
     accMats = { { "Material", 170 }, { "Units", 44, "CENTER" },
         { "Disenchant value each (DV)", 80, "RIGHT", help = { "Disenchant value each (DV)", "The average market price of "
@@ -421,7 +431,7 @@ function Window.PurchaseRows()
         local head = { group = true, cells = { GOLD .. ns.Date("%a %m-%d", d.t) .. "|r" .. GREY .. "  " .. pieces(t.n) .. "|r",
             "", t.known > 0 and ns.Money(t.paid) or (GREY .. "not recorded|r"), money(t.expected),
             t.done > 0 and money(t.got) or "", t.resultKnown > 0 and signed(t.result) or "" },
-            tip = { ns.Date("%A %m-%d", d.t), "The gear you bought this day: how many pieces, what you paid and expected; "
+            tip = { ns.Date("%A %m-%d", d.t), "The gear you bought this day: how many pieces, what you paid and their average value; "
                 .. "Disenchant value and Profit for the pieces disenchanted so far. Click to open or close. Days in "
                 .. ns.TimesName() .. "." } }
         rows[#rows + 1] = head
@@ -501,13 +511,22 @@ local function ilvlText(ilvl) return ilvl and tostring(ilvl) or NONE end
 Window.BATCH_COLUMNS = COLUMNS.batch
 Window.BATCH = { gear = 1, ilvl = 2, paid = 3, ev = 4, ep = 5, got = 6, dv = 7, dvev = 8, profit = 9, left = 10, now = 11 }
 
+--- A purchase's profit before its disenchant: the range the Gear tab showed when it was bought (pessimistic -
+--- average - optimistic, SDD 116), or the average alone for a purchase from before 0.3.152.
+local function profitRange(p)
+    if not p.ev then return NONE end
+    local paid, j = p.each or 0, p.j or {}
+    if j.lo and j.hi then return ns.RangeText(j.lo - paid, p.ev - paid, j.hi - paid) end
+    return gap(p.ev - paid)
+end
+
 --- A row of the Current batch for a piece not disenchanted yet (an entry of Ledger.Batch's `waiting`): its cells in
 --- the order of COLUMNS.batch, and its numbers (paid, ev). One builder for the Ledger and the Disenchant panel.
 function Window.BatchWaitingRow(p)
     local ilvl = (p.j and p.j.ilvl) or (p.link and ns.ItemLevelOf(p.link)) or ns.db.ilvl[p.itemID]
     return { itemID = p.itemID, link = p.link, indent = INDENT, paid = p.each or 0, ev = p.ev or 0,
-        cells = { itemName(p.itemID, p.link), ilvlText(ilvl), money(p.each), money(p.ev),
-            p.ev and gap(p.ev - (p.each or 0)) or NONE, NOT_YET, NONE, NONE, NONE, NONE, NONE } }
+        cells = { itemName(p.itemID, p.link), ilvlText(ilvl), money(p.each), money(p.ev), profitRange(p),
+            NOT_YET, NONE, NONE, NONE, NONE, NONE } }
 end
 
 --- A row of the Current batch for a disenchant (an entry of Ledger.Batch's `done`): its cells in the order of
@@ -580,8 +599,9 @@ function Window.BatchRows()
     -- The batch's totals, the last row (UI.md Tables 13).
     rows[#rows + 1] = { bold = true, rule = "total",
         cells = Window.BatchTotals("Batch: " .. pieces(w.n + d.n) .. ", " .. d.n .. " disenchanted", w, d),
-        tip = { "The batch", "Paid, Expected value and Expected profit: every piece of the batch. Disenchant value, "
-            .. "DV/EV % and Profit so far: the pieces disenchanted so far, against what they were expected to give. "
+        tip = { "The batch", "Paid, Avg value and the average profit: every piece of the batch (sums of averages: "
+            .. "averages too). Disenchant value, DV/EV % and Profit so far: the pieces disenchanted so far, against their "
+            .. "average value. "
             .. "Not posted yet and Value now: their materials still to post, at what they are worth now. Post them "
             .. "from the Materials window (the main window's Materials tab)." } }
     return rows
@@ -1039,7 +1059,7 @@ function Window.Refresh()
         salesParts[2]:SetHeight(W.SplitHeight(salesRoom(), f.saved.salesSplit or SPLIT_DEFAULT))
     end
     if accuracy then
-        salesParts[1]:SetText(GOLD .. "By band|r" .. GREY .. "  expected value, disenchant value, sold value|r")
+        salesParts[1]:SetText(GOLD .. "By band|r" .. GREY .. "  average value, disenchant value, sold value|r")
         salesParts[3]:SetText(GOLD .. "By material|r" .. GREY .. "  disenchant value against sold value, per unit|r")
         local bands, mats = Window.AccuracyBandRows(), Window.AccuracyMaterialRows()
         salesParts[2]:SetColumns(COLUMNS.accBands, "accBands")
@@ -1169,7 +1189,7 @@ local function build()
         bars.tabs:Add(b, 90)
         tabs[t[1]] = b
     end
-    W.Tooltip(tabs.accuracy, "Accuracy", "Expected value when you bought, against the disenchant value of what you got, "
+    W.Tooltip(tabs.accuracy, "Accuracy", "The average value when you bought, against the disenchant value of what you got, "
         .. "against the sold value. By band and by material.")
     W.Tooltip(tabs.purchases, "Purchases", "All gear you bought, by day (newest first), then not disenchanted and "
         .. "disenchanted. Under each one: what it was disenchanted into and what it was worth then. The Not picked up "
@@ -1272,7 +1292,7 @@ local function build()
         { "mail", "Not picked up", "The gear you bought with Buy whose \"Auction won\" mail you have not taken "
             .. "yet, the first bought first. The number is how many." },
         { "batch", "Current batch", "The gear you picked up and have not disenchanted yet, and what you disenchanted "
-            .. "whose materials are not all posted yet: what the batch cost, was expected to make, and has made so far. "
+            .. "whose materials are not all posted yet: what the batch cost, its average value, and what it has made so far. "
             .. "A piece leaves when all its materials are posted." } }) do
         local b = W.Subtab(bars.purchases, t[2], function()
             f.saved.purchaseTab = t[1] ~= "all" and t[1] or nil
