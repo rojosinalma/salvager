@@ -492,7 +492,7 @@
     },
     "Log/smallest": {
       "cut": 0,
-      "width": 360
+      "width": 560
     },
     "Market / Bands/default": {
       "cut": 0,
@@ -1067,7 +1067,7 @@
     "main/Materials": 4.886,
     "market/Bands": 1.474,
     "market/Materials": 0.422,
-    "market/Profit": 13.155,
+    "market/Profit": 10.416,
     "market/Time of day": 0.793,
     "materials": 0.325,
     "reports/Competition": 0.379,
@@ -1092,7 +1092,7 @@
   "suite": {
     "all": {
       "luacheck": 0,
-      "specs": 414
+      "specs": 428
     }
   }
 }
