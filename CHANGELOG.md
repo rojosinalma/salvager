@@ -1,5 +1,14 @@
 # Changelog
 
+## Salvager 0.4.2
+
+### Macros
+- The two macros, Salvager Buy and Salvager DE, have their icons now, so you can drag them from `/macro` to your
+  bars. 0.4.1 made them without an icon.
+- The macros you already have are repaired when you log in: a macro that still has Salvager's text and no icon gets
+  its icon. A macro whose text you changed is never touched.
+- Options, "Create the macros again", repairs the icons too.
+
 ## Salvager 0.4.1
 
 ### Buying
