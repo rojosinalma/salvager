@@ -68,19 +68,28 @@ reply must say so.
    value (`sample`), and only while it has rows; nothing else uses an extreme sample. The texts of two columns next to
    each other are 16 px apart (± 2), whatever their justification. A window is as wide as its widest row of content
    needs now: the shown table's columns, or a row of its controls (filter row, footer, the main window's settings), or
-   a heading, if wider; its smallest width is what its controls need, measured. No spare width: the first column takes
-   only a remainder of a few pixels, or the width the controls force, so the last column ends at the table's right
-   edge (in a stack of cards, at the cards' right edge, the columns lined up). In numbers: no window wider than its
-   content needs + 8 px, no gap over 16 + 2 px (the self-check logs over 16 + 4). Text that does not fit ends with
+   a heading, if wider; its smallest width is what its controls need, measured. No spare width: a table alone in its
+   view lets its first column take only a remainder of a few pixels, or the width the controls force, so the last
+   column ends at the table's right edge (in a stack of cards, at the cards' right edge, the columns lined up). Two or
+   more tables in a view (the user, 2026-11-28: tight tables, no holes; SDD 123): each is as wide as it needs, at the
+   left; the narrower one simply ends earlier, its inset as wide as its columns, never a first column with room in it.
+   A statement keeps the window's width (its amounts flush right, Statements 2). A text is measured in the font it is
+   drawn in (titles, cells, a total's larger font), by a font string of that very font object, so the widths the
+   tables get are the ones the client draws. In numbers: no window wider than its
+   content needs + 8 px, no gap over 16 + 2 px (the self-check logs over 16 + 4; rows not on show count as measured,
+   so a gap is a hole only where no row of the data fills it). Text that does not fit ends with
    "..." and shows in full on hover. A tab change gives the window the new view's width (narrower too); a window
    shrinks when its table empties. A column is never left out silently: where the screen (or a window the player made
    narrower) is too narrow, a note at the right end of the titles says how many are left out, and its tooltip which
    ones. Money of 1 gold or more shows gold and silver only in a cell, the copper on the row's hover; a value that
    rests on few results or sales is grey with "*", the column's help and the row's hover say what it means.
    Three gates hold this, and the numbers are ratcheted (they may only get better, `spec/ratchet.json`, `make
-   ratchet`): `spec/tight_spec.lua` (typical data, every window, view and size, in `make check`); `make sim-check`
-   (the game's fonts in wow-ui-sim, before `make install`); `make layout` (the client's dump, and the addon's own
-   self-check lines in the Log: "layout: <window>/<view> wider than its content by N px").
+   ratchet`): `spec/tight_spec.lua` (typical data, every window, view and size, in `make check`, the addon's own
+   self-check silent too; `spec/textwidth_spec.lua`: the stand-in and the width authority against widths the client
+   measured, per font); `make sim-check` (the game's fonts in wow-ui-sim, before `make install`, the self-check's Log
+   lines count as problems); `make layout` (the client's dump, and the addon's own self-check lines in the Log:
+   "layout: <window>/<view> wider than its content by N px", "column gaps over 16 px: ...", "measured N px, drawn M
+   px: ...").
 3. A table with sections is one inset per section, or a heading row per section with its own
    totals. A value that is the same for every row of a section goes in the heading, not in the rows.
 4. Rows the player acts on first come first (open before sold, newest before oldest).

@@ -1222,53 +1222,131 @@ function Widgets.FitTables(f, lists, view, extra)
     f.contentNeed, f.fitLists = w, lists
     f.FitWidth(w, view, math.min(least, w))
     local changed = math.abs((tonumber((f:GetWidth())) or 0) - before) >= 1
+    local trimmed = Widgets.TrimTables(f, lists)
     -- (A new width lays the tables out again here, so the check reads them as drawn.)
-    if changed then for _, l in ipairs(lists) do l:Refresh() end end
+    for _, l in ipairs(lists) do if changed or trimmed[l] then l:Refresh() end end
     Widgets.CheckLayout(f, lists, view)
     return changed
 end
 
---- The texts of a table's columns on screen, left to right: { { title, l, r, justify }, ... } (each column's widest
---- text, from its title and its cells on show). `columns` = { { header = fs, cells = { fs, ... } }, ... }.
-local function textSpan(fs)
+--- The tables of a view on show, and whether they are two or more (UI.md Tables 2: then each is as wide as it needs).
+local function shownLists(lists)
+    local out = {}
+    for _, l in ipairs(lists or {}) do if l.IsShown and l:IsShown() then out[#out + 1] = l end end
+    return out, #out > 1
+end
+local function isStatement(l)
+    local cols = rawget(l, "columns")
+    return type(cols) == "table" and cols.statement == true
+end
+
+--- Moves the right edge of `l` (its anchors with a right point) `px` in from where its window put it. A window that
+--- anchors the table again (its layout) puts it back to its full width: the offsets set last tell which.
+--- @return boolean moved
+function Widgets.TrimRight(l, px)
+    if not (l.GetNumPoints and l.GetPoint) then return false end
+    px = math.max(0, math.floor(px or 0))
+    local set, old = rawget(l, "trimSet") or {}, rawget(l, "trim") or 0
+    local points, moved, now = {}, false, {}
+    for i = 1, tonumber((l:GetNumPoints())) or 0 do
+        local point, rel, relPoint, x, y = l:GetPoint(i)
+        if type(point) == "string" and point:find("RIGHT") then
+            local base = (set[point] ~= nil and math.abs(set[point] - (x or 0)) < 0.01) and (x + old) or (x or 0)
+            if math.abs(base - px - (x or 0)) >= 0.5 then moved = true end
+            x = base - px
+            now[point] = x
+        end
+        points[#points + 1] = { point, rel, relPoint, x or 0, y or 0 }
+    end
+    l.trim, l.trimSet = px, now
+    if not moved then return false end
+    l:ClearAllPoints()
+    for _, p in ipairs(points) do l:SetPoint(p[1], p[2], p[3], p[4], p[5]) end
+    return true
+end
+
+--- Two or more tables in a view (UI.md Tables 2, SDD 123): each table as wide as it needs, at the left; the narrower
+--- one ends earlier (no room inside it). A statement keeps the window's width (its amounts flush right). One table
+--- alone spans the window (its first column takes what the controls give it).
+--- @return table  the lists moved, as keys
+function Widgets.TrimTables(f, lists)
+    local out = {}
+    local _, multi = shownLists(lists)
+    local fw = tonumber((f:GetWidth())) or 0
+    for _, l in ipairs(lists or {}) do
+        local n, trim = rawget(l, "neededWidth"), 0
+        if multi and type(n) == "number" and not isStatement(l) and l:IsShown() then
+            trim = fw - (rawget(l, "margin") or 24) - math.ceil(n)
+        end
+        if Widgets.TrimRight(l, trim) then out[l] = true end
+    end
+    return out
+end
+
+--- The texts of a table's columns on screen, left to right: { { title, l, r }, ... } (each column's widest text: its
+--- title, its cells on show, and `need`, the widest text of the data the width authority measured, on show or not,
+--- placed in the column's box by its justification). `columns` = { { header = fs, cells = { fs, ... }, need = px,
+--- title = text, box = true (a column of controls: the whole box) }, ... }.
+local function drawnWidth(fs) return tonumber(((fs.GetUnboundedStringWidth or fs.GetStringWidth)(fs))) or 0 end
+local function placed(fs, tw)
     local l, r = fs:GetLeft(), fs:GetRight()
     if not (l and r) then return nil end
-    local tw = tonumber(((fs.GetUnboundedStringWidth or fs.GetStringWidth)(fs))) or 0
     tw = math.min(tw, r - l)
     local j = fs:GetJustifyH()
     if j == "RIGHT" then return r - tw, r end
     if j == "CENTER" then return (l + r - tw) / 2, (l + r + tw) / 2 end
     return l, l + tw
 end
+local function textSpan(fs) return placed(fs, drawnWidth(fs)) end
 function Widgets.ColumnSpans(columns)
     local out = {}
     for _, col in ipairs(columns) do
         local lo, hi
+        local function add(a, b) if a then lo, hi = math.min(lo or a, a), math.max(hi or b, b) end end
         for _, fs in ipairs(col.cells or {}) do
-            if fs:IsShown() and (fs:GetText() or "") ~= "" then
-                local a, b = textSpan(fs)
-                if a then lo, hi = math.min(lo or a, a), math.max(hi or b, b) end
-            end
+            if fs:IsShown() and (fs:GetText() or "") ~= "" then add(textSpan(fs)) end
         end
         local h = col.header
-        if col.box and h and h:IsShown() then
-            local a, b = h:GetLeft(), h:GetRight()
-            if a then lo, hi = math.min(lo or a, a), math.max(hi or b, b) end
-        end
-        if h and h:IsShown() and (h:GetText() or "") ~= "" then
-            local a, b = textSpan(h)
-            if a then lo, hi = math.min(lo or a, a), math.max(hi or b, b) end
+        if h and h:IsShown() then
+            if col.box then add(h:GetLeft(), h:GetRight()) end
+            if (h:GetText() or "") ~= "" then add(textSpan(h)) end
+            if type(col.need) == "number" and col.need > 0 then add(placed(h, col.need)) end
         end
         if lo then out[#out + 1] = { title = col.title or (h and h:GetText()) or "", l = lo, r = hi } end
     end
     return out
 end
 
---- The columns of a Widgets.List on screen (its titles and the cells of the rows shown), for Widgets.ColumnSpans.
+--- Measured against drawn (SDD 123): each text on show (titles and cells) measured as the width authority measures it
+--- (Widgets.TextWidth in the font it drew it in, `fs.measureFont`) against what the client drew. The worst case over
+--- 1 px, or nil: { title, text, measured, drawn }.
+function Widgets.MeasureDrift(columns)
+    local worst, most = nil, 1
+    for _, col in ipairs(columns) do
+        local function try(fs)
+            local font = rawget(fs, "measureFont")
+            local text = font and fs:IsShown() and fs:GetText()
+            if not text or text == "" then return end
+            local m = Widgets.TextWidth(text, font)
+            if not m then return end
+            local d = drawnWidth(fs)
+            if math.abs(m - d) > most then
+                most, worst = math.abs(m - d), { title = col.title or "", text = text, measured = m, drawn = d }
+            end
+        end
+        if col.header then try(col.header) end
+        for _, fs in ipairs(col.cells or {}) do try(fs) end
+    end
+    return worst
+end
+
+--- The columns of a Widgets.List on screen (its titles and the cells of the rows shown, and the widest text of each
+--- column in the data, `list.textNeed`), for Widgets.ColumnSpans.
 function Widgets.ListColumns(list)
     local cols = {}
     local headers, rows = rawget(list, "headers"), rawget(list, "rows")
     if not (headers and rows and list.columns) then return cols end
+    local need = rawget(list, "textNeed") or {}
     for i, col in ipairs(list.columns) do
         if headers[i] and headers[i]:IsShown() then
             local cells = {}
@@ -1277,7 +1355,7 @@ function Widgets.ListColumns(list)
             end
             -- (A column of controls, `least`: its content is the whole box.)
             cols[#cols + 1] = { title = tostring(Widgets.ColumnKey(col)), header = headers[i], cells = cells,
-                box = col.least ~= nil }
+                box = col.least ~= nil, need = need[i] }
         end
     end
     return cols
@@ -1299,9 +1377,13 @@ function Widgets.WideGaps(spans, spare)
     return most, parts
 end
 
---- The self-check (always on, cheap: after a window's fit, the titles and the rows on screen): the window no wider
---- than its content needs + SLACK, every column gap normal. One Log line per window and view per session: "layout:
---- <window>/<view> wider than its content by N px (columns ...)". `f.layoutName` names the window (its key).
+--- The self-check (always on, cheap: after a window's fit, the titles and the rows on screen, with the widest text of
+--- each column in the data): the window no wider than its content needs + SLACK; every column gap normal (the rows
+--- not on show count as the width authority measured them; the first column may take what the controls give a table
+--- alone in its view, never what another table gives it: two or more tables are each as wide as they need, UI.md
+--- Tables 2); every text on show measured as drawn (Widgets.MeasureDrift, 1 px). One Log line per window and view per
+--- session: "layout: <window>/<view> wider than its content by N px", "column gaps over 16 px: <title>><title> <px>",
+--- "measured N px, drawn M px: <title> "<text>"". `f.layoutName` names the window (its key).
 local logged = {}
 Widgets.layoutLogged = logged
 function Widgets.CheckLayout(f, lists, view)
@@ -1314,24 +1396,41 @@ function Widgets.CheckLayout(f, lists, view)
         problems[#problems + 1] = string.format("wider than its content by %d px", over)
     end
     local controls = Widgets.ControlsWidth(f)
+    local _, multi = shownLists(lists)
+    local drift
     for _, l in ipairs(lists or {}) do
-        local spansOf = rawget(l, "spansOf")
-        if l:IsShown() and (spansOf or rawget(l, "headers")) then
-            local spans = spansOf and spansOf() or Widgets.ColumnSpans(Widgets.ListColumns(l))
-            -- (Where the window is wider than this table needs, by its controls or another table, its first column
-            -- takes that room.)
+        local spansOf, columnsOf = rawget(l, "spansOf"), rawget(l, "columnsOf")
+        if l:IsShown() and (spansOf or columnsOf or rawget(l, "headers")) then
+            local columns = columnsOf and columnsOf() or (not spansOf and Widgets.ListColumns(l)) or nil
+            local spans = columns and Widgets.ColumnSpans(columns) or spansOf()
             local function field(k)
                 local v = rawget(l, k)
                 if v == nil then v = l[k] end
                 return type(v) == "number" and v or nil
             end
-            local own = (field("neededWidth") or 0) + (field("margin") or 24)
-            local spare = math.max(0, math.max(controls, need or 0) - own)
+            -- (The room the first column may take over its text: what the table's note (an empty table's why) needs
+            -- over its columns; alone in its view (or a statement), also what the controls give the window.)
+            local margin = field("margin") or 24
+            local cols = field("columnsWidth") or field("neededWidth") or 0
+            local own = math.max(cols, field("neededWidth") or 0) + margin
+            local room = (multi and not isStatement(l)) and own or math.max(controls, need or 0, own)
+            local spare = math.max(0, room - cols - margin)
+            -- (A table too narrow for its columns leaves some out, and its first column takes what is left of them.)
+            local out = rawget(l, "leftOut")
+            if type(out) == "table" and #out > 0 then spare = math.max(spare, field("spare") or 0) end
             local most, parts = Widgets.WideGaps(spans, spare)
             if most > Widgets.GAP_TOL then
                 problems[#problems + 1] = "column gaps over " .. Widgets.NORMAL_GAP .. " px: " .. table.concat(parts, ", ")
             end
+            local d = columns and Widgets.MeasureDrift(columns)
+            if d and (not drift or math.abs(d.measured - d.drawn) > math.abs(drift.measured - drift.drawn)) then drift = d end
         end
+    end
+    if drift then
+        local text = drift.text:gsub("|T.-|t", "#"):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h", "")
+            :gsub("|h", "")
+        problems[#problems + 1] = string.format("measured %.1f px, drawn %.1f px: %s \"%s\"", drift.measured, drift.drawn,
+            drift.title, text:sub(1, 40))
     end
     if #problems > 0 then
         logged[name] = true
@@ -1409,22 +1508,30 @@ function Widgets.GroupArrow(t, open)
     t.open = open and true or false
 end
 
---- How wide a text is on screen (small font), in pixels; nil where the client cannot tell.
---- Tables use it so a column is as wide as its widest text, and no wider.
-local meter, widthOf, cached = nil, {}, 0
-function Widgets.TextWidth(text)
+--- How wide a text is on screen in the font object `font` (default the titles' small font), in pixels; nil where the
+--- client cannot tell. Measured by a font string of that very font object (one per font, on UIParent: every window
+--- has its scale), so what the width authority measures is what the cell of that font draws (SDD 123): a table's
+--- titles in TITLE_FONT, its cells in CELL_FONT, a total's in BOLD_FONT.
+Widgets.TITLE_FONT, Widgets.CELL_FONT, Widgets.BOLD_FONT = "GameFontNormalSmall", "GameFontHighlightSmall", "GameFontHighlight"
+local meters, widthOf, cached = {}, {}, 0
+function Widgets.TextWidth(text, font)
     if text == nil or text == "" then return 0 end
-    local w = widthOf[text]
+    font = font or Widgets.TITLE_FONT
+    local of = widthOf[font]
+    if not of then of = {} widthOf[font] = of end
+    local w = of[text]
     if w ~= nil then return w or nil end
+    local meter = meters[font]
     if not meter then
-        meter = UIParent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        meter = UIParent:CreateFontString(nil, "OVERLAY", font)
         meter:Hide()
+        meters[font] = meter
     end
     meter:SetText(text)
     local measure = meter.GetUnboundedStringWidth or meter.GetStringWidth
     w = tonumber((measure(meter)))
-    if cached > 4000 then widthOf, cached = {}, 0 end
-    widthOf[text], cached = w or false, cached + 1
+    if cached > 6000 then widthOf, cached = {}, 0 of = {} widthOf[font] = of end
+    of[text], cached = w or false, cached + 1
     return w
 end
 
@@ -1441,11 +1548,13 @@ function Widgets.WidestDigits(sample)
 end
 
 --- The widths a table's columns need: the widest of the title and the texts of each column, plus `pad`.
---- @param titles table  the column titles
---- @param count number, cellsOf function(i) -> cells, extra (pixels before the first column's text)
+--- @param titles table  the column titles (measured in TITLE_FONT)
+--- @param count number, cellsOf function(r) -> cells, extra (pixels before the first column's text), font (the font
+---                     object the row's cells are drawn in: CELL_FONT where nil, BOLD_FONT for a total)
 --- @param samples table|nil  per column, the widest text it can hold (digits count as the widest digit),
 ---                           so a column whose values change (a countdown) keeps its width
 --- @return table|nil  widths per column; nil when the client cannot measure text
+--- @return table  per column the widest text measured, in px (the self-check places it in the column's box)
 function Widgets.FitColumns(titles, count, cellsOf, pad, samples)
     local need = {}
     -- (A live column keeps its sample's width while it has rows; an empty table is as wide as its titles.)
@@ -1453,24 +1562,26 @@ function Widgets.FitColumns(titles, count, cellsOf, pad, samples)
     for r = 1, math.min(count, 400) do if cellsOf(r) then any = true break end end
     if not any then samples = nil end
     for i, title in ipairs(titles) do
-        local w = Widgets.TextWidth(title)
+        local w = Widgets.TextWidth(title, Widgets.TITLE_FONT)
         if not w then return nil end
         local sample = samples and samples[i] and Widgets.WidestDigits(samples[i])
-        local s = sample and Widgets.TextWidth(sample) or 0
+        local s = sample and Widgets.TextWidth(sample, Widgets.CELL_FONT) or 0
         if not s then return nil end
         need[i] = math.max(w, s)
     end
     for r = 1, math.min(count, 400) do
-        local cells, extra = cellsOf(r)
+        local cells, extra, font = cellsOf(r)
+        font = font or Widgets.CELL_FONT
         for i = 1, #titles do
-            local w = cells and Widgets.TextWidth(Widgets.CellText(cells[i])) or 0
+            local w = cells and Widgets.TextWidth(Widgets.CellText(cells[i]), font) or 0
             if not w then return nil end
             if i == 1 then w = w + (extra or 0) end
             if w > need[i] then need[i] = w end
         end
     end
-    for i = 1, #titles do need[i] = math.ceil(need[i]) + (pad or Widgets.CELL_PAD) end
-    return need
+    local text = {}
+    for i = 1, #titles do text[i] = need[i] need[i] = math.ceil(need[i]) + (pad or Widgets.CELL_PAD) end
+    return need, text
 end
 
 --- Item icon texture file for an item ID.

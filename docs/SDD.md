@@ -1543,3 +1543,36 @@ kind from all bands (118).
     `reasons`. `spec/ratchet_spec.lua` proves it: a column made 40 px wider fails the check, the baseline does not move
     to it without ALLOW_WORSE. The sim gate keeps its own baseline beside the tool (`ratchet.json` there, local).
 
+
+123. **Widths the client agrees with** (0.4.0, the user, 2026-11-28: the client logged gaps the stand-in and the sim
+    did not: "main/materials ... Material>Price 91", "ledger/purchases/batch ... Gear>Item level 227, Item level>Paid
+    27", "ledger/accuracy ... Material>Units 359"). Measured in the layout dump (02:46, the code then installed): the
+    10 pt measure matched what the client drew (Materials window: Price box 55 for a widest drawn 52.1, Break-even 61
+    for 59.0, Time to sell 63 for 60.3: each ceil + 2). The causes: (1) the self-check read only the rows on screen,
+    the width authority every row of the data, so a column as wide as a row scrolled away read as a hole: the batch's
+    Paid 63 for 50.7 on screen came from its total row at the end; (2) a total was measured in 10 pt times 1.2, the
+    client draws 12 pt 1.17 to 1.20 times as wide ("Gear" 26.1 and 30.9, "Materials" 49.4 and 57.6); (3) the
+    batch's total label ("Batch: 126 pieces: 124 in the mail, 2 waiting, 0 disenchanted", 12 pt) made the Gear column
+    349 px for names of 115; (4) in a view of two tables the narrower one's first column took the other one's width
+    (Accuracy's By material: 359); (5) the main window's Minimize lay 4 px over its close button.
+    - a. One measure per font object (`Widgets.TextWidth(text, font)`: a font string of that very font object per
+       font, `Widgets.TITLE_FONT`, `CELL_FONT`, `BOLD_FONT`, the ones the tables draw with); `FitColumns` measures each
+       row in its own font (a total in BOLD_FONT) and returns the widest text per column (`list.textNeed`,
+       `UI.textNeed`; in the dump, the 5th field of each title).
+    - b. Two or more tables on show (`Widgets.TrimTables` in `FitTables`): each as wide as it needs (`neededWidth`),
+       at the left (its right anchors moved in); a statement keeps the window's width. One table alone spans the
+       window, its first column takes what the controls give (UI.md Tables 2).
+    - c. The self-check (`Widgets.CheckLayout`): a column's span is its texts on show and its widest text of the data
+       in its box; the first column may take what the table's note needs over its columns, and, alone in its view or a
+       statement, what the controls give; a table that leaves columns out, what it got. And every text on show
+       measured as the authority measures it against what the client drew (`Widgets.MeasureDrift`, over 1 px: "measured
+       N px, drawn M px: <title> "<text>""). `scripts/layout.py` reads the same: cells by column, the 5th field, the
+       first gap checked in a view of two or more tables.
+    - d. The batch's total reads "Batch  N pieces" (grey count, as the headings); what is where is in its hover.
+    - e. Gates: the stand-in's widths per font size fitted to the client (`spec/wow.lua`: least squares on 143 texts at
+       10 pt and 30 at 12 pt of the dump, within 2 px each; the old one share for every size was 12 % off);
+       `spec/fixtures/text_widths.lua` (123 measured facts: font object, text, width; game texts only) and
+       `spec/textwidth_spec.lua` (the stand-in, `TextWidth` per font and `FitColumns` against them); `tight_spec`
+       fails on any self-check Log line; `make sim-check` counts the self-check's Log lines in the sim (CHECKSELF):
+       on the code before this change it found 19 (the client's batch line among them), on this one none. The
+       ratchet moved on purpose for the calibrated widths (`reasons` in `spec/ratchet.json`).

@@ -265,7 +265,14 @@ describe("Windows and columns as tight as their content, with typical data (SDD 
 
     it("draws every window and view no wider than its content, with normal gaps, nothing cut", function()
         local found, numbers = {}, {}
+        local before = #ns.db.log
+        for k in pairs(ns.Widgets.layoutLogged) do ns.Widgets.layoutLogged[k] = nil end
         everyWindow(ns, found, numbers)
+        -- The addon's own self-check (Widgets.CheckLayout, the one the client runs) says nothing either.
+        for i = before + 1, #ns.db.log do
+            local line = tostring(ns.db.log[i])
+            if line:find("layout: ", 1, true) then found[#found + 1] = "self-check: " .. line end
+        end
         ratchet.write("layout-typical", numbers)
         assert.is_true(next(numbers) ~= nil)
         assert.are.equal("", table.concat(found, "\n"))

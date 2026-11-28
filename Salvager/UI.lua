@@ -329,7 +329,9 @@ local function widths(view, data)
         samples = {}
         for i, col in ipairs(ns.Materials.COLUMNS) do samples[i] = col.sample end
     end
-    local need = data and W.FitColumns(titles, #data, function(r) return data[r].cells end, nil, samples)
+    local need, text
+    if data then need, text = W.FitColumns(titles, #data, function(r) return data[r].cells end, nil, samples) end
+    UI.textNeed = text   -- (the widest text of each column in the data: the self-check places it in the box)
     local w = {}
     if need then
         for i = 1, #view.cols do w[i] = need[i] end
@@ -756,16 +758,16 @@ end
 --- The main window's own table as the self-check reads it (Widgets.CheckLayout): its columns on screen, its need.
 UI.mainTable = {
     IsShown = function() return f ~= nil and f:IsShown() end,
-    spansOf = function()
-        local view, cols = VIEWS[UI.view], {}
+    columnsOf = function()
+        local view, cols, need = VIEWS[UI.view], {}, UI.textNeed or {}
         for i, h in ipairs(headers) do
             if h:IsShown() and view.cols[i] then
                 local cells = {}
                 for _, row in ipairs(rows) do if row:IsShown() then cells[#cells + 1] = row.cells[i] end end
-                cols[#cols + 1] = { title = view.header[i], header = h, cells = cells }
+                cols[#cols + 1] = { title = view.header[i], header = h, cells = cells, need = need[i] }
             end
         end
-        return W.ColumnSpans(cols)
+        return cols
     end,
 }
 setmetatable(UI.mainTable, { __index = function(_, k)
@@ -1359,7 +1361,8 @@ local function build()
     -- (The checks outside the addon read the table from its frame: the sim gate, the layout dump.)
     list.tableParts = { headers = headers, rows = rows, action = actionHeader }
     for i = 1, MAX_COLS do
-        local h = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local h = list:CreateFontString(nil, "OVERLAY", W.TITLE_FONT)
+        h.measureFont = W.TITLE_FONT
         h:SetHeight(ROW_H)
         h:SetWordWrap(true)   -- (a long title takes two lines)
         headers[i] = h
@@ -1410,7 +1413,8 @@ local function build()
         row.icon:SetPoint("LEFT", row, "LEFT", 4, 0)
         row.cells = {}
         for i = 1, MAX_COLS do
-            local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            local fs = row:CreateFontString(nil, "OVERLAY", W.CELL_FONT)
+            fs.measureFont = W.CELL_FONT
             fs:SetHeight(ROW_H)
             fs:SetWordWrap(false)
             if i == 1 then fs.canCut = true end   -- (the label gives way on a narrow screen: "...", the name on hover)
@@ -1571,7 +1575,8 @@ local function build()
     local mini = CreateFrame("Button", nil, f)
     mini:SetSize(24, 24)
     local close = f.CloseButton
-    if type(close) == "table" then mini:SetPoint("RIGHT", close, "LEFT", 4, 0)
+    -- (Right next to it, not over it: 4 px over the close button in the client's layout dump, 0.4.0.)
+    if type(close) == "table" then mini:SetPoint("RIGHT", close, "LEFT", 0, 0)
     else mini:SetPoint("TOPRIGHT", f, "TOPRIGHT", -24, 0) end
     local atlas = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo("RedButton-Condense")
     if atlas and mini.SetNormalAtlas then

@@ -1,10 +1,11 @@
 local wow = require("spec.wow")
 
 -- The width of a text as the stand-in measures it: 6 px a character, the color codes left out, an icon 12 px.
-local function shownWidth(text)
+-- (6 px a character; in the totals' 12 pt font, BOLD_FONT, 7.)
+local function shownWidth(text, font)
     if not text then return 0 end
     local plain = text:gsub("|T.-|t", "\1\1"):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
-    return #plain * 6
+    return #plain * (font == "GameFontHighlight" and 7 or 6)
 end
 
 describe("Salvager in a simulated client", function()
@@ -539,7 +540,8 @@ describe("Salvager in a simulated client", function()
         assert.are.same({ 7004, ns.Money(300) }, { rows[2].itemID, rows[2].cells[3] })
         assert.is_truthy(rows[2].cells[6]:find("in the mail", 1, true))
         assert.is_truthy(rows[3].cells[1]:find("^Not disenchanted"))
-        assert.is_truthy(rows[7].cells[1]:find("3 pieces: 1 in the mail, 1 waiting, 1 disenchanted", 1, true))
+        assert.is_truthy(rows[7].cells[1]:find("^Batch.-3 pieces"))
+        assert.is_truthy(rows[7].tip[2]:find("3 pieces: 1 in the mail, 1 waiting, 1 disenchanted", 1, true))
         assert.are.same({ ns.Money(2300), ns.Money(3100) }, { rows[7].cells[3], rows[7].cells[4] })   -- all three
         -- Picked up: it moves to Not disenchanted (the Disenchant panel never listed it while it was in the mail).
         assert.are.equal(0, #ns.DisenchantPanel.Pieces())
@@ -548,7 +550,7 @@ describe("Salvager in a simulated client", function()
         rows = W.BatchRows()
         assert.is_truthy(rows[1].cells[1]:find("^Not disenchanted"))
         assert.is_truthy(rows[1].cells[1]:find("2 pieces", 1, true))
-        assert.is_truthy(rows[#rows].cells[1]:find("3 pieces: 0 in the mail, 2 waiting, 1 disenchanted", 1, true))
+        assert.is_truthy(rows[#rows].tip[2]:find("3 pieces: 0 in the mail, 2 waiting, 1 disenchanted", 1, true))
         env.bags[7004] = 0
         W.Refresh()
         assert.are.equal("Current batch (2)", W.purchaseTabs.batch:GetText())
@@ -568,7 +570,7 @@ describe("Salvager in a simulated client", function()
         assert.are.equal(now, de[11])
         local total = rows[5]
         assert.is_true(total.bold and total.rule == "total")
-        assert.is_truthy(total.cells[1]:find("2 pieces: 0 in the mail, 1 waiting, 1 disenchanted", 1, true))
+        assert.is_truthy(total.tip[2]:find("2 pieces: 0 in the mail, 1 waiting, 1 disenchanted", 1, true))
         assert.are.same({ ns.Money(2000), ns.Money(2700), ns.Money(1600), "2 units", now },
             { total.cells[3], total.cells[4], total.cells[7], total.cells[10], total.cells[11] })
         assert.is_truthy(total.cells[5]:find(ns.Money(700), 1, true))           -- Expected profit of the batch
@@ -2997,7 +2999,7 @@ describe("Sessions and the statement in a simulated client", function()
         local want = shownWidth("Amount")   -- (a total's texts are in the larger font: 12 pt against 10)
         for _, r in ipairs(rows) do
             local cell = ns.Widgets.CellText(r.cells[2])   -- (money in short: gold and silver, SDD 120)
-            want = math.max(want, r.bold and (math.ceil(shownWidth(cell) * 1.2)) or shownWidth(cell))
+            want = math.max(want, shownWidth(cell, r.bold and "GameFontHighlight" or nil))
         end
         local right = 860 - 18 - 4          -- the table's right: its width, less the scroll bar and the inset
         local x2 = list.headers[2].points[1][4]

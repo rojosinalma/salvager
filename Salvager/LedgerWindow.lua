@@ -625,10 +625,12 @@ function Window.BatchRows()
     end
     -- The batch's totals, the last row (UI.md Tables 13).
     local all = { n = m.n + w.n, paid = m.paid + w.paid, ev = m.ev + w.ev }
+    -- (Its label as short as the headings' (the count, grey): what is where is in its hover. The whole split in the
+    -- label made the Gear column 371 px wide for names of 110, 0.4.0.)
+    local split = pieces(all.n + d.n) .. ": " .. m.n .. " in the mail, " .. w.n .. " waiting, " .. d.n .. " disenchanted."
     rows[#rows + 1] = { bold = true, rule = "total",
-        cells = Window.BatchTotals("Batch: " .. pieces(all.n + d.n) .. ": " .. m.n .. " in the mail, " .. w.n
-            .. " waiting, " .. d.n .. " disenchanted", all, d),
-        tip = { "The batch", "Paid, Avg value and the average profit: every piece of the batch, the ones in the mail "
+        cells = Window.BatchTotals("Batch" .. GREY .. "  " .. pieces(all.n + d.n) .. "|r", all, d),
+        tip = { "The batch", split, "Paid, Avg value and the average profit: every piece of the batch, the ones in the mail "
             .. "too (sums of averages: "
             .. "averages too). Disenchant value, DV/EV % and Profit so far: the pieces disenchanted so far, against their "
             .. "average value. "

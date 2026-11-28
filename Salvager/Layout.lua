@@ -203,11 +203,16 @@ local function listInfo(list)
     local shownRows = 0
     for _, row in ipairs(list.rows) do if call(row, "IsShown") then shownRows = shownRows + 1 end end
     info.rowsShown = shownRows
+    -- Each title: its text, shown, its box, cut, and the widest text of its column in the data as the width authority
+    -- measured it (list.textNeed, SDD 123: layout.py places it in the box, as the self-check does).
+    local need = type(rawget(list, "textNeed")) == "table" and list.textNeed or {}
     for i, h in ipairs(list.headers) do
         local shown = call(h, "IsShown")
         info.headers[i] = (shown and call(h, "GetText") or cut(call(h, "GetText"))) .. "\t" .. (shown and "S" or "-")
             .. "\t" .. num(call(h, "GetWidth")) .. "\t" .. (call(h, "IsTruncated") and "T" or "-")
+            .. "\t" .. (need[i] and num(need[i]) or "-")
     end
+    info.columnsW = num(rawget(list, "columnsWidth"))
     if call(list, "IsVisible") then info.rows = listRows(list) end
     return info
 end

@@ -280,7 +280,7 @@ local function spansOf(columns, right)
             if xr then lo, hi = math.min(lo or xr.l, xr.l), math.max(hi or xr.r, xr.r) end
         end
         if lo then out[#out + 1] = { title = tostring(rawget(c.header, "text") or "?"):sub(1, 24), l = lo, r = hi,
-            sep = c.sep, action = c.action } end
+            sep = c.sep, action = c.action, live = c.live } end
     end
     return { cols = out, right = right }
 end
@@ -326,7 +326,8 @@ local function tablesOf(win, ns)
                             end
                         end
                     end
-                    cols[#cols + 1] = { header = h, cells = cells, controls = controls, texts = texts }
+                    cols[#cols + 1] = { header = h, cells = cells, controls = controls, texts = texts,
+                        live = obj.columns[i].sample ~= nil }
                 end
             end
             local action = rawget(obj, "actionTitle")
@@ -354,7 +355,9 @@ local function tablesOf(win, ns)
                 if h:IsShown() and hasText(h) then
                     local cells = {}
                     for _, row in ipairs(ns.UI.rows) do if row:IsVisible() then cells[#cells + 1] = row.cells[i] end end
-                    cols[#cols + 1] = { header = h, cells = cells }
+                    -- (The Materials tab's live column, Age: its sample's width.)
+                    local mc = ns.UI.view == "materials" and ns.Materials.COLUMNS[i]
+                    cols[#cols + 1] = { header = h, cells = cells, live = mc and mc.sample ~= nil or nil }
                 end
             end
             local buttons = {}
@@ -464,7 +467,7 @@ function M.measure(win, ns)
         for i = 2, #c do
             local g = c[i].l - c[i - 1].r
             t.gaps[i - 1] = { from = c[i - 1].title, to = c[i].title, gap = g, sep = c[i].sep, action = c[i].action,
-                first = i == 2 }
+                first = i == 2, live = c[i].live or c[i - 1].live }
             local allowed = M.NORMAL + M.TOL + (c[i].sep and M.SEP or 0) + (c[i].action and 50 or 0)
             excess = excess + math.max(0, g - allowed)
         end
@@ -501,7 +504,8 @@ function M.badGaps(m)
     local out, most = {}, 0
     for _, t in ipairs(m.tables) do
         for _, g in ipairs(t.gaps or {}) do
-            if not g.action then
+            -- (A live column keeps its widest possible value's width, UI.md Tables 2: the gaps at its sides wider.)
+            if not g.action and not g.live then
                 local normal = M.NORMAL + (g.sep and M.SEP or 0)
                 most = math.max(most, g.gap)
                 if g.gap < normal - M.TOL - EPS or (not g.first and g.gap > normal + M.TOL + EPS) then

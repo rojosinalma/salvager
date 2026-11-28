@@ -655,36 +655,60 @@ def tight_problems(name, win):
     by_key = {r["key"]: r for r in regions}
     wx, ww = float(win["x"]), float(win["w"])
     rows = []   # (what, slack)
-    for key, info in (win.get("lists") or {}).items():
-        lr = by_key.get(key)
-        if lr is None or "V" not in lr["flags"] or not lr["rect"]:
-            continue
-        ll, lb, lw, lh = lr["rect"]
+    shown_lists = [(key, info) for key, info in (win.get("lists") or {}).items()
+                   if by_key.get(key) and "V" in by_key[key]["flags"] and by_key[key]["rect"]]
+    # Two or more tables on show: each as wide as it needs, at the left (UI.md Tables 2, SDD 123); its first column
+    # takes nothing over its text (a statement spans the window: its label column takes the rest).
+    multi = len(shown_lists) > 1
+    for key, info in shown_lists:
+        ll, lb, lw, lh = by_key[key]["rect"]
         top = lb + lh
         heads = [r for r in regions if r["kind"] == "FontString" and r["key"].startswith(key + ".")
                  and r["key"].count(".") == key.count(".") + 1 and "V" in r["flags"] and r["rect"] and r["text"]
                  and abs(r["rect"][1] + r["rect"][3] - top) < 3]
         heads.sort(key=lambda r: r["rect"][0])
-        cols = []
-        for h in heads:
-            hl, _, hw, _ = h["rect"]
+        # The titles of the dump's record, in column order (index = the cells' index), each with the widest text of
+        # its column in the data as the addon measured it (5th field; older dumps have none).
+        titles = [h.split("\t") for h in items(info.get("headers"))]
+        cols, used = [], set()
+        for i, t in enumerate(titles):
+            if len(t) < 2 or t[1] != "S" or not t[0]:
+                continue
+            h = next((x for x in heads if id(x) not in used and plain(x["text"]) == plain(t[0])), None)
+            if h is None:
+                continue
+            used.add(id(h))
             lo, hi = text_span(h)
+            need = float(t[4]) if len(t) > 4 and t[4] not in ("-", "?", "") else None
+            if need:
+                a2, b2 = text_span(dict(h, sw=need))
+                lo, hi = min(lo, a2), max(hi, b2)
             for row in items(info.get("rows")):
-                for c in items(row.get("cells")):
-                    c = cell(c)
-                    if "S" in c["flags"] and c["text"] and c["rect"] and abs(c["rect"][0] - hl) < 1.5 \
-                            and abs(c["rect"][2] - hw) < 1.5:
-                        a, b = text_span(c)
-                        lo, hi = min(lo, a), max(hi, b)
-            cols.append((plain(h["text"])[:20], lo, hi, abs(hw - 64) < 0.5 and h.get("j") == "C"))
-        excess, first = 0, None
+                cs = items(row.get("cells"))
+                if i < len(cs):
+                    c = cell(cs[i])
+                    if "S" in c["flags"] and c["text"] and c["rect"]:
+                        a2, b2 = text_span(c)
+                        lo, hi = min(lo, a2), max(hi, b2)
+            cols.append((plain(h["text"])[:20], lo, hi, False))
+        # The buttons' column: a button under a centred title, 64 wide.
+        for h in heads:
+            if id(h) not in used and abs(h["rect"][2] - 64) < 0.5 and h.get("j") == "C":
+                cols.append((plain(h["text"])[:20], h["rect"][0], h["rect"][0] + h["rect"][2], True))
+        cols.sort(key=lambda c: c[1])
+        statement = info.get("kind") == "statement"
+        # (What the table's note needs over its columns: room its first column may take.)
+        needed, colsw = info.get("needed"), info.get("columnsW")
+        note = max(0.0, float(needed) - float(colsw)) if needed not in (None, "?") and colsw not in (None, "?") else 0
+        excess = 0
         for i in range(1, len(cols)):
             gap = cols[i][1] - cols[i - 1][2]
             if cols[i][3]:
                 continue   # the buttons' column: a button under a centred title
-            if i == 1:
-                first = gap
-            elif gap > NORMAL + TOL + 2 or gap < NORMAL - TOL - 2:
+            allowed = NORMAL + TOL + 2 + (note if i == 1 else 0)
+            if (i > 1 or (multi and not statement)) and gap > allowed:
+                out.append(f"column gap {gap:.0f} px (normal {NORMAL}): {key}: {cols[i - 1][0]} > {cols[i][0]}")
+            elif gap < NORMAL - TOL - 2:
                 out.append(f"column gap {gap:.0f} px (normal {NORMAL}): {key}: {cols[i - 1][0]} > {cols[i][0]}")
             excess += max(0, gap - NORMAL - TOL)
         tail = max(0, (ll + lw - 22) - cols[-1][2] - 4) if cols else 0

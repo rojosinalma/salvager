@@ -175,7 +175,7 @@ describe("The stand-in's text widths (spec/wow.lua)", function()
         -- Color and link codes take no room; an icon is as wide as its size.
         assert.are.equal(wow.textWidth("Dust", 10), wow.textWidth("|cff1eff00|Hitem:1|hDust|h|r", 10))
         assert.are.equal(wow.textWidth("1", 10) + 16, wow.textWidth("1|TInterface\\Icon:16:16:0:0|t", 10))
-        assert.are.equal(wow.textWidth("1", 10) + 10, wow.textWidth("1|TInterface\\Icon:0|t", 10))
+        assert.is_true(math.abs(wow.textWidth("1", 10) + 10.8 - wow.textWidth("1|TInterface\\Icon:0|t", 10)) < 1e-6)   -- (8 % over)
     end)
 end)
 
@@ -451,7 +451,12 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
             -- The bags table stays at the top; the results table ends over the footer; both reach the right edge.
             assert.is_true(math.abs((f.t - b.t) - (last and last.top or (f.t - b.t))) < EPS, where .. ": the top table moved")
             assert.is_true(math.abs(r.b - f.b - 44) < EPS, where .. ": the results table's bottom")
-            assert.is_true(math.abs(f.r - b.r - 12) < EPS and math.abs(f.r - r.r - 12) < EPS, where .. ": the right edges")
+            -- (Two tables: each as wide as it needs, at the left, up to the window's right edge; UI.md Tables 2.)
+            for _, t in ipairs({ { P.bags, b }, { P.results, r } }) do
+                local need = rawget(t[1], "neededWidth")
+                local want = math.min(f.r - 12, f.l + 12 + math.ceil(need or 0))
+                assert.is_true(math.abs(t[2].r - want) < 1 + EPS, where .. ": the right edges " .. t[2].r .. " " .. want)
+            end
             -- Taller window, taller (or as tall) tables; lower, lower.
             if last then
                 local up = h >= last.h

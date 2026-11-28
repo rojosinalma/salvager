@@ -2,171 +2,171 @@
   "layout-empty": {
     "breakdown/-/default": {
       "cut": 0,
-      "gap": 18,
+      "gap": 17,
       "overlap": 0,
-      "width": 516
+      "width": 499
     },
     "breakdown/-/smallest": {
       "cut": 0,
       "gap": 0,
       "overlap": 0,
-      "width": 257
+      "width": 246
     },
     "disenchant/-/default": {
       "cut": 0,
-      "gap": 116,
+      "gap": 93,
       "overlap": 0,
-      "width": 496
+      "width": 476
     },
     "disenchant/-/smallest": {
       "cut": 0,
-      "gap": 112,
+      "gap": 93,
       "overlap": 0,
-      "width": 492
+      "width": 455
     },
     "ledger/Accuracy/default": {
       "cut": 0,
-      "gap": 392,
+      "gap": 17,
       "overlap": 0,
-      "width": 1019
+      "width": 962
     },
     "ledger/Accuracy/smallest": {
       "cut": 0,
-      "gap": 392,
+      "gap": 17,
       "overlap": 0,
-      "width": 1019
+      "width": 962
     },
     "ledger/Purchases/All purchases/default": {
       "cut": 0,
-      "gap": 280,
+      "gap": 284,
       "overlap": 0,
-      "width": 674
+      "width": 667
     },
     "ledger/Purchases/All purchases/smallest": {
       "cut": 0,
-      "gap": 280,
+      "gap": 284,
       "overlap": 0,
-      "width": 674
+      "width": 667
     },
     "ledger/Purchases/Current batch/default": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 978
+      "width": 930
     },
     "ledger/Purchases/Current batch/smallest": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 978
+      "width": 930
     },
     "ledger/Purchases/Not picked up/default": {
       "cut": 0,
-      "gap": 327,
+      "gap": 296,
       "overlap": 0,
-      "width": 618
+      "width": 581
     },
     "ledger/Purchases/Not picked up/smallest": {
       "cut": 0,
-      "gap": 327,
+      "gap": 296,
       "overlap": 0,
-      "width": 618
+      "width": 581
     },
     "ledger/Purchases/default": {
       "cut": 0,
-      "gap": 280,
+      "gap": 284,
       "overlap": 0,
-      "width": 674
+      "width": 667
     },
     "ledger/Purchases/smallest": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 978
+      "width": 930
     },
     "ledger/Sales/Competition/default": {
       "cut": 0,
-      "gap": 32,
+      "gap": 17,
       "overlap": 0,
-      "width": 715
+      "width": 678
     },
     "ledger/Sales/Competition/smallest": {
       "cut": 0,
-      "gap": 32,
+      "gap": 17,
       "overlap": 0,
-      "width": 715
+      "width": 678
     },
     "ledger/Sales/History/default": {
       "cut": 0,
-      "gap": 17,
+      "gap": 18,
       "overlap": 0,
-      "width": 437
+      "width": 430
     },
     "ledger/Sales/History/smallest": {
       "cut": 0,
-      "gap": 17,
+      "gap": 18,
       "overlap": 0,
-      "width": 437
+      "width": 430
     },
     "ledger/Sales/Open and sold/default": {
       "cut": 0,
-      "gap": 33,
+      "gap": 17,
       "overlap": 0,
-      "width": 430
+      "width": 417
     },
     "ledger/Sales/Open and sold/smallest": {
       "cut": 0,
-      "gap": 33,
+      "gap": 17,
       "overlap": 0,
-      "width": 430
+      "width": 417
     },
     "ledger/Sales/default": {
       "cut": 0,
-      "gap": 33,
+      "gap": 17,
       "overlap": 0,
-      "width": 430
+      "width": 417
     },
     "ledger/Sales/smallest": {
       "cut": 0,
-      "gap": 32,
+      "gap": 17,
       "overlap": 0,
-      "width": 715
+      "width": 678
     },
     "limits/-/default": {
       "cut": 0,
-      "gap": 16,
+      "gap": 17,
       "overlap": 0,
-      "width": 773
+      "width": 779
     },
     "limits/-/smallest": {
       "cut": 0,
-      "gap": 16,
+      "gap": 17,
       "overlap": 0,
-      "width": 773
+      "width": 779
     },
     "main/Gear/default": {
       "cut": 0,
-      "gap": 134,
+      "gap": 155,
       "overlap": 0,
-      "width": 803
+      "width": 802
     },
     "main/Gear/smallest": {
       "cut": 0,
-      "gap": 134,
+      "gap": 155,
       "overlap": 0,
-      "width": 803
+      "width": 802
     },
     "main/Materials/default": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 884
+      "width": 855
     },
     "main/Materials/smallest": {
       "cut": 0,
-      "gap": 22,
+      "gap": 19,
       "overlap": 0,
-      "width": 884
+      "width": 855
     },
     "market/Disenchant value/default": {
       "cut": 0,
@@ -232,25 +232,25 @@
       "cut": 0,
       "gap": 19,
       "overlap": 0,
-      "width": 886
+      "width": 857
     },
     "materials/-/smallest": {
       "cut": 0,
       "gap": 19,
       "overlap": 0,
-      "width": 886
+      "width": 857
     },
     "odds/-/default": {
       "cut": 0,
       "gap": 28,
       "overlap": 0,
-      "width": 1168
+      "width": 1118
     },
     "odds/-/smallest": {
       "cut": 0,
       "gap": 28,
       "overlap": 0,
-      "width": 613
+      "width": 588
     },
     "post/-/default": {
       "cut": 0,
@@ -266,249 +266,249 @@
     },
     "reports/Competition/default": {
       "cut": 0,
-      "gap": 480,
+      "gap": 474,
       "overlap": 0,
-      "width": 918
+      "width": 888
     },
     "reports/Competition/smallest": {
       "cut": 0,
-      "gap": 302,
+      "gap": 270,
       "overlap": 0,
-      "width": 740
+      "width": 684
     },
     "reports/Gear/Bands/default": {
       "cut": 0,
-      "gap": 197,
+      "gap": 204,
       "overlap": 0,
-      "width": 837
+      "width": 823
     },
     "reports/Gear/Bands/smallest": {
       "cut": 0,
-      "gap": 197,
+      "gap": 204,
       "overlap": 0,
-      "width": 837
+      "width": 823
     },
     "reports/Gear/History/default": {
       "cut": 0,
       "gap": 417,
       "overlap": 0,
-      "width": 837
+      "width": 823
     },
     "reports/Gear/History/smallest": {
       "cut": 0,
       "gap": 417,
       "overlap": 0,
-      "width": 837
+      "width": 823
     },
     "reports/Gear/default": {
       "cut": 0,
-      "gap": 197,
+      "gap": 204,
       "overlap": 0,
-      "width": 837
+      "width": 823
     },
     "reports/Gear/smallest": {
       "cut": 0,
       "gap": 417,
       "overlap": 0,
-      "width": 837
+      "width": 823
     },
     "reports/Gold/All gold changes/default": {
       "cut": 0,
-      "gap": 166,
+      "gap": 136,
       "overlap": 0,
-      "width": 435
+      "width": 404
     },
     "reports/Gold/All gold changes/smallest": {
       "cut": 0,
-      "gap": 166,
+      "gap": 136,
       "overlap": 0,
-      "width": 435
+      "width": 404
     },
     "reports/Gold/Statement/default": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 465
+      "width": 443
     },
     "reports/Gold/Statement/smallest": {
       "cut": 0,
       "gap": 0,
       "overlap": 0,
-      "width": 399
+      "width": 402
     },
     "reports/Gold/default": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 465
+      "width": 443
     },
     "reports/Gold/smallest": {
       "cut": 0,
-      "gap": 166,
+      "gap": 136,
       "overlap": 0,
-      "width": 435
+      "width": 404
     },
     "reports/Materials/default": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 588
+      "width": 570
     },
     "reports/Materials/smallest": {
       "cut": 0,
-      "gap": 67,
+      "gap": 79,
       "overlap": 0,
-      "width": 399
+      "width": 402
     },
     "reports/Odds/default": {
       "cut": 0,
       "gap": 28,
       "overlap": 0,
-      "width": 1168
+      "width": 1118
     },
     "reports/Odds/smallest": {
       "cut": 0,
       "gap": 28,
       "overlap": 0,
-      "width": 613
+      "width": 588
     }
   },
   "layout-extreme": {
     " / Gear/default": {
       "cut": 0,
-      "width": 1113
+      "width": 1088
     },
     " / Gear/smallest": {
       "cut": 0,
-      "width": 1113
+      "width": 1088
     },
     " / Materials/default": {
       "cut": 0,
-      "width": 968
+      "width": 962
     },
     " / Materials/smallest": {
       "cut": 0,
-      "width": 968
+      "width": 962
     },
     "/default": {
       "cut": 0,
-      "width": 968
+      "width": 962
     },
     "/smallest": {
       "cut": 0,
-      "width": 1113
+      "width": 1088
     },
     "Breakdown/default": {
       "cut": 0,
-      "width": 768
+      "width": 756
     },
     "Breakdown/smallest": {
       "cut": 0,
-      "width": 663
+      "width": 625
     },
     "Disenchant/default": {
       "cut": 0,
-      "width": 1102
+      "width": 1064
     },
     "Disenchant/smallest": {
       "cut": 0,
-      "width": 439
+      "width": 408
     },
     "Gear/default": {
       "cut": 0,
-      "width": 749
+      "width": 745
     },
     "Gear/smallest": {
       "cut": 0,
-      "width": 749
+      "width": 745
     },
     "Ledger / Accuracy/default": {
       "cut": 0,
-      "width": 1143
+      "width": 1111
     },
     "Ledger / Accuracy/smallest": {
       "cut": 0,
-      "width": 1143
+      "width": 1111
     },
     "Ledger / Purchases / All purchases/default": {
       "cut": 0,
-      "width": 1037
+      "width": 1025
     },
     "Ledger / Purchases / All purchases/smallest": {
       "cut": 0,
-      "width": 1037
+      "width": 1025
     },
     "Ledger / Purchases / Current batch (588)/default": {
       "cut": 0,
-      "width": 1407
+      "width": 1361
     },
     "Ledger / Purchases / Current batch (588)/smallest": {
       "cut": 0,
-      "width": 1407
+      "width": 1361
     },
     "Ledger / Purchases / Not picked up (12)/default": {
       "cut": 0,
-      "width": 727
+      "width": 696
     },
     "Ledger / Purchases / Not picked up (12)/smallest": {
       "cut": 0,
-      "width": 727
+      "width": 696
     },
     "Ledger / Purchases/default": {
       "cut": 0,
-      "width": 1407
+      "width": 1361
     },
     "Ledger / Purchases/smallest": {
       "cut": 0,
-      "width": 1037
+      "width": 1025
     },
     "Ledger / Sales / Competition/default": {
       "cut": 0,
-      "width": 1255
+      "width": 1201
     },
     "Ledger / Sales / Competition/smallest": {
       "cut": 0,
-      "width": 1255
+      "width": 1201
     },
     "Ledger / Sales / History/default": {
       "cut": 0,
-      "width": 727
+      "width": 696
     },
     "Ledger / Sales / History/smallest": {
       "cut": 0,
-      "width": 727
+      "width": 696
     },
     "Ledger / Sales / Open and sold/default": {
       "cut": 0,
-      "width": 866
+      "width": 877
     },
     "Ledger / Sales / Open and sold/smallest": {
       "cut": 0,
-      "width": 866
+      "width": 877
     },
     "Ledger / Sales/default": {
       "cut": 0,
-      "width": 1255
+      "width": 1201
     },
     "Ledger / Sales/smallest": {
       "cut": 0,
-      "width": 866
+      "width": 877
     },
     "Ledger/default": {
       "cut": 0,
-      "width": 1143
+      "width": 1111
     },
     "Ledger/smallest": {
       "cut": 0,
-      "width": 866
+      "width": 877
     },
     "Limits/default": {
       "cut": 0,
-      "width": 773
+      "width": 779
     },
     "Limits/smallest": {
       "cut": 0,
-      "width": 773
+      "width": 779
     },
     "Log/default": {
       "cut": 0,
@@ -520,43 +520,43 @@
     },
     "Market / Disenchant value/default": {
       "cut": 0,
-      "width": 821
+      "width": 820
     },
     "Market / Disenchant value/smallest": {
       "cut": 0,
-      "width": 821
+      "width": 820
     },
     "Market / Essences/default": {
       "cut": 0,
-      "width": 846
+      "width": 849
     },
     "Market / Essences/smallest": {
       "cut": 0,
-      "width": 846
+      "width": 849
     },
     "Market / Materials/default": {
       "cut": 0,
-      "width": 854
+      "width": 847
     },
     "Market / Materials/smallest": {
       "cut": 0,
-      "width": 854
+      "width": 847
     },
     "Market / Profit/default": {
       "cut": 0,
-      "width": 765
+      "width": 770
     },
     "Market / Profit/smallest": {
       "cut": 0,
-      "width": 765
+      "width": 770
     },
     "Market / Time of day/default": {
       "cut": 0,
-      "width": 854
+      "width": 847
     },
     "Market / Time of day/smallest": {
       "cut": 0,
-      "width": 854
+      "width": 847
     },
     "Market/default": {
       "cut": 0,
@@ -564,15 +564,15 @@
     },
     "Market/smallest": {
       "cut": 0,
-      "width": 854
+      "width": 847
     },
     "Materials/default": {
       "cut": 0,
-      "width": 957
+      "width": 940
     },
     "Materials/smallest": {
       "cut": 0,
-      "width": 957
+      "width": 940
     },
     "Mini/default": {
       "cut": 0,
@@ -584,11 +584,11 @@
     },
     "Odds/default": {
       "cut": 0,
-      "width": 1184
+      "width": 1142
     },
     "Odds/smallest": {
       "cut": 0,
-      "width": 621
+      "width": 600
     },
     "Options/default": {
       "cut": 0,
@@ -600,281 +600,281 @@
     },
     "Post/default": {
       "cut": 0,
-      "width": 782
+      "width": 741
     },
     "Post/smallest": {
       "cut": 0,
-      "width": 782
+      "width": 741
     },
     "Reports / Competition/default": {
       "cut": 0,
-      "width": 1447
+      "width": 1393
     },
     "Reports / Competition/smallest": {
       "cut": 0,
-      "width": 614
+      "width": 605
     },
     "Reports / Gear / Bands/default": {
       "cut": 0,
-      "width": 997
+      "width": 1021
     },
     "Reports / Gear / Bands/smallest": {
       "cut": 0,
-      "width": 837
+      "width": 823
     },
     "Reports / Gear / History/default": {
       "cut": 0,
-      "width": 837
+      "width": 823
     },
     "Reports / Gear / History/smallest": {
       "cut": 0,
-      "width": 837
+      "width": 823
     },
     "Reports / Gear/default": {
       "cut": 0,
-      "width": 837
+      "width": 823
     },
     "Reports / Gear/smallest": {
       "cut": 0,
-      "width": 837
+      "width": 823
     },
     "Reports / Gold / All gold changes/default": {
       "cut": 0,
-      "width": 435
+      "width": 404
     },
     "Reports / Gold / All gold changes/smallest": {
       "cut": 0,
-      "width": 435
+      "width": 404
     },
     "Reports / Gold / Statement/default": {
       "cut": 0,
-      "width": 547
+      "width": 526
     },
     "Reports / Gold / Statement/smallest": {
       "cut": 0,
-      "width": 399
+      "width": 402
     },
     "Reports / Gold/default": {
       "cut": 0,
-      "width": 435
+      "width": 404
     },
     "Reports / Gold/smallest": {
       "cut": 0,
-      "width": 399
+      "width": 402
     },
     "Reports / Materials/default": {
       "cut": 0,
-      "width": 976
+      "width": 978
     },
     "Reports / Materials/smallest": {
       "cut": 0,
-      "width": 399
+      "width": 402
     },
     "Reports / Odds/default": {
       "cut": 0,
-      "width": 1184
+      "width": 1142
     },
     "Reports / Odds/smallest": {
       "cut": 0,
-      "width": 621
+      "width": 600
     },
     "Reports/default": {
       "cut": 0,
-      "width": 1184
+      "width": 1142
     },
     "Reports/smallest": {
       "cut": 0,
-      "width": 399
+      "width": 402
     },
     "Stand/default": {
       "cut": 0,
-      "width": 415
+      "width": 394
     },
     "Stand/smallest": {
       "cut": 0,
-      "width": 415
+      "width": 394
     }
   },
   "layout-typical": {
     "breakdown/-/default": {
       "cut": 0,
-      "gap": 31,
+      "gap": 17,
       "overlap": 0,
-      "width": 603
+      "width": 585
     },
     "breakdown/-/smallest": {
       "cut": 0,
-      "gap": 28,
+      "gap": 33,
       "overlap": 0,
-      "width": 600
+      "width": 550
     },
     "disenchant/-/default": {
       "cut": 0,
-      "gap": 246,
+      "gap": 17,
       "overlap": 0,
-      "width": 800
+      "width": 769
     },
     "disenchant/-/smallest": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 439
+      "width": 408
     },
     "gear/-/default": {
       "cut": 0,
-      "gap": 325,
+      "gap": 305,
       "overlap": 0,
-      "width": 625
+      "width": 597
     },
     "gear/-/smallest": {
       "cut": 0,
-      "gap": 325,
+      "gap": 305,
       "overlap": 0,
-      "width": 625
+      "width": 597
     },
     "ledger/Accuracy/default": {
       "cut": 0,
-      "gap": 381,
+      "gap": 17,
       "overlap": 0,
-      "width": 1118
+      "width": 1069
     },
     "ledger/Accuracy/smallest": {
       "cut": 0,
-      "gap": 381,
+      "gap": 17,
       "overlap": 0,
-      "width": 1118
+      "width": 1069
     },
     "ledger/Purchases/All purchases/default": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 785
+      "width": 768
     },
     "ledger/Purchases/All purchases/smallest": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 785
+      "width": 768
     },
     "ledger/Purchases/Current batch/default": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 1526
+      "width": 1313
     },
     "ledger/Purchases/Current batch/smallest": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 1526
+      "width": 1313
     },
     "ledger/Purchases/Not picked up/default": {
       "cut": 0,
-      "gap": 105,
+      "gap": 74,
       "overlap": 0,
-      "width": 629
+      "width": 582
     },
     "ledger/Purchases/Not picked up/smallest": {
       "cut": 0,
-      "gap": 105,
+      "gap": 74,
       "overlap": 0,
-      "width": 629
+      "width": 582
     },
     "ledger/Purchases/default": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 785
+      "width": 768
     },
     "ledger/Purchases/smallest": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 1526
+      "width": 1313
     },
     "ledger/Sales/Competition/default": {
       "cut": 0,
-      "gap": 18,
+      "gap": 17,
       "overlap": 0,
-      "width": 933
+      "width": 888
     },
     "ledger/Sales/Competition/smallest": {
       "cut": 0,
-      "gap": 18,
+      "gap": 17,
       "overlap": 0,
-      "width": 933
+      "width": 888
     },
     "ledger/Sales/History/default": {
       "cut": 0,
-      "gap": 209,
+      "gap": 169,
       "overlap": 0,
-      "width": 629
+      "width": 582
     },
     "ledger/Sales/History/smallest": {
       "cut": 0,
-      "gap": 209,
+      "gap": 169,
       "overlap": 0,
-      "width": 629
+      "width": 582
     },
     "ledger/Sales/Open and sold/default": {
       "cut": 0,
-      "gap": 53,
+      "gap": 17,
       "overlap": 0,
       "width": 700
     },
     "ledger/Sales/Open and sold/smallest": {
       "cut": 0,
-      "gap": 53,
+      "gap": 17,
       "overlap": 0,
       "width": 700
     },
     "ledger/Sales/default": {
       "cut": 0,
-      "gap": 53,
+      "gap": 17,
       "overlap": 0,
       "width": 700
     },
     "ledger/Sales/smallest": {
       "cut": 0,
-      "gap": 18,
+      "gap": 17,
       "overlap": 0,
-      "width": 933
+      "width": 888
     },
     "limits/-/default": {
       "cut": 0,
-      "gap": 16,
+      "gap": 17,
       "overlap": 0,
-      "width": 773
+      "width": 779
     },
     "limits/-/smallest": {
       "cut": 0,
-      "gap": 16,
+      "gap": 17,
       "overlap": 0,
-      "width": 773
+      "width": 779
     },
     "main/Gear/default": {
       "cut": 0,
-      "gap": 134,
+      "gap": 146,
       "overlap": 0,
-      "width": 930
+      "width": 926
     },
     "main/Gear/smallest": {
       "cut": 0,
-      "gap": 134,
+      "gap": 146,
       "overlap": 0,
-      "width": 930
+      "width": 926
     },
     "main/Materials/default": {
       "cut": 0,
-      "gap": 19,
+      "gap": 31,
       "overlap": 0,
-      "width": 930
+      "width": 926
     },
     "main/Materials/smallest": {
       "cut": 0,
-      "gap": 24,
+      "gap": 33,
       "overlap": 0,
-      "width": 930
+      "width": 926
     },
     "market/Disenchant value/default": {
       "cut": 0,
@@ -886,7 +886,7 @@
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 821
+      "width": 820
     },
     "market/Essences/default": {
       "cut": 0,
@@ -898,7 +898,7 @@
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 808
+      "width": 807
     },
     "market/Materials/default": {
       "cut": 0,
@@ -910,7 +910,7 @@
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 835
+      "width": 827
     },
     "market/Profit/default": {
       "cut": 0,
@@ -922,7 +922,7 @@
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 727
+      "width": 726
     },
     "market/Time of day/default": {
       "cut": 0,
@@ -934,175 +934,175 @@
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 835
+      "width": 827
     },
     "materials/-/default": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 930
+      "width": 913
     },
     "materials/-/smallest": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 930
+      "width": 913
     },
     "odds/-/default": {
       "cut": 0,
       "gap": 28,
       "overlap": 0,
-      "width": 1184
+      "width": 1142
     },
     "odds/-/smallest": {
       "cut": 0,
       "gap": 28,
       "overlap": 0,
-      "width": 621
+      "width": 600
     },
     "post/-/default": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 647
+      "width": 637
     },
     "post/-/smallest": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 647
+      "width": 637
     },
     "reports/Competition/default": {
       "cut": 0,
-      "gap": 665,
+      "gap": 656,
       "overlap": 0,
-      "width": 1157
+      "width": 1112
     },
     "reports/Competition/smallest": {
       "cut": 0,
-      "gap": 127,
+      "gap": 126,
       "overlap": 0,
-      "width": 478
+      "width": 469
     },
     "reports/Gear/Bands/default": {
       "cut": 0,
-      "gap": 55,
+      "gap": 46,
       "overlap": 0,
-      "width": 837
+      "width": 823
     },
     "reports/Gear/Bands/smallest": {
       "cut": 0,
-      "gap": 55,
+      "gap": 46,
       "overlap": 0,
-      "width": 837
+      "width": 823
     },
     "reports/Gear/History/default": {
       "cut": 0,
-      "gap": 203,
+      "gap": 208,
       "overlap": 0,
-      "width": 837
+      "width": 823
     },
     "reports/Gear/History/smallest": {
       "cut": 0,
-      "gap": 203,
+      "gap": 208,
       "overlap": 0,
-      "width": 837
+      "width": 823
     },
     "reports/Gear/default": {
       "cut": 0,
-      "gap": 55,
+      "gap": 46,
       "overlap": 0,
-      "width": 837
+      "width": 823
     },
     "reports/Gear/smallest": {
       "cut": 0,
-      "gap": 203,
+      "gap": 208,
       "overlap": 0,
-      "width": 837
+      "width": 823
     },
     "reports/Gold/All gold changes/default": {
       "cut": 0,
-      "gap": 166,
+      "gap": 136,
       "overlap": 0,
-      "width": 435
+      "width": 404
     },
     "reports/Gold/All gold changes/smallest": {
       "cut": 0,
-      "gap": 166,
+      "gap": 136,
       "overlap": 0,
-      "width": 435
+      "width": 404
     },
     "reports/Gold/Statement/default": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 501
+      "width": 478
     },
     "reports/Gold/Statement/smallest": {
       "cut": 0,
       "gap": 0,
       "overlap": 0,
-      "width": 399
+      "width": 402
     },
     "reports/Gold/default": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 501
+      "width": 478
     },
     "reports/Gold/smallest": {
       "cut": 0,
-      "gap": 166,
+      "gap": 136,
       "overlap": 0,
-      "width": 435
+      "width": 404
     },
     "reports/Materials/default": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 781
+      "width": 764
     },
     "reports/Materials/smallest": {
       "cut": 0,
-      "gap": 16,
+      "gap": 17,
       "overlap": 0,
-      "width": 399
+      "width": 402
     },
     "reports/Odds/default": {
       "cut": 0,
       "gap": 28,
       "overlap": 0,
-      "width": 1184
+      "width": 1142
     },
     "reports/Odds/smallest": {
       "cut": 0,
       "gap": 28,
       "overlap": 0,
-      "width": 621
+      "width": 600
     },
     "stand/-/default": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 366
+      "width": 336
     },
     "stand/-/smallest": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 366
+      "width": 336
     }
   },
   "perf": {
     "disenchant": 25.107,
     "judge per listing (us)": 0.166,
     "ledger/Accuracy": 20.340,
-    "ledger/Purchases": 54.650,
+    "ledger/Purchases": 42.279,
     "ledger/Purchases/All purchases": 51.089,
     "ledger/Purchases/Current batch": 28.709,
     "ledger/Purchases/Not picked up": 15.151,
     "ledger/Sales": 3.204,
-    "ledger/Sales/Competition": 3.284,
+    "ledger/Sales/Competition": 2.598,
     "ledger/Sales/History": 21.253,
     "ledger/Sales/Open and sold": 3.031,
     "limits": 0.526,
@@ -1126,11 +1126,13 @@
     "reports/Odds": 13.900,
     "tick: Ledger Sales countdown": 0.002
   },
-  "reasons": {},
+  "reasons": [
+    "2026-11-28 looser (layout-empty:ledger/Purchases/All purchases/default:gap, layout-empty:ledger/Purchases/All purchases/smallest:gap, layout-empty:ledger/Purchases/default:gap, layout-empty:ledger/Sales/History/default:gap, layout-empty:ledger/Sales/History/smallest:gap, layout-empty:limits/-/default:gap, layout-empty:limits/-/default:width, layout-empty:limits/-/smallest:gap, layout-empty:limits/-/smallest:width, layout-empty:main/Gear/default:gap, layout-empty:main/Gear/smallest:gap, layout-empty:reports/Gear/Bands/default:gap, layout-empty:reports/Gear/Bands/smallest:gap, layout-empty:reports/Gear/default:gap, layout-empty:reports/Gold/Statement/smallest:width, layout-empty:reports/Materials/smallest:gap, layout-empty:reports/Materials/smallest:width, layout-typical:breakdown/-/smallest:gap, layout-typical:limits/-/default:gap, layout-typical:limits/-/default:width, layout-typical:limits/-/smallest:gap, layout-typical:limits/-/smallest:width, layout-typical:main/Gear/default:gap, layout-typical:main/Gear/smallest:gap, layout-typical:main/Materials/default:gap, layout-typical:main/Materials/smallest:gap, layout-typical:reports/Gear/History/default:gap, layout-typical:reports/Gear/History/smallest:gap, layout-typical:reports/Gear/smallest:gap, layout-typical:reports/Gold/Statement/smallest:width, layout-typical:reports/Materials/smallest:gap, layout-typical:reports/Materials/smallest:width): 0.4.0: the stand-in's text widths are calibrated per font size to the client's layout dump of 2026-11-28 (SDD 123: digits wider, capitals narrower than the old one-share model), and a total is measured in its own 12 pt font instead of 10 pt x 1.2: the same layout measures differently, and the client agrees with the new numbers"
+  ],
   "suite": {
     "all": {
       "luacheck": 0,
-      "specs": 337
+      "specs": 341
     }
   }
 }

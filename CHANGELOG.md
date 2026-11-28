@@ -29,6 +29,7 @@ The biggest update since 0.3.113: a new forecast, honest books, and a new interf
 - Windows and columns as tight as what they show: every column as wide as its text, the same small gap between
   columns, a window no wider than its widest table or row of controls, narrower again when a table empties. Amounts
   of 1 gold or more show gold and silver in tables (the copper on hover); "few sales" is a grey value with "*".
+  Where a view has two tables, each is only as wide as its own columns.
 - The Gear list shows Loss chance next to the profit range, before Avg return.
 - Windows resize smoothly, can be dragged partly off the screen (/salv windows reset), and remember their place.
   Search boxes in Reports and Market.

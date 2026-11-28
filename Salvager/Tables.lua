@@ -194,9 +194,12 @@ end
 ---                                                         column set: the columns hidden with the chooser (the
 ---                                                         button at the right end of the titles) are saved under
 ---                                                         it; a list without one has no chooser.
----   cols.statement = true                                 a statement (label and amounts): its totals' rules
----                                                         (every table's first column takes the free width, so
----                                                         the last column ends at the right edge, UI.md Tables 2)
+---   cols.statement = true                                 a statement (label and amounts): its totals' rules;
+---                                                         it keeps its window's width beside other tables (a
+---                                                         table's first column takes the free width, so the last
+---                                                         column ends at the right edge; two or more tables in a
+---                                                         view are each as wide as they need, Widgets.TrimTables,
+---                                                         UI.md Tables 2)
 ---   list.onColumnsChanged = fn                            runs after a change in the chooser (else list:Refresh)
 ---   list:SetSource(count, getRow)                         getRow(i) -> row, only called for rows on screen
 ---   list:Refresh()
@@ -208,7 +211,8 @@ end
 --- row.group = true marks the first row of a group (an item with its materials under it): it gets a band.
 --- opts = { rowHeight = 22, header = true, plain = false }
 --- Unless `plain`, the list is drawn as a sunken table: dark panel, title band, every second row shaded.
-local BOLD_FONT, BOLD_SCALE = "GameFontHighlight", 12 / 10   -- a total's texts: 12 pt against the rows' 10 pt
+-- The fonts a table draws in, and measures in (Widgets.TextWidth): titles, cells, a total's texts (12 pt).
+local TITLE_FONT, CELL_FONT, BOLD_FONT = Widgets.TITLE_FONT, Widgets.CELL_FONT, Widgets.BOLD_FONT
 local NOTE_SAMPLE = "99 columns left out"   -- the widest note of left-out columns
 function Widgets.List(parent, opts)
     opts = opts or {}
@@ -249,9 +253,10 @@ function Widgets.List(parent, opts)
         list.actionTitle = t
     end
     for i = 1, MAX_COLS do
-        local h = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local h = list:CreateFontString(nil, "OVERLAY", TITLE_FONT)
         h:SetHeight(ROW_H)
         h.canCut = i == 1
+        h.measureFont = TITLE_FONT
         headers[i] = h
         -- An invisible area over the title, for its help text.
         local area = CreateFrame("Frame", nil, list)
@@ -352,7 +357,7 @@ function Widgets.List(parent, opts)
         row.toggle:Hide()
         row.cells = {}
         for i = 1, MAX_COLS do
-            local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            local fs = row:CreateFontString(nil, "OVERLAY", CELL_FONT)
             fs:SetHeight(ROW_H)
             fs:SetWordWrap(false)
             row.cells[i] = fs
@@ -477,28 +482,22 @@ function Widgets.List(parent, opts)
         -- takes the room that is left. Where the client cannot measure text, the widths given are used.
         local titles, samples = {}, {}
         for i, col in ipairs(cols) do titles[i], samples[i] = col[1], col.sample end
-        local need = opts.fit ~= false and Widgets.FitColumns(titles, self.count, function(r)
-            local data = self.getRow(r)
-            if not data or data.span then return nil end
-            return data.cells, (data.indent or 0) + (data.itemID and ROW_H or 0) + (data.open ~= nil and TOGGLE + 4 or 0)
-        end, nil, samples) or nil
+        local need, textNeed
+        if opts.fit ~= false then
+            need, textNeed = Widgets.FitColumns(titles, self.count, function(r)
+                local data = self.getRow(r)
+                if not data or data.span then return nil end
+                -- (A total's texts are in its larger font, measured in that font.)
+                return data.cells, (data.indent or 0) + (data.itemID and ROW_H or 0) + (data.open ~= nil and TOGGLE + 4 or 0),
+                    data.bold and BOLD_FONT or CELL_FONT
+            end, nil, samples)
+        end
         -- A column that holds a control (`least`: the control's width, a true constant) is at least that wide.
         if need then
             for i, col in ipairs(cols) do if col.least then need[i] = math.max(need[i], col.least) end end
         end
-        -- A total's texts are in the larger font: measured in the small one, then scaled.
-        if need then
-            for r = 1, math.min(self.count, 400) do
-                local data = self.getRow(r)
-                if data and data.bold and not data.span then
-                    for i = 1, #cols do
-                        local w = Widgets.TextWidth(Widgets.CellText(data.cells[i]))
-                        if i == 1 then w = w and (w + (data.indent or 0) / BOLD_SCALE) end
-                        if w then need[i] = math.max(need[i], math.ceil(w * BOLD_SCALE) + Widgets.CELL_PAD) end
-                    end
-                end
-            end
-        end
+        -- (What the self-check places in each column's box: the widest text of the data, on show or not.)
+        self.textNeed = textNeed
         -- The space before each column: its text NORMAL_GAP from the one before, whatever their justification.
         local gapBefore, prev = {}, 1
         for i = 2, #cols do
@@ -579,6 +578,7 @@ function Widgets.List(parent, opts)
             end
         end
         self.neededWidth = need and math.max(full + ACTION_W + BAR_W + 4, noteNeed) or nil
+        self.columnsWidth = need and (full + ACTION_W + BAR_W + 4) or nil   -- (the same without the note: the self-check)
         self.noteWidth = need and noteNeed or nil   -- (a window keeps it at its smallest width too)
         -- What the first column was given over its text (a window forced wider by its controls): the self-check
         -- allows that much more after it (Widgets.CheckLayout).
@@ -667,7 +667,8 @@ function Widgets.List(parent, opts)
                         -- (A first cell may end with "...", its text on hover; a note must fit: the fit spec checks.)
                         if i == 1 then fs.canCut = not data.span end
                         fs:SetJustifyH(col[3] or "LEFT")
-                        fs:SetFontObject(data.bold and BOLD_FONT or "GameFontHighlightSmall")
+                        fs.measureFont = data.bold and BOLD_FONT or CELL_FONT
+                        fs:SetFontObject(fs.measureFont)
                         fs:SetText(Widgets.CellText(data.cells[i]))
                         fs:Show()
                     else

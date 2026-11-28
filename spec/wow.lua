@@ -127,16 +127,47 @@ local FONT_SIZE = {
 }
 M.FONT_SIZE = FONT_SIZE
 
--- A character's width, as a share of the font size: Friz Quadrata (the game's font), fitted to the client's own
--- measures in the layout dump (FontStrings sized to their text, 12 and 10 pt; SDD 105). Within 8 % on every sample;
--- each class is rounded up about 4 %, so a text the model fits fits the client too.
-local CHAR_EM = {}
-for c in ("ijlI.,:;!'|"):gmatch(".") do CHAR_EM[c] = 0.31 end
-for c in ("frt -()/[]"):gmatch(".") do CHAR_EM[c] = 0.48 end
-for c in ("mwMW%"):gmatch(".") do CHAR_EM[c] = 0.84 end
-for c in ("ABCDEFGHJKLNOPQRSTUVXYZ"):gmatch(".") do CHAR_EM[c] = 0.85 end
-for c in ("0123456789"):gmatch(".") do CHAR_EM[c] = 0.62 end
+-- A character's width, as a share of the font size, per size: Friz Quadrata (the game's font) as the client measured
+-- it (GetUnboundedStringWidth) in the layout dump of 2026-11-28 (spec/fixtures/text_widths.lua, SDD 123): least
+-- squares over 143 texts at 10 pt (the small fonts: titles, cells, labels) and 30 at 12 pt (buttons, headings, a
+-- total's texts), each character pulled to its class's old share. Within 2 px of every sample (the old one share for
+-- every size was 12 % off: digits narrower, capitals wider than drawn). A character not seen at a size takes its
+-- 10 pt share, then its class's; sizes over 12 take the 12 pt shares.
+local EM = {}
+EM[10] = {
+    [" "] = 0.254, ["%"] = 0.839, ["'"] = 0.338, ["("] = 0.401, [")"] = 0.401, ["*"] = 0.618, ["+"] = 0.623,
+    [","] = 0.281, ["-"] = 0.473, ["."] = 0.333, ["0"] = 0.690, ["1"] = 0.605, ["2"] = 0.690, ["3"] = 0.650,
+    ["4"] = 0.645, ["5"] = 0.683, ["6"] = 0.653, ["7"] = 0.657, ["8"] = 0.717, ["9"] = 0.679, [":"] = 0.291,
+    ["<"] = 0.631, ["="] = 0.656, ["A"] = 0.832, ["B"] = 0.833, ["C"] = 0.816, ["D"] = 0.870, ["E"] = 0.720,
+    ["G"] = 0.891, ["H"] = 0.865, ["I"] = 0.345, ["L"] = 0.767, ["M"] = 1.028, ["N"] = 0.875, ["O"] = 0.846,
+    ["P"] = 0.787, ["Q"] = 0.872, ["R"] = 0.793, ["S"] = 0.699, ["T"] = 0.801, ["V"] = 0.799, ["["] = 0.480,
+    ["]"] = 0.480, ["a"] = 0.624, ["b"] = 0.497, ["c"] = 0.588, ["d"] = 0.571, ["e"] = 0.598, ["f"] = 0.471,
+    ["g"] = 0.634, ["h"] = 0.607, ["i"] = 0.298, ["k"] = 0.585, ["l"] = 0.290, ["m"] = 0.997, ["n"] = 0.667,
+    ["o"] = 0.663, ["p"] = 0.703, ["q"] = 0.571, ["r"] = 0.388, ["s"] = 0.527, ["t"] = 0.488, ["u"] = 0.574,
+    ["v"] = 0.588, ["w"] = 0.880, ["x"] = 0.662, ["y"] = 0.626, ["z"] = 0.597,
+}
+EM[12] = {
+    [" "] = 0.368, [","] = 0.337, ["/"] = 0.485, ["1"] = 0.625, ["2"] = 0.625, ["4"] = 0.625, ["8"] = 0.629,
+    ["9"] = 0.625, ["?"] = 0.614, ["A"] = 0.914, ["B"] = 0.805, ["C"] = 0.836, ["D"] = 0.873, ["E"] = 0.836,
+    ["G"] = 0.856, ["L"] = 0.806, ["M"] = 0.910, ["R"] = 0.813, ["S"] = 0.768, ["T"] = 0.794, ["U"] = 0.836,
+    ["W"] = 0.892, ["a"] = 0.587, ["b"] = 0.624, ["c"] = 0.551, ["d"] = 0.627, ["e"] = 0.584, ["g"] = 0.550,
+    ["h"] = 0.630, ["i"] = 0.253, ["k"] = 0.644, ["l"] = 0.248, ["m"] = 0.808, ["n"] = 0.615, ["o"] = 0.641,
+    ["p"] = 0.561, ["r"] = 0.530, ["s"] = 0.580, ["t"] = 0.419, ["u"] = 0.597, ["v"] = 0.577, ["w"] = 0.862,
+    ["y"] = 0.578,
+}
+local CLASS_EM = {}
+for c in ("ijlI.,:;!'|"):gmatch(".") do CLASS_EM[c] = 0.31 end
+for c in ("frt -()/[]"):gmatch(".") do CLASS_EM[c] = 0.48 end
+for c in ("mwMW%"):gmatch(".") do CLASS_EM[c] = 0.84 end
+for c in ("ABCDEFGHJKLNOPQRSTUVXYZ"):gmatch(".") do CLASS_EM[c] = 0.85 end
+for c in ("0123456789"):gmatch(".") do CLASS_EM[c] = 0.65 end
 local OTHER_EM = 0.61   -- lower case and the rest
+local function emOf(c, size)
+    local own = size >= 12 and EM[12] or EM[10]
+    return own[c] or EM[10][c] or CLASS_EM[c] or OTHER_EM
+end
+-- An inline texture of the font's height (|T path:0 |t) with its x offset: 8 % over the size (money icons, 10 pt).
+local ICON_EM = 1.08
 
 --- How wide `text` is in a font of `size` pt: the widest of its lines; color codes and link codes take no room, an
 --- inline texture (|T path:h:w |t) is as wide as its size (h = 0: the font's size).
@@ -149,16 +180,16 @@ function M.textWidth(text, size)
         line = line:gsub("|T(.-)|t", function(spec)
             local h, tw = spec:match("^[^:]*:(%-?%d*):?(%-?%d*)")
             h, tw = tonumber(h) or 0, tonumber(tw) or 0
-            if h <= 0 then h = size end
+            if h <= 0 then h = size * ICON_EM end
             w = w + (tw > 0 and tw or h)
             return ""
         end)
         line = line:gsub("|A(.-)|a", function() w = w + size return "" end)
-            :gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h", ""):gsub("|h", "")
+            :gsub("|cn[^:]*:", ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h", ""):gsub("|h", "")
         for i = 1, #line do
             local b = line:byte(i)
             if b < 0x80 or b >= 0xC0 then   -- (one per character: UTF-8 continuation bytes are left out)
-                w = w + (CHAR_EM[line:sub(i, i)] or OTHER_EM) * size
+                w = w + emOf(line:sub(i, i), size) * size
             end
         end
         if w > most then most = w end
