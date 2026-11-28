@@ -919,6 +919,26 @@ end
 
 ------------------------------------------------------------------ load
 
+--- Rolls up the records older than 30 days (Ledger.Archive, SDD 126): at load and every hour. One Log line when it
+--- did something.
+function ns.RollUp()
+    local r = Ledger.Archive(ns.db.ledger, time(), { posted = ns.db.posted, valueAt = valueAtPost })
+    if r.disenchants + r.sales + r.posts + r.merged == 0 then return r end
+    ns.Log("ledger: rolled up %d disenchants and %d sales from before %s into the archive, %d posts from then dropped"
+        .. "%s%s (totals and learning kept)", r.disenchants, r.sales, ns.Date("%m-%d %H:%M", r.upTo), r.posts,
+        r.early and string.format(" (past %d records of one kind)", Ledger.MAX_FULL) or "",
+        r.merged > 0 and string.format(", %d older days merged per 30 days", r.merged) or "")
+    if ns.ForecastChanged then ns.ForecastChanged() end
+    return r
+end
+
+local ROLL_UP_EVERY = 3600
+local function rollUpEveryHour()
+    ns.RollUp()
+    C_Timer.After(ROLL_UP_EVERY, rollUpEveryHour)
+end
+ns.On("SALVAGER_READY", function() C_Timer.After(ROLL_UP_EVERY, rollUpEveryHour) end)
+
 ns.On("ADDON_LOADED", function(name)
     if name ~= ADDON then return end
     SalvagerDB = SalvagerDB or {}
@@ -932,6 +952,25 @@ ns.On("ADDON_LOADED", function(name)
         ns.Backup.Save("before sharing the costs per band")
         local n, sold = Ledger.Recost(ns.db.ledger)
         ns.Log("ledger: material costs shared per band once (%d disenchants, %d sales booked again)", n, sold)
+        ns.db.recostFixed = true
+    end
+    -- The 0.3.120 replay booked the units no record explains without keeping the books (up to 0.4.0, SDD 125):
+    -- repaired once from the backup made before it, while there is one.
+    if not ns.db.recostFixed then
+        ns.db.recostFixed = true
+        local list = ns.Backup.List()
+        for i = #list, 1, -1 do
+            if list[i].ledger and Ledger.NeedsRecost(list[i].ledger) then
+                local n, moved, missed = Ledger.FixRecost(ns.db.ledger, list[i].ledger)
+                if n + missed > 0 then
+                    ns.Log("books: the cost sharing of 0.3.120 booked %s %s on %d sales of units no record explains: "
+                        .. "repaired from the backup of %s%s", ns.Money(math.abs(moved)), moved < 0 and "too much"
+                        or "too little", n, ns.Date("%m-%d %H:%M", list[i].t),
+                        missed > 0 and string.format(" (%d sales changed since: not repaired)", missed) or "")
+                end
+                break
+            end
+        end
     end
     -- Purchases the old bound of 50 per item dropped (up to 0.4.0, SDD 124): rebuilt once from the auction house
     -- record, after a backup.
@@ -951,6 +990,25 @@ ns.On("ADDON_LOADED", function(name)
                 r.restored, table.concat(items, ", "), ns.Money(r.cost), r.costed, r.sales, r.shifted, r.gone,
                 ns.Money(r.profitBefore), ns.Money(r.profitAfter))
         end
+    end
+    -- The books' check (SDD 125): opened once on an older ledger, with what it holds from before the records.
+    local opened = Ledger.OpenBooks(ns.db.ledger)
+    if opened and opened ~= 0 then
+        ns.Log("books: %s of cost on known units from before the records (opening stock, a cleared history) kept as "
+            .. "carried in", ns.Money(opened))
+    end
+    -- Old records that wait for a mail or a disenchant that will not come (Ledger.Expire), then the roll-up.
+    local bought, purchases, sales, matched = Ledger.Expire(ns.db.ledger, time())
+    if bought + purchases + sales + matched > 0 then
+        ns.Log("ledger: dropped after %d days: %d purchases with no mail, %d never disenchanted, %d records of "
+            .. "auction-house purchases whose mail came; %d sales counted as paid", Ledger.EXPIRE_AFTER / 86400, bought,
+            purchases, matched, sales)
+    end
+    ns.RollUp()
+    local books = Ledger.Books(ns.db.ledger)
+    if books.off ~= 0 then
+        ns.Log("books: off by %s (paid %s + carried in %s, sales cost %s + stock %s)", ns.Money(books.off),
+            ns.Money(books.paid), ns.Money(books.other), ns.Money(books.sold), ns.Money(books.stock))
     end
     -- Windows renamed in 0.3.4: keep their place and size.
     local w = ns.db.windows

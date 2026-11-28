@@ -152,15 +152,6 @@ end
 
 ns.On("MAIL_INBOX_UPDATE", function() safe(settle) end)
 
--- Old records that wait for a mail or a disenchant that will not come (Ledger.Expire), once per login.
-ns.On("ADDON_LOADED", function(name)
-    if name ~= ns.NAME or not ns.db then return end
-    local bought, purchases, sales = Ledger.Expire(ns.db.ledger, time())
-    if bought + purchases + sales > 0 then
-        ns.Log("ledger: dropped after %d days: %d purchases with no mail, %d never disenchanted; %d sales counted "
-            .. "as paid", Ledger.EXPIRE_AFTER / 86400, bought, purchases, sales)
-    end
-end)
 ns.On("MAIL_CLOSED", function()
     for _, w in pairs(watch) do
         if w.asked > w.booked then

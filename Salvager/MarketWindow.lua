@@ -202,6 +202,13 @@ local function sales(from)
     for _, s in ipairs(ns.db.ledger.sales) do
         if (s.lost or (s.count - (s.untracked or 0)) > 0) and s.t and (not from or s.t >= from) then out[#out + 1] = s end
     end
+    -- A rolled-up day of sales (Ledger.Archive): at its average time, `n` sales.
+    for _, b in ipairs(ns.db.ledger.archive and ns.db.ledger.archive.s or {}) do
+        local t = math.floor(b.ts / b.n)
+        if (b.lost or b.count - b.untracked > 0) and (not from or t >= from) then
+            out[#out + 1] = { t = t, profit = b.profit, n = b.n }
+        end
+    end
     table.sort(out, function(a, b) return a.t < b.t end)
     return out
 end
@@ -214,7 +221,7 @@ function Profit.Rows()
             days[day] = { n = 0, profit = 0 }
             order[#order + 1] = day
         end
-        days[day].n, days[day].profit = days[day].n + 1, days[day].profit + s.profit
+        days[day].n, days[day].profit = days[day].n + (s.n or 1), days[day].profit + s.profit
     end
     local rows = {}
     for i = #order, 1, -1 do

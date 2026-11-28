@@ -74,6 +74,9 @@ function Materials.Rows()
             for id in pairs(r.got or {}) do seen[id] = true end
         end
         for _, sale in ipairs(ns.db.ledger.sales) do seen[sale.id] = true end
+        local a = ns.db.ledger.archive or {}
+        for _, b in ipairs(a.d or {}) do for id in pairs(b.mats) do seen[id] = true end end
+        for _, b in ipairs(a.s or {}) do seen[b.id] = true end
     end
     for _, m in ipairs(Data.MATERIALS) do
         local e = ns.db.prices[m.id]

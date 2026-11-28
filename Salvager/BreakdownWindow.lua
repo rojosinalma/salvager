@@ -98,8 +98,10 @@ function Breakdown.Summary(matID)
     end
     local price = ns.PriceOf(matID)
     local sold, net = 0, 0
-    for _, s in ipairs(l.sales) do
-        if s.id == matID and not s.lost then sold, net = sold + s.count, net + s.net end
+    for _, list in ipairs({ l.sales, l.archive and l.archive.s or {} }) do
+        for _, s in ipairs(list) do
+            if s.id == matID and not s.lost then sold, net = sold + s.count, net + s.net end
+        end
     end
     local line2 = string.format("%sPrice now|r %s", GOLD, price and (ns.Money(price) .. " each, "
         .. ns.Money(math.floor(price * (1 - ns.Cut()) + 0.5)) .. " after the cut") or "not scanned")

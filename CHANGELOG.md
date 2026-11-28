@@ -20,6 +20,11 @@ The biggest update since 0.3.113: a new forecast, honest books, and a new interf
   in a big batch the rest were disenchanted at no cost and the profit looked higher than it was. At the first load
   of 0.4.0 those purchases are rebuilt once from the auction house record (after a backup, with a line in the Log),
   and the costs and profits that follow are booked again. When a list of records is full, the Log now says so.
+- Your history is kept: records older than 30 days are rolled up per day instead of dropped, so the Reports, the
+  Accuracy, the Odds and the forecast keep everything they learned, and the saved file stays small.
+- A books check at the end of the gold statement: what you paid, plus stock from before your records, equals what
+  your sales and your stock cost, to the copper. The cost sharing of 0.3.120, which could book a few silver too much
+  on stock from before your records, is repaired once.
 - Reports: a gold statement per session or period (trading profit, stock change, a check against your gold),
   Gear (Bands, History), Materials, Competition (who undercuts you and what it cost you) and Odds.
 - Ledger: purchases grouped by day and status, a Current batch from the mailbox to the last post, Accuracy with

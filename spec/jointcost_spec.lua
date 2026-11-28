@@ -180,10 +180,12 @@ describe("Ledger joint cost per band", function()
         assert.are.equal(339, old.sales[1].cost)
         assert.are.equal(950 - 339, old.sales[1].profit)
         assert.are.equal(-30, old.sales[2].profit)               -- a lost deposit stays as it was
-        -- Stock: the counts stay; the one dust in the pool, the five others at the old average.
+        -- Stock: the counts stay; the one dust in the pool, the five others at what the books held beyond the pools:
+        -- the 250 they were set to by hand (SDD 125; the old average, 514, made 264 copper from nothing).
         assert.are.same({ 8, 2 }, { old.stock[DUST].qty, old.stock[DUST].unknown })
         assert.are.equal(1, old.pools["2:a:30"].mats[DUST].qty)
-        assert.are.equal(169 + math.floor(617 * 5 / 6 + 0.5), old.stock[DUST].cost)
+        assert.are.equal(169 + 250, old.stock[DUST].cost)
+        assert.are.equal(733 + 617 + 1100, Ledger.Booked(old))   -- the books as before, to the copper
         assert.are.equal(1692, old.stock[SHARD].cost)
         -- What the two disenchants cost is all in the sale and the pool, to the copper.
         assert.are.equal(2200, old.sales[1].cost + old.pools["2:a:30"].cost)

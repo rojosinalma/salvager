@@ -13,7 +13,6 @@ local Listings = { checking = nil, pending = nil }
 ns.Listings = Listings
 
 local CANCEL_WAIT = 8      -- seconds a cancel may take before it is given up (its answer is a read, see below)
-local MAX_POSTED = 300     -- posts remembered (their unit prices are known for sure)
 local LOWEST_MAX_AGE = 120 -- seconds a checked lowest price counts: older, the listing counts as not checked
 local MAIL_DELAY = 3600    -- a sold auction stays in the list (as sold) about this long, until its money is mailed
 
@@ -39,7 +38,7 @@ function Listings.NotePost(auctionID, itemID, quantity, each, deposit)
     -- `val` = the material's value now: a sale of this post is measured against it (sell price ratio, SDD 3).
     posted[#posted + 1] = { auctionID = auctionID, itemID = itemID, qty = quantity, each = each, t = time(),
         deposit = deposit, val = ns.PriceOf(itemID) }
-    ns.Util.Cap(posted, MAX_POSTED)
+    -- (Kept 30 days, at most Ledger.MAX_FULL: Ledger.Archive takes them out, SDD 126.)
     -- Followed for who made you post it lower (SDD 109).
     ns.Competition.NotePost(ns.db.competition, { t = time(), id = itemID, auctionID = auctionID, qty = quantity,
         each = each, deposit = deposit })

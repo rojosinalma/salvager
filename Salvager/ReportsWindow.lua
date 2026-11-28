@@ -420,6 +420,28 @@ function Reports.StatementRows()
                     .. "character), or money taken from the mail that was not booked.", flow(c.missing)) }, true)
         end
     end
+    -- The books' check (SDD 125): over every record, whatever the time picked.
+    local b = ns.Ledger.Books(ns.db.ledger)
+    rows[#rows + 1] = GAP_ROW
+    rows[#rows + 1] = heading("Books check, every record", { "Books check", "What you paid for the gear you "
+        .. "disenchanted, plus the cost carried in from outside the records, is what your sales cost plus what your "
+        .. "stock costs, to the copper. Over every record, whatever the time picked." })
+    rows[#rows + 1] = line("Paid for the gear disenchanted", flow(b.paid), { "Paid for the gear disenchanted",
+        "What every disenchant with a known cost was paid, the rolled-up ones too." })
+    rows[#rows + 1] = line("Carried in from outside the records", flow(b.other), { "Carried in from outside the records",
+        "The cost of units with a known cost that no disenchant record explains: opening stock (/salv stock), stock kept "
+            .. "when the history was cleared, from before the records; less the cost of units gone with no record." })
+    rows[#rows + 1] = line("Less the cost of your sales", flow(-b.sold), { "Cost of your sales",
+        "The cost booked on every sale, the rolled-up ones too." })
+    rows[#rows + 1] = line("Less the cost of your stock", flow(-b.stock), { "Cost of your stock",
+        "What your unsold materials cost." })
+    if b.off == 0 then
+        rows[#rows + 1] = totalLine("Books: in balance", GREY .. flow(0) .. "|r", { "Books: in balance",
+            "Every copper paid is in a sale or in the stock." }, true)
+    else
+        rows[#rows + 1] = totalLine(WARN .. "Books: off|r", WARN .. flow(b.off) .. " !|r", { "Books: off",
+            "A cost no record explains: the Log says when it was seen first (\"books: off by\")." }, true)
+    end
     -- A period longer than a session: one line per session in it.
     if not (Reports.range == "session" or picked()) then sessionLines(rows, from, to) end
     return rows

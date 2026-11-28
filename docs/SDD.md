@@ -52,7 +52,9 @@ flipping is out of scope for now.
    load (`Ledger.Recost`, flag `ledger.jointCost`), after a backup (88): disenchants and sales replayed in time
    order; each sale's known units from the pools at that moment's average, units the pools do not hold (no record:
    opening stock, conversions) at their old cost; then units the pools hold beyond the stock go with their cost,
-   and known units outside the pools keep the old average cost. One log line says it was done. A restored backup
+   and known units outside the pools keep the old average cost; since 0.4.0 the books are kept: those units (the sales'
+   rest, the stock outside the pools) carry what the books held beyond the pools, to the copper (125). One log line says
+   it was done. A restored backup
    from before 0.3.120 is recalculated the same way. Booked sales are booked again only in such a one-time repair: this one, and
    the purchases restored in 0.4.0 (124).
 5. **Stock valuation:** weighted average cost per material over its known-cost units, in every band pool and
@@ -153,7 +155,8 @@ flipping is out of scope for now.
 29. **Your auctions** (`Listings.lua`). Read on every `OWNED_AUCTIONS_UPDATED` (whoever asked), asked for at
     auction house open and after a post or cancel, kept in `SalvagerDB.listings` so the Ledger shows them
     with the auction house closed ("as of"). A sold auction's `timeLeftSeconds` is the wait for its money.
-    Price each: the unit price of a post made through Salvager is known for sure (`SalvagerDB.posted`); if a
+    Price each: the unit price of a post made through Salvager is known for sure (`SalvagerDB.posted`, kept 30 days,
+    at most `Ledger.MAX_FULL`, 126; up to 0.4.0 the last 300 only, dropped without a word); if a
     listing's reported price equals that times its quantity, this client reports totals and the rest are
     divided. Undercut = the lowest listing that is not yours is below your price each (one commodity search
     per listed material). Cancel needs a click per auction (`CancelAuction` is hardware-event restricted) and
@@ -944,7 +947,8 @@ flipping is out of scope for now.
        (`ns.HeldCount`: `GetItemCount`, bags and bank, less what the character wears, 0.3.141: worn gear is not in the batch): a material's units left, newest disenchant first, are at most what you hold
        (units converted, mailed or posted another way and not sold yet are gone with it); a gear's purchases left,
        newest first, at most the pieces you hold. A disenchant leaves when none of its units is left; a post that
-       expires or is cancelled stays posted (its units come back as stock from elsewhere). Disenchants without a
+       expires or is cancelled stays posted (its units come back as stock from elsewhere). Records older than 30 days
+       are rolled up (126): their units no post or sale took yet are `archive.head`, taken first. Disenchants without a
        recorded purchase take part in the first in, first out but are not listed.
        Columns: Gear, Item level, Paid, Expected value (EV, at purchase), Expected profit (since 0.3.152: Avg value
        (EV) and "Profit: low - avg - high", 116g), Materials got,
@@ -1471,7 +1475,8 @@ windows (`Post`, `MaterialsWindow`, `LimitsWindow`, `UI` the main window, `Ledge
 `money` (gold journal), `sessions` (97), `competition` (109), `disenchantSeen` (112), `quality` and `ilvl` (learned item data), `auraSeen` and `auraSnapshots` (to learn the Salvager's aura spell ID; matched by name until then),
 `posted` and `listings` (29), `history` (57), `log` and `logDay` (69), `windows` and `window` (places, sizes, views and
 filters), `groups` (103), `columns` (95), `layout` (94), and one-time flags (`historySeeded`, `buyResendBlocked`, 65,
-`falseCancelsDropped`, 75, `firstSalvagerBatchFixed`, 74b, `purchasesRestored`, 124).
+`falseCancelsDropped`, 75, `firstSalvagerBatchFixed`, 74b, `purchasesRestored`, 124, `recostFixed`, 125). In
+`ledger`: `other` (the books' carried-in cost, 125) and `archive` (`d`, `s`, `head`, `upTo`: the records rolled up, 126).
 
 ## Open
 
@@ -1594,9 +1599,8 @@ kind from all bands (118).
        stock snapshots, sessions; Competition: undercut events, profit-lost records, cancels and reposts after an
        undercut) names what it keeps and reports a drop (`Util.Dropped` -> `Util.OnDrop`, set by Core): one Log line
        "bound: N oldest <what> dropped (M kept)", at most one a minute per kind, the drops between counted into the
-       next line or into one at logout. The others were already bounds over all items; at the user's pace (871
-       disenchants and 869 purchases in 3 days) the 5000 disenchants are reached in about 17 days: from then each
-       drop shows in the Log. `spec/purchases_spec.lua` fails on a cap in those files with no name.
+       next line or into one at logout. `spec/purchases_spec.lua` fails on a cap in those files with no name. (Since
+       126 disenchants, sales and posts are rolled up, not dropped; auction-house purchases seen go after 30 days.)
     - b. The repair, once at load (`SalvagerDB.purchasesRestored`), after a backup, with one Log line of what it did
        (`Ledger.DroppedPurchases`, `Ledger.RestorePurchases`): per item, the auction-house purchases of the last 30 days
        (`ledger.bought`) less those still in `purchases` (same time and price each) and those taken by a disenchant
@@ -1616,3 +1620,61 @@ kind from all bands (118).
        booked again (none before the first repaired disenchant, 2026-11-27 03:33 UTC), stock cost 68g 60s -> 74g 86s,
        booked profit 24g 43s -> 25g 44s; the cost added (63 007 copper) is the change of booked sale cost and stock
        cost, to the copper. A second run restores nothing.
+
+125. **The books' check** (0.4.0, 2026-11-28, the user's data). What was paid for the gear disenchanted, plus `other`,
+    is the cost of every booked sale plus the cost of the stock, to the copper (`Ledger.Books`; SDD 4's identity made
+    explicit). `other` (`ledger.other`) is the cost of known units that came or went outside the records: opening
+    stock (`Ledger.SetStock`: the change of that material's cost), stock kept by Clear history (what was paid less the
+    cost of the sales cleared), units gone with no record in a one-time repair; 0 on a new ledger, opened once on an
+    older one with what it holds beyond what was paid (`Ledger.OpenBooks`, one Log line). At load a books check that is
+    off writes "books: off by ..." to the Log; the Reports' statement ends with "Books check, every record": paid,
+    carried in, less the sales' cost, less the stock's cost, "Books: in balance" or "Books: off" in red.
+    - a. Found on the user's data: 54s 98c of cost beyond what was paid. 41s 47c of it are units of known cost no
+       record explains, there before the records (4 Vision Dust, 3 Soul Dust; the backup of 2026-11-26 19:49,
+       0.3.124, already held them): kept as carried in. 13s 51c were made by the 0.3.120 replay (`Ledger.Recost`), a
+       bug: it booked the sales' units the pools did not hold at the sale's old average cost and the stock outside the
+       pools at the material's old average, which do not add up to what the books held for them (2 sales of
+       2026-11-26, 00:11 and 00:27: 7s 92c and 5s 59c too much). `Ledger.Recost` now keeps the books: those units carry
+       what the books held beyond the pools (or `target`), shared by their cost, largest remainder; what finds no unit
+       goes to `other`. Repaired once at load (`SalvagerDB.recostFixed`, `Ledger.FixRecost`): the fixed replay on a
+       copy of the backup made before 0.3.120's, and each sale it moves that is still as that replay left it moves the
+       same; one Log line. On a copy of the user's data the books are then in balance with 41s 47c carried in.
+    - b. Not in the books' check: conversions (their cost moves with them), lost deposits (no cost), units sold with no
+       known cost (no cost). `spec/archive_spec.lua` follows the identity through every flow on data shaped like the
+       user's (opening stock, a pre-0.3.120 ledger, conversions, untracked sales, the purchases restored, the archive,
+       Clear history).
+
+126. **The archive: records rolled up, not dropped** (0.4.0, 2026-11-28). The user disenchants about 300 a day: 5000
+    disenchants (the old bound) were 17 days, and the reports (30 days, all time) lost their history; posts were the
+    last 300. `Ledger.Archive`, at load (after `Ledger.Expire`) and every hour (`ns.RollUp`, one Log line when it did
+    something):
+    - a. Disenchants, sales and posts are kept in full for 30 days (`Ledger.FULL_DAYS`), at most `Ledger.MAX_FULL`
+       (10 000) of each kind: past it the oldest of all three kinds are rolled up early (one time `archive.upTo` for
+       all). Sales whose money is still due wait. Older disenchants go into one bucket per UTC day, band, Salvager or
+       not and item (`archive.d`: counts, paid, values, planned and promised, per material units, hits, known units and
+       values, results per quantity); sales into one per day, material and kind (`archive.s`: units, gross, cut, net,
+       cost, untracked, profit, away, deposits given back, deposits lost, and the sell price ratios to 0.001 and times to
+       sell, to the second under 10 minutes, 10 s under an hour, a minute under a day, as samples with their units and
+       count). Past 60 days (`DAY_DAYS`) the buckets merge per 30 days and band (no item: the old gear shows as one
+       entry in item lists), past 365 days (`PERIOD_KEEP`) into one per band.
+    - b. The weight by age (Model.Decay, 118) is kept as `e` = 2^((t - 1.7e9) / half-life) per sample: times
+       2^(-(now - 1.7e9) / half-life) it is the weight now, so buckets merge without losing it; continuous with half a
+       day added, it is within 1.2 % of the whole-day rule.
+    - c. Everything that reads the records reads the archive too: `Ledger.Profits` (a bucket at its average time),
+       `Accuracy`, `Report` (Odds), `Breakdown`, the cost shares, `HistoryTotals` (the Ledger's summary), `Results`,
+       `Shapes`, `SellRatios`, `DepositRates`, `TimesToSell`, `Statement.Compute`, `Report.Totals`, the Market's
+       Profit, the Breakdown's sold line, the Materials' "with my data". The lists of records (All purchases, the
+       sales history) show the full records only. A report from a time inside a rolled-up day counts that day by its
+       average time; past 60 days by its 30 days.
+    - d. The Current batch: the units of the disenchants rolled up that no post or sale before `upTo` took (first in,
+       first out) are `archive.head`; Ledger.Batch takes them first, before the full records, from what went after
+       `upTo`. A sale kept whose post goes keeps its time (`postedAt`).
+    - e. Measured: on a copy of the user's data rolled up 40 days later, Profits, Accuracy, Report, Breakdown, the
+       books and the Current batch are the same, to the copper; results' weights within 1 %, ratios within 0.001; the
+       ledger 615 KB -> 162 KB. Rolled up early at 300 and 100 records: the Current batch the same. The saved ledger
+       (`Util.SavedSize`) at the user's pace (290 disenchants, 67 sales, 28 posts a day): 5.1 MB at 30 days (the
+       full records), 6.0 MB at 120 days, 6.4 MB at a year and flat after (the archive 1.3 MB); at 10 times that pace:
+       10.5 MB from 60 days on, flat (10 000 full records, 3.4 days of them; the archive 4.7 MB). The backups
+       (`SalvagerBackup`, 88) keep up to 3 copies of the ledger on top. `spec/archive_spec.lua`: totals the same
+       before and after, the learning within rounding, the batch with 1500 posts and an early roll-up, a bounded size.
+

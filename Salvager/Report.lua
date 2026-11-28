@@ -64,6 +64,19 @@ function Report.Totals()
         end
         t.soldProfit = t.soldProfit + (s.profit or 0)
     end
+    -- The rolled-up days (Ledger.Archive).
+    for _, a in ipairs(l.archive and l.archive.d or {}) do
+        t.n, t.cost, t.value = t.n + a.n, t.cost + a.paid, t.value + a.value
+    end
+    for _, s in ipairs(l.archive and l.archive.s or {}) do
+        if s.lost then
+            t.depositsLost = t.depositsLost - s.net
+        else
+            t.sold, t.soldNet = t.sold + s.count, t.soldNet + s.net
+            t.untracked, t.untrackedNet = t.untracked + s.untracked, t.untrackedNet + s.netUntracked
+        end
+        t.soldProfit = t.soldProfit + s.profit
+    end
     return t
 end
 

@@ -336,8 +336,10 @@ describe("Old ledger records in a simulated client", function()
         local l = ns.db.ledger
         assert.are.equal(1, #l.bought)
         assert.is_nil(l.purchases[1])
-        assert.are.same({ 0, true }, { l.sales[1].unpaid, l.sales[1].unpaidExpired })
-        assert.are.same({ 0, 190 }, { l.sales[1].profit, l.sales[1].netUntracked })   -- no known cost: no profit
+        -- The sale counts as paid, and, older than 30 days, is rolled up (SDD 126).
+        assert.are.equal(0, #l.sales)
+        local b = l.archive.s[1]
+        assert.are.same({ 1, 2, 0, 190 }, { b.n, b.count, b.profit, b.netUntracked })   -- no known cost: no profit
         -- The costs are shared per band once (SDD 4), after a backup, with one line in the log.
         assert.are.equal(ns.Ledger.JOINT_COST, l.jointCost)
         assert.are.equal("before sharing the costs per band", ns.Backup.Last().reason)

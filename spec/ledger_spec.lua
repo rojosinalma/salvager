@@ -155,9 +155,9 @@ describe("Ledger", function()
             { itemID = 2, each = 5, t = recent } }
         state.purchases = { [1] = { { each = 5, t = old }, { each = 5, t = recent } }, [3] = { { each = 1, t = old } } }
         state.sales = { { id = 5, count = 1, unpaid = 1, t = old }, { id = 5, count = 1, unpaid = 1, t = recent } }
-        local b, p, s = Ledger.Expire(state, now)
-        assert.are.same({ 1, 2, 1 }, { b, p, s })
-        assert.are.equal(2, #state.bought)
+        local b, p, s, m = Ledger.Expire(state, now)
+        assert.are.same({ 1, 2, 1, 1 }, { b, p, s, m })   -- (the record whose mail came goes too)
+        assert.are.equal(1, #state.bought)
         assert.are.equal(1, #state.purchases[1])
         assert.is_nil(state.purchases[3])
         assert.are.equal(0, state.sales[1].unpaid)

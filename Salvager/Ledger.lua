@@ -22,8 +22,9 @@ local Util, Data, Model = ns.Util, ns.Data, ns.Model
 local Ledger = {}
 ns.Ledger = Ledger
 
--- Each kind of record (purchases over all items, disenchants, sales, auction-house purchases seen) keeps at most this
--- many, the oldest dropped first, with a Log line (Util.Dropped). Purchases also go after Ledger.EXPIRE_AFTER.
+-- Purchases not disenchanted keep at most this many over all items, the oldest dropped first, with a Log line
+-- (Util.Dropped); they also go after Ledger.EXPIRE_AFTER. Disenchants, sales and posts are rolled up instead
+-- (Ledger.Archive, SDD 126); auction-house purchases seen go after EXPIRE_AFTER, at most Ledger.MAX_FULL.
 Ledger.MAX_RECORDS = 5000
 
 --- Profit counts only the units with a known cost: their part of the net, minus their cost.
@@ -57,11 +58,28 @@ end
 
 Ledger.JOINT_COST = 1   -- state.jointCost is this once the costs are shared per band (Ledger.Recost)
 
+-- The archive (SDD 126): records older than FULL_DAYS (or past MAX_FULL of their kind) rolled up per day.
+--   d = { bucket of disenchants: one day (or, past DAY_DAYS, one 30-day period), band, Salvager or not, item }
+--   s = { bucket of sales: one day (or period), material, kind (a sale, or the deposit lost: `lost`) }
+--   head = { [matID] = units }: units of rolled-up disenchants no post or sale took yet (Ledger.Batch takes them first)
+--   upTo = time: every disenchant, sale and post before it is rolled up (posts dropped)
+function Ledger.NewArchive() return { d = {}, s = {}, head = {}, upTo = 0 } end
+
+-- A record's weight by age as a number that does not change with time (`e`): 2^((t - EPOCH) / half-life). Times
+-- decayNow(now) it is the record's weight now: Model.Decay continuous (half a day added: within 1.2 % of it).
+local DECAY_EPOCH = 1700000000
+local function eOf(t) return 2 ^ (((t or 0) - DECAY_EPOCH) / (Model.HALF_LIFE_DAYS * 86400)) end
+local function decayNow(now)
+    return 2 ^ (-((now or 0) - DECAY_EPOCH) / (Model.HALF_LIFE_DAYS * 86400) + 0.5 / Model.HALF_LIFE_DAYS)
+end
+local function archived(state, kind) return state.archive and state.archive[kind] or {} end
+
 function Ledger.Init(state)
     -- A new ledger has no double sales from old versions to repair, and no costs to share again.
     if next(state) == nil then
         state.doubleSalesFixed = Ledger.DOUBLES_REPAIR
         state.jointCost = Ledger.JOINT_COST
+        state.other = 0
     end
     state.purchases = state.purchases or {}
     state.stock = state.stock or {}
@@ -70,6 +88,7 @@ function Ledger.Init(state)
     state.sales = state.sales or {}
     state.bought = state.bought or {}
     state.seenSold = state.seenSold or {}
+    state.archive = state.archive or Ledger.NewArchive()
     -- Older sales counted the net of units with no known cost as profit: count it apart.
     for _, rec in ipairs(state.sales) do
         if rec.netUntracked == nil and not rec.lost and rec.net and rec.count then splitNet(rec) end
@@ -119,7 +138,7 @@ end
 function Ledger.AuctionPurchase(state, itemID, total, ev, t, link, judged)
     Ledger.AddPurchase(state, itemID, 1, total, ev, t, link, judged)
     state.bought[#state.bought + 1] = { itemID = itemID, each = total, t = t }
-    Util.Cap(state.bought, Ledger.MAX_RECORDS, "auction-house purchases seen")
+    Util.Cap(state.bought, Ledger.MAX_FULL, "auction-house purchases seen")
 end
 
 --- An "Auction won" mail. Returns false when the purchase was already recorded at the auction house.
@@ -337,6 +356,9 @@ end
 --- Sets the stock of a material by hand (opening stock). It replaces what the band pools held of it: those
 --- units and their part of the pools' cost go (the other materials of those bands keep their parts).
 function Ledger.SetStock(state, matID, qty, each)
+    -- (The books: the change of this material's cost came from outside the records.)
+    local before = state.stock[matID] and state.stock[matID].cost or 0
+    if state.other then state.other = state.other + math.max(0, qty) * (each or 0) - before end
     local touched = {}
     for key, p in pairs(state.pools) do
         local m = p.mats[matID]
@@ -380,7 +402,6 @@ function Ledger.Sell(state, matID, count, gross, cutPaid, t)
     }
     splitNet(rec)
     state.sales[#state.sales + 1] = rec
-    Util.Cap(state.sales, Ledger.MAX_RECORDS, "sale records")
     return rec
 end
 
@@ -559,7 +580,6 @@ function Ledger.Disenchant(state, rec, purchase, priceOf, cut)
         for id, qty in pairs(rec.got) do Ledger.AddStock(state, id, qty, nil) end
     end
     state.disenchants[#state.disenchants + 1] = rec
-    Util.Cap(state.disenchants, Ledger.MAX_RECORDS, "disenchant records")
     return rec
 end
 
@@ -577,8 +597,13 @@ end
 ---   - then the stock is matched: the units the pools hold beyond a material's known units left without a
 ---     record (conversions, stock set by hand, records dropped) and go with their cost; the known units the
 ---     pools do not hold stay outside them at the material's old average cost.
+---   - the books are kept: the units no record explains (the rest of the sales, the stock outside the pools) carry
+---     what the books held beyond the pools, so the sales' and the stock's cost add up to `target` (default: what
+---     they added up to before), to the copper (SDD 125; up to 0.4.0 this step was missing and the 0.3.120 replay
+---     made 13s 51c of cost on the user's data). Their parts are shared by their cost, largest remainder.
 --- The stock's counts (known and unknown) do not change. Disenchant records lose `shares`.
---- @return number disenchants pooled, number sales booked again
+--- @return number disenchants pooled, number sales booked again, number cost that found no unit to sit on (the
+---   books' `other` takes it), table moved: { { i = sale index | id = material, d = copper moved by the keep step } }
 -- Each material's known units outside the band pools, and their cost: { [matID] = { qty, cost } }.
 local function outsideOf(state)
     local out = {}
@@ -596,9 +621,11 @@ end
 --- `outside` (optional): the known units outside the pools before the replay and their cost (outsideOf); by default
 --- as the ledger is now. Outside units keep that cost (all of it while as many are left; a ledger with no pools yet
 --- has all its known units outside: the old average).
-function Ledger.Recost(state, outside)
+function Ledger.Recost(state, outside, target)
     outside = outside or outsideOf(state)
+    target = target or Ledger.Booked(state)
     local old = state.stock
+    local parts = {}   -- the units no record explains: { { sale | id, c } }
     local work = { stock = {}, pools = {} }
     local events = {}
     for i, r in ipairs(state.disenchants) do
@@ -624,7 +651,9 @@ function Ledger.Recost(state, outside)
             if tracked > 0 then
                 local fromPools, n = withdraw(work, r.id, tracked)
                 local rest = tracked - n
-                r.cost = fromPools + math.floor((r.cost or 0) * rest / tracked + 0.5)
+                local restCost = math.floor((r.cost or 0) * rest / tracked + 0.5)
+                r.cost = fromPools + restCost
+                if rest > 0 then parts[#parts + 1] = { i = e.i, r = r, c = restCost, u = rest } end
                 if r.net then splitNet(r) end
                 nsales = nsales + 1
             end
@@ -648,10 +677,94 @@ function Ledger.Recost(state, outside)
             kept = out >= o.qty and o.cost or math.floor(o.cost * out / o.qty + 0.5)
         end
         s.cost = poolCost + kept
+        if out > 0 then parts[#parts + 1] = { id = id, s = s, c = kept, u = out } end
     end
     state.pools = work.pools
     state.jointCost = Ledger.JOINT_COST
-    return nd, nsales
+    -- Keep the books: what the replay booked over or under `target` moves onto the units no record explains.
+    local diff, moved = target - Ledger.Booked(state), {}
+    if diff ~= 0 and #parts > 0 then
+        local keys, weight, sum, units = {}, {}, 0, 0
+        for k, x in ipairs(parts) do keys[k], sum, units = k, sum + x.c, units + x.u end
+        for k, x in ipairs(parts) do weight[k] = sum > 0 and x.c or x.u end
+        if sum + diff >= 0 then
+            local share = split(sum + diff, keys, weight)
+            for k, x in ipairs(parts) do
+                local d = share[k] - x.c
+                if d ~= 0 then
+                    if x.r then
+                        x.r.cost = x.r.cost + d
+                        if x.r.net then splitNet(x.r) end
+                    else
+                        x.s.cost = x.s.cost + d
+                    end
+                    moved[#moved + 1] = { i = x.i, id = x.id, d = d }
+                end
+            end
+            diff = 0
+        end
+    end
+    return nd, nsales, -diff, moved
+end
+
+--- What the books hold: the cost of every booked sale (rolled up ones too) plus the cost of the stock.
+function Ledger.Booked(state)
+    local n = 0
+    for _, s in ipairs(state.sales) do n = n + (s.cost or 0) end
+    for _, b in ipairs(state.archive and state.archive.s or {}) do n = n + (b.cost or 0) end
+    for _, s in pairs(state.stock) do n = n + (s.cost or 0) end
+    return n
+end
+
+--- What the disenchants with a known cost were paid (rolled up ones too).
+function Ledger.Paid(state)
+    local n = 0
+    for _, r in ipairs(state.disenchants) do if r.costKnown then n = n + (r.cost or 0) end end
+    for _, b in ipairs(state.archive and state.archive.d or {}) do n = n + (b.paid or 0) end
+    return n
+end
+
+--- The books' check (SDD 125): what was paid for the gear disenchanted, plus `other` (the cost of known units that
+--- came or went outside the records: opening stock, a cleared history, units gone with no record), is the cost of
+--- every booked sale plus the cost of the stock, to the copper. `off` = what is not explained (0 when they hold).
+--- @return table { paid, other, sold (booked sale cost), stock, off }
+function Ledger.Books(state)
+    local sold, stock = 0, 0
+    for _, x in ipairs(state.sales) do sold = sold + (x.cost or 0) end
+    for _, b in ipairs(state.archive and state.archive.s or {}) do sold = sold + (b.cost or 0) end
+    for _, x in pairs(state.stock) do stock = stock + (x.cost or 0) end
+    local paid, other = Ledger.Paid(state), state.other or 0
+    return { paid = paid, other = other, sold = sold, stock = stock, off = paid + other - sold - stock }
+end
+
+--- Opens the books' `other` once on a ledger from before it was kept: what the books hold beyond what was paid
+--- (known units from before the records). @return number|nil the amount, nil when it was kept already
+function Ledger.OpenBooks(state)
+    if state.other ~= nil then return nil end
+    state.other = Ledger.Booked(state) - Ledger.Paid(state)
+    return state.other
+end
+
+--- Repairs, once, what the 0.3.120 replay (Ledger.Recost before 0.4.0) booked too much or too little on the sales of
+--- units no record explains: `backup` is the ledger copied before that replay; the replay with the keep step is run
+--- on a copy of it, and each sale it moves, still as that replay left it in `state` (same time, material, units and
+--- cost), moves the same. @return number sales repaired, number copper moved, number moves not applied
+function Ledger.FixRecost(state, backup)
+    local copy = Ledger.Init(Util.Copy(backup))
+    if not Ledger.NeedsRecost(copy) then return 0, 0, 0 end
+    local _, _, _, moved = Ledger.Recost(copy)
+    local n, sum, missed = 0, 0, 0
+    for _, m in ipairs(moved) do
+        local a, b = m.i and copy.sales[m.i], m.i and state.sales[m.i]
+        if a and b and a.t == b.t and a.id == b.id and a.count == b.count and b.cost == a.cost - m.d then
+            b.cost = a.cost
+            if b.net then splitNet(b) end
+            n, sum = n + 1, sum + m.d
+        else
+            missed = missed + 1
+        end
+    end
+    return n, sum, missed
 end
 
 --- Clears the history: disenchants, sales and the record of auction purchases. The material stock and
@@ -665,7 +778,11 @@ function Ledger.ClearHistory(state, drop)
     for _, b in ipairs(state.bought) do if not b.mail then bought[#bought + 1] = b end end
     for _, s in ipairs(state.sales) do if (s.unpaid or 0) > 0 then sales[#sales + 1] = s end end
     local n = #state.disenchants + #state.sales - #sales
+    -- (The books: the stock stays with its cost, the records of where it came from go.)
+    local paid, booked = Ledger.Paid(state), Ledger.Booked(state)
     state.disenchants, state.sales, state.bought = {}, sales, bought
+    state.archive = Ledger.NewArchive()
+    if state.other then state.other = state.other + paid - (booked - Ledger.Booked(state)) end
     -- (seenSold stays: the sold auctions still on screen must not be booked again.)
     for itemID, list in pairs(state.purchases) do
         if drop and drop(itemID) then
@@ -688,14 +805,19 @@ Ledger.EXPIRE_AFTER = 30 * 86400
 
 --- Drops what waits for something that will not come any more, `EXPIRE_AFTER` after it was booked:
 --- purchases whose "Auction won" mail never matched, purchases never disenchanted (sold or kept as
---- they were), and sales whose money was never seen taken (they count as paid).
---- @return number bought, number purchases, number sales
+--- they were), and sales whose money was never seen taken (they count as paid); and the record of auction-house
+--- purchases whose mail matched (kept that long for the repair of 0.4.0, SDD 124).
+--- @return number bought, number purchases, number sales, number bought records whose mail matched
 function Ledger.Expire(state, now)
     local cutoff = now - Ledger.EXPIRE_AFTER
     local nb, np, ns_ = 0, 0, 0
+    local nm = 0
     for i = #state.bought, 1, -1 do
         local b = state.bought[i]
-        if not b.mail and (b.t or 0) < cutoff then table.remove(state.bought, i) nb = nb + 1 end
+        if (b.t or 0) < cutoff then
+            table.remove(state.bought, i)
+            if b.mail then nm = nm + 1 else nb = nb + 1 end
+        end
     end
     for itemID, list in pairs(state.purchases) do
         for i = #list, 1, -1 do
@@ -709,7 +831,7 @@ function Ledger.Expire(state, now)
             ns_ = ns_ + 1
         end
     end
-    return nb, np, ns_
+    return nb, np, ns_, nm
 end
 
 --- Per item, the purchases the auction house record (`bought`) has that no record accounts for: not in `purchases`
@@ -722,6 +844,8 @@ end
 --- @return table { { itemID, missing, give = { { r = disenchant, b = bought }, ... }, left = { bought, ... },
 ---   fallback (disenchants matched by count) }, ... } by item ID
 function Ledger.DroppedPurchases(state, now, skip)
+    -- (The repair replays the records: not once some are rolled up.)
+    if state.archive and #state.archive.d > 0 then return {} end
     local cutoff = now - Ledger.EXPIRE_AFTER
     local function order(a, c)
         if (a.x.t or 0) ~= (c.x.t or 0) then return (a.x.t or 0) < (c.x.t or 0) end
@@ -811,6 +935,7 @@ function Ledger.RestorePurchases(state, now, skip)
     -- gone, a cost booked by an older rule) stays as booked.
     local A = Util.Copy({ stock = state.stock, pools = state.pools, disenchants = state.disenchants, sales = state.sales })
     Ledger.Recost(A, outside)
+    local paid0, booked0 = Ledger.Paid(state), Ledger.Booked(state)
     local liveSales, liveStock = {}, {}
     for i, s in ipairs(state.sales) do liveSales[i] = s.cost or 0 end
     for id, s in pairs(state.stock) do liveStock[id] = s.cost or 0 end
@@ -861,7 +986,8 @@ function Ledger.RestorePurchases(state, now, skip)
         rep.shifted, rep.gone = rep.shifted + shifted, rep.gone + (total - shifted - flip)
     end
     Ledger.CapPurchases(state)
-    Ledger.Recost(state, outside)
+    -- (What the replay with the repair must book: the books as they were, plus the cost the repair found.)
+    Ledger.Recost(state, outside, booked0 + rep.cost)
     for i, s in ipairs(state.sales) do
         s.cost = liveSales[i] + (s.cost or 0) - (A.sales[i].cost or 0)
         if s.net and not s.lost then splitNet(s) end
@@ -874,6 +1000,8 @@ function Ledger.RestorePurchases(state, now, skip)
         if a ~= liveStock[id] then rep.replayed = false end
         s.cost = liveStock[id] + s.cost - a
     end
+    -- (The books: cost that found no unit to sit on, units gone from stock with no record.)
+    if state.other then state.other = state.other + (Ledger.Booked(state) - booked0) - (Ledger.Paid(state) - paid0) end
     return rep
 end
 
@@ -884,7 +1012,6 @@ function Ledger.DepositLost(state, matID, qty, amount, why, t)
     local rec = { t = t, id = matID, count = 0, qty = qty, gross = 0, cut = 0, net = -amount, cost = 0,
         untracked = 0, netUntracked = 0, profit = -amount, lost = why, paidAt = t }
     state.sales[#state.sales + 1] = rec
-    Util.Cap(state.sales, Ledger.MAX_RECORDS, "sale records")
     return rec
 end
 
@@ -930,13 +1057,29 @@ function Ledger.SellRatios(state, valueAt, now, opts)
             end
         end
     end
+    -- The rolled-up sales: one sample per ratio of each day (`k` sales).
+    local D = decayNow(now)
+    for _, b in ipairs(archived(state, "s")) do
+        for _, x in pairs(b.ratios or {}) do
+            local one = { r = x.r, w = x.eu * D, units = x.u, age = x.e * D, k = x.n }
+            per[b.id] = per[b.id] or {}
+            table.insert(per[b.id], one)
+            all[#all + 1] = one
+            nAll = nAll + one.age
+        end
+    end
+    local function count(list)
+        local n = 0
+        for _, x in ipairs(list) do n = n + (x.k or 1) end
+        return n
+    end
     local prior = Model.Blend(Model.WeightedMedian(all), nAll, 1, floor)
-    local out = { all = { ratio = prior, n = nAll, count = #all } }
+    local out = { all = { ratio = prior, n = nAll, count = count(all) } }
     for id, list in pairs(per) do
         local units, n = 0, 0
         for _, x in ipairs(list) do units, n = units + x.units, n + x.age end
         local measured = Model.WeightedMedian(list)
-        out[id] = { ratio = Model.Blend(measured, n, prior, floor), n = n, count = #list, units = units,
+        out[id] = { ratio = Model.Blend(measured, n, prior, floor), n = n, count = count(list), units = units,
             measured = measured, few = n < floor }
     end
     return out
@@ -966,6 +1109,15 @@ function Ledger.DepositRates(state, unitDeposit, now, opts)
         elseif (s.count or 0) > 0 then
             local m = mat(s.id)
             m.sold, m.n = m.sold + s.count * e.w, m.n + e.w
+        end
+    end
+    local D = decayNow(now)
+    for _, b in ipairs(archived(state, "s")) do
+        local m = mat(b.id)
+        if b.lost then
+            m.lost = m.lost + (b.elost or 0) * D
+        elseif (b.count or 0) > 0 then
+            m.sold, m.n = m.sold + (b.eu or 0) * D, m.n + (b.e or 0) * D
         end
     end
     for id, m in pairs(per) do
@@ -1008,6 +1160,24 @@ function Ledger.Results(state, now)
             end
         end
     end
+    local D = decayNow(now)
+    for _, a in ipairs(archived(state, "d")) do
+        if (a.ng or 0) > 0 and a.quality and a.classID and a.band then
+            local key = Ledger.BandKey(a.quality, a.classID, a.band)
+            local b = out[key] or { on = { n = 0, count = 0, mats = {} }, off = { n = 0, count = 0, mats = {} } }
+            out[key] = b
+            local seen = a.salvager and b.on or b.off
+            seen.n, seen.count = seen.n + a.eg * D, seen.count + a.ng
+            for id, am in pairs(a.mats) do
+                local m = seen.mats[id] or { hits = 0, qty = {} }
+                seen.mats[id] = m
+                for qty, e in pairs(am.eq) do
+                    m.hits = m.hits + e * D
+                    m.qty[qty] = (m.qty[qty] or 0) + e * D
+                end
+            end
+        end
+    end
     return out
 end
 
@@ -1041,6 +1211,35 @@ function Ledger.Shapes(state, now)
                     k.cells[m] = k.cells[m] or {}
                     k.cells[m][j] = (k.cells[m][j] or 0) + w
                     k.n, k.count = k.n + w, k.count + 1
+                end
+            end
+        end
+    end
+    -- The rolled-up disenchants: each quantity of each material with its weight and count.
+    local D = decayNow(now)
+    for _, a in ipairs(archived(state, "d")) do
+        local o
+        if a.quality and a.classID and a.band then
+            local key = a.quality .. ":" .. a.classID .. ":" .. a.band
+            if tables[key] == nil then tables[key] = Model.Outcomes(a.quality, a.classID, a.band) or false end
+            o = tables[key] or nil
+        end
+        if o then
+            local side = out[a.salvager and "on" or "off"]
+            for id, am in pairs(a.mats) do
+                local res
+                for _, x in ipairs(o.results) do if x.id == id then res = x end end
+                local mat = Data.MATERIAL_BY_ID[id]
+                if res and mat then
+                    local m = res.max - res.min + 1
+                    local k = side[mat.kind] or { n = 0, count = 0, cells = {} }
+                    side[mat.kind] = k
+                    k.cells[m] = k.cells[m] or {}
+                    for qty, e in pairs(am.eq) do
+                        local j = math.min(m, math.max(0, qty - res.min))
+                        k.cells[m][j] = (k.cells[m][j] or 0) + e * D
+                        k.n, k.count = k.n + e * D, k.count + am.nq[qty]
+                    end
                 end
             end
         end
@@ -1104,13 +1303,28 @@ function Ledger.TimesToSell(state, posted, now, opts)
             end
         end
     end
+    local D = decayNow(now)
+    for _, b in ipairs(archived(state, "s")) do
+        for _, x in pairs(b.times or {}) do
+            local one = { r = x.r, w = x.eu * D, age = x.e * D, k = x.n }
+            per[b.id] = per[b.id] or {}
+            table.insert(per[b.id], one)
+            all[#all + 1] = one
+            nAll = nAll + one.age
+        end
+    end
+    local function count(list)
+        local n = 0
+        for _, x in ipairs(list) do n = n + (x.k or 1) end
+        return n
+    end
     local allMedian = Model.WeightedMedian(all)
-    local out = { all = { seconds = allMedian, n = nAll, count = #all, few = nAll < floor } }
+    local out = { all = { seconds = allMedian, n = nAll, count = count(all), few = nAll < floor } }
     for id, list in pairs(per) do
         local n = 0
         for _, x in ipairs(list) do n = n + x.age end
         local measured = Model.WeightedMedian(list)
-        out[id] = { seconds = Model.Blend(measured, n, allMedian or measured, floor), n = n, count = #list,
+        out[id] = { seconds = Model.Blend(measured, n, allMedian or measured, floor), n = n, count = count(list),
             measured = measured, few = n < floor }
     end
     return out
@@ -1137,6 +1351,13 @@ function Ledger.Profits(state, from, keep, to)
             e.units, e.net = e.units + s.count, e.net + s.net
         end
     end
+    for _, s in ipairs(archived(state, "s")) do
+        if not s.lost and (s.count or 0) > 0 then
+            local e = each[s.id] or { units = 0, net = 0 }
+            each[s.id] = e
+            e.units, e.net = e.units + s.count, e.net + s.net
+        end
+    end
     local function sums(extra)
         extra = extra or {}
         extra.n, extra.paid, extra.value, extra.sold, extra.salvager = 0, 0, 0, 0, 0
@@ -1153,44 +1374,63 @@ function Ledger.Profits(state, from, keep, to)
         end
         return m
     end
-    for _, r in ipairs(state.disenchants) do
-        if inTime(r.t) and (not keep or keep(r)) then
+    -- A disenchant record, or a rolled-up day of them (`a`: n, known, paid, kvalue, mats).
+    local function add(r, a)
+        if a then
+            for id, m in pairs(a.mats) do mat(id).got = mat(id).got + m.u end
+        else
             for id, qty in pairs(r.got or {}) do mat(id).got = mat(id).got + qty end
-            if r.costKnown then
-                local soldValue = 0
+        end
+        if (a and a.known > 0) or (not a and r.costKnown) then
+            local soldValue = 0
+            if a then
+                for id, m in pairs(a.mats) do
+                    local e = each[id]
+                    soldValue = soldValue + ((e and e.units > 0) and (m.ku * e.net / e.units) or m.kv)
+                end
+            else
                 for id, qty in pairs(r.got or {}) do
                     local e = each[id]
                     soldValue = soldValue + ((e and e.units > 0) and (qty * e.net / e.units) or (r.vals and r.vals[id] or 0))
                 end
-                local gkey = (r.quality or 0) .. ":" .. (r.classID or 0)
-                local g = groups[gkey]
-                if not g then
-                    g = sums({ quality = r.quality, classID = r.classID, bands = {} })
-                    groups[gkey] = g
-                    out.groups[#out.groups + 1] = g
-                end
-                local bkey = Ledger.BandKey(r.quality, r.classID, r.band)
-                local b = bands[bkey]
-                if not b then
-                    b = sums({ quality = r.quality, classID = r.classID, band = r.band })
-                    bands[bkey] = b
-                    g.bands[#g.bands + 1] = b
-                end
-                local it = items[r.itemID or 0]
-                if not it then
-                    it = sums({ itemID = r.itemID, link = r.link })
-                    items[r.itemID or 0] = it
-                    out.items[#out.items + 1] = it
-                end
-                for _, x in ipairs({ out.total, g, b, it }) do
-                    x.n = x.n + 1
-                    x.paid = x.paid + (r.cost or 0)
-                    x.value = x.value + (r.value or 0)
-                    x.sold = x.sold + soldValue
-                    if r.salvager then x.salvager = x.salvager + 1 end
-                end
+            end
+            local n, paid, value = 1, r.cost or 0, r.value or 0
+            if a then n, paid, value = a.known, a.paid, a.kvalue end
+            local quality, classID = r.quality, r.classID
+            local gkey = (quality or 0) .. ":" .. (classID or 0)
+            local g = groups[gkey]
+            if not g then
+                g = sums({ quality = quality, classID = classID, bands = {} })
+                groups[gkey] = g
+                out.groups[#out.groups + 1] = g
+            end
+            local bkey = Ledger.BandKey(quality, classID, r.band)
+            local b = bands[bkey]
+            if not b then
+                b = sums({ quality = quality, classID = classID, band = r.band })
+                bands[bkey] = b
+                g.bands[#g.bands + 1] = b
+            end
+            local it = items[r.itemID or 0]
+            if not it then
+                it = sums({ itemID = r.itemID, link = r.link })
+                items[r.itemID or 0] = it
+                out.items[#out.items + 1] = it
+            end
+            for _, x in ipairs({ out.total, g, b, it }) do
+                x.n = x.n + n
+                x.paid = x.paid + paid
+                x.value = x.value + value
+                x.sold = x.sold + soldValue
+                if r.salvager then x.salvager = x.salvager + n end
             end
         end
+    end
+    for _, r in ipairs(state.disenchants) do
+        if inTime(r.t) and (not keep or keep(r)) then add(r) end
+    end
+    for _, a in ipairs(archived(state, "d")) do
+        if inTime(a.ts / a.n) and (not keep or keep(a)) then add(a, a) end
     end
     for _, s in ipairs(state.sales) do
         if inTime(s.t) then
@@ -1204,6 +1444,18 @@ function Ledger.Profits(state, from, keep, to)
                 m.untracked = m.untracked + (s.untracked or 0)
             end
             m.profit = m.profit + (s.profit or 0)
+        end
+    end
+    for _, s in ipairs(archived(state, "s")) do
+        if inTime(s.ts / s.n) then
+            local m = mat(s.id)
+            if s.lost then
+                m.depositsLost = m.depositsLost - (s.net or 0)
+            else
+                m.sold, m.net, m.cost = m.sold + s.count, m.net + s.net, m.cost + s.cost
+                m.untracked = m.untracked + s.untracked
+            end
+            m.profit = m.profit + s.profit
         end
     end
     table.sort(out.groups, function(a, c)
@@ -1234,11 +1486,23 @@ local function bandShares(state)
             end
         end
     end
+    for _, a in ipairs(archived(state, "d")) do
+        if a.known > 0 then
+            local key = Ledger.BandKey(a.quality, a.classID, a.band)
+            local b = bands[key] or { paid = 0, value = 0, units = 0 }
+            bands[key] = b
+            b.paid = b.paid + a.paid
+            for _, m in pairs(a.mats) do b.value, b.units = b.value + m.kv, b.units + m.ku end
+        end
+    end
+    -- (`r`: a disenchant, or a rolled-up day of them: its known part.)
     return function(r, id)
-        if not r.costKnown then return nil end
+        local a = r.mats and r
+        if (a and a.known == 0) or (not a and not r.costKnown) then return nil end
         local b = bands[Ledger.BandKey(r.quality, r.classID, r.band)]
-        local qty = r.got and r.got[id] or 0
-        if b.value > 0 then return ((r.vals and r.vals[id]) or 0) * b.paid / b.value end
+        local qty = a and (a.mats[id] and a.mats[id].ku or 0) or (r.got and r.got[id] or 0)
+        local val = a and (a.mats[id] and a.mats[id].kv or 0) or ((r.vals and r.vals[id]) or 0)
+        if b.value > 0 then return val * b.paid / b.value end
         return b.units > 0 and qty * b.paid / b.units or 0
     end
 end
@@ -1256,6 +1520,7 @@ end
 --- batch, though not in the bags.
 --- @return table { mail = { { itemID, link, each, ev, t, j }, ... }, waiting = { same }, done = { { rec,
 ---   left = { [id] = units }, units }, ... } }, each newest first
+local goneEvents
 function Ledger.Batch(state, posted, held)
     posted = posted or {}
     local mailList, mailed = inMail(state)
@@ -1297,22 +1562,17 @@ function Ledger.Batch(state, posted, held)
             return a.i < b.i
         end)
     end
-    local gone = {}
-    for _, p in ipairs(posted) do
-        if p.itemID and p.qty then gone[#gone + 1] = { id = p.itemID, n = p.qty, t = p.t or 0 } end
-    end
-    local byItem = postsByItem(posted)
-    for _, sale in ipairs(state.sales) do
-        if not sale.lost and sale.id and (sale.count or 0) > 0 and not postTime(sale, byItem, sale.t or 0) then
-            gone[#gone + 1] = { id = sale.id, n = sale.count, t = sale.t or 0 }
-        end
-    end
-    table.sort(gone, function(a, b) return a.t < b.t end)
+    -- What is gone since the archive's end: the rolled-up disenchants' units no post or sale took yet go first.
+    local gone = goneEvents(state.sales, posted, state.archive and state.archive.upTo or 0, math.huge)
+    local head = {}
+    for id, n in pairs(state.archive and state.archive.head or {}) do head[id] = n end
     -- (First in, first out: the disenchants used up are always the first of their material's list, so each
     -- material's next one is kept and the used ones are not walked again.)
     local first = {}
     for _, g in ipairs(gone) do
         local n, list = g.n, byMat[g.id] or {}
+        local fromHead = math.min(n, head[g.id] or 0)
+        head[g.id], n = (head[g.id] or 0) - fromHead, n - fromHead
         local i = first[g.id] or 1
         while list[i] and left[list[i].r][g.id] <= 0 do i = i + 1 end
         first[g.id] = i
@@ -1347,6 +1607,26 @@ function Ledger.Batch(state, posted, held)
     return { mail = mail, waiting = waiting, done = done }
 end
 
+--- What is gone of each material from `from` to `to` (not included), in time order: every post made through Salvager
+--- (`posted`: itemID, qty, t), and every sale that came from no such post (posted another way: at the sale).
+--- @return table { { id, n, t }, ... }
+function goneEvents(sales, posted, from, to)
+    local gone = {}
+    local function inTime(t) return t >= from and t < to end
+    for _, p in ipairs(posted) do
+        if p.itemID and p.qty and inTime(p.t or 0) then gone[#gone + 1] = { id = p.itemID, n = p.qty, t = p.t or 0 } end
+    end
+    local byItem = postsByItem(posted)
+    for _, sale in ipairs(sales) do
+        if not sale.lost and sale.id and (sale.count or 0) > 0 and inTime(sale.t or 0)
+            and not postTime(sale, byItem, sale.t or 0) then
+            gone[#gone + 1] = { id = sale.id, n = sale.count, t = sale.t or 0 }
+        end
+    end
+    table.sort(gone, function(a, b) return a.t < b.t end)
+    return gone
+end
+
 --- What Ledger.History counts, without its order or its materials: { { itemID, paid, done, got }, ... } (the
 --- Ledger's summary line reads only these, and History sorts and shares every disenchant's cost).
 function Ledger.HistoryTotals(state)
@@ -1356,6 +1636,11 @@ function Ledger.HistoryTotals(state)
     end
     for _, r in ipairs(state.disenchants) do
         out[#out + 1] = { itemID = r.itemID, paid = r.costKnown and r.cost or nil, done = true, got = r.value }
+    end
+    -- A rolled-up day: `n` disenchants, `nPaid` of them with a known cost.
+    for _, a in ipairs(archived(state, "d")) do
+        out[#out + 1] = { itemID = a.itemID, paid = a.known > 0 and a.paid or nil, done = true, got = a.value, n = a.n,
+            nPaid = a.known }
     end
     return out
 end
@@ -1451,6 +1736,20 @@ function Ledger.Breakdown(state, matID)
             end
         end
     end
+    for _, a in ipairs(archived(state, "d")) do
+        local m = a.mats[matID]
+        local item = source(byItem, out.items, a.itemID or 0, function() return { itemID = a.itemID, link = a.link } end)
+        local band = source(byBand, out.bands, Ledger.BandKey(a.quality, a.classID, a.band),
+            function() return { quality = a.quality, classID = a.classID, band = a.band } end)
+        local share = m and a.known > 0 and shareOf(a, matID) or 0
+        for _, x in ipairs({ item, band, out }) do
+            if x ~= out then
+                x.all, x.known, x.paid, x.got = x.all + a.n, x.known + a.known, x.paid + a.paid, x.got + a.kvalue
+                if m then x.gave = x.gave + m.h end
+            end
+            if m then x.units, x.knownUnits, x.cost = x.units + m.u, x.knownUnits + m.ku, x.cost + share end
+        end
+    end
     -- Only the sources that gave this material; costs to the copper.
     out.cost = math.floor(out.cost + 0.5)
     for _, key in ipairs({ "items", "bands" }) do
@@ -1479,11 +1778,13 @@ end
 function Ledger.Accuracy(state, keep)
     -- What one unit of each material really sold for, after the cut.
     local sold = {}
-    for _, s in ipairs(state.sales) do
-        if not s.lost then
-            local m = sold[s.id] or { units = 0, net = 0 }
-            sold[s.id] = m
-            m.units, m.net = m.units + s.count, m.net + s.net
+    for _, list in ipairs({ state.sales, archived(state, "s") }) do
+        for _, s in ipairs(list) do
+            if not s.lost then
+                local m = sold[s.id] or { units = 0, net = 0 }
+                sold[s.id] = m
+                m.units, m.net = m.units + s.count, m.net + s.net
+            end
         end
     end
     local function blank(extra)
@@ -1493,42 +1794,55 @@ function Ledger.Accuracy(state, keep)
     end
     local out = { bands = {}, total = blank(), mats = {} }
     local byBand, byMat = {}, {}
+    -- (A disenchant with a known cost, or the known part of a rolled-up day: its materials as { [id] = { qty, at } }.)
+    local function add(r, n, paid, promised, got, gave)
+        local key = Ledger.BandKey(r.quality, r.classID, r.band)
+        local b = byBand[key]
+        if not b then
+            b = blank({ quality = r.quality, classID = r.classID, band = r.band })
+            byBand[key] = b
+            out.bands[#out.bands + 1] = b
+        end
+        local soldValue, units, soldUnits = 0, 0, 0
+        for id, g in pairs(gave) do
+            local qty, at = g[1], g[2]
+            local m = byMat[id]
+            if not m then
+                m = { id = id, units = 0, valued = 0, soldUnits = sold[id] and sold[id].units or 0,
+                    soldNet = sold[id] and sold[id].net or 0 }
+                byMat[id] = m
+                out.mats[#out.mats + 1] = m
+            end
+            m.units, m.valued = m.units + qty, m.valued + at
+            units = units + qty
+            if sold[id] and sold[id].units > 0 then
+                soldValue = soldValue + qty * sold[id].net / sold[id].units
+                soldUnits = soldUnits + qty
+            else
+                soldValue = soldValue + at
+            end
+        end
+        for _, x in ipairs({ b, out.total }) do
+            x.n = x.n + n
+            x.paid = x.paid + paid
+            x.promised = x.promised + promised
+            x.got = x.got + got
+            x.sold = x.sold + soldValue
+            x.units, x.soldUnits = x.units + units, x.soldUnits + soldUnits
+        end
+    end
     for _, r in ipairs(state.disenchants) do
         if r.costKnown and (not keep or keep(r)) then
-            local key = Ledger.BandKey(r.quality, r.classID, r.band)
-            local b = byBand[key]
-            if not b then
-                b = blank({ quality = r.quality, classID = r.classID, band = r.band })
-                byBand[key] = b
-                out.bands[#out.bands + 1] = b
-            end
-            local soldValue, units, soldUnits = 0, 0, 0
-            for id, qty in pairs(r.got or {}) do
-                local at = r.vals and r.vals[id] or 0
-                local m = byMat[id]
-                if not m then
-                    m = { id = id, units = 0, valued = 0, soldUnits = sold[id] and sold[id].units or 0,
-                        soldNet = sold[id] and sold[id].net or 0 }
-                    byMat[id] = m
-                    out.mats[#out.mats + 1] = m
-                end
-                m.units, m.valued = m.units + qty, m.valued + at
-                units = units + qty
-                if sold[id] and sold[id].units > 0 then
-                    soldValue = soldValue + qty * sold[id].net / sold[id].units
-                    soldUnits = soldUnits + qty
-                else
-                    soldValue = soldValue + at
-                end
-            end
-            for _, x in ipairs({ b, out.total }) do
-                x.n = x.n + 1
-                x.paid = x.paid + (r.cost or 0)
-                x.promised = x.promised + (r.evAtBuy or r.planned or 0)
-                x.got = x.got + (r.value or 0)
-                x.sold = x.sold + soldValue
-                x.units, x.soldUnits = x.units + units, x.soldUnits + soldUnits
-            end
+            local gave = {}
+            for id, qty in pairs(r.got or {}) do gave[id] = { qty, r.vals and r.vals[id] or 0 } end
+            add(r, 1, r.cost or 0, r.evAtBuy or r.planned or 0, r.value or 0, gave)
+        end
+    end
+    for _, a in ipairs(archived(state, "d")) do
+        if a.known > 0 and (not keep or keep(a)) then
+            local gave = {}
+            for id, m in pairs(a.mats) do if m.ku > 0 then gave[id] = { m.ku, m.kv } end end
+            add(a, a.known, a.paid, a.promised, a.kvalue, gave)
         end
     end
     table.sort(out.bands, function(a, b)
@@ -1567,7 +1881,278 @@ function Ledger.Report(state, since, keep)
             end
         end
     end
+    for _, a in ipairs(archived(state, "d")) do
+        if (not since or a.ts / a.n >= since) and (not keep or keep(a)) then
+            local key = Ledger.BandKey(a.quality, a.classID, a.band)
+            local b = out[key]
+            if not b then
+                b = { n = 0, planned = 0, value = 0, cost = 0, costKnown = 0, salvager = 0, mats = {} }
+                out[key] = b
+            end
+            b.n, b.planned, b.value = b.n + a.n, b.planned + a.planned, b.value + a.value
+            b.costKnown, b.cost = b.costKnown + a.known, b.cost + a.paid
+            if a.salvager then b.salvager = b.salvager + a.n end
+            for id, am in pairs(a.mats) do
+                local m = b.mats[id] or { hits = 0, qty = 0 }
+                b.mats[id] = m
+                m.hits, m.qty = m.hits + am.h, m.qty + am.u
+            end
+        end
+    end
     return out
+end
+
+------------------------------------------------------------------ the archive (SDD 126)
+
+Ledger.FULL_DAYS = 30       -- records (disenchants, sales, posts) kept in full this long
+Ledger.MAX_FULL = 10000     -- and at most this many of each kind: past it the oldest are rolled up early
+Ledger.DAY_DAYS = 60        -- rolled-up records kept per day (and per item) this long; then per 30 days and band
+Ledger.PERIOD_DAYS = 30
+Ledger.PERIOD_KEEP = 365    -- periods older than this merge into one bucket per band (their weight by age is < 0.03 %)
+
+local function dayOf(t) return math.floor((t or 0) / 86400) end
+
+-- Rounded for the rolled-up samples: a sell price ratio to 0.001 (0.01 per period), a time to sell to the second
+-- under 10 minutes, to 10 s under an hour, to the minute under a day, else to 10 minutes.
+local function ratioKey(r, coarse) return string.format(coarse and "%.2f" or "%.3f", r) end
+local function secsOf(x)
+    local step = x < 600 and 1 or x < 3600 and 10 or x < 86400 and 60 or 600
+    return math.floor(x / step + 0.5) * step
+end
+
+local function newD(k, r)
+    return { k = k, quality = r.quality, classID = r.classID, band = r.band, salvager = r.salvager and true or false,
+        itemID = r.itemID, link = r.link, n = 0, ts = 0, ng = 0, eg = 0, known = 0, paid = 0, value = 0, kvalue = 0,
+        planned = 0, promised = 0, mats = {} }
+end
+local function dKey(tier, r)
+    return table.concat({ tier, tostring(r.quality), tostring(r.classID), tostring(r.band), r.salvager and "1" or "0",
+        tier:sub(1, 1) == "d" and tostring(r.itemID) or "" }, "|")
+end
+local function mergeMat(into, m)
+    into.u, into.h, into.ku, into.kv = into.u + m.u, into.h + m.h, into.ku + m.ku, into.kv + m.kv
+    for q, c in pairs(m.nq) do into.nq[q] = (into.nq[q] or 0) + c end
+    for q, e in pairs(m.eq) do into.eq[q] = (into.eq[q] or 0) + e end
+end
+local function newMat() return { u = 0, h = 0, ku = 0, kv = 0, nq = {}, eq = {} } end
+local D_SUMS = { "n", "ts", "ng", "eg", "known", "paid", "value", "kvalue", "planned", "promised" }
+local function mergeD(into, b)
+    for _, f in ipairs(D_SUMS) do into[f] = into[f] + b[f] end
+    for id, m in pairs(b.mats) do
+        into.mats[id] = into.mats[id] or newMat()
+        mergeMat(into.mats[id], m)
+    end
+end
+-- One disenchant as a bucket of one.
+local function oneD(r)
+    local b, e = newD(nil, r), eOf(r.t)
+    b.n, b.ts, b.value, b.planned = 1, r.t or 0, r.value or 0, r.planned or 0
+    if r.got and next(r.got) then b.ng, b.eg = 1, e end
+    local known = r.costKnown and true or false
+    if known then
+        b.known, b.paid, b.kvalue, b.promised = 1, r.cost or 0, r.value or 0, r.evAtBuy or r.planned or 0
+    end
+    for id, qty in pairs(r.got or {}) do
+        local m = newMat()
+        m.u, m.h, m.nq[qty], m.eq[qty] = qty, 1, 1, e
+        if known then m.ku, m.kv = qty, (r.vals and r.vals[id]) or 0 end
+        b.mats[id] = m
+    end
+    return b
+end
+
+local S_SUMS = { "n", "ts", "count", "gross", "cut", "net", "cost", "untracked", "netUntracked", "profit", "qty",
+    "awayN", "awayNet", "awayCost", "back", "e", "eu", "elost" }
+local function newS(k, s)
+    local b = { k = k, id = s.id, lost = s.lost, ratios = {}, times = {} }
+    for _, f in ipairs(S_SUMS) do b[f] = 0 end
+    return b
+end
+local function sKey(tier, s) return tier .. "|" .. tostring(s.id) .. "|" .. tostring(s.lost or "sale") end
+local function mergeSamples(into, from, key)
+    for _, x in pairs(from) do
+        local k = key(x.r)
+        local y = into[k] or { r = tonumber(k), u = 0, n = 0, eu = 0, e = 0 }
+        into[k] = y
+        y.u, y.n, y.eu, y.e = y.u + x.u, y.n + x.n, y.eu + x.eu, y.e + x.e
+    end
+end
+local function mergeS(into, b, coarse)
+    for _, f in ipairs(S_SUMS) do into[f] = into[f] + b[f] end
+    mergeSamples(into.ratios, b.ratios, function(r) return ratioKey(r, coarse) end)
+    mergeSamples(into.times, b.times, function(r) return tostring(secsOf(r)) end)
+end
+-- One sale as a bucket of one, with its sell price ratio and time to sell when they are known.
+local function oneS(s, ratio, secs)
+    local b, e = newS(nil, s), eOf(s.t)
+    local count = s.count or 0
+    b.n, b.ts, b.count, b.gross, b.cut, b.net = 1, s.t or 0, count, s.gross or 0, s.cut or 0, s.net or 0
+    b.cost, b.untracked, b.netUntracked, b.profit = s.cost or 0, s.untracked or 0, s.netUntracked or 0, s.profit or 0
+    b.qty, b.back, b.e, b.eu = s.qty or 0, s.back or 0, e, count * e
+    if s.lost then b.elost = -(s.net or 0) * e end
+    if s.away then b.awayN, b.awayNet, b.awayCost = 1, s.net or 0, s.cost or 0 end
+    if ratio then b.ratios[ratioKey(ratio)] = { r = tonumber(ratioKey(ratio)), u = count, n = 1, eu = count * e, e = e } end
+    if secs then b.times[tostring(secsOf(secs))] = { r = secsOf(secs), u = count, n = 1, eu = count * e, e = e } end
+    return b
+end
+
+-- Puts bucket `b` into `list` under key `k` (merged with the one there), `index` = { [k] = bucket }.
+local function file(list, index, k, b, merge)
+    local into = index[k]
+    if into then
+        merge(into, b)
+    else
+        b.k = k
+        list[#list + 1] = b
+        index[k] = b
+    end
+end
+
+--- Rolls up what is older than FULL_DAYS (SDD 126), once at load and every hour: disenchants into one bucket per day,
+--- band, Salvager or not and item (`archive.d`), settled sales into one per day, material and kind (`archive.s`), with
+--- every total the Reports, the Accuracy, the Odds, the Breakdown and the statement read, and what the learning reads
+--- (results per quantity, sell price ratios, times to sell, deposits lost) with their weight by age kept as `e`
+--- (Model.Decay within 1.2 %). Posts (`opts.posted`) older than that go, as their part of the Current batch is in
+--- `archive.head`; a sale whose post goes keeps the post's time (`postedAt`). Past MAX_FULL records of one kind the
+--- oldest are rolled up early. Buckets older than DAY_DAYS are merged per PERIOD_DAYS and band (the item and the day
+--- go). `opts.valueAt(sale)`: the material's value when the sale was posted (as Ledger.SellRatios).
+--- @return table { disenchants, sales, posts, merged, upTo, early (true: the bound, not the age) }
+function Ledger.Archive(state, now, opts)
+    opts = opts or {}
+    local posted = opts.posted or {}
+    local A = state.archive or Ledger.NewArchive()
+    state.archive = A
+    local rep = { disenchants = 0, sales = 0, posts = 0, merged = 0 }
+    local C = now - Ledger.FULL_DAYS * 86400
+    for _, list in ipairs({ state.disenchants, state.sales, posted }) do
+        if #list > Ledger.MAX_FULL then
+            local ts = {}
+            for i, r in ipairs(list) do ts[i] = r.t or 0 end
+            table.sort(ts)
+            if ts[#ts - Ledger.MAX_FULL + 1] > C then C, rep.early = ts[#ts - Ledger.MAX_FULL + 1], true end
+        end
+    end
+    C = math.max(C, A.upTo or 0)
+    local dIndex, sIndex = {}, {}
+    for _, b in ipairs(A.d) do dIndex[b.k] = b end
+    for _, b in ipairs(A.s) do sIndex[b.k] = b end
+    if C > (A.upTo or 0) then
+        -- The Current batch's part: the units of the disenchants rolled up, first in, first out against what went
+        -- before C (since the last roll-up); what is left of them is the head the later posts and sales take first.
+        local old, units = {}, {}
+        for i, r in ipairs(state.disenchants) do if (r.t or 0) < C then old[#old + 1] = { r = r, i = i } end end
+        table.sort(old, function(a, b)
+            if (a.r.t or 0) ~= (b.r.t or 0) then return (a.r.t or 0) < (b.r.t or 0) end
+            return a.i < b.i
+        end)
+        for _, x in ipairs(old) do
+            for id, qty in pairs(x.r.got or {}) do
+                units[id] = units[id] or {}
+                table.insert(units[id], { t = x.r.t or 0, n = qty })
+            end
+        end
+        local head = A.head
+        for _, g in ipairs(goneEvents(state.sales, posted, A.upTo or 0, C)) do
+            local n = g.n
+            local h = math.min(n, head[g.id] or 0)
+            head[g.id], n = (head[g.id] or 0) - h, n - h
+            for _, u in ipairs(units[g.id] or {}) do
+                if n <= 0 or u.t > g.t then break end
+                local take = math.min(n, u.n)
+                u.n, n = u.n - take, n - take
+            end
+        end
+        for id, list in pairs(units) do
+            for _, u in ipairs(list) do head[id] = (head[id] or 0) + u.n end
+        end
+        for id, n in pairs(head) do if n <= 0 then head[id] = nil end end
+        -- The sales kept (also those whose money is still due) whose post goes keep its time.
+        local byItem = postsByItem(posted)
+        for _, s in ipairs(state.sales) do
+            if not ((s.t or 0) < C and (s.unpaid or 0) == 0) and not s.lost and not s.postedAt then
+                local at = postTime(s, byItem, s.t or 0)
+                if at and at < C then s.postedAt = at end
+            end
+        end
+        -- The disenchants.
+        local keep = {}
+        for _, r in ipairs(state.disenchants) do
+            if (r.t or 0) < C then
+                file(A.d, dIndex, dKey("d" .. dayOf(r.t), r), oneD(r), mergeD)
+                rep.disenchants = rep.disenchants + 1
+            else
+                keep[#keep + 1] = r
+            end
+        end
+        state.disenchants = keep
+        -- The sales whose money is settled, with their sell price ratio and time to sell.
+        keep = {}
+        for _, s in ipairs(state.sales) do
+            if (s.t or 0) < C and (s.unpaid or 0) == 0 then
+                local ratio, secs
+                if not s.lost and (s.count or 0) > 0 and (s.gross or 0) > 0 then
+                    local v = s.val or (opts.valueAt and opts.valueAt(s))
+                    if v and v > 0 then ratio = (s.each or (s.gross / s.count)) / v end
+                    local soldAt = s.t or 0
+                    if s.due then soldAt = math.min(soldAt, s.due - Ledger.MAIL_DELAY) end
+                    local at = postTime(s, byItem, soldAt)
+                    if at then secs = math.max(0, soldAt - at) end
+                end
+                file(A.s, sIndex, sKey("d" .. dayOf(s.t), s), oneS(s, ratio, secs), mergeS)
+                rep.sales = rep.sales + 1
+            else
+                keep[#keep + 1] = s
+            end
+        end
+        state.sales = keep
+        -- The posts.
+        for i = #posted, 1, -1 do
+            if (posted[i].t or 0) < C then
+                table.remove(posted, i)
+                rep.posts = rep.posts + 1
+            end
+        end
+        A.upTo = C
+    end
+    -- Past DAY_DAYS: one bucket per 30 days and band (no item, no day); past PERIOD_KEEP, one per band.
+    local limit, limitAll = dayOf(now) - Ledger.DAY_DAYS, dayOf(now) - Ledger.PERIOD_KEEP
+    for _, kind in ipairs({ "d", "s" }) do
+        local out, index, old = {}, {}, {}
+        for _, b in ipairs(A[kind]) do
+            local day = tonumber(b.k:match("^d(%d+)|"))
+            local period = tonumber(b.k:match("^p(%d+)|"))
+            if day and day < limit then
+                old[#old + 1] = { b = b, tier = "p" .. math.floor(day / Ledger.PERIOD_DAYS) }
+            elseif period and (period + 1) * Ledger.PERIOD_DAYS <= limitAll then
+                old[#old + 1] = { b = b, tier = "a" }
+            else
+                out[#out + 1] = b
+                if b.k:sub(1, 1) ~= "d" then index[b.k] = b end
+            end
+        end
+        -- (Days first: one that goes straight to "a" meets its band's bucket there.)
+        for _, x in ipairs(old) do
+            if x.tier ~= "a" and tonumber(x.tier:sub(2)) and (tonumber(x.tier:sub(2)) + 1) * Ledger.PERIOD_DAYS <= limitAll then
+                x.tier = "a"
+            end
+        end
+        for _, x in ipairs(old) do
+            local b, tier = x.b, x.tier
+            local k = kind == "d" and dKey(tier, b) or sKey(tier, b)
+            local into = index[k]
+            if not into then
+                into = kind == "d" and newD(k, b) or newS(k, b)
+                if kind == "d" then into.itemID, into.link = nil, nil end
+                out[#out + 1] = into
+                index[k] = into
+            end
+            if kind == "d" then mergeD(into, b) else mergeS(into, b, true) end
+            rep.merged = rep.merged + 1
+        end
+        A[kind] = out
+    end
+    rep.upTo = A.upTo
+    return rep
 end
 
 return Ledger

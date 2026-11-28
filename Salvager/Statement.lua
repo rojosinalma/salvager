@@ -176,6 +176,22 @@ function Statement.Compute(a)
         end
         if s.back and s.backAt and s.backAt >= from and s.backAt <= to then back = back + s.back end
     end
+    -- The rolled-up sales (Ledger.Archive): each day of them at its average time.
+    for _, b in ipairs(L.archive and L.archive.s or {}) do
+        local t = b.ts / b.n
+        if t >= from and t <= to then
+            if b.lost then
+                st.depositsLost = st.depositsLost - b.net
+            elseif b.count > 0 then
+                salesAll = salesAll + b.net
+                st.away.net, st.away.cost, st.away.n = st.away.net + b.awayNet, st.away.cost + b.awayCost,
+                    st.away.n + b.awayN
+                st.sales, st.cost = st.sales + b.net - b.awayNet, st.cost + b.cost - b.awayCost
+                st.salesN = st.salesN + b.n - b.awayN
+            end
+            back = back + b.back
+        end
+    end
     st.away.profit = st.away.net - st.away.cost
     local sum = Journal.Summary(a.journal, a.char, from, to)
     local kinds = sum.kinds

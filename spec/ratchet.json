@@ -1133,7 +1133,7 @@
   "suite": {
     "all": {
       "luacheck": 0,
-      "specs": 350
+      "specs": 357
     }
   }
 }

@@ -979,9 +979,9 @@ function Window.Summary()
     local bought, spent, done, got, waiting, waitingCost = 0, 0, 0, 0, 0, 0
     local waitingBy = {}
     for _, e in ipairs(Ledger.HistoryTotals(ns.db.ledger)) do
-        if e.paid then bought, spent = bought + 1, spent + e.paid end
+        if e.paid then bought, spent = bought + (e.nPaid or 1), spent + e.paid end
         if e.done then
-            done, got = done + 1, got + (e.got or 0)
+            done, got = done + (e.n or 1), got + (e.got or 0)
         else
             waiting, waitingCost = waiting + 1, waitingCost + (e.paid or 0)
             if e.itemID then waitingBy[e.itemID] = (waitingBy[e.itemID] or 0) + 1 end

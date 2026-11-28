@@ -47,6 +47,7 @@ function Backup.Restore()
         local n, sold = Ledger.Recost(ns.db.ledger)
         ns.Log("ledger: material costs shared per band once (%d disenchants, %d sales booked again)", n, sold)
     end
+    Ledger.OpenBooks(ns.db.ledger)
     ns.Log("backup: the ledger of %s restored", ns.Date("%m-%d %H:%M", b.t))
     ns.Print("the ledger of %s is back", ns.Date("%m-%d %H:%M", b.t))
     ns.Fire("SALVAGER_LEDGER")

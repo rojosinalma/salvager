@@ -95,14 +95,15 @@ describe("No bound drops records without a report", function()
         ns.Util.OnDrop = function(what, n) seen[what] = (seen[what] or 0) + n end
         local Ledger, Journal, Statement, C = ns.Ledger, ns.Journal, ns.Statement, ns.Competition
         local L = Ledger.Init({})
-        Ledger.MAX_RECORDS = 3
+        Ledger.MAX_RECORDS, Ledger.MAX_FULL = 3, 4
         for i = 1, 5 do
             Ledger.AuctionPurchase(L, 1, 10, nil, i)
             Ledger.Sell(L, DUST, 1, 10, 0, i)
             Ledger.Disenchant(L, { t = i, itemID = 1, got = { [DUST] = 1 } }, nil, priceOf, 0)
         end
-        assert.are.same({ ["purchases not disenchanted"] = 2, ["auction-house purchases seen"] = 2,
-            ["sale records"] = 2, ["disenchant records"] = 2 }, seen)
+        -- (Disenchants and sales are not dropped: they are rolled up, SDD 126.)
+        assert.are.same({ ["purchases not disenchanted"] = 2, ["auction-house purchases seen"] = 1 }, seen)
+        assert.are.same({ 5, 5 }, { #L.disenchants, #L.sales })
         seen = {}
         Journal.MAX = 2
         local J = Journal.Init({})
