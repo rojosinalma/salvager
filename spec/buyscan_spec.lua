@@ -84,7 +84,8 @@ describe("Buying during a scan", function()
         wow.tick(ns, 1.2)
     end)
 
-    it("searches a deal again first when a browse came after its search, then offers Buy now; that click buys", function()
+    it("searches a deal again first when a browse came after its search; then its Buy is on and one click buys",
+        function()
         local deal = scanOnce()
         -- The next round's browse is on its way: the deal's search is stale now.
         env.ah.fullBrowse = false
@@ -95,7 +96,6 @@ describe("Buying during a scan", function()
         ns.Scanner.Buy(deal)
         assert.are.equal(bids, #env.ah.bids)                           -- not sent into the void
         assert.are.equal("search", deal.wait)
-        assert.is_true(said("searching it again first"))
         assert.is_truthy(logged("a browse came after its search"))
         wow.tick(ns, 0.2)
         local task = ns.Queue.current
@@ -103,15 +103,15 @@ describe("Buying during a scan", function()
         assert.are.equal(BOOTS, task.itemKey.itemID)
         wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_ADDED", {})         -- a late page: the next is not asked for
         wow.fire(ns, "ITEM_SEARCH_RESULTS_UPDATED", KEY)
-        assert.is_true(deal.buyNow)
-        assert.is_true(said("auction house ready: click Buy now for"))
+        assert.is_nil(deal.wait)                                       -- current again: a plain Buy, no "Buy now"
+        assert.is_nil(deal.buyNow)
         ns.UI.Refresh()
-        assert.are.equal("Buy now", ns.UI.buyTop:GetText())           -- Buy Top is for it, lit
+        assert.are.equal("Buy Top", ns.UI.buyTop:GetText())
         assert.is_true(ns.UI.buyTop:IsEnabled())
         assert.are.equal(pages, count("more"))                         -- the browse held meanwhile
-        click(ns.UI.buyTop)
-        assert.are.same({ id = 10, amount = 100 }, env.ah.bids[#env.ah.bids])
-        assert.is_true(deal.pending)
+        click(ns.UI.buyTop)                                            -- one click buys
+        assert.are.equal(bids + 1, #env.ah.bids)
+        assert.are.equal(10, env.ah.bids[#env.ah.bids].id)
         wow.fire(ns, "AUCTION_HOUSE_PURCHASE_COMPLETED", 10)
         ns.Scanner.Stop()
     end)
@@ -142,27 +142,26 @@ describe("Buying during a scan", function()
         ns.Scanner.Stop()
     end)
 
-    it("waits for a busy auction house instead of losing the click, then offers Buy now", function()
+    it("turns every Buy off while the auction house is busy and on when it is ready: one click buys, nothing waits",
+        function()
         local deal = scanOnce()
         env.ah.ready = false                                           -- a request of a scan is in flight
-        local bids = #env.ah.bids
-        ns.Scanner.Buy(deal)
-        assert.are.equal(bids, #env.ah.bids)
-        assert.are.equal("ready", deal.wait)
-        assert.is_true(said("auction house busy"))
-        assert.is_truthy(logged("auction house busy"))
-        assert.is_truthy(logged("in flight: scan idle"))
+        wow.tick(ns, 0.1)
         ns.UI.Refresh()
-        assert.is_false(ns.UI.buyTop:IsEnabled())                      -- "...", with the reason in its tooltip
-        assert.is_truthy(rawget(ns.UI.buyTop, "reason"):find("Waiting for the auction house", 1, true))
-        ns.Queue.Add({ commodity = 11083, onResult = function() end, onFail = function() end })
-        wow.tick(ns, 2)
-        assert.is_nil(ns.Queue.current)                                -- everything else holds
+        assert.is_false(ns.UI.buyTop:IsEnabled())                      -- off, with the reason in its tooltip
+        assert.are.equal("Buy Top", ns.UI.buyTop:GetText())            -- (its name stays: no "..." for a busy moment)
+        assert.is_truthy(rawget(ns.UI.buyTop, "reason"):find("answering", 1, true))
+        local bids = #env.ah.bids
+        ns.Scanner.Buy(deal)                                           -- a click in that same instant: nothing at all
+        assert.are.equal(bids, #env.ah.bids)
+        assert.is_nil(deal.wait)
+        assert.is_nil(deal.buyNow)
         env.ah.ready = true
         wow.fire(ns, "AUCTION_HOUSE_THROTTLED_SYSTEM_READY")
-        assert.is_true(deal.buyNow)
-        assert.is_true(said("auction house ready: click Buy now for"))
-        ns.Scanner.Buy(deal)                                           -- the click on Buy now
+        wow.tick(ns, 0.3)
+        ns.UI.Refresh()
+        assert.is_true(ns.UI.buyTop:IsEnabled())                       -- on again by itself
+        ns.Scanner.Buy(deal)                                           -- one click buys
         assert.are.same({ id = 10, amount = 100 }, env.ah.bids[#env.ah.bids])
         wow.fire(ns, "AUCTION_HOUSE_PURCHASE_COMPLETED", 10)
         ns.Queue.Clear()
@@ -263,7 +262,7 @@ describe("Buying during a scan", function()
         if deal.wait == "search" then
             wow.tick(ns, 0.2)
             wow.fire(ns, "ITEM_SEARCH_RESULTS_UPDATED", KEY)
-            assert.is_true(deal.buyNow)
+            assert.is_nil(deal.wait)                                   -- current again: a plain Buy
             ns.Scanner.Buy(deal)
         end
         assert.are.equal(bids + 1, #env.ah.bids)
@@ -279,27 +278,26 @@ describe("Buying during a scan", function()
         ns.Queue.Clear()
     end)
 
-    it("does not send a Buy now click made while the auction house is busy again: it stays Buy now", function()
+    it("sends nothing for a row's Buy clicked while busy, and never shows Buy now", function()
         local deal = scanOnce()
         env.ah.ready = false
-        ns.Scanner.Buy(deal)                                           -- a row's Buy: it waits
-        assert.are.equal("ready", deal.wait)
+        local bids = #env.ah.bids
+        ns.Scanner.Buy(deal)                                           -- a row's Buy in the busy instant: nothing
+        assert.are.equal(bids, #env.ah.bids)
+        assert.is_nil(deal.wait)
+        assert.is_nil(deal.buyNow)
+        wow.tick(ns, 0.1)
+        ns.UI.Refresh()
+        assert.is_false(ns.UI.rows[1].buy:IsEnabled())
+        assert.are.equal("Buy", ns.UI.rows[1].buy:GetText())
         env.ah.ready = true
         wow.fire(ns, "AUCTION_HOUSE_THROTTLED_SYSTEM_READY")
-        assert.is_true(deal.buyNow)
-        env.ah.ready = false                                           -- busy again before the click
-        local bids = #env.ah.bids
-        ns.Scanner.Buy(deal)                                           -- the click on Buy now
-        assert.are.equal(bids, #env.ah.bids)                           -- not sent into the void
-        assert.is_true(deal.buyNow)
-        assert.is_falsy(deal.pending)
+        wow.tick(ns, 0.3)
         ns.UI.Refresh()
-        assert.are.equal("Buy now", ns.UI.rows[1].buy:GetText())
-        env.ah.ready = true
-        ns.Scanner.Buy(deal)                                           -- ready: this click buys
+        assert.is_true(ns.UI.rows[1].buy:IsEnabled())
+        ns.Scanner.Buy(deal)                                           -- ready: one click buys
         assert.are.same({ id = 10, amount = 100 }, env.ah.bids[#env.ah.bids])
         wow.fire(ns, "AUCTION_HOUSE_PURCHASE_COMPLETED", 10)
-        ns.Queue.Clear()
     end)
 
     it("calls no purchase lost when three are answered in order, a second apart", function()
@@ -341,7 +339,7 @@ describe("Buying during a scan", function()
             wow.tick(ns, 0.2)
             assert.is_false(ns.UI.buyTop:IsEnabled())
             if i < 10 then                                             -- (after the last one, nothing is left)
-                assert.are.equal("...", ns.UI.buyTop:GetText())
+                assert.are.equal("Buy Top", ns.UI.buyTop:GetText())   -- off, its name stays
                 assert.is_truthy(rawget(ns.UI.buyTop, "reason"):find("still answering your last purchase", 1, true))
             end
             for _ = 1, 3 do click(ns.UI.buyTop) wow.tick(ns, 0.3) end   -- fast clicks meanwhile: nothing

@@ -911,6 +911,12 @@ flipping is out of scope for now.
        is searched again once, when no Buy was clicked for 8 s and nothing is on its way (also after a failed
        purchase).
 
+    - m. One click (0.4.0, the user: "I don't like having to click twice"; measured: 251 of 576 clicks found the
+       auction house busy, 153 of them answering the player's own last purchase): there is no "Buy now" any more.
+       Every Buy (row, Buy Top, Gear Details) is off, with the reason and its name kept, while the auction house
+       answers a request (`Scanner.Ready`, checked each tick), and on again the moment it is ready; a Buy that is on
+       buys with one click. A click in the very instant it turned busy sends nothing and leaves nothing waiting. A
+       stale search (rare since 105i) shows "..." while its gear is searched again, then a plain Buy.
 107. **Purchases by day, the Current batch, windows that fit their columns** (0.3.136, the user, 2026-11-26).
     - a. All purchases: a "Show" dropdown on the filter row (after Bands) replaces the "Not disenchanted" check box:
        All gear (first), Disenchanted, Not disenchanted (`purchaseFilter().show`: "all", "done", "waiting"; a saved

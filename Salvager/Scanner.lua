@@ -776,7 +776,7 @@ function Scanner.BuyBusy()
         return "The auction house is still answering your last purchase: Buy Top buys the next one the moment it has "
             .. "answered."
     end
-    return "The auction house is busy with another request: Buy Top buys the moment it is ready."
+    return "The auction house is answering a request of the scan: Buy Top is on again the moment it is ready."
 end
 
 --- The answer of the search a click waited for (from readAuctions). `listed` = the auction is still there.
@@ -796,7 +796,10 @@ function afterSearch(d, listed)
         C_Timer.After(1, function() Scanner.SendWaiting(true) end)   -- in case the "ready" event does not come
         return
     end
-    if isReady() then offer(d) else d.wait = "ready" end
+    -- Current again: its Buy is a plain Buy, on as soon as the auction house is free (no "Buy now" state, 0.4.0).
+    forget(d)
+    ns.Log("purchase of %s: its search is current again, Buy is on", d.link or d.itemID)
+    ns.Fire("SALVAGER_DEALS")
 end
 
 --- Buys a deal. Must run from a click (the server needs a hardware event per purchase, and nothing can be sent
@@ -814,11 +817,15 @@ function Scanner.Buy(deal, top)
     if deal.pending or deal.wait or pendingBuys[deal.auctionID] then return end
     if GetMoney() < deal.buyout then ns.Print("not enough money for %s", deal.link or "this gear") return end
     local ready = isReady()
-    if top and not ready then
+    -- Busy (the answer to the last purchase, or a scan request, is still out): a purchase sent now is lost, and it
+    -- cannot be sent later without a click. Every Buy button is off while busy (UI.BuyLook), so this is a click in the
+    -- same instant the auction house became busy: nothing is sent and nothing waits; the button lights again in a
+    -- moment and the next click buys (0.4.0, the user: no "Buy now" second click).
+    if not ready and ns.db.buyResendBlocked then
         busyClicks = busyClicks + 1
         if busyClicks == 1 then
-            ns.Log("Buy Top click on %s: the auction house is still answering; nothing sent, the next click after its "
-                .. "answer buys (in flight: %s)", deal.link or deal.itemID, inFlight())
+            ns.Log("Buy click on %s%s: the auction house is still answering; nothing sent, the next click after its "
+                .. "answer buys (in flight: %s)", deal.link or deal.itemID, top and " (Buy Top)" or "", inFlight())
         end
         return
     end
@@ -837,25 +844,18 @@ function Scanner.Buy(deal, top)
         Scanner.Recheck(deal, true)
     elseif ready then
         send(deal)
-    elseif deal.buyNow then
-        -- Busy again since "Buy now" came: a purchase sent now is lost. It stays "Buy now" for the next click.
-        deal.readyAt = GetTime()
-        ns.Log("purchase of %s: Buy now clicked while the auction house is busy again, not sent; it stays Buy now",
-            deal.link or deal.itemID)
-        return
     elseif not ns.db.buyResendBlocked then
         send(deal, true)
         ns.Log("purchase of %s: the auction house is busy, it goes out the moment it is ready", deal.link or deal.itemID)
         C_Timer.After(1, function() Scanner.SendWaiting(true) end)   -- in case the "ready" event does not come
         ns.Fire("SALVAGER_DEALS")
         return
-    else
-        deal.wait, deal.waitAt = "ready", GetTime()
-        waiting[deal.auctionID] = deal
-        ns.Print("auction house busy: %s waits, Buy now comes the moment it is ready", deal.link or "the gear")
     end
     ns.Fire("SALVAGER_DEALS")
 end
+
+--- Is the auction house free for a purchase now? (Buy buttons are on only then: UI.BuyLook.)
+function Scanner.Ready() return isReady() end
 
 -- Waiting clicks: "Buy now" the moment the auction house is ready (its event, or this poll); a wait that lasts is
 -- said and dropped, and an offer nobody clicks lapses, so the scan goes on.

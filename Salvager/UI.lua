@@ -285,9 +285,9 @@ local function helpLines()
         "Click such a row to open or close it (the arrow shows which); it stays as you left it.",
         "Click an auction's row to see its Gear details: every outcome of one disenchant, your history with it.",
         "Buy needs one click per auction. After a purchase that gear is searched again.",
-        "Buy now (lit): the auction house could not take your click at once (busy, or a scan browse came after the "
-            .. "gear's search). Nothing was sent; click Buy now to buy it.",
-        "While the mouse is over this list, Buy Top or Gear Details, the scan waits, so a Buy click goes through.",
+        "A Buy that is on buys with one click. It is off for the moment the auction house answers a request (your last "
+            .. "purchase or the scan) and comes back by itself.",
+        "For a second after each Buy click the scan sends nothing, so a quick next click finds the auction house free.",
         string.format("Each scan makes %d gear searches, the best candidates first (Gear checks, in the Scan settings).",
             ns.db.settings.maxChecks),
         "Hover a column title for more about that column.",
@@ -472,14 +472,18 @@ end
 --- while the purchase is on its way or waits for the auction house (the reason in `b.reason`); "Buy now", lit, when
 --- the auction house is ready for the click a waiting purchase needs.
 function UI.BuyLook(b, d, label)
+    -- A Buy that is on always buys with one click (0.4.0, the user): it is off for the fraction of a second the
+    -- auction house is answering a request (the last purchase or a scan's), and lights again by itself.
+    local busy = d and ns.Queue.open and not ns.Scanner.Ready()
     local why = not d and "Every auction of this row is being bought." or d.pending and "This auction is being bought."
-        or d.wait == "search" and "Searching this gear again first (a scan browse came after its search): Buy now "
-            .. "comes in a moment."
-        or d.wait and "Waiting for the auction house: Buy now comes the moment it is ready." or nil
+        or d.wait == "search" and "Searching this gear again first (a scan browse came after its search): Buy comes "
+            .. "back in a moment."
+        or busy and "The auction house is answering a request (your last purchase or the scan): Buy comes back in a "
+            .. "moment by itself." or nil
     b:SetEnabled(why == nil)
     b.reason = why
-    b:SetText((d and d.buyNow) and "Buy now" or why and "..." or label)
-    if d and d.buyNow then b:LockHighlight() else b:UnlockHighlight() end
+    b:SetText((why and not busy) and "..." or label)
+    b:UnlockHighlight()
 end
 
 --- A deal's numbers in a tooltip: Item level, Buyout (and the high return note), every outcome of one disenchant in
@@ -545,10 +549,6 @@ local function buyTopTooltip(self)
     if d and (d.wait or (not d.pending and ns.Scanner.BuyBusy())) then
         GameTooltip:AddLine(buyTop.reason or "", 1, 0.3, 0.3, true)
         GameTooltip:AddLine(d.link or dealName(d), 1, 1, 1)
-    elseif d and d.buyNow then
-        GameTooltip:AddLine("The auction house is ready: this click buys it.", 0.3, 1, 0.3, true)
-        GameTooltip:AddLine(d.link or dealName(d), 1, 1, 1)
-        UI.AddDealLines(GameTooltip, d)
     elseif d then
         GameTooltip:AddLine("Buys the auction with the highest " .. (byReturn() and "average return" or "average profit")
             .. " in the Gear tab (the sort), from any row. Each click buys the next best one.", 1, 0.82, 0, true)
@@ -570,12 +570,12 @@ local function updateBuyTop()
     UI.BuyLook(buyTop, d, "Buy Top")
     if not d then buyTop.reason = why buyTop:SetText("Buy Top") end
     -- The auction house is busy (mostly: still answering the last purchase): a click now would lose the purchase,
-    -- so Buy Top says "..." with the reason until it is ready, and a click meanwhile does nothing (SDD 105j).
+    -- so Buy Top is off with the reason until it is ready (its name stays), and a click meanwhile does nothing.
     local busy = d and not d.pending and not d.wait and ns.Scanner.BuyBusy()
     if busy then
         buyTop:SetEnabled(false)
         buyTop.reason = busy
-        buyTop:SetText("...")
+        buyTop:SetText("Buy Top")
         buyTop:UnlockHighlight()
     end
     -- Above the button: the gear the next click buys, as wide as its name, at most half the room left of the
@@ -1752,8 +1752,11 @@ local wasBusy = false
 ns.OnTick(function()
     -- (Anywhere over a row, Buy Top or Gear Details: the search goes ahead of the click, past every hold.)
     ns.Scanner.Prefetch(dealUnderMouse())
-    -- Buy Top follows the auction house: "..." while it is busy, back the moment it is ready.
+    -- Every Buy follows the auction house: off while it is busy, on the moment it is ready (one click buys).
     local busy = ns.Scanner.BuyBusy() ~= nil
-    if busy ~= wasBusy and buyTop and f and f:IsVisible() then updateBuyTop() end
+    if busy ~= wasBusy then
+        if buyTop and f and f:IsVisible() then updateBuyTop() UI.RequestRefresh() end
+        if ns.GearWindow and ns.GearWindow.Frame() and ns.GearWindow.Frame():IsVisible() then ns.GearWindow.Refresh() end
+    end
     wasBusy = busy
 end)

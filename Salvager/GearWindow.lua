@@ -213,10 +213,13 @@ function Gear.BuyReason(d)
     if not d then return "This auction is no longer in the Gear list: it sold, or the last scan did not find it." end
     if d.pending then return "This auction is being bought." end
     if d.wait == "search" then
-        return "Searching this gear again first (a scan browse came after its search): Buy now comes in a moment."
+        return "Searching this gear again first (a scan browse came after its search): Buy comes back in a moment."
     end
-    if d.wait then return "Waiting for the auction house: Buy now comes the moment it is ready." end
     if not ns.Queue.open then return "Open the auction house first." end
+    if not ns.Scanner.Ready() then
+        return "The auction house is answering a request (your last purchase or the scan): Buy comes back in a moment "
+            .. "by itself."
+    end
     if (GetMoney() or 0) < d.buyout then return "Not enough gold for it (" .. ns.Money(d.buyout) .. ")." end
     return nil
 end
@@ -294,10 +297,9 @@ function Gear.Refresh()
     local why = Gear.BuyReason(now)
     buyButton:SetEnabled(why == nil)
     buyButton.reason = why
-    -- (As the Gear list's Buy: "Buy now", lit, when the auction house is ready for a click that waited, SDD 105.)
-    local buyNow = now and now.buyNow and not why
-    buyButton:SetText(buyNow and "Buy now" or (now and (now.pending or now.wait)) and "..." or "Buy")
-    if buyNow then buyButton:LockHighlight() else buyButton:UnlockHighlight() end
+    -- (As the Gear list's Buy: on means one click buys; off while the auction house answers, 0.4.0.)
+    buyButton:SetText((now and (now.pending or now.wait)) and "..." or "Buy")
+    buyButton:UnlockHighlight()
 end
 
 local function build()
