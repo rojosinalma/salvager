@@ -13,6 +13,8 @@ local R = {}
 R.SCREEN = 1920        -- extreme data: a window may grow up to the screen
 R.PERF_SLACK = 1.5     -- a timing may be 1.5 times its baseline (noise), never more
 R.PERF_FLOOR = 2       -- ms: timings under it count as it (os.clock's grain)
+R.PERF_BAND = 10       -- ms: a timing also has to be this much over its baseline to fail (a shared host's noise:
+                       -- 12.1 -> 18.8 ms seen once in three runs of the same code, 2026-11-28)
 R.PERF_TIGHTEN = 0.8   -- a timing moves the baseline only when 20 % better (a lucky run does not set it)
 
 ------------------------------------------------------------------ JSON (the subset the specs write)
@@ -153,7 +155,10 @@ local RULES = {
     },
     ["sim"] = { width = lessIsBetter(1), gap = lessIsBetter(0.5), cut = ZERO },
     perf = { value = {
-        worse = function(b, n) return n > R.PERF_SLACK * math.max(b, R.PERF_FLOOR) end,
+        worse = function(b, n)
+            local base = math.max(b, R.PERF_FLOOR)
+            return n > R.PERF_SLACK * base and n > base + R.PERF_BAND
+        end,
         better = function(b, n) if n < R.PERF_TIGHTEN * b then return n end return b end,
     } },
     suite = {

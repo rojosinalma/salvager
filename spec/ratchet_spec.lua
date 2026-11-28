@@ -79,9 +79,12 @@ describe("The ratchet (scripts/ratchet.lua, SDD 121)", function()
         assert.are.equal(wider["layout-typical"]["materials/-/default"].width, out["layout-typical"]["materials/-/default"].width)
         assert.is_true(#took > 0)
         assert.is_truthy(out.reasons[#out.reasons]:find("a wider Post button", 1, true))
-        -- Timings: 1.5 times the baseline is noise, more is worse; a timing tightens only when 20 % better.
+        -- Timings: worse only when over 1.5 times the baseline AND over it by the noise band (10 ms); a timing
+        -- tightens only when 20 % better.
         assert.are.same({}, (R.compare({ perf = { x = 10 } }, { perf = { x = 14.9 } })))
-        assert.are.equal(1, #R.compare({ perf = { x = 10 } }, { perf = { x = 15.1 } }))
+        assert.are.same({}, (R.compare({ perf = { x = 10 } }, { perf = { x = 19.9 } })))   -- 2x, but within 10 ms
+        assert.are.equal(1, #R.compare({ perf = { x = 10 } }, { perf = { x = 20.1 } }))
+        assert.are.equal(1, #R.compare({ perf = { x = 40 } }, { perf = { x = 60.1 } }))   -- 1.5x and 20 ms over
         assert.are.equal(10, R.tighten({ perf = { x = 10 } }, { perf = { x = 9 } }).perf.x)
         assert.are.equal(7, R.tighten({ perf = { x = 10 } }, { perf = { x = 7 } }).perf.x)
         -- The suite: fewer specs or a luacheck warning is worse.

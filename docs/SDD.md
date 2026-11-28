@@ -1530,7 +1530,7 @@ kind from all bands (118).
     synthetic data at the caps, 5000 purchases, disenchants and sales; each window and view's refresh, best of 3, the
     countdown tick, the scan's judge per listing) and `suite` (the specs passed, luacheck's warnings).
     `scripts/ratchet.lua` (Lua 5.1, run in the test image) compares: a width larger by more than 1 px, a larger gap, a
-    cut text or an overlap, fewer specs, a luacheck warning, a timing over 1.5 times its baseline (2 ms floor) is
+    cut text or an overlap, fewer specs, a luacheck warning, a timing over 1.5 times its baseline and 10 ms over it (2 ms floor; best of 7 runs; 0.4.0: one run in three saw 12 -> 19 ms on the same code) is
     worse; `make check` fails with a table of what got worse and by how much. `make ratchet` moves the baseline to the
     better numbers only (a timing only when 20 % better, so a lucky run does not set it) and adds new ones; a looser one
     needs `make ratchet ALLOW_WORSE=<Lua patterns on set:key:field> REASON="why"`, and the reason goes into the file's

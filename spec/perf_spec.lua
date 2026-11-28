@@ -1,5 +1,5 @@
 -- How long the windows take to draw, on synthetic data at the code's caps (ten times a heavy player's ledger: 5000
--- purchases, disenchants and sales; SDD 121): each window and view's refresh (best of 3, os.clock), one tick of the
+-- purchases, disenchants and sales; SDD 121): each window and view's refresh (best of 7, os.clock), one tick of the
 -- Ledger's countdowns, and the gear scan's judge per listing. The numbers go to .ratchet/perf.json; the ratchet allows
 -- 1.5 times the baseline (noise), never more. Synthetic, so no player's data is in the repo.
 local wow = require("spec.wow")
@@ -55,7 +55,7 @@ describe("Draw times at ten times a heavy ledger (the ratchet, SDD 121)", functi
         local out = {}
         local function measure(label, fn, reps)
             local best = math.huge
-            for _ = 1, reps or 3 do
+            for _ = 1, reps or 7 do
                 local t0 = clock()
                 fn()
                 best = math.min(best, (clock() - t0) * 1000)
