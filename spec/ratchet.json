@@ -1059,7 +1059,7 @@
     "ledger/Purchases/Pending": 27.892,
     "ledger/Sales": 3.204,
     "ledger/Sales/Competition": 2.598,
-    "ledger/Sales/History": 21.253,
+    "ledger/Sales/History": 16.715,
     "ledger/Sales/Open and sold": 3.031,
     "limits": 0.526,
     "log": 0.053,
@@ -1092,7 +1092,7 @@
   "suite": {
     "all": {
       "luacheck": 0,
-      "specs": 405
+      "specs": 414
     }
   }
 }
