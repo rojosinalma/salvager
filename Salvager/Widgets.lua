@@ -1553,7 +1553,9 @@ function Widgets.CheckLayout(f, lists, view)
     end
     if #problems > 0 then
         logged[name] = true
-        if ns.Log then ns.Log("layout: %s %s", name, table.concat(problems, "; ")) end
+        if ns.Log then
+            ns.Log("WARN", "layout", name .. " " .. table.concat(problems, "; "), { view = name, problems = #problems })
+        end
     end
     return problems
 end

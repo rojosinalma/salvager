@@ -1151,7 +1151,7 @@ local function build()
             qs[q] = true
             ns.Print("at least one quality must stay on")
         end
-        ns.Log("quality %d = %s", q, tostring(qs[q]))
+        ns.Log("INFO", "options", string.format("quality %d = %s", q, tostring(qs[q])), { quality = q, on = qs[q] })
         ns.Fire("SALVAGER_SETTINGS")
     end, "Which gear qualities the scan looks at. Uncommon gives dust and essence, rare one shard, epic 2-4 shards "
         .. "or Nexus Crystals.", "Quality")
@@ -1181,7 +1181,7 @@ local function build()
         .. "costs no more than its disenchant value minus this.")
     minProfit = W.Money(box, function(copper)
         ns.db.settings.minProfit = copper
-        ns.Log("min profit set to %s", ns.Money(copper))
+        ns.Log("INFO", "options", "min profit set to " .. ns.Money(copper), { minProfit = copper })
         ns.Fire("SALVAGER_SETTINGS")
     end)
     minProfit:SetPoint("LEFT", mpLabel, "RIGHT", 4, 0)
@@ -1200,7 +1200,7 @@ local function build()
         local n = math.max(0, math.floor(tonumber(self:GetText()) or 0))
         if ns.db.settings.minReturn ~= n then
             ns.db.settings.minReturn = n
-            ns.Log("min return set to %d%%", n)
+            ns.Log("INFO", "options", string.format("min return set to %d%%", n), { minReturn = n })
             ns.Fire("SALVAGER_SETTINGS")
         end
     end)
@@ -1212,7 +1212,8 @@ local function build()
         .. "this is never listed. All zeroes = no limit.")
     maxPrice = W.Money(box, function(copper)
         ns.db.settings.maxPrice = copper
-        ns.Log("max price set to %s", copper > 0 and ns.Money(copper) or "none")
+        ns.Log("INFO", "options", "max price set to " .. (copper > 0 and ns.Money(copper) or "none"),
+            { maxPrice = copper })
         ns.Fire("SALVAGER_SETTINGS")
     end)
     maxPrice:SetPoint("LEFT", capLabel, "RIGHT", 4, 0)
@@ -1221,7 +1222,7 @@ local function build()
         .. "(1 dust, not the average 1.5) and no Arcane Salvager bonus. You see fewer deals, and they lose less often. "
         .. "Value and Profit still show the average.", function(on)
         ns.db.settings.cautious = on
-        ns.Log("cautious pricing %s", on and "on" or "off")
+        ns.Log("INFO", "options", "cautious pricing " .. (on and "on" or "off"), { cautious = on and true or false })
         ns.Fire("SALVAGER_SETTINGS")
     end)
     cautious:SetPoint("TOPRIGHT", box, "TOPRIGHT", -78, -50)
@@ -1243,7 +1244,8 @@ local function build()
                 off[up] = nil
                 ns.Print("at least one band must stay on")
             end
-            ns.Log("level band %s = %s", tostring(up), tostring(not off[up]))
+            ns.Log("INFO", "options", string.format("level band %s = %s", tostring(up), tostring(not off[up])),
+                { band = up, on = not off[up] })
             ns.Fire("SALVAGER_SETTINGS")
         end,
         "Which item level bands the scan looks at. A band is a range of item levels that disenchants into the same "
@@ -1265,7 +1267,7 @@ local function build()
             local n = math.max(0, math.floor(tonumber(self:GetText()) or 0))
             if ns.db.settings[key] ~= n then
                 ns.db.settings[key] = n
-                ns.Log("%s = %d", key, n)
+                ns.Log("INFO", "options", string.format("%s = %d", key, n), { [key] = n })
                 ns.Fire("SALVAGER_SETTINGS")
             end
         end)
@@ -1292,7 +1294,7 @@ local function build()
         local n = math.max(1, math.floor(tonumber(self:GetText()) or 0))
         if ns.db.settings.maxChecks ~= n then
             ns.db.settings.maxChecks = n
-            ns.Log("maxChecks = %d", n)
+            ns.Log("INFO", "options", string.format("show top = %d", n), { maxChecks = n })
         end
         ns.Fire("SALVAGER_SETTINGS")
     end)
@@ -1487,7 +1489,8 @@ local function build()
                 ns.db.settings.dealSort = sortKey
                 ns.Scanner.Sort()
             end
-            ns.Log("%s listed by %s", UI.view == "deals" and "deals" or "materials", tostring(view.header[col]))
+            ns.Log("INFO", "ui", string.format("%s listed by %s", UI.view == "deals" and "deals" or "materials",
+                tostring(view.header[col])))
             UI.offset = 0
             UI.Refresh()
         end)
@@ -1714,7 +1717,7 @@ function UI.Minimize()
     f:Hide()
     UI.minimizing = false
     ns.MiniPanel.Show()
-    ns.Log("main window minimized")
+    ns.Log("INFO", "ui", "main window minimized")
 end
 
 --- Who opens a window now (Widgets.Window keeps it as the window's owner): the mini panel while one of its buttons
@@ -1732,10 +1735,14 @@ function UI.HideOthers()
         local x = w.frame
         if x ~= f and not rawget(x, "launcher") and x:IsShown() and rawget(x, "owner") ~= "panel" then
             local ok, err = pcall(x.Hide, x)
-            if ok then n = n + 1 else ns.Log("ERROR closing %s: %s", tostring(x:GetName()), tostring(err)) end
+            if ok then
+                n = n + 1
+            else
+                ns.Log("ERROR", "ui", string.format("Lua error closing %s: %s", tostring(x:GetName()), tostring(err)))
+            end
         end
     end
-    if n > 0 then ns.Log("main window closed: %d windows closed with it", n) end
+    if n > 0 then ns.Log("INFO", "ui", string.format("main window closed: %d windows closed with it", n), { closed = n }) end
 end
 
 --- The windows that were open last time, again (with the main window, when the setting is on).
@@ -1807,7 +1814,7 @@ local function ensure()
     if f then return end
     local ok, err = pcall(build)
     if not ok then
-        ns.Log("ERROR building the main window: %s", tostring(err))
+        ns.Log("ERROR", "ui", "Lua error building the main window: " .. tostring(err))
         error(err, 0)
     end
 end

@@ -353,7 +353,7 @@ flipping is out of scope for now.
     that lost, marking those that were valued as something they were not. Each purchase keeps its judgment
     (`j` = quality, gear type, band, item level, version), copied to the disenchant as `judged`.
 69. **Activity log:** 5000 records; session lines at login and logout (character, gold, version). Structured
-    records, levels, categories and the Log window's table since 0.4.x: 129.
+    records, levels, categories and the Log window's table since 0.4.1: 129.
 70. **Books, after the review of 2026-11-26** (0.3.79):
     - a. `PostCommodity` and `CancelAuction` are restricted (they need the click): they cannot wait for a
        purchase and go out later, so Post and Cancel undercut are off while a purchase is on its way, with
@@ -1166,11 +1166,10 @@ flipping is out of scope for now.
     - e. Combat: the client locks a secure button and every window that holds one. At `PLAYER_REGEN_DISABLED` (just
        before the lock) the button lets go of its aim and turns off, and the panel closes; at `PLAYER_REGEN_ENABLED`
        it aims again and the panel comes back if it was open (or asked for in the fight).
-    - f. Opens by itself: after a bag change or a booked purchase, when a gear has more pieces of the batch in the
-       bags than last seen (`SalvagerDB.disenchantSeen`, per gear; the counts follow the bags), not in combat (then
-       when the fight ends), owner "panel" (it stays when the main window closes). Closed, it stays closed until
-       new pieces come. The first check waits for the first bag update after a load, so a /reload does not reopen
-       it. Also: the main window's footer (Disenchant, after Market), the mini panel (before Log), `/salv
+    - f. Opens by itself: since 0.4.1 only when a batch arrives, and closed by hand it stays closed for the batch
+       (130; up to 0.4.0 on every piece more than last seen, `SalvagerDB.disenchantSeen`), not in combat (then
+       when the fight ends), owner "panel" (it stays when the main window closes). The first check waits for the
+       first bag update after a load, so a /reload does not reopen it. Also: the main window's footer (Disenchant, after Market), the mini panel (before Log), `/salv
        disenchant`.
     - g. A key: `Bindings.xml`, `CLICK SalvagerDisenchantButton:LeftButton` (Key Bindings, AddOns, Salvager,
        "Disenchant next piece"; a mouse wheel notch can be bound too); each press is one cast. The button exists
@@ -1479,12 +1478,13 @@ windows (`Post`, `MaterialsWindow`, `LimitsWindow`, `UI` the main window, `Ledge
 
 ## Data
 
-`SalvagerBackup` (account-wide): `list` of ledger copies (88). `SalvagerDB` (account-wide): `settings` (`timeZone`, 110, `highlightReturn`, 116h, `liveInterval`, 122), `prices`, `ledger` (`purchases`, `stock`, `pools`, `disenchants`, `sales`),
-`money` (gold journal), `sessions` (97), `competition` (109), `disenchantSeen` (112), `quality` and `ilvl` (learned item data), `auraSeen` and `auraSnapshots` (to learn the Salvager's aura spell ID; matched by name until then),
+`SalvagerBackup` (account-wide): `list` of ledger copies (88). `SalvagerDB` (account-wide): `settings` (`timeZone`, 110, `highlightReturn`, 116h, `liveInterval`, 122, `disenchantAutoOpen`, 130), `prices`, `ledger` (`purchases`, `stock`, `pools`, `disenchants`, `sales`),
+`money` (gold journal), `sessions` (97), `competition` (109), `quality` and `ilvl` (learned item data), `auraSeen` and `auraSnapshots` (to learn the Salvager's aura spell ID; matched by name until then),
 `posted` and `listings` (29), `history` (57), `log` (records, 129; `logDay` up to 0.4.0), `logExport` (129), `windows` and `window` (places, sizes, views and
 filters; `windows.mini.open`, 127c), `groups` (103), `columns` (95), `sorts` (127f), `layout` (94), and one-time flags (`historySeeded`, `buyResendBlocked`, 65,
 `falseCancelsDropped`, 75, `firstSalvagerBatchFixed`, 74b, `purchasesRestored`, 124, `recostFixed`, 125, `macrosMade`,
-127k). `settings.salvagerBuy`: the main window's Arcane Salvager box (127b; `settings.salvager` until it is settled). In
+127k), `disenchantAuto` (`had`, `dismissed`: the Disenchant panel's opening by itself, 130; `disenchantSeen` up to
+0.4.0). `settings.salvagerBuy`: the main window's Arcane Salvager box (127b; `settings.salvager` until it is settled). In
 `ledger`: `other` (the books' carried-in cost, 125), `matBuys` and `matBuysOld` (materials bought, 128) and `archive` (`d`, `s`, `head`, `upTo`: the records rolled up, 126).
 
 ## Open
@@ -1862,7 +1862,7 @@ kind from all bands (118).
        "Cancelling..." stay); the counts are in their tooltips ("N of your auctions are still for sale", "N are
        undercut: each click cancels the next one"); each as wide as its longest label in the button's font (was 150).
 
-128. **Arcane Salvager core: the recipe in money, prices, buying from a price list, best times** (0.4.x, the user's
+128. **Arcane Salvager core: the recipe in money, prices, buying from a price list, best times** (0.4.1, the user's
     brief of 2026-11-28, approved; the windows on top come later: the tab, the Buy/Sell market window, the two columns).
     - a. Facts (2026-11-28; wowhead.com/forever, foreverdb.net, icy-veins, the API docs of `Gethe/wow-ui-source`
        branch `forever`): Blueprint: Arcane Salvager is item 273103 (Uncommon Enchanting formula, item level 25, needs
@@ -1916,7 +1916,7 @@ kind from all bands (118).
        and the stand-in's auction house, which now records commodity purchases in `ah.commodityBuys` and tells
        `isCommodity` from `env.items[id].commodity`).
 
-129. **The structured log** (0.4.x, the user's approved brief of 2026-11-28, branch log). Was: text lines
+129. **The structured log** (0.4.1, the user's approved brief of 2026-11-28, branch log). Was: text lines
     "HH:MM:SS text" with a "== <date> ==" line per day, IDs in the text, one filter (all, trades and gold, errors).
     - a. A record is `{ t, lvl, cat, msg, kv }` in `SalvagerDB.log`: Unix time; ERROR (a Lua error, a failed action),
        WARN (something dropped, limited, given up, a fallback, no answer), INFO (what the player did and what the
@@ -1926,9 +1926,10 @@ kind from all bands (118).
        and auction IDs, band, copper amounts, seconds, counts, flags; a table inside is one level of keys).
     - b. One API, `ns.Log(lvl, cat, msg, kv)` (`Log.lua`). The old form `ns.Log(fmt, ...)` goes through a shim:
        INFO and `ui`, ERROR where the text starts with "ERROR", the category word it starts with ("ledger: ...").
-       Moved to the new form: Core, Scanner, Queue, Listings, Mail, Disenchant, Gold, Prices, Backup; the window
-       files (Post, Convert, UI, Widgets, Options, MiniPanel, the Disenchant, Materials and Odds windows) still use
-       the shim, until a follow-up (`spec/log_spec.lua` lists them and fails when one no longer needs it).
+       Every call site of the addon is on the new form since the merge of 0.4.1 (Live, Buy, Macros and the window
+       files moved last; a layout self-check line is WARN `layout`, a setting INFO `options`); `spec/log_spec.lua`
+       fails on a call without a level and a category of the lists (its SHIM list is empty). The shim stays for
+       old saved lines and for the specs.
     - c. Bounded at `LogBook.MAX` (5000), oldest first (`Util.Cap`, "log records"): its drop line is DEBUG (the
        log's rotation is how it works); every other bound's drop line is WARN.
     - d. The old text lines become records at the first read: their time from "HH:MM:SS" and the day line before
@@ -1948,3 +1949,24 @@ kind from all bands (118).
        only its first column take the spare width and cut, so the message is cut to the room the other three columns
        leave (their widest words, measured) with "...", and its hover shows the level, category and time, the whole
        message, then its data, one field per line. The window's smallest width is 560 (its filter row: Search, Level, Category).
+
+130. **The Disenchant panel opens by itself only when a batch arrives** (0.4.1, the user, 2026-11-28: "The disenchant
+    window opens seemingly random after I close it"). Cause: it opened whenever a gear's count of purchased pieces in
+    the bags was higher than last seen (112f), so each piece taken from the mail, and each recount (a ledger event,
+    the batch's pairing, the filter) that raised a count, opened it again after the player closed it. The rule now:
+    - a. It opens by itself only when a batch arrives: the pieces of your purchases in the bags (`Panel.Pieces`) go
+       from none to some, not on each further piece; not in combat (then when the fight ends, with its own log line).
+    - b. Closed by the player while pieces are in the bags (its X, Close, Escape, the mini panel, the main window
+       closing it): it stays closed until the count has been 0 again (the batch is done); then the next arrival may
+       open it. `SalvagerDB.disenchantAuto = { had, dismissed }` keeps that over a /reload. The first check after a
+       load (after the first bag update) only notes what is there: a /reload with pieces in the bags never opens it.
+       The fight's own hide is not a close.
+    - c. By hand it always opens (the mini panel, `/salv disenchant`); the Salvager DE macro clicks the button,
+       which works with the panel closed.
+    - d. After a fight it comes back only if it was open when the fight started, or a batch arrived during it.
+    - e. Options, Disenchant panel: "Open the Disenchant panel when bought gear arrives in your bags"
+       (`settings.disenchantAutoOpen`, on by default).
+    - f. Each opening by itself is one INFO `disenchant` record, "panel opened: a batch arrived (N pieces)"
+       (`kv.pieces`). `spec/disenchant_spec.lua`: 5 pieces from the mail one by one open it once; closed by hand
+       it stays closed through more pieces and ledger events; a new batch after the last one opens it again; a
+       /reload with pieces does not; the Options box off never opens it.

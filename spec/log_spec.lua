@@ -5,10 +5,8 @@ local wow = require("spec.wow")
 
 local T = 1700000000          -- 2023-11-14 22:13:20 UTC
 
--- Files that still write the old form ns.Log(fmt, ...) (the shim): the window files, moved in a follow-up.
-local SHIM = { ["Post.lua"] = true, ["Convert.lua"] = true, ["DisenchantWindow.lua"] = true,
-    ["MaterialsWindow.lua"] = true, ["MiniPanel.lua"] = true, ["OddsWindow.lua"] = true, ["Options.lua"] = true,
-    ["UI.lua"] = true, ["Widgets.lua"] = true }
+-- Files that still write the old form ns.Log(fmt, ...) (the shim): none since 0.4.1; a file here fails when it is moved.
+local SHIM = {}
 
 -- The first two arguments of a call that starts at `text` (after "ns.Log("), split at the top-level commas.
 local function firstArgs(text)

@@ -13,6 +13,22 @@
   for the rest of the session and says so. Scan once: Gear always reads every page.
 - The log has one line per round and per purchase (time from click to answer), so the timing can be checked.
 
+### Disenchant panel
+- The panel opens by itself only once, when a batch of gear you bought arrives in your bags, not again for each
+  piece you take from the mail. Close it and it stays closed until that batch is done, also after a /reload.
+- A new option, "Open the Disenchant panel when bought gear arrives in your bags" (on by default). The mini panel
+  and `/salv disenchant` open it any time.
+
+### Log
+- Every line has a level (ERROR, WARN, INFO, DEBUG) and a category (scan, search, buy, mail, disenchant, post,
+  ledger, gold and more). The Log window shows Time, Level, Category and Message, with Search, Level and Category
+  filters; point at a line for its details. Your old lines are kept and converted.
+- `/salv log export` writes the whole log as text to the saved data (after /reload), for bug reports.
+- Lua errors of the addon are logged as errors with where they happened.
+
+### Other
+- Groundwork for Arcane Salvager crafting and material buying (not visible yet).
+
 ## Salvager 0.4.0
 
 The biggest update since 0.3.113: a new forecast, honest books, and a new interface.

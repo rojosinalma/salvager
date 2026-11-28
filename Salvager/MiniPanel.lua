@@ -63,7 +63,10 @@ local function build()
                 W.opening = nil
                 local win = b[3] and _G[b[3]]
                 if win and win:IsShown() then win.owner = "panel" end
-                if not ok then ns.Log("ERROR in the mini panel's %s button: %s", b[1], tostring(err)) end
+                if not ok then
+                    ns.Log("ERROR", "ui", string.format("Lua error in the mini panel's %s button: %s", b[1],
+                        tostring(err)), { button = b[1] })
+                end
             end, b[4])
             bar:Add(button, width, i > 1 and GAP or nil)
             MiniPanel.buttons[b[1]] = button
@@ -85,7 +88,7 @@ end
 function MiniPanel.Toggle()
     if not f then build() end
     f.UserToggle()
-    ns.Log("mini panel %s", f:IsShown() and "shown" or "hidden")
+    ns.Log("INFO", "ui", "mini panel " .. (f:IsShown() and "shown" or "hidden"))
 end
 
 --- At login: shown unless the player hid it (windows.mini.open == false).

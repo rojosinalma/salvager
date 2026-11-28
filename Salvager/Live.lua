@@ -154,7 +154,8 @@ local function sendLook(look)
     look.query = query
     local ok, err = Scanner.SendBrowse(query)
     if not ok then
-        ns.Log("ERROR live look %s: %s", t.name, tostring(err))
+        ns.Log("ERROR", "scan", string.format("live: the look at %s failed: %s", t.name, tostring(err)),
+            { target = t.key, minLevel = t.minLevel, maxLevel = t.maxLevel })
         finishRound("a look failed")
     end
 end
@@ -252,7 +253,8 @@ function Live.Round(clear)
     local targets = buildTargets()
     Live.targets = #targets
     if #targets == 0 then
-        ns.Log("live: nothing to look at (no quality, gear type and level band with a buy limit above zero)")
+        ns.Log("WARN", "scan", "live: nothing to look at (no quality, gear type and level band with a buy limit above "
+            .. "zero)")
         Scanner.ScheduleNext()
         return
     end
@@ -287,8 +289,9 @@ end
 --- The looks came back out of price order: this session runs the full rounds (they read every page).
 local function fallBack(look, breaks, rows, allowed)
     Live.unsorted = true
-    ns.Log("live: browse not price-sorted (%s: %d breaks in %d rows, %d allowed): Play runs full rounds for the rest "
-        .. "of this session", look.target.name, breaks, rows, allowed)
+    ns.Log("WARN", "scan", string.format("live: browse not price-sorted (%s: %d breaks in %d rows, %d allowed): Play "
+        .. "runs full rounds for the rest of this session", look.target.name, breaks, rows, allowed),
+        { target = look.target.key, breaks = breaks, rows = rows, allowed = allowed })
     ns.Print("the auction house does not sort the listings by price: Play scans full rounds this session")
     round = nil
     setState("idle")
@@ -313,7 +316,10 @@ local function onPage(added)
     for i = from, #list do
         local r = list[i]
         local ok, err = pcall(Scanner.Judge, r, pass, sum, round.ctx)
-        if not ok then ns.Log("ERROR judging item %d of a look at %s: %s", i, look.target.name, tostring(err)) end
+        if not ok then
+            ns.Log("ERROR", "scan", string.format("Lua error judging listing %d of a look at %s: %s", i,
+                look.target.name, tostring(err)), { target = look.target.key, listing = i })
+        end
         if r.itemKey and r.minPrice and r.minPrice > 0 then
             local ks = ns.KeyString(r.itemKey)
             if round.dealKeys[ks] then dropSold(ks, r.minPrice) end
@@ -335,12 +341,12 @@ local function onPage(added)
     elseif look.target.merged then
         -- One look for the whole quality and gear type is not enough: from the next round, one per band.
         Live.split[look.target.key] = true
-        ns.Log("live: %s has more than a page under its buy limit: looked at per item level band from now on",
-            look.target.name)
+        ns.Log("INFO", "scan", string.format("live: %s has more than a page under its buy limit: looked at per item "
+            .. "level band from now on", look.target.name), { target = look.target.key })
         endLook()
     elseif look.pages >= LOOK_PAGES then
-        ns.Log("live: %s still under its buy limit after %d pages: the rest waits for its next look", look.target.name,
-            look.pages)
+        ns.Log("DEBUG", "scan", string.format("live: %s still under its buy limit after %d pages: the rest waits for "
+            .. "its next look", look.target.name, look.pages), { target = look.target.key, pages = look.pages })
         endLook()
     else
         look.wantMore = true   -- (asked for when the lock is open, see step)
@@ -352,7 +358,8 @@ ns.On("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED", function() onPage(nil) end)
 ns.On("AUCTION_HOUSE_BROWSE_RESULTS_ADDED", function(added) onPage(type(added) == "table" and added or nil) end)
 ns.On("AUCTION_HOUSE_BROWSE_FAILURE", function()
     if round and round.look then
-        ns.Log("live: the auction house reported a failure for the look at %s", round.look.target.name)
+        ns.Log("WARN", "scan", string.format("live: the auction house reported a failure for the look at %s",
+            round.look.target.name), { target = round.look.target.key })
         endLook()
     end
 end)
@@ -364,14 +371,14 @@ ns.On("AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED", function()
     if #ns.Queue.flying > 0 or look.resends >= LOOK_RESENDS then return end
     look.resends = look.resends + 1
     look.resend = true
-    ns.Log("live: the auction house dropped the look at %s, sending it again (%d of %d)", look.target.name, look.resends,
-        LOOK_RESENDS)
+    ns.Log("WARN", "scan", string.format("live: the auction house dropped the look at %s, sending it again (%d of %d)",
+        look.target.name, look.resends, LOOK_RESENDS), { target = look.target.key, resend = look.resends })
 end)
 
 --- Another addon or window sent a browse: the looks' results are replaced; this round's looks end here.
 function Live.ForeignBrowse()
     if not round or round.phase ~= "look" then return end
-    ns.Log("live round dropped: another addon or window started a browse")
+    ns.Log("WARN", "scan", "live round dropped: another addon or window started a browse")
     round = nil
     setState("idle")
     Scanner.ScheduleNext()
@@ -405,12 +412,16 @@ function finishRound(why)
     wipe(Scanner.holds)
     Live.rounds = r.n
     Live.last = { seconds = secs, at = now }
-    ns.Log("live round %d: %d looks of %d targets, %d pages, %d gear listings, %d breaks, %d under their limit, "
-        .. "%d searched, %d unchanged (not searched), %d top deals searched again, %d sold rows gone, %.1fs%s; "
-        .. "held for purchases %.1fs; auction house free %d%% of the %.0fs since the last round", r.n, r.looks, Live.targets,
-        r.pages, r.rows, r.breaks, #r.ctx.candidates, r.searched, r.unchanged, r.refreshed, r.sold, secs,
-        why and (" (" .. why .. ")") or "", held, clock.total > 0 and math.floor(clock.free / clock.total * 100 + 0.5) or 100,
-        clock.total)
+    local free = clock.total > 0 and math.floor(clock.free / clock.total * 100 + 0.5) or 100
+    ns.Log("INFO", "scan", string.format("live round %d: %d looks of %d targets, %d pages, %d gear listings, %d breaks, "
+        .. "%d under their limit, %d searched, %d unchanged (not searched), %d top deals searched again, %d sold rows "
+        .. "gone, %.1fs%s; held for purchases %.1fs; auction house free %d%% of the %.0fs since the last round", r.n,
+        r.looks, Live.targets, r.pages, r.rows, r.breaks, #r.ctx.candidates, r.searched, r.unchanged, r.refreshed, r.sold,
+        secs, why and (" (" .. why .. ")") or "", held, free, clock.total),
+        { round = r.n, looks = r.looks, targets = Live.targets, pages = r.pages, rows = r.rows, breaks = r.breaks,
+            candidates = #r.ctx.candidates, searched = r.searched, unchanged = r.unchanged, refreshed = r.refreshed,
+            sold = r.sold, seconds = math.floor(secs * 10 + 0.5) / 10, why = why,
+            heldS = math.floor(held * 10 + 0.5) / 10, freePct = free })
     clock.total, clock.free = 0, 0
     local sum = r.sum
     sum.seconds, sum.candidates, sum.live = secs, #r.ctx.candidates, true
@@ -464,10 +475,12 @@ local function step()
         if look.resends < LOOK_RESENDS then
             look.resends = look.resends + 1
             look.resend = true
-            ns.Log("live: no page for the look at %s in %ds, sending it again (%d of %d)", look.target.name, LOOK_WAIT,
-                look.resends, LOOK_RESENDS)
+            ns.Log("WARN", "scan", string.format("live: no page for the look at %s in %ds, sending it again (%d of %d)",
+                look.target.name, LOOK_WAIT, look.resends, LOOK_RESENDS), { target = look.target.key,
+                seconds = LOOK_WAIT, resend = look.resends })
         else
-            ns.Log("live: no page for the look at %s, given up for this round", look.target.name)
+            ns.Log("WARN", "scan", string.format("live: no page for the look at %s, given up for this round",
+                look.target.name), { target = look.target.key })
             endLook()
         end
     end

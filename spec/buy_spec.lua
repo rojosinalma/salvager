@@ -55,7 +55,7 @@ describe("Buying from a price list (Buy)", function()
         return false
     end
     local function logHas(text)
-        for _, m in ipairs(ns.db.log) do if m:find(text, 1, true) then return true end end
+        for _, m in ipairs(ns.db.log) do if ns.LogText(m):find(text, 1, true) then return true end end
         return false
     end
     local function last() return env.ah.commodityBuys[#env.ah.commodityBuys] end

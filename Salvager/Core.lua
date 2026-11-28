@@ -46,6 +46,7 @@ local DEFAULTS = {
         -- The Disenchant panel's filter (Options, SDD 112b): which bought gear it offers. Item levels 0 = no limit.
         disenchantFilter = { qualities = { [2] = true, [3] = true, [4] = true },
             classes = { [2] = true, [4] = true }, minIlvl = 0, maxIlvl = 0 },
+        disenchantAutoOpen = true, -- the Disenchant panel opens by itself when a batch arrives in the bags (SDD 130)
     },
     prices = {},                   -- [matID] = { p = copper each, units, listings, t }
     history = {},                  -- [matID] = { { t, p, lo, n }, ... }: the price at each scan (History.lua)
@@ -570,14 +571,16 @@ function ns.SettleSalvager()
     local old = s.salvager or "auto"
     s.salvagerBuy = ns.SalvagerForBuy()
     s.salvager = nil
-    ns.Log("Arcane Salvager box %s (from the old setting %s)", s.salvagerBuy and "checked" or "unchecked", old)
+    ns.Log("INFO", "options", string.format("Arcane Salvager box %s (from the old setting %s)",
+        s.salvagerBuy and "checked" or "unchecked", old), { salvagerBuy = s.salvagerBuy, old = old })
 end
 
 --- The box clicked (or /salv salvager on|off).
 function ns.SetSalvagerForBuy(on)
     ns.db.settings.salvagerBuy = on and true or false
     ns.db.settings.salvager = nil
-    ns.Log("Arcane Salvager bonus in buy prices %s", on and "on" or "off")
+    ns.Log("INFO", "options", "Arcane Salvager bonus in buy prices " .. (on and "on" or "off"),
+        { salvagerBuy = on and true or false })
     ns.Fire("SALVAGER_SETTINGS")
 end
 

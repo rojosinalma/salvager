@@ -14,7 +14,8 @@ local gamePanel, ownWindow, category
 local controls   -- the controls of the panel being filled (see populate)
 
 local function changed(what, value)
-    ns.Log("option %s = %s", what, tostring(value))
+    ns.Log("INFO", "options", string.format("option %s = %s", what, tostring(value)),
+        { option = what, value = type(value) == "table" and nil or value })
     ns.Fire("SALVAGER_SETTINGS")
 end
 
@@ -140,7 +141,16 @@ local function populate(panel, standalone)
     dToL:SetPoint("LEFT", dMinE, "RIGHT", 12, 0)
     local dHint = W.Label(panel, "0 = no limit. The panel only ever offers gear you bought.", "GameFontDisableSmall")
     at(dHint, 24, -6)
-    controls[#controls + 1] = { refresh = function() dq:Update() dg:Update() end }
+    local dAuto = W.Check(panel, "Open the Disenchant panel when bought gear arrives in your bags",
+        "It opens once when a batch arrives: the first pieces of your purchases land in your bags. Closed, it stays "
+            .. "closed until that batch is done. Not in a fight: then it opens when the fight ends. The mini panel, "
+            .. "/salv disenchant and the Salvager DE macro work either way.",
+        function(on) s.disenchantAutoOpen = on changed("disenchantAutoOpen", on) end)
+    at(dAuto, 20)
+    panel.disenchantAutoBox = dAuto   -- (the specs click it)
+    controls[#controls + 1] = { refresh = function()
+        dq:Update() dg:Update() dAuto:SetChecked(s.disenchantAutoOpen ~= false)
+    end }
 
     heading("Prices and window")
     local unL = numberBox(panel, "Material price = average of the cheapest units", 36,

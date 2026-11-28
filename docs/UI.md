@@ -138,6 +138,13 @@ reply must say so.
     the width, else one per row; a heading row stays across the whole width. Their columns line up in every card.
     Groups of columns (the Odds: Game rates, Your rates, Salvager rates) have a line before them and a heading row
     over their titles, each heading centred over its group, the group as wide as its heading needs.
+18. The Log window (SDD 129f): Time | Level | Category | Message, oldest first, a heading row per day. The level's
+    word in its color (ERROR red, WARN orange, INFO white, DEBUG grey; the message in that color but for INFO).
+    Filters: Search (the message), Level (the least level shown, a one-choice list, Info and up at first),
+    Category (tick or untick each, at least one stays). The message is the last column, cut with "..." to the room
+    the other three leave; its hover shows the level, category and time, the whole message and its data, one field
+    per line. Its smallest width (560) is its filter row's. A message is one short sentence in the player's words:
+    names, never IDs (the IDs are in its data).
 
 ## Statements
 
@@ -204,6 +211,10 @@ reply must say so.
 9. Every window has the close button at its top right. Escape closes the windows (`UISpecialFrames`).
 10. A window's title is "Salvager <Name>", the name capitalized like a name, every word: "Salvager Ledger",
     "Salvager Gear Details". The main window is "Salvager".
+11. A window opens by itself only on an event the player expects, once per event (the user, 2026-11-28: "The
+    disenchant window opens seemingly random after I close it"). Closed by the player, it stays closed until that
+    event is over (the Disenchant panel: until the batch is done, SDD 130); a /reload never opens it; an Options box
+    turns the opening off; opened by hand it always opens. Each opening by itself is one Log line with its reason.
 
 ## Data
 

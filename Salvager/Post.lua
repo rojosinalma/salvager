@@ -261,7 +261,8 @@ function Post.Pending()
     local p = Post.pending
     if p and GetTime() - p.t > PENDING_WAIT then
         Post.pending = nil
-        ns.Log("post: no answer for %dx %s", p.quantity, ns.MaterialName(p.itemID))
+        ns.Log("WARN", "post", string.format("no answer for %dx %s", p.quantity, ns.MaterialName(p.itemID)),
+            { item = p.itemID, qty = p.quantity, seconds = PENDING_WAIT })
         return nil
     end
     return p
@@ -288,21 +289,23 @@ function Post.Send(itemID, quantity, unitPrice, duration, confirmed)
     ns.NoteRequest("post")
     local ok, needsConfirm = pcall(fn, loc, duration, quantity, unitPrice)
     if not ok then
-        ns.Log("ERROR posting %s: %s", ns.MaterialName(itemID), tostring(needsConfirm))
+        ns.Log("ERROR", "post", string.format("Lua error posting %s: %s", ns.MaterialName(itemID),
+            tostring(needsConfirm)), { item = itemID, qty = quantity, each = unitPrice })
         return false, tostring(needsConfirm)
     end
     -- The low-price warning: nothing was posted, the game waits for the second click.
     if not confirmed and needsConfirm then
-        ns.Log("post: the auction house asks to confirm %dx %s at %s each", quantity, ns.MaterialName(itemID),
-            ns.Money(unitPrice))
+        ns.Log("INFO", "post", string.format("the auction house asks to confirm %dx %s at %s each", quantity,
+            ns.MaterialName(itemID), ns.Money(unitPrice)), { item = itemID, qty = quantity, each = unitPrice })
         return "confirm"
     end
     local deposit = Post.Outcome(itemID, quantity, unitPrice, duration).deposit
     Post.pending = { itemID = itemID, quantity = quantity, unitPrice = unitPrice, t = GetTime(), deposit = deposit }
     ns.Gold.Expect("deposit", deposit and -deposit or nil, ns.MaterialName(itemID), 15, -1)
     if ns.Convert then ns.Convert.Busy() end
-    ns.Log("post sent: %dx %s at %s each, duration %d%s", quantity, ns.MaterialName(itemID), ns.Money(unitPrice),
-        duration, confirmed and " (confirmed)" or "")
+    ns.Log("INFO", "post", string.format("sent: %dx %s at %s each, duration %d%s", quantity, ns.MaterialName(itemID),
+        ns.Money(unitPrice), duration, confirmed and " (confirmed)" or ""), { item = itemID, qty = quantity,
+        each = unitPrice, duration = duration, deposit = deposit, confirmed = confirmed and true or nil })
     return true
 end
 
@@ -315,8 +318,9 @@ ns.On("AUCTION_HOUSE_AUCTION_CREATED", function(auctionID)
     if auctionID then ns.Listings.NotePost(auctionID, p.itemID, p.quantity, p.unitPrice, p.deposit) end
     ns.Listings.Refresh()
     ns.Print("posted %dx %s at %s each", p.quantity, ns.MaterialName(p.itemID), ns.Money(p.unitPrice))
-    ns.Log("posted %dx %s at %s each%s", p.quantity, ns.MaterialName(p.itemID), ns.Money(p.unitPrice),
-        p.deposit and (", deposit " .. ns.Money(p.deposit)) or "")
+    ns.Log("INFO", "post", string.format("posted %dx %s at %s each%s", p.quantity, ns.MaterialName(p.itemID),
+        ns.Money(p.unitPrice), p.deposit and (", deposit " .. ns.Money(p.deposit)) or ""), { item = p.itemID,
+        qty = p.quantity, each = p.unitPrice, deposit = p.deposit, auction = auctionID })
     if d and d:IsShown() and d.itemID == p.itemID then d:Hide() end
     ns.Fire("SALVAGER_LEDGER")
 end)
@@ -326,7 +330,8 @@ local function postFailed(why)
     if not p then return end
     Post.pending = nil
     ns.Print("could not post %s (%s)", ns.MaterialName(p.itemID), why)
-    ns.Log("post failed: %s (%s)", ns.MaterialName(p.itemID), why)
+    ns.Log("ERROR", "post", string.format("failed: %s (%s)", ns.MaterialName(p.itemID), why), { item = p.itemID,
+        qty = p.quantity, each = p.unitPrice })
 end
 ns.On("AUCTION_HOUSE_POST_ERROR", function() postFailed("the auction house refused it") end)
 -- The auction house's one error event: ours only when the last request was a post.
@@ -583,11 +588,14 @@ function Post.Open(itemID)
     if Post.BagCount(itemID) < 1 then ns.Print("no %s in your bags", ns.MaterialName(itemID)) return end
     if Post.loading[itemID] then return end
     Post.loading[itemID] = true
-    ns.Log("post: getting the price of %s", ns.MaterialName(itemID))
+    ns.Log("DEBUG", "post", "getting the price of " .. ns.MaterialName(itemID), { item = itemID })
     ns.Fire("SALVAGER_LEDGER")
     ns.Prices.Refresh(itemID, function(ok)
         Post.loading[itemID] = nil
-        if not ok then ns.Log("post: no fresh price for %s, using the last one", ns.MaterialName(itemID)) end
+        if not ok then
+            ns.Log("WARN", "post", string.format("no fresh price for %s, using the last one", ns.MaterialName(itemID)),
+                { item = itemID })
+        end
         show(itemID, not ok)
         ns.Fire("SALVAGER_LEDGER")
         -- An essence: get the price of its other form too, for the "combine or split" line.

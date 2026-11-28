@@ -423,7 +423,7 @@ describe("Windows and columns as tight as their content, with typical data (SDD 
         W.layoutLogged["materials/cut"] = nil
         local before = #ns.db.log
         W.CheckLayout(win, { list }, "cut")
-        local text = tostring(ns.db.log[#ns.db.log])
+        local text = ns.LogText(ns.db.log[#ns.db.log])
         assert.are.equal(before + 1, #ns.db.log)
         assert.is_truthy(text:find("layout: materials/cut cut text: Auction house closed", 1, true),
             text)
@@ -690,7 +690,7 @@ describe("Windows and columns as tight as their content, with typical data (SDD 
                 end
             end
             for i = before + 1, #ns.db.log do
-                local line = tostring(ns.db.log[i])
+                local line = ns.LogText(ns.db.log[i])
                 if line:find("layout: ", 1, true) then found[#found + 1] = label .. " self-check: " .. line end
             end
         end

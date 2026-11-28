@@ -57,10 +57,11 @@ By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_foreve
    history with this gear and its band, the other auctions of it, and a Buy button. A row with x3 is a group of
    auctions: click it to open or close it.
 5. Take your "Auction won" mail, disenchant, and sell the materials as usual. Salvager books each step.
-   The **Disenchant** panel opens by itself when gear you bought lands in your bags: each click on its Disenchant
-   button disenchants the next piece (only gear you bought with Salvager, never your own). Bind a key to it in Key
-   Bindings, AddOns, Salvager, "Disenchant next piece": each press is one cast. Below, what each disenchant gave.
-      Also from the mini panel or `/salv disenchant`.
+   The **Disenchant** panel opens by itself once when a batch of gear you bought lands in your bags: each click on
+   its Disenchant button disenchants the next piece (only gear you bought with Salvager, never your own). Bind a key
+   to it in Key Bindings, AddOns, Salvager, "Disenchant next piece": each press is one cast. Below, what each
+   disenchant gave. Close it and it stays closed until that batch is done. Open it any time from the mini panel or
+   with `/salv disenchant`; Options, Disenchant panel, turns the opening by itself off.
    Two macros are made at the first login: **Salvager Buy** (clicks Buy Top) and **Salvager DE** (clicks the
    Disenchant button). Drag them from `/macro` to your bars or bind them to keys; Options, "Create the macros again",
    makes a deleted one again.
@@ -79,7 +80,10 @@ By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_foreve
    minute while the auction house is open), who undercuts you (Competition: each seller under your price, how
    often, on which materials, by how much, and what it cost you) and the sales already paid with their
    profit, and how close the forecasts came (Accuracy).
-   Point at a column title for what it means. **Log** opens the activity log.
+   Point at a column title for what it means. **Log** opens the activity log: time, level (ERROR, WARN, INFO,
+   DEBUG), category and message, with filters for each; point at a line for its details. `/salv log export` writes
+   the whole log as text lines to the saved data (on disk after `/reload`, in
+   `WTF/Account/<account>/SavedVariables/Salvager.lua`, `logExport`): attach it to a bug report.
    **Reports** shows what your trading made, for this session (login to logout, a /reload keeps it), a past
    session or the last hours or days: sales, the cost of what you sold, the change in your stock and how much
    richer you are, then a check against your gold. It also lists every change of your gold; Gear shows the

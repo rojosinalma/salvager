@@ -133,7 +133,7 @@ function Materials.DataOnlyCheck(parent)
             .. "Untick it to see the price of every material.",
         function(on)
             ns.db.settings.materialsDataOnly = on
-            ns.Log("materials: only with data %s", on and "on" or "off")
+            ns.Log("INFO", "options", "materials: only with data " .. (on and "on" or "off"))
             ns.Fire("SALVAGER_SETTINGS")
         end)
 end
@@ -252,14 +252,14 @@ end
 function Materials.PopOut()
     if not f then build() end
     f.UserShow()
-    ns.Log("materials list popped out")
+    ns.Log("INFO", "ui", "materials list popped out")
 end
 
 --- Puts the list back in the main window's tab.
 function Materials.PutBack()
     if f and f:IsShown() then
         f.UserHide()
-        ns.Log("materials list put back")
+        ns.Log("INFO", "ui", "materials list put back")
     end
 end
 

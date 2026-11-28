@@ -52,7 +52,7 @@ describe("The Disenchant panel", function()
         ns.db.prices[DUST] = { p = 100, t = env.clock }
     end)
 
-    it("opens by itself on new purchased gear in the bags, once per piece, never for other gear, not in combat", function()
+    it("opens by itself when a batch arrives, never for other gear, not in combat", function()
         assert.is_falsy(frame():IsShown())
         -- Your own gear and gear the game will not disenchant: never offered, and no opening.
         put(0, 5, OWN)
@@ -76,7 +76,7 @@ describe("The Disenchant panel", function()
         wow.fire(ns, "SALVAGER_LEDGER")
         settle()
         assert.is_false(frame():IsShown())
-        -- A fight: new gear does not open it; the end of the fight does.
+        -- A fight: it was closed when it started, so its end does not open it (more pieces of the batch neither).
         wow.fire(ns, "PLAYER_REGEN_DISABLED")
         env.combat = true
         buy(1)
@@ -85,8 +85,11 @@ describe("The Disenchant panel", function()
         assert.is_false(frame():IsShown())
         env.combat = false
         wow.fire(ns, "PLAYER_REGEN_ENABLED")
-        assert.is_true(frame():IsShown())
+        assert.is_false(frame():IsShown())
         assert.are.equal(3, #P.Pieces())
+        -- By hand it always opens.
+        P.Show()
+        assert.is_true(frame():IsShown())
     end)
 
     it("aims its secure button at the next piece and moves on after each bag update", function()
@@ -224,5 +227,136 @@ describe("The Disenchant panel", function()
         local found = false
         for _, name in ipairs(UISpecialFrames) do if name == "SalvagerDisenchantFrame" then found = true end end
         assert.is_true(found)
+    end)
+end)
+
+-- When it opens by itself (SDD 130, the user 2026-11-28: "The disenchant window opens seemingly random after I close
+-- it"): once when a batch arrives, not on each further piece; closed by hand, not again until the batch is done.
+describe("The Disenchant panel opening by itself", function()
+    local env, ns, P
+    local GEAR = 6001
+    local function link(id) return "|cff1eff00|Hitem:" .. id .. "::::::::30:::::|h[Test Bracers]|h|r" end
+    local function frame() return P.Frame() end
+    local function bagUpdate()
+        wow.fire(ns, "BAG_UPDATE_DELAYED")
+        wow.tick(ns, 0.5)
+    end
+    local function put(slot, id)
+        env.bagItems["0:" .. slot] = id
+        env.bagLinks["0:" .. slot] = id and link(id) or nil
+        local n = 0
+        for _, v in pairs(env.bagItems) do if v == GEAR then n = n + 1 end end
+        env.bags[GEAR] = n
+    end
+    --- A piece taken from the mail: in the bags, then the game's events.
+    local function takeOne(slot)
+        put(slot, GEAR)
+        wow.fire(ns, "MAIL_INBOX_UPDATE")
+        bagUpdate()
+    end
+    local function opens()
+        local n = 0
+        for _, rec in ipairs(ns.db.log) do
+            if type(rec) == "table" and rec.cat == "disenchant" and rec.msg:find("panel opened", 1, true) then n = n + 1 end
+        end
+        return n
+    end
+    local function load(saved)
+        env = wow.install()
+        env.items[GEAR] = { name = "Test Bracers", quality = 2, ilvl = 25, req = 20, classID = 4 }
+        env.bagSize = { [0] = 8, [1] = 8 }
+        env.bagItems, env.bagLinks = {}, {}
+        if saved then
+            _G.SalvagerDB = saved
+            for slot, id in pairs(saved.testBags or {}) do put(slot, id) end
+        end
+        ns = wow.loadAddon()
+        wow.fire(ns, "ADDON_LOADED", "Salvager")
+        P = ns.DisenchantPanel
+        bagUpdate()
+    end
+    local function buy(n) ns.Ledger.AddPurchase(ns.db.ledger, GEAR, n, 500 * n, 900, env.clock, link(GEAR)) end
+
+    before_each(function() load() end)
+
+    it("opens once when 5 pieces are taken from the mail one by one, with its log line", function()
+        buy(5)
+        for slot = 1, 5 do
+            takeOne(slot)
+            assert.is_true(frame():IsShown())
+        end
+        assert.are.equal(1, opens())
+        local rec
+        for _, r in ipairs(ns.db.log) do if r.cat == "disenchant" then rec = r end end
+        assert.are.same({ "INFO", "panel opened: a batch arrived (1 pieces)", 1 }, { rec.lvl, rec.msg, rec.kv.pieces })
+    end)
+
+    it("closed by hand stays closed through more pieces and ledger events; the next batch opens it again", function()
+        buy(5)
+        takeOne(1)
+        assert.is_true(frame():IsShown())
+        -- Its X (or Escape: the client hides it): closed for this batch.
+        frame():Hide()
+        for slot = 2, 5 do
+            takeOne(slot)
+            wow.fire(ns, "SALVAGER_LEDGER")
+            wow.tick(ns, 0.5)
+            assert.is_false(frame():IsShown())
+        end
+        -- Each recount that raises a count: still closed.
+        buy(1)
+        takeOne(6)
+        assert.is_false(frame():IsShown())
+        assert.are.equal(1, opens())
+        -- The batch is done (every piece gone from the bags).
+        for slot = 1, 6 do put(slot, nil) end
+        bagUpdate()
+        assert.is_false(frame():IsShown())
+        -- A new batch arrives: it opens again.
+        buy(2)
+        takeOne(1)
+        assert.is_true(frame():IsShown())
+        assert.are.equal(2, opens())
+    end)
+
+    it("does not open on a /reload with pieces in the bags, nor after it, once closed", function()
+        buy(3)
+        takeOne(1)
+        assert.is_true(frame():IsShown())
+        frame().UserHide()
+        takeOne(2)
+        -- A /reload: the same saved data, the pieces still in the bags.
+        local db = _G.SalvagerDB
+        db.testBags = { [1] = GEAR, [2] = GEAR }
+        load(db)
+        db.testBags = nil
+        assert.is_false(frame():IsShown())
+        takeOne(3)
+        assert.is_false(frame():IsShown())
+        -- Not dismissed: a /reload with pieces in the bags does not open it either.
+        _G.SalvagerDB.disenchantAuto.dismissed = false
+        local db2 = _G.SalvagerDB
+        db2.testBags = { [1] = GEAR, [2] = GEAR, [3] = GEAR }
+        load(db2)
+        db2.testBags = nil
+        assert.is_false(frame():IsShown())
+        assert.are.equal(0, opens() - 1)   -- (only the first arrival's line, before the reloads)
+    end)
+
+    it("never opens by itself with the Options box off, and opens by hand", function()
+        ns.Options.Open()
+        local box = _G.SalvagerOptionsFrame.disenchantAutoBox
+        assert.is_table(box)
+        assert.is_true(box:GetChecked())
+        box:SetChecked(false)   -- (the client unticks it before its OnClick)
+        box:Click()
+        assert.is_false(ns.db.settings.disenchantAutoOpen)
+        buy(2)
+        takeOne(1)
+        takeOne(2)
+        assert.is_false(frame():IsShown())
+        assert.are.equal(0, opens())
+        SlashCmdList.SALVAGER("disenchant")
+        assert.is_true(frame():IsShown())
     end)
 end)

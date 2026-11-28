@@ -1,7 +1,7 @@
 -- Salvager: the Disenchant panel ("Salvager Disenchant", SDD 112). The Current batch in a small window: the gear you
 -- bought and picked up that is in your bags, the next piece first, and the disenchants of the batch, the newest first.
 -- Its Disenchant button (a secure action button: the game casts only from a click or a key) casts Disenchant on the
--- next piece; each click or key press is one cast. It opens by itself when new purchased gear lands in the bags.
+-- next piece; each click or key press is one cast. It opens by itself when a batch arrives (SDD 130).
 -- Only purchased gear is ever aimed at: the player's own gear is never in the list.
 local _, ns = ...
 
@@ -21,7 +21,8 @@ _G.BINDING_HEADER_SALVAGER = "Salvager"
 _G["BINDING_NAME_CLICK " .. BUTTON .. ":LeftButton"] = "Disenchant next piece"
 
 local f, button, bags, results, bagsTitle, resultsTitle, lootNote, nextLabel, leftLabel
-local state = { casting = false, loot = false, wasOpen = false, pendingOpen = false }
+local state = { casting = false, loot = false, wasOpen = false, pendingOpen = false, bagsKnown = false,
+    fightHide = false }
 Panel.state = state
 
 local function combat() return InCombatLockdown and InCombatLockdown() or false end
@@ -164,8 +165,10 @@ local function buildButton(parent)
             local pieces = Panel.Pieces()
             Panel.Aim(not Panel.Reason(pieces) and pieces[1] or nil)
         end
-        if self.piece then ns.Log("disenchant panel: casting on %s (bag %d, slot %d)", tostring(self.piece.link),
-            self.piece.bag, self.piece.slot) end
+        if self.piece then
+            ns.Log("INFO", "disenchant", "panel: casting on " .. ns.LogItem(self.piece.itemID, self.piece.link),
+                { item = self.piece.itemID, bag = self.piece.bag, slot = self.piece.slot })
+        end
     end)
     button:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -368,8 +371,8 @@ local function build()
     end)
     -- The footer: the next piece and how many are left at the left; Disenchant (the main action), then Close.
     local footer = W.Bar(f, "footer"):PlaceBottom(10, 12, 24)
-    local close = W.Button(footer, "Close", CLOSE_W, function() f.UserHide() end, "Closes the panel. It opens again "
-        .. "by itself when more gear of your purchases lands in your bags.")
+    local close = W.Button(footer, "Close", CLOSE_W, function() f.UserHide() end, "Closes the panel. It stays closed "
+        .. "until this batch is done; the next batch that arrives in your bags opens it again (Options).")
     footer:AddRight(close, CLOSE_W)
     footer:AddRight(buildButton(footer), BUTTON_W)
     leftLabel = W.Label(footer, "", "GameFontHighlightSmall")
@@ -393,6 +396,12 @@ local function build()
         leftLabel
     f.onResize = Panel.Layout
     f:HookScript("OnShow", Panel.Refresh)
+    -- Closed by the player (its X, Close, Escape, the mini panel) while a batch is in the bags: it stays closed until
+    -- the batch is done (SDD 130). Not the fight's own hide.
+    f:HookScript("OnHide", function()
+        local auto = Panel.Auto()
+        if not state.fightHide and auto.had then auto.dismissed = true end
+    end)
 end
 
 --- Builds the panel (hidden) so its button and key binding work from the start. Out of combat only.
@@ -423,22 +432,38 @@ function Panel.Frame() return f end
 
 ------------------------------------------------------------------ opens by itself
 
---- After a bag change or a booked purchase: new pieces of the batch in the bags open the panel, once per piece
---- (SalvagerDB.disenchantSeen: the pieces of each gear seen in the bags). Not in combat: then it opens after.
+--- The saved state of the opening by itself (SalvagerDB.disenchantAuto, SDD 130): `had` = pieces of a batch were in
+--- the bags at the last check; `dismissed` = the player closed the panel since that batch arrived.
+function Panel.Auto()
+    local a = ns.db.disenchantAuto
+    if type(a) ~= "table" then
+        a = { had = false, dismissed = false }
+        ns.db.disenchantAuto = a
+    end
+    return a
+end
+
+--- After a bag change or a booked purchase. It opens by itself only when a batch arrives: the pieces of your purchases
+--- in the bags go from none to some (not on each further piece), the Options box is on, and the player did not close
+--- it during this batch. The first check after login only notes what is there (a /reload never opens it). In combat
+--- it opens when the fight ends.
 function Panel.Check()
     local pieces = Panel.Update() or Panel.Pieces()
-    local counts = {}
-    for _, p in ipairs(pieces) do counts[p.itemID] = (counts[p.itemID] or 0) + 1 end
-    ns.db.disenchantSeen = ns.db.disenchantSeen or {}
-    local seen, new = ns.db.disenchantSeen, false
-    for id, n in pairs(counts) do if n > (seen[id] or 0) then new = true end end
-    for id in pairs(seen) do if not counts[id] then seen[id] = nil end end
-    for id, n in pairs(counts) do seen[id] = n end
-    if new and not (f and f:IsShown()) then
+    local auto, n = Panel.Auto(), #pieces
+    if not state.bagsKnown then
+        -- (At load the bags may not be read yet: the first bag update tells what is there.)
+        if f and f:IsShown() then Panel.Refresh() end
+        return
+    end
+    local arrived = state.primed and n > 0 and not auto.had
+    if n == 0 and state.primed then auto.dismissed = false end   -- (the batch is done: the next one may open it)
+    auto.had = n > 0
+    state.primed = true
+    if arrived and ns.db.settings.disenchantAutoOpen ~= false and not auto.dismissed and not (f and f:IsShown()) then
         if combat() then
-            state.pendingOpen = true
+            state.pendingOpen, state.pendingArrival = true, n
         else
-            ns.Log("disenchant panel: opened by itself (%d pieces of your purchases in your bags)", #pieces)
+            ns.Log("INFO", "disenchant", string.format("panel opened: a batch arrived (%d pieces)", n), { pieces = n })
             show("panel")
         end
     end
@@ -459,10 +484,14 @@ end
 -- (At load the bags may not be read yet: the first check waits for the first bag update, so a /reload does not
 -- count what was in the bags as new.)
 ns.On("SALVAGER_READY", function()
+    ns.db.disenchantSeen = nil   -- (the counts per gear the panel opened on up to 0.4.0)
     Panel.Ensure()
     Panel.Update()
 end)
-ns.On("BAG_UPDATE_DELAYED", later)
+ns.On("BAG_UPDATE_DELAYED", function()
+    state.bagsKnown = true
+    later()
+end)
 ns.On("SALVAGER_LEDGER", later)
 ns.On("UNIT_SPELLCAST_START", function(unit, _, spellID)
     if unit ~= "player" or spellID ~= Data.DISENCHANT_SPELL then return end
@@ -493,14 +522,22 @@ ns.On("PLAYER_REGEN_DISABLED", function()
     button.reason = "In combat: Disenchant waits until the fight ends."
     if f and f:IsShown() then
         state.wasOpen = true
+        state.fightHide = true
         f:Hide()
+        state.fightHide = false
     end
 end)
 ns.On("PLAYER_REGEN_ENABLED", function()
     Panel.Ensure()
-    local reopen = state.wasOpen or state.pendingOpen
-    state.wasOpen, state.pendingOpen = false, false
-    if reopen and f and not f:IsShown() then show("panel") end
+    local reopen, arrival = state.wasOpen or state.pendingOpen, not state.wasOpen and state.pendingArrival
+    state.wasOpen, state.pendingOpen, state.pendingArrival = false, false, nil
+    if reopen and f and not f:IsShown() then
+        if arrival then
+            ns.Log("INFO", "disenchant", string.format("panel opened after the fight: a batch arrived during it (%d "
+                .. "pieces)", arrival), { pieces = arrival, combat = true })
+        end
+        show("panel")
+    end
     Panel.Update()
     if f and f:IsShown() then Panel.Refresh() end
 end)

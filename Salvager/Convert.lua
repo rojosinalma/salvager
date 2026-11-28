@@ -43,8 +43,10 @@ function Convert.Check()
             end
             if from then
                 local cost, unknown = Ledger.Convert(ns.db.ledger, from, fromQty, to, toQty)
-                ns.Log("converted %dx %s into %dx %s, cost moved %s%s", fromQty, ns.MaterialName(from), toQty,
-                    ns.MaterialName(to), ns.Money(cost), unknown > 0 and string.format(" (%d had no recorded cost)", unknown) or "")
+                ns.Log("INFO", "ledger", string.format("converted %dx %s into %dx %s, cost moved %s%s", fromQty,
+                    ns.MaterialName(from), toQty, ns.MaterialName(to), ns.Money(cost),
+                    unknown > 0 and string.format(" (%d had no recorded cost)", unknown) or ""),
+                    { from = from, fromQty = fromQty, to = to, toQty = toQty, cost = cost, unknown = unknown })
                 ns.Print("%dx %s became %dx %s: their cost (%s) moved with them", fromQty, ns.MaterialName(from), toQty,
                     ns.MaterialName(to), ns.Money(cost))
                 ns.Fire("SALVAGER_LEDGER")
@@ -62,5 +64,5 @@ end
 
 ns.On("BAG_UPDATE_DELAYED", function()
     local ok, err = pcall(Convert.Check)
-    if not ok then ns.Log("ERROR following a conversion: %s", tostring(err)) end
+    if not ok then ns.Log("ERROR", "ledger", "Lua error following a conversion: " .. tostring(err)) end
 end)

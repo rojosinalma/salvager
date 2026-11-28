@@ -42,8 +42,9 @@ function Prices.IsCommodity(itemID)
     if not (ok and type(info) == "table" and info.isCommodity ~= nil) then return default end
     if info.isCommodity ~= default and not commoditySaid[itemID] then
         commoditySaid[itemID] = true
-        ns.Log("auction house: %s (%d) is %s, not %s as the addon had it", ns.MaterialName(itemID), itemID,
-            info.isCommodity and "a commodity" or "sold as single auctions", default and "a commodity" or "single auctions")
+        ns.Log("WARN", "scan", string.format("%s is %s, not %s as the addon had it", ns.MaterialName(itemID),
+            info.isCommodity and "a commodity" or "sold as single auctions", default and "a commodity" or "single auctions"),
+            { item = itemID, commodity = info.isCommodity and true or false })
     end
     return info.isCommodity and true or false
 end

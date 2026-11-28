@@ -474,14 +474,14 @@ end
 function Odds.PopOut()
     if not oddsFrame then buildOut() end
     oddsFrame.UserShow()
-    ns.Log("odds popped out")
+    ns.Log("INFO", "ui", "odds popped out")
 end
 
 --- Puts the odds back in the Reports' Odds tab, and shows it.
 function Odds.PutBack()
     if Odds.PoppedOut() then
         oddsFrame.UserHide()
-        ns.Log("odds put back")
+        ns.Log("INFO", "ui", "odds put back")
     end
     if ns.Reports.ShowView then ns.Reports.ShowView("odds") end
 end

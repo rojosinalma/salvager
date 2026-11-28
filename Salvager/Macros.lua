@@ -45,7 +45,8 @@ function Macros.Create(byHand)
         else
             local _, _, body = GetMacroInfo(index)
             if trim(body) ~= m.body then
-                ns.Log("macro %s: its text is not the addon's (%s): left as it is", m.name, trim(body):sub(1, 60))
+                ns.Log("INFO", "ui", string.format("macro %s: its text is not the addon's (%s): left as it is", m.name,
+                    trim(body):sub(1, 60)), { macro = m.name })
             end
         end
     end
@@ -63,12 +64,17 @@ function Macros.Create(byHand)
     local names = {}
     for _, m in ipairs(missing) do
         local ok, err = pcall(CreateMacro, m.name, m.icon, m.body, false)
-        if ok then names[#names + 1] = m.name else ns.Log("ERROR creating the macro %s: %s", m.name, tostring(err)) end
+        if ok then
+            names[#names + 1] = m.name
+        else
+            ns.Log("ERROR", "ui", string.format("Lua error creating the macro %s: %s", m.name, tostring(err)),
+                { macro = m.name })
+        end
     end
     if #names > 0 then
         ns.Print("macro%s %s created: drag %s from /macro to your bars", #names == 1 and "" or "s",
             table.concat(names, " and "), #names == 1 and "it" or "them")
-        ns.Log("macros created: %s", table.concat(names, ", "))
+        ns.Log("INFO", "ui", "macros created: " .. table.concat(names, ", "), { created = #names })
     end
     return #names
 end

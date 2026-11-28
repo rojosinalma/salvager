@@ -135,7 +135,7 @@ describe("The Live scan", function()
         return out
     end
     local function logged(text, from)
-        for i = (from or 0) + 1, #ns.db.log do if ns.db.log[i]:find(text, 1, true) then return ns.db.log[i] end end
+        for i = (from or 0) + 1, #ns.db.log do if ns.LogText(ns.db.log[i]):find(text, 1, true) then return ns.LogText(ns.db.log[i]) end end
     end
     local function roundLine(n) return logged("live round " .. n .. ":") end
     local function dealsOf(id)

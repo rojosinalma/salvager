@@ -114,7 +114,8 @@ function Buy.Prefetch(itemID, forBuy)
         searching[itemID] = nil
         if ok and not commodity then searched[itemID] = { at = GetTime(), epoch = ns.Scanner.browseEpoch or 0 } end
         if forBuy then
-            ns.Log("buy %s: searched again%s", name(itemID), ok and ", Buy is on" or ", no answer")
+            ns.Log(ok and "INFO" or "WARN", "buy", string.format("%s searched again%s", name(itemID),
+                ok and ", Buy is on" or ", no answer"), { item = itemID, answered = ok and true or false })
             if not ok then ns.Print("the search of %s got no answer: click Buy again", name(itemID)) end
         end
         changed()
@@ -138,8 +139,10 @@ local function book(p)
         ns.Ledger.BuyMaterial(ns.db.ledger, p.itemID, p.qty, total, time())
         ns.Fire("SALVAGER_LEDGER")
     end
-    ns.Log("bought %dx %s for %s (%s each)%s", p.qty, name(p.itemID), ns.Money(total), ns.Money(each),
-        Data.MATERIAL_BY_ID[p.itemID] and ", into stock as bought materials" or "")
+    local material = Data.MATERIAL_BY_ID[p.itemID] ~= nil
+    ns.Log("INFO", "buy", string.format("bought %dx %s for %s (%s each)%s", p.qty, name(p.itemID), ns.Money(total),
+        ns.Money(each), material and ", into stock as bought materials" or ""), { item = p.itemID, qty = p.qty,
+        paid = total, each = each, auction = p.auctionID, material = material or nil })
     ns.Print("bought %dx %s for %s", p.qty, name(p.itemID), ns.Money(total))
 end
 
@@ -148,7 +151,8 @@ end
 --- @return boolean sent, string|nil why not
 function Buy.Click(itemID, qty)
     local ok, why, plan = Buy.Can(itemID, qty)
-    ns.Log("Buy click on %s x%d: %s", name(itemID), qty or 1, ok and "sent" or tostring(why))
+    ns.Log("INFO", "buy", string.format("Buy click on %s x%d: %s", name(itemID), qty or 1,
+        ok and "sent" or tostring(why)), { item = itemID, qty = qty or 1, sent = ok and true or false })
     if not ok then return false, why end
     if not plan.commodity then
         if not Buy.Current(itemID) then
@@ -176,7 +180,8 @@ end
 local function cancel(why, print_)
     local p = pending
     pcall(AH.CancelCommoditiesPurchase)
-    ns.Log("purchase of %dx %s cancelled: %s", p.qty, name(p.itemID), why)
+    ns.Log("WARN", "buy", string.format("purchase of %dx %s cancelled: %s", p.qty, name(p.itemID), why),
+        { item = p.itemID, qty = p.qty, expected = p.expected, ceiling = p.ceiling })
     ns.Print("purchase of %dx %s cancelled: %s", p.qty, name(p.itemID), print_ or why)
     finish("cancelled")
 end
@@ -197,8 +202,9 @@ ns.On("COMMODITY_PRICE_UPDATED", function(unit, total)
     ns.Gold.Expect("auction", -total, name(p.itemID), 30)
     ns.NoteRequest("buycommodity")
     AH.ConfirmCommoditiesPurchase(p.itemID, p.qty)
-    ns.Log("purchase of %dx %s: price %s (%s each) in %.1fs, confirmed", p.qty, name(p.itemID), ns.Money(total),
-        ns.Money(unit or 0), waited)
+    ns.Log("INFO", "buy", string.format("purchase of %dx %s: price %s (%s each) in %.1fs, confirmed", p.qty,
+        name(p.itemID), ns.Money(total), ns.Money(unit or 0), waited), { item = p.itemID, qty = p.qty, total = total,
+        each = unit, expected = p.expected, ceiling = p.ceiling, seconds = math.floor(waited * 10 + 0.5) / 10 })
     changed()
 end)
 
@@ -214,7 +220,8 @@ local function succeeded()
         book(p)
         finish("bought")
     elseif late and late.kind == "commodity" and late.confirmedAt and GetTime() - late.confirmedAt <= Buy.LATE then
-        ns.Log("purchase of %dx %s: its answer came late, booked", late.qty, name(late.itemID))
+        ns.Log("WARN", "buy", string.format("purchase of %dx %s: its answer came late, booked", late.qty,
+            name(late.itemID)), { item = late.itemID, qty = late.qty })
         book(late)
         late = nil
         changed()
@@ -225,7 +232,8 @@ ns.On("COMMODITY_PURCHASE_SUCCEEDED", succeeded)
 ns.On("COMMODITY_PURCHASE_FAILED", function()
     local p = pending
     if not p or p.kind ~= "commodity" then return end
-    ns.Log("purchase of %dx %s failed (the auction house said so)", p.qty, name(p.itemID))
+    ns.Log("ERROR", "buy", string.format("purchase of %dx %s failed (the auction house said so)", p.qty,
+        name(p.itemID)), { item = p.itemID, qty = p.qty })
     ns.Print("could not buy %dx %s", p.qty, name(p.itemID))
     finish("failed")
 end)
@@ -237,7 +245,8 @@ ns.On("AUCTION_HOUSE_PURCHASE_COMPLETED", function(auctionID)
         searched[p.itemID] = nil   -- (the auction is gone: the next click searches first)
         finish("bought")
     elseif late and late.kind == "item" and late.auctionID == auctionID and GetTime() - late.sentAt <= Buy.LATE then
-        ns.Log("purchase of %s: its answer came late, booked", name(late.itemID))
+        ns.Log("WARN", "buy", string.format("purchase of %s: its answer came late, booked", name(late.itemID)),
+            { item = late.itemID, auction = late.auctionID })
         book(late)
         late = nil
         changed()
@@ -248,12 +257,14 @@ ns.On("AUCTION_HOUSE_SHOW_ERROR", function()
     local p = pending
     if not p then return end
     if p.kind == "item" and ns.ErrorIs("buy") then
-        ns.Log("could not buy %s for %s", name(p.itemID), ns.Money(p.expected))
+        ns.Log("ERROR", "buy", string.format("could not buy %s for %s", name(p.itemID), ns.Money(p.expected)),
+            { item = p.itemID, auction = p.auctionID, buyout = p.expected })
         ns.Print("could not buy %s (sold or changed)", name(p.itemID))
         searched[p.itemID] = nil
         finish("failed")
     elseif p.kind == "commodity" and ns.ErrorIs("buycommodity") then
-        ns.Log("purchase of %dx %s: the auction house reported an error", p.qty, name(p.itemID))
+        ns.Log("ERROR", "buy", string.format("purchase of %dx %s: the auction house reported an error", p.qty,
+            name(p.itemID)), { item = p.itemID, qty = p.qty })
         ns.Print("could not buy %dx %s", p.qty, name(p.itemID))
         if p.state == "quote" then pcall(AH.CancelCommoditiesPurchase) end
         finish("failed")
@@ -268,11 +279,13 @@ ns.OnTick(function()
     if p.state == "quote" and now - p.sentAt > Buy.QUOTE_WAIT then
         cancel(string.format("no price from the auction house in %ds", Buy.QUOTE_WAIT))
     elseif p.state == "confirm" and now - p.confirmedAt > Buy.ANSWER_WAIT then
-        ns.Log("purchase of %dx %s got no answer in %ds", p.qty, name(p.itemID), Buy.ANSWER_WAIT)
+        ns.Log("WARN", "buy", string.format("purchase of %dx %s got no answer in %ds", p.qty, name(p.itemID),
+            Buy.ANSWER_WAIT), { item = p.itemID, qty = p.qty, seconds = Buy.ANSWER_WAIT })
         ns.Print("no answer yet for %dx %s: see your bags and mail before you buy again", p.qty, name(p.itemID))
         finish("no answer")
     elseif p.state == "bid" and now - p.sentAt > Buy.BID_WAIT then
-        ns.Log("purchase of %s got no answer in %ds", name(p.itemID), Buy.BID_WAIT)
+        ns.Log("WARN", "buy", string.format("purchase of %s got no answer in %ds", name(p.itemID), Buy.BID_WAIT),
+            { item = p.itemID, auction = p.auctionID, seconds = Buy.BID_WAIT })
         ns.Print("no answer yet for %s: click Buy again if it is still listed", name(p.itemID))
         searched[p.itemID] = nil
         finish("no answer")

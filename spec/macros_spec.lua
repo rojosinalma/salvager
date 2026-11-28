@@ -44,7 +44,7 @@ describe("The Salvager macros", function()
         assert.are.equal("/click SalvagerBuyTopButton\n/cheer", env.macros[1].body)
         local logged = false
         for _, l in ipairs(ns.db.log) do
-            if tostring(l):find("macro Salvager Buy: its text is not the addon's", 1, true) then logged = true end
+            if ns.LogText(l):find("macro Salvager Buy: its text is not the addon's", 1, true) then logged = true end
         end
         assert.is_true(logged)
     end)
