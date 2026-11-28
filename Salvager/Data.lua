@@ -127,6 +127,28 @@ Data.SALVAGER_ITEM = 279985
 -- spent near Arcane Salvager. While near Arcane Salvager, chance of bonus disenchanting output is increased."
 Data.SALVAGER_AURA = 1283701
 Data.SALVAGER_AURA_NAME = "Boosted Disenchanting"
+
+-- The Arcane Salvager's recipe (SDD 128; wowhead.com/forever/spell=1263056): Enchanting 140, a 10 s cast, the tool
+-- not used up. The Blueprint (item 273103, an Uncommon Enchanting formula, item level 25) teaches it.
+Data.SALVAGER_BLUEPRINT = 273103
+Data.RUNED_GOLDEN_ROD = 11130
+Data.SALVAGER_RECIPE = {
+    spell = Data.SALVAGER_RECIPE_SPELL, result = Data.SALVAGER_ITEM, made = 1, stack = 20, skill = 140,
+    tool = Data.RUNED_GOLDEN_ROD,
+    reagents = { { id = DUST.vision, qty = 2 }, { id = ESS.lnether, qty = 1 } },
+}
+-- The Arcane Salvager tab's items, in its order. `commodity`: how the auction house lists it (one price list per
+-- item, or one auction each); the game's own answer (C_AuctionHouse.GetItemKeyInfo().isCommodity) wins when it has
+-- one (Prices.IsCommodity). `auction = false`: never at the auction house (Runed Golden Rod binds when picked up).
+Data.SALVAGER_ITEMS = {
+    { id = Data.SALVAGER_BLUEPRINT, name = "Blueprint: Arcane Salvager", kind = "blueprint", commodity = false },
+    { id = Data.SALVAGER_ITEM, name = "Arcane Salvager", kind = "result", commodity = true },
+    { id = DUST.vision, name = "Vision Dust", kind = "reagent", commodity = true },
+    { id = ESS.lnether, name = "Lesser Nether Essence", kind = "reagent", commodity = true },
+    { id = Data.RUNED_GOLDEN_ROD, name = "Runed Golden Rod", kind = "tool", commodity = false, auction = false },
+}
+Data.SALVAGER_ITEM_BY_ID = {}
+for _, x in ipairs(Data.SALVAGER_ITEMS) do Data.SALVAGER_ITEM_BY_ID[x.id] = x end
 Data.CLASS_WEAPON, Data.CLASS_ARMOR = 2, 4
 
 return Data

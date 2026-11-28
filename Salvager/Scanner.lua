@@ -677,6 +677,8 @@ end
 function Scanner.HoldReason()
     if GetTime() - lastBuyAt < BUY_QUIET then return "click" end
     if next(waiting) then return "waiting" end
+    -- (A purchase from a price list, Buy.lua, SDD 128, holds the same way.)
+    if ns.Buy and ns.Buy.Busy() then return "purchase" end
     -- The auction house answers purchases in the order they went out: only the oldest one's clock runs, from its
     -- click or from the answer to the one before it, whichever is later (SDD 105g).
     local d = oldestBuy()

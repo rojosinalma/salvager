@@ -18,6 +18,8 @@ describe("Salvager in a simulated client", function()
             local current = ns.Queue.current
             if current and current.commodity then
                 wow.fire(ns, "COMMODITY_SEARCH_RESULTS_UPDATED", current.commodity)
+            elseif current and current.itemKey then   -- (the Blueprint: the material scan searches it too, SDD 128)
+                wow.fire(ns, "ITEM_SEARCH_RESULTS_UPDATED", current.itemKey)
             end
         end
     end
@@ -733,6 +735,7 @@ describe("Salvager window and options", function()
             wow.tick(ns, 0.2)
             local c = ns.Queue.current
             if c and c.commodity then wow.fire(ns, "COMMODITY_SEARCH_RESULTS_UPDATED", c.commodity) end
+            if c and c.itemKey then wow.fire(ns, "ITEM_SEARCH_RESULTS_UPDATED", c.itemKey) end
         end
         assert.are.equal("browsing", ns.Scanner.state)
         wow.fire(ns, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")   -- uncommon armor: nothing listed

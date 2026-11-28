@@ -336,7 +336,7 @@ end
 function ns.MaterialName(id)
     local name = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)) or GetItemInfo(id)
     if name then return name end
-    local m = Data.MATERIAL_BY_ID[id]
+    local m = Data.MATERIAL_BY_ID[id] or Data.SALVAGER_ITEM_BY_ID[id]
     return m and m.name or ("item " .. id)
 end
 
@@ -1035,8 +1035,9 @@ ns.On("ADDON_LOADED", function(name)
     ns.RollUp()
     local books = Ledger.Books(ns.db.ledger)
     if books.off ~= 0 then
-        ns.Log("books: off by %s (paid %s + carried in %s, sales cost %s + stock %s)", ns.Money(books.off),
-            ns.Money(books.paid), ns.Money(books.other), ns.Money(books.sold), ns.Money(books.stock))
+        ns.Log("books: off by %s (paid %s + materials bought %s + carried in %s, sales cost %s + stock %s)",
+            ns.Money(books.off), ns.Money(books.paid), ns.Money(books.bought), ns.Money(books.other),
+            ns.Money(books.sold), ns.Money(books.stock))
     end
     -- Windows renamed in 0.3.4: keep their place and size.
     local w = ns.db.windows

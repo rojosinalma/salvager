@@ -13,6 +13,7 @@ NoDisenchant.lua
 Model.lua
 Ledger.lua
 History.lua
+Craft.lua
 Journal.lua
 Statement.lua
 Competition.lua
@@ -21,6 +22,7 @@ Queue.lua
 Items.lua
 Prices.lua
 Scanner.lua
+Buy.lua
 Disenchant.lua
 Mail.lua
 Gold.lua

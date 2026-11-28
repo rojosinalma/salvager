@@ -6,6 +6,7 @@
 --   stock     = { [matID] = { qty, cost, unknown } }      -- cost = total copper of the known-cost units
 --   pools     = { [bandKey] = { cost, mats = { [matID] = { qty, value, cost } } } }
 --   bought    = { { itemID, each, t, mail } }             -- purchases seen at the auction house
+--   matBuys   = { { t, id, qty, cost } }                   -- materials bought (SDD 128), FULL_DAYS; matBuysOld = older cost
 --   disenchants = { record, ... }, sales = { record, ... }
 -- }
 --
@@ -87,6 +88,7 @@ function Ledger.Init(state)
     state.disenchants = state.disenchants or {}
     state.sales = state.sales or {}
     state.bought = state.bought or {}
+    state.matBuys = state.matBuys or {}
     state.seenSold = state.seenSold or {}
     state.archive = state.archive or Ledger.NewArchive()
     -- Older sales counted the net of units with no known cost as profit: count it apart.
@@ -344,6 +346,29 @@ function Ledger.AddStock(state, matID, qty, cost)
     s.unknown = s.unknown or 0
     s.qty = s.qty + qty
     if cost then s.cost = s.cost + cost else s.unknown = s.unknown + qty end
+end
+
+--- Materials bought at the auction house (SDD 128): `qty` units for `cost` copper in all enter stock at that cost,
+--- outside the band pools (they come from no disenchant). The record stays Ledger.FULL_DAYS; older ones keep only
+--- their cost (`matBuysOld`), so the books' check (Ledger.Books) still counts them. @return table the record
+function Ledger.BuyMaterial(state, matID, qty, cost, t)
+    Ledger.AddStock(state, matID, qty, cost)
+    local list = state.matBuys or {}
+    state.matBuys = list
+    local rec = { t = t, id = matID, qty = qty, cost = cost }
+    list[#list + 1] = rec
+    local cutoff = (t or 0) - Ledger.FULL_DAYS * 86400
+    while list[1] and (list[1].t or 0) < cutoff do
+        state.matBuysOld = (state.matBuysOld or 0) + (table.remove(list, 1).cost or 0)
+    end
+    return rec
+end
+
+--- What was paid for every material bought (Ledger.BuyMaterial), the old ones too.
+function Ledger.MaterialsBought(state)
+    local n = state.matBuysOld or 0
+    for _, r in ipairs(state.matBuys or {}) do n = n + (r.cost or 0) end
+    return n
 end
 
 --- Units in stock with a known cost.
@@ -724,17 +749,19 @@ function Ledger.Paid(state)
     return n
 end
 
---- The books' check (SDD 125): what was paid for the gear disenchanted, plus `other` (the cost of known units that
---- came or went outside the records: opening stock, a cleared history, units gone with no record), is the cost of
---- every booked sale plus the cost of the stock, to the copper. `off` = what is not explained (0 when they hold).
---- @return table { paid, other, sold (booked sale cost), stock, off }
+--- The books' check (SDD 125): what was paid for the gear disenchanted, plus what was paid for materials bought
+--- (`bought`, SDD 128), plus `other` (the cost of known units that came or went outside the records: opening stock, a
+--- cleared history, units gone with no record), is the cost of every booked sale plus the cost of the stock, to the
+--- copper. `off` = what is not explained (0 when they hold).
+--- @return table { paid, bought, other, sold (booked sale cost), stock, off }
 function Ledger.Books(state)
     local sold, stock = 0, 0
     for _, x in ipairs(state.sales) do sold = sold + (x.cost or 0) end
     for _, b in ipairs(state.archive and state.archive.s or {}) do sold = sold + (b.cost or 0) end
     for _, x in pairs(state.stock) do stock = stock + (x.cost or 0) end
-    local paid, other = Ledger.Paid(state), state.other or 0
-    return { paid = paid, other = other, sold = sold, stock = stock, off = paid + other - sold - stock }
+    local paid, bought, other = Ledger.Paid(state), Ledger.MaterialsBought(state), state.other or 0
+    return { paid = paid, bought = bought, other = other, sold = sold, stock = stock,
+        off = paid + bought + other - sold - stock }
 end
 
 --- Opens the books' `other` once on a ledger from before it was kept: what the books hold beyond what was paid

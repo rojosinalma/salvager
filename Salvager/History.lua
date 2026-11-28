@@ -144,4 +144,81 @@ function History.Change(points)
     return (last - first) / first, first, last
 end
 
+-- "Highest at" / "Lowest at" (SDD 128): the 3 hours of the day when a price is highest or lowest, from the last 14
+-- days. Each point counts as its price against its own day's average price (so a price that rose over the 14 days does
+-- not make the later hours look high); a window is 3 hours from a whole hour on, past midnight too (22:00-01:00).
+History.BEST_DAYS = 14         -- days of history looked at
+History.BEST_WINDOW = 3        -- hours in the window
+History.BEST_MIN_DAYS = 3      -- fewer days with points: "few data"
+History.BEST_MIN_HOURS = 12    -- fewer hours of the day with points: "few data"
+History.BEST_MIN_POINTS = 3    -- a window needs this many points, from 2 days or more, to count
+History.BEST_CLEAR = 0.03      -- the window must be this far over (or under) the day's average: else "no clear time"
+
+--- The best time of day to sell (`mode` "high": when the price is highest) or to buy ("low": lowest).
+--- `hourOf(t)` = the hour (0-23) of a moment on the clock the player picked (the Times option, SDD 110); `dayOf(t)` =
+--- its day (any number per day, the same clock; default: the UTC day).
+--- @return table { status = "ok" | "few" | "none", from = first hour, to = the hour it ends (from + 3, past midnight
+---   wrapped), diff = the window's average against the day's average as a share (+0.08 = 8 % higher), points, days }
+---   "few" = not enough history to say; "none" = no window stands out ("no clear time").
+function History.BestTime(state, matID, now, hourOf, mode, dayOf)
+    dayOf = dayOf or function(t) return math.floor(t / 86400) end
+    local since = now - History.BEST_DAYS * 86400
+    local pts, byDay = {}, {}
+    for _, pt in ipairs(state[matID] or {}) do
+        if pt.p and pt.p > 0 and pt.t >= since and pt.t <= now then
+            local d = dayOf(pt.t)
+            local x = byDay[d] or { sum = 0, n = 0 }
+            byDay[d] = x
+            x.sum, x.n = x.sum + pt.p, x.n + 1
+            pts[#pts + 1] = { h = hourOf(pt.t) % 24, d = d, p = pt.p }
+        end
+    end
+    local days = 0
+    for _ in pairs(byDay) do days = days + 1 end
+    local hours = {}   -- [hour] = { sum of shares, n, days = { [day] = true } }
+    local nHours = 0
+    for _, x in ipairs(pts) do
+        local dayAvg = byDay[x.d].sum / byDay[x.d].n
+        local h = hours[x.h]
+        if not h then
+            h = { sum = 0, n = 0, days = {} }
+            hours[x.h] = h
+            nHours = nHours + 1
+        end
+        h.sum, h.n, h.days[x.d] = h.sum + x.p / dayAvg, h.n + 1, true
+    end
+    local out = { status = "few", points = #pts, days = days }
+    if days < History.BEST_MIN_DAYS or nHours < History.BEST_MIN_HOURS then return out end
+    local best
+    for from = 0, 23 do
+        local sum, n, ds, nd = 0, 0, {}, 0
+        for k = 0, History.BEST_WINDOW - 1 do
+            local h = hours[(from + k) % 24]
+            if h then
+                sum, n = sum + h.sum, n + h.n
+                for d in pairs(h.days) do
+                    if not ds[d] then ds[d], nd = true, nd + 1 end
+                end
+            end
+        end
+        if n >= History.BEST_MIN_POINTS and nd >= 2 then
+            local share = sum / n - 1
+            if not best or (mode == "low" and share < best.diff) or (mode ~= "low" and share > best.diff) then
+                best = { from = from, diff = share }
+            end
+        end
+    end
+    if not best then return out end
+    out.from, out.to, out.diff = best.from, (best.from + History.BEST_WINDOW) % 24, best.diff
+    local clear = mode == "low" and best.diff <= -History.BEST_CLEAR or mode ~= "low" and best.diff >= History.BEST_CLEAR
+    out.status = clear and "ok" or "none"
+    return out
+end
+
+--- A window of History.BestTime as text: "18:00-21:00" (hours on the clock hourOf used). nil when it has none.
+function History.WindowText(r)
+    if not r or not r.from then return nil end
+    return string.format("%02d:00-%02d:00", r.from, r.to)
+end
+
 return History

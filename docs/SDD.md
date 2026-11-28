@@ -1463,9 +1463,9 @@ flipping is out of scope for now.
 ## Files
 
 The TOC's order: pure modules first (no game API, the specs load them alone: `Util`, `Data`, `NoDisenchant`,
-`Model`, `Ledger`, `History`, `Journal`, `Statement`, `Competition`), then `Core` (namespace, saved data, events,
+`Model`, `Ledger`, `History`, `Craft` the recipe in money (128), `Journal`, `Statement`, `Competition`), then `Core` (namespace, saved data, events,
 the forecast glue, slash commands), the game glue (`Queue` searches, `Items` item levels, `Prices`, `Scanner` the
-gear scan and buying, `Disenchant`, `Mail`, `Gold` the journal's glue, `Report` the chat report, `Backup`,
+gear scan and buying, `Buy` buying from a price list (128), `Disenchant`, `Mail`, `Gold` the journal's glue, `Report` the chat report, `Backup`,
 `Tooltip`, `Listings` your auctions, `Convert` essences), the widgets (`Widgets`, `Tables`, `Chart`), and the
 windows (`Post`, `MaterialsWindow`, `LimitsWindow`, `UI` the main window, `LedgerWindow`, `StandWindow`,
 `BreakdownWindow`, `GearWindow` Gear Details, `MarketWindow`, `OddsWindow`, `ReportsWindow`, `DisenchantWindow`,
@@ -1480,7 +1480,7 @@ windows (`Post`, `MaterialsWindow`, `LimitsWindow`, `UI` the main window, `Ledge
 filters; `windows.mini.open`, 127c), `groups` (103), `columns` (95), `sorts` (127f), `layout` (94), and one-time flags (`historySeeded`, `buyResendBlocked`, 65,
 `falseCancelsDropped`, 75, `firstSalvagerBatchFixed`, 74b, `purchasesRestored`, 124, `recostFixed`, 125, `macrosMade`,
 127k). `settings.salvagerBuy`: the main window's Arcane Salvager box (127b; `settings.salvager` until it is settled). In
-`ledger`: `other` (the books' carried-in cost, 125) and `archive` (`d`, `s`, `head`, `upTo`: the records rolled up, 126).
+`ledger`: `other` (the books' carried-in cost, 125), `matBuys` and `matBuysOld` (materials bought, 128) and `archive` (`d`, `s`, `head`, `upTo`: the records rolled up, 126).
 
 ## Open
 
@@ -1491,6 +1491,8 @@ filters; `windows.mini.open`, 127c), `groups` (103), `columns` (95), `sorts` (12
    (1 Nexus Crystal, with the Salvager); 2 Nexus Crystals not proven.
 3. Whether a band of four values (Soul Dust 2-5) gets the stretched Salvager shape (118b; 9 results so far) or one more
    half of the time: check with about 50 disenchants with the Salvager in 31-35 or 41-45.
+4. Whether the Blueprint is sold as single auctions and the Arcane Salvager as a commodity (128b: the game's answer is
+   logged when it differs), and whether the recipe's tool is the Runed Golden Rod (128a).
 
 Answered: essences get the Salvager bonus, about half the dust's (74a, 0.3.125), and the shape is learned per material
 kind from all bands (118).
@@ -1796,3 +1798,57 @@ kind from all bands (118).
     - p. The Ledger's Sales buttons read "Check undercuts" and "Cancel undercut" (no count; "Checking n/m" and
        "Cancelling..." stay); the counts are in their tooltips ("N of your auctions are still for sale", "N are
        undercut: each click cancels the next one"); each as wide as its longest label in the button's font (was 150).
+
+128. **Arcane Salvager core: the recipe in money, prices, buying from a price list, best times** (0.4.x, the user's
+    brief of 2026-11-28, approved; the windows on top come later: the tab, the Buy/Sell market window, the two columns).
+    - a. Facts (2026-11-28; wowhead.com/forever, foreverdb.net, icy-veins, the API docs of `Gethe/wow-ui-source`
+       branch `forever`): Blueprint: Arcane Salvager is item 273103 (Uncommon Enchanting formula, item level 25, needs
+       Enchanting 140, sells to vendors for 3s 75c; drops from Rath'mael, Shade of the Archmage, Charlga Razorflank,
+       and foreverdb lists Happy Camper, Durotar, at 15s; traded at the auction house, about 5-10g). It teaches spell
+       1263056 (10 s cast, tool Runed Golden Rod, reagents 2 Vision Dust 11137 and 1 Lesser Nether Essence 11174),
+       which makes one Arcane Salvager 279985 (item level 28, stack 20, about 90s). Runed Golden Rod is item 11130 and
+       **binds when picked up**: it is never at the auction house (its row has no price and no Buy). One wowhead comment
+       says the recipe needs a Runed Truesilver Rod; the tooltip says Golden: not checked in the game.
+    - b. Commodity or not: the API tells it per item (`C_AuctionHouse.GetItemKeyInfo(itemKey).isCommodity`;
+       `GetItemCommodityStatus` takes a bag slot only). Vision Dust and Lesser Nether Essence are commodities (the
+       material scan has searched them as commodities since 0.1; the user's data has their price lists). The Arcane
+       Salvager stacks to 20: taken as a commodity. The Blueprint is a recipe of stack 1: taken as single auctions.
+       Not seen in the user's data (no search of either yet): `Prices.IsCommodity` asks the game first and logs once
+       when it says otherwise ("auction house: X is a commodity, not single auctions as the addon had it").
+    - c. `Craft.lua` (pure): `Craft.Cost` (each reagent at the stock's average cost when you hold as many known-cost
+       units as the craft needs, else at its price now; each part and the whole say "stock", "price" or "mixed"; no
+       total when a reagent has neither), `Craft.Cheaper` (craft or buy, by how much), `Craft.Profit` (the sale price
+       after the cut less the cost; no deposit), `Craft.Payback` (crafts that pay back the Blueprint, rounded up; none
+       when a craft makes no profit), `Craft.Summary` (all of it, and per stack of 20). Glue: `Prices.Salvager()`
+       (`IsPlayerSpell(1263056)` for "You know the recipe").
+    - d. Prices: the full material scan also searches the Arcane Salvager tab's items that are not materials (the
+       Arcane Salvager as a commodity, the Blueprint as an item search: its price is the cheapest buyout each, your
+       own left out), into `prices` and `history` like a material; `Prices.ScanSalvager()` searches the tab's four
+       items only (its Scan button). The age of the oldest material price (Play's rescan) still counts materials only.
+    - e. `Buy.lua`, buying from a price list. One purchase at a time; `Scanner.HoldReason` says "purchase" while it is
+       on its way, so the scan, searches, posts and cancels wait (SDD 105b), and `Buy.Can` is off while a gear purchase
+       is on its way or the auction house answers a request (`Scanner.Ready`, the one-click rule 105m), with the reason.
+       Commodities: `StartCommoditiesPurchase` in the click; the quote (`COMMODITY_PRICE_UPDATED`) is confirmed
+       (`ConfirmCommoditiesPurchase`) only when it comes within `Buy.QUOTE_WAIT` (2 s) and its total is not over the
+       ceiling, the total of the last search + `Buy.CEILING` (5 %); else `CancelCommoditiesPurchase` with a chat and a
+       Log line; no quote in 2 s is cancelled the same way. `COMMODITY_PURCHASE_SUCCEEDED` books it,
+       `COMMODITY_PURCHASE_FAILED`, `COMMODITY_PRICE_UNAVAILABLE` and the error event end it; no answer in 10 s is said
+       and let go (a late success within 60 s is still booked). Single auctions (the Blueprint): `PlaceBid` in the
+       click on the cheapest auction of a current item search (no browse since, `Scanner.browseEpoch`, and younger than
+       `Buy.FRESH`, 60 s); else the click searches it first, past every hold, and Buy is on again with its answer
+       (`Buy.Prefetch` on show or hover makes that rare, as 105i). No answer in 3 s: said, freed.
+    - f. Books: a material bought enters stock at what it cost, outside the band pools (`Ledger.BuyMaterial`, the
+       record in `ledger.matBuys` for 30 days, older ones as one sum, `matBuysOld`). The books' check (125) is now paid
+       + materials bought + carried in = sales' cost + stock (`Ledger.Books().bought`); Clear history and the cost
+       replay keep it. The Blueprint and the Arcane Salvager are no materials: no stock, only the gold journal (as
+       "Other auction house") and the Log. Crafting is not booked yet: the reagents a craft uses stay in stock.
+    - g. "Highest at" / "Lowest at" (`History.BestTime`, pure; glue `Prices.BestTime(id, "high" | "low")` on the Times
+       option's clock, 110): the last 14 days of an item's history; each point counts as its price against its own
+       day's average (a price that rises over the days does not make the late hours look high); the 3 hours from a
+       whole hour on (past midnight too, 22:00-01:00) with the highest (lowest) average share, each window needing 3
+       points from 2 days. "few" = fewer than 3 days or fewer than 12 hours of the day with points; "none" (no clear
+       time) = the best window is less than 3 % from the day's average. It returns the window, its share against the
+       day's average (the tooltip's "8 % higher"), the points and days; `History.WindowText` gives "18:00-21:00".
+    - h. Specs: `spec/craft_spec.lua`, `spec/besttime_spec.lua` (synthetic history), `spec/buy_spec.lua` (the books,
+       and the stand-in's auction house, which now records commodity purchases in `ah.commodityBuys` and tells
+       `isCommodity` from `env.items[id].commodity`).

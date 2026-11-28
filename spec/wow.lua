@@ -481,7 +481,7 @@ function M.install(opts)
         now = 1000, clock = 1700000000, chat = {}, timers = {}, frames = {}, tooltipCalls = {},
         items = {}, bags = {}, auras = {}, loot = {}, inbox = {}, money = 1000000, casts = {}, cvars = {},
         ah = { browse = {}, fullBrowse = true, commodities = {}, itemResults = {}, sent = {}, bids = {},
-            hasResults = {}, ready = true, posts = {}, owned = {}, cancels = {} },
+            hasResults = {}, ready = true, posts = {}, owned = {}, cancels = {}, commodityBuys = {} },
     }
     M.env = env
     _G.SalvagerDB = nil   -- every install starts with fresh saved data
@@ -734,10 +734,22 @@ function M.install(opts)
         CancelAuction = function(id) table.insert(ah.cancels, id) end,
         HasFullBrowseResults = function() return ah.fullBrowse end,
         RequestMoreBrowseResults = function() table.insert(ah.sent, { kind = "more" }) end,
-        GetItemKeyInfo = function(key) local it = env.items[key.itemID] return it and { quality = it.quality } end,
+        GetItemKeyInfo = function(key)
+            local it = env.items[key.itemID]
+            return it and { quality = it.quality, isCommodity = it.commodity }
+        end,
         GetNumItemSearchResults = function(key) return #(ah.itemResults[key.itemID] or {}) end,
         GetItemSearchResultInfo = function(key, i) return ah.itemResults[key.itemID][i] end,
         PlaceBid = function(id, amount) table.insert(ah.bids, { id = id, amount = amount }) end,
+        -- Commodity purchases: each call is recorded in ah.commodityBuys ({ kind = "start" | "confirm" | "cancel",
+        -- itemID, quantity }); the spec answers with COMMODITY_PRICE_UPDATED and COMMODITY_PURCHASE_SUCCEEDED.
+        StartCommoditiesPurchase = function(id, qty)
+            table.insert(ah.commodityBuys, { kind = "start", itemID = id, quantity = qty })
+        end,
+        ConfirmCommoditiesPurchase = function(id, qty)
+            table.insert(ah.commodityBuys, { kind = "confirm", itemID = id, quantity = qty })
+        end,
+        CancelCommoditiesPurchase = function() table.insert(ah.commodityBuys, { kind = "cancel" }) end,
     }
     return env
 end
