@@ -66,16 +66,27 @@ def git(*args):
     return r.returncode, r.stdout.strip()
 
 
+def vtuple(v):
+    return tuple(int(x) for x in re.findall(r"\d+", v))
+
+
 def changelog(version):
-    """The version's section of CHANGELOG.md (written for players); else the commit subjects since the last tag."""
+    """The sections of CHANGELOG.md (written for players) from this version back to the last released tag (versions
+    that were never released go out with this one); else the commit subjects since the last tag."""
+    code, last = git("describe", "--tags", "--match", "v*", "--abbrev=0")
     path = os.path.join(ROOT, "CHANGELOG.md")
     if os.path.exists(path):
         with open(path, encoding="utf-8") as f:
             text = f.read()
-        m = re.search(rf"^## (?:{ADDON} )?{re.escape(version)}\s*\n(.*?)(?=^## |\Z)", text, re.M | re.S)
-        if m and m.group(1).strip():
-            return m.group(1).strip()
-    code, last = git("describe", "--tags", "--match", "v*", "--abbrev=0")
+        since = vtuple(last) if code == 0 else ()
+        parts = []
+        for m in re.finditer(rf"^## (?:{ADDON} )?(\d[\d.]*)\s*\n(.*?)(?=^## |\Z)", text, re.M | re.S):
+            v, body = m.group(1), m.group(2).strip()
+            if body and since < vtuple(v) <= vtuple(version):
+                parts.append((vtuple(v), f"## {v}\n\n{body}"))
+        if any(p[0] == vtuple(version) for p in parts):
+            parts.sort(reverse=True)
+            return "\n\n".join(p[1] for p in parts)
     if code != 0:
         return "First public release."
     _, log = git("log", "--format=- %s", f"{last}..HEAD")
