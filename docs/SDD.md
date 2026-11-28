@@ -1970,3 +1970,27 @@ kind from all bands (118).
        (`kv.pieces`). `spec/disenchant_spec.lua`: 5 pieces from the mail one by one open it once; closed by hand
        it stays closed through more pieces and ledger events; a new batch after the last one opens it again; a
        /reload with pieces does not; the Options box off never opens it.
+136. **The macros' icons: a file ID or the bare texture name, never a path** (the user, 2026-11-28: "You didn't
+    give the macro an icon, so I can't assign it to any bars"). Cause: 0.4.1 called `CreateMacro` with a full path
+    (`Interface\Icons\INV_Misc_Coin_01`), and the macros got no icon.
+    - a. The fact, from `Gethe/wow-ui-source`, branch `forever`: `Blizzard_FrameXMLBase/IconDataProvider.lua`,
+       `IconDataProviderMixin:GetIconForSaving`, strips `INTERFACE\ICONS\` from a string icon before it is saved, and
+       keeps a number (a file ID) as it is; the list the macro frame offers (`GetMacroIcons`, `GetLooseMacroIcons`)
+       holds file IDs or bare names. `Blizzard_APIDocumentationGenerated/UIMacrosDocumentation.lua`:
+       `C_Macro.GetSelectedMacroIcon` returns a `fileID`; `SpellDocumentation.lua`: `C_Spell.GetSpellTexture`
+       returns `iconID` (a `fileID`). The question mark is file ID 134400 (`QuestionMarkIconFileDataID`,
+       IconDataProvider.lua). Not settled by the source: the generated docs have no entry for `CreateMacro` or
+       `EditMacro` (they are not in a documented namespace), so that a path fails is the user's report, not the
+       source; that a bare name and a file ID work is what the game's own frame saves.
+    - b. The icon (`Macros.Icon`): Salvager DE, the Disenchant spell's (13262) file ID from `C_Spell.GetSpellTexture`
+       (or the old global `GetSpellTexture`); else, and for Salvager Buy, the file ID from `GetFileIDFromPath` where
+       the client has it, else the bare name (`INV_Enchant_Disenchant`, `INV_Misc_Coin_01`); last
+       `INV_MISC_QUESTIONMARK`. Never a path.
+    - c. The repair (`Macros.Repair`): at each load, and in "Create the macros again" (`Macros.Create(true)`), a
+       macro named Salvager Buy or Salvager DE whose text is still the addon's and whose icon is none, 0, 134400,
+       a question-mark name, or a path gets `EditMacro(index, nil, icon)`; one INFO `ui` log line each ("macro
+       <name>: had no icon (<old>): icon <new> set"). A macro whose text the player changed is never touched. In a
+       fight it waits for `PLAYER_REGEN_ENABLED`; the repair after a fight never makes a deleted macro again.
+    - d. `spec/macros_spec.lua`: the icons made (a file ID, a bare name, never a path), the fallbacks, the 0.4.1
+       macros repaired at load (and only once), a path and a question-mark name repaired by "Create the macros
+       again", the player's edited macro untouched, the fight case.

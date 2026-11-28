@@ -597,6 +597,19 @@ function M.install(opts)
         env.macros[#env.macros + 1] = { name = name, icon = icon, body = body }
         return #env.macros
     end   -- (env.shift: the Shift key held)
+    -- EditMacro(index, name, icon, body): nil keeps a field (the game's Blizzard_MacroUI.lua). env.spellIcons[id]:
+    -- the file ID C_Spell.GetSpellTexture returns (nil: the spell is not found). An icon must be a file ID or a
+    -- bare texture name, never a path (SDD 136).
+    _G.EditMacro = function(i, name, icon, body)
+        local m = assert(env.macros[i], "no macro at that index")
+        assert(icon == nil or type(icon) == "number" or not tostring(icon):find("[\\/]"), "an icon path")
+        m.name, m.icon, m.body = name or m.name, icon or m.icon, body or m.body
+        env.macroEdits = (env.macroEdits or 0) + 1
+        return i
+    end
+    env.spellIcons = { [13262] = 136244 }   -- Disenchant: a stand-in file ID
+    _G.C_Spell = _G.C_Spell or {}
+    _G.C_Spell.GetSpellTexture = function(id) return env.spellIcons[id] end
     _G.GetMoney = function() return env.money end
     -- env.equipped[slot] = itemID: what the character wears (the game's item count includes it).
     _G.GetInventoryItemID = function(unit, slot) return unit == "player" and env.equipped and env.equipped[slot] or nil end

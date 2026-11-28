@@ -64,7 +64,7 @@ By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_foreve
    with `/salv disenchant`; Options, Disenchant panel, turns the opening by itself off.
    Two macros are made at the first login: **Salvager Buy** (clicks Buy Top) and **Salvager DE** (clicks the
    Disenchant button). Drag them from `/macro` to your bars or bind them to keys; Options, "Create the macros again",
-   makes a deleted one again.
+   makes a deleted one again and gives the macros their icons back if they have none.
 6. **Materials** shows price, stock, average cost and break-even. **Post** sells what is in your bags at
    1 copper under the lowest listing; a warning sign shows when that is below your break-even.
    **Pop out** moves the materials list to a window of its own; close it to put the list back.
