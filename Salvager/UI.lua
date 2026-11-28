@@ -203,14 +203,32 @@ function UI.Rows(view) return SOURCES[view]() end
 
 ------------------------------------------------------------------ drawing
 
-local function statusText()
+local statusText
+
+--- Shows the status text. `changed` = only when the text changed (each tick while Play runs: the Live countdown).
+function UI.SetStatus(changed)
+    if not status then return end
+    local text = statusText()
+    if changed and text == status:GetText() then return end
+    status:SetText(text)
+    -- As wide as its text (never cut): the footer's texts wrap in what it leaves (UI.layoutFooter).
+    local before = tonumber((status:GetWidth())) or 0
+    local sw = tonumber((status:GetStringWidth())) or 0
+    status:SetWidth(math.max(1, sw + 2))
+    -- (A tick's new width: the footer's texts wrap again; the list is drawn again only when its bottom moves.)
+    if changed and math.abs(before - (sw + 2)) >= 1 and UI.reflowFooter then UI.reflowFooter() end
+end
+
+function statusText()
     local parts = {}
     if ns.Prices.scanning then parts[#parts + 1] = string.format("Materials %d/%d", ns.Prices.done, ns.Prices.total) end
     local s = ns.Scanner
     if s.state == "browsing" then
         parts[#parts + 1] = string.format("Browsing %s (%d gear listings)", s.passName or "", s.browsed)
     elseif s.state == "checking" then parts[#parts + 1] = string.format("Checking %d/%d", s.checked, s.toCheck)
+    elseif s.state == "looking" or s.state == "searching" then parts[#parts + 1] = ns.Live.Status()
     elseif ns.scanBothPending and not ns.Prices.scanning then parts[#parts + 1] = "Starting gear scan"
+    elseif s.state == "idle" and not ns.Prices.scanning and ns.Live.Status() then parts[#parts + 1] = ns.Live.Status()
     end
     if s.paused then table.insert(parts, 1, "|cffffd100Paused|r") end
     if #parts == 0 then parts[1] = ns.Queue.open and (s.auto and "Waiting for the next scan" or "Ready")
@@ -656,6 +674,12 @@ local function layoutFooter()
     return math.max(LIST_BOTTOM, 36 + h + 4)
 end
 
+--- The status's width changed between refreshes (the Live countdown): the footer's texts wrap again.
+function UI.reflowFooter()
+    if not f or not f:IsShown() or UI.refooting then return end
+    if layoutFooter() ~= (UI.listBottom or LIST_BOTTOM) then UI.RequestRefresh() end
+end
+
 function UI.Refresh()
     if not f or not f:IsShown() then return end
     -- The materials list is in its own window: this window does not show it too.
@@ -781,10 +805,7 @@ function UI.Refresh()
     for name, b in pairs(tabs) do
         b:SetSelected(name == UI.view)
     end
-    status:SetText(statusText())
-    -- As wide as its text (never cut): the footer's texts wrap in what it leaves (UI.layoutFooter).
-    local sw = tonumber((status:GetStringWidth())) or 0
-    status:SetWidth(math.max(1, sw + 2))
+    UI.SetStatus(false)
     if ns.Busy() then spinner:Start() else spinner:Stop() end
     local dealsBusy = UI.view == "deals" and (ns.Scanner.state ~= "idle" or ns.scanBothPending)
     if dealsBusy and #data == 0 then
@@ -966,11 +987,21 @@ local function build()
                 .. "in the list.")
         else
             GameTooltip:SetText("Play", 1, 1, 1)
-            local every = ns.db.settings.priceRescan
-            W.AddHelp(GameTooltip, nil, "Scans the gear now and again every " .. ns.db.settings.autoInterval
-                .. " seconds while the auction house is open, so new cheap listings show up by themselves. "
-                .. (every > 0 and ("Material prices are scanned again when they are older than " .. every .. " minutes. ")
-                    or "Material prices are not scanned again (see the options). ")
+            local s = ns.db.settings
+            local every = s.priceRescan
+            if ns.Live.Usable() then
+                W.AddHelp(GameTooltip, nil, "Live scan: each short round looks at the cheapest listings of a few qualities, gear "
+                    .. "types and item level bands, searches only the gear that changed, and makes the top deals current "
+                    .. "again; then it rests " .. s.liveInterval .. " seconds, so the auction house is free when you click "
+                    .. "Buy. Nothing is sent for 3 seconds after a Buy click.")
+                W.AddHelp(GameTooltip, nil, "If the auction house does not sort the listings by price, Play scans full rounds "
+                    .. "(every page) every " .. s.autoInterval .. " seconds instead, for this session; the status says so.")
+            else
+                W.AddHelp(GameTooltip, nil, "Full rounds this session (the auction house did not sort the listings by price): "
+                    .. "scans every page of the gear now and again every " .. s.autoInterval .. " seconds.")
+            end
+            W.AddHelp(GameTooltip, nil, (every > 0 and ("Material prices are scanned again when they are older than " .. every
+                .. " minutes. ") or "Material prices are not scanned again (see the options). ")
                 .. "You still click Buy yourself. Click again to stop.")
         end
         if self.reason then GameTooltip:AddLine(self.reason, 1, 0.3, 0.3, true) end
@@ -1832,9 +1863,17 @@ local function dealUnderMouse()
 end
 
 local wasBusy = false
+local statusAt = 0
+
 ns.OnTick(function()
     -- (Anywhere over a row, Buy Top or Gear Details: the search goes ahead of the click, past every hold.)
     ns.Scanner.Prefetch(dealUnderMouse())
+    -- (The Live countdown in the status, twice a second while Play runs.)
+    if ns.Scanner.auto and f and f:IsVisible() and GetTime() - statusAt >= 0.5 then
+        statusAt = GetTime()
+        UI.SetStatus(true)
+    end
+
     -- Every Buy follows the auction house: off while it is busy, on the moment it is ready (one click buys).
     local busy = ns.Scanner.BuyBusy() ~= nil
     if busy ~= wasBusy then

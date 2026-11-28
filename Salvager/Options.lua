@@ -69,11 +69,19 @@ local function populate(panel, standalone)
         function() return s.maxLevel end, function(n) s.maxLevel = math.max(0, math.floor(n)) changed("maxLevel", n) end)
     toL:SetPoint("LEFT", minE, "RIGHT", 12, 0)
 
-    local intL = numberBox(panel, "Play: scan the gear every (seconds)", 36,
+    local liveL = numberBox(panel, "Play, Live: rest between rounds (seconds)", 36,
+        function() return s.liveInterval end,
+        function(n) s.liveInterval = math.max(3, math.floor(n)) changed("liveInterval", s.liveInterval) end,
+        "Play's Live scan: how long it waits after a round before the next one. The auction house is free for your Buy "
+            .. "clicks while it waits. 3 or more.")
+    at(liveL, 24)
+    local intL = numberBox(panel, "Play, full rounds: scan the gear every (seconds)", 36,
         function() return s.autoInterval end,
         function(n) s.autoInterval = math.max(5, math.floor(n)) changed("autoInterval", s.autoInterval) end,
-        "How often Play scans the gear again. 5 or more.")
+        "When the auction house does not sort the listings by price, Play reads every page instead: this often. "
+            .. "5 or more.")
     at(intL, 24)
+
     local rescanL = numberBox(panel, "Play: scan material prices again after (minutes, 0 = never)", 36,
         function() return s.priceRescan end,
         function(n) s.priceRescan = math.max(0, math.floor(n)) changed("priceRescan", s.priceRescan) end,

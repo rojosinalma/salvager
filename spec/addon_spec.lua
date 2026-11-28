@@ -1046,7 +1046,7 @@ describe("Salvager scan safety", function()
         end
         ns.Scanner.Play()
         assert.is_false(ns.Prices.scanning)               -- fresh enough: straight to the gear
-        assert.are.equal("browsing", ns.Scanner.state)
+        assert.are.equal("looking", ns.Scanner.state)      -- (Play runs the Live scan, SDD 122)
         ns.Scanner.Stop()
         ns.db.settings.priceRescan = 0
     end)
@@ -1110,9 +1110,10 @@ describe("Salvager scan safety", function()
         assert.are.equal(0, lookups)
     end)
 
-    it("holds the browse while paused and continues on Play", function()
+    it("holds the browse while paused and continues on Play (full rounds: the Live scan fell back)", function()
         env.ah.fullBrowse = false
         env.ah.browse = { row(999999) }
+        ns.Live.unsorted = true                            -- (the session found the browse not price-sorted, SDD 122)
         ns.Scanner.Play()
         ns.Scanner.Pause()
         local sent = #env.ah.sent
@@ -1121,6 +1122,7 @@ describe("Salvager scan safety", function()
         ns.Scanner.Play()
         assert.are.equal("more", env.ah.sent[#env.ah.sent].kind)
         ns.Scanner.Stop()
+        ns.Live.unsorted = false
         env.ah.fullBrowse = true
     end)
 
@@ -1162,8 +1164,9 @@ describe("Salvager scan safety", function()
         ns.Scanner.Stop()
     end)
 
-    it("keeps the deals on screen through Play's own rounds, also when the material prices are scanned first", function()
+    it("keeps the deals on screen through Play's full rounds, also when the material prices are scanned first", function()
         ns.Scanner.Stop()
+        ns.Live.unsorted = true                            -- (full rounds: the Live scan fell back, SDD 122)
         env.ah.fullBrowse = true
         env.ah.browse = { row(1) }
         env.ah.itemResults[5001] = { { auctionID = 71, buyoutAmount = 1, itemLink = "|Hitem:5001|h[Test Boots]|h" } }
@@ -1526,6 +1529,8 @@ describe("Salvager deals list", function()
         assert.are.equal("weapons", ns.db.settings.gearClasses)
         ns.SetGearType("armor", true)
         assert.are.equal("both", ns.db.settings.gearClasses)
+        ns.Scanner.Stop()
+        ns.Live.unsorted = false
     end)
 
     it("plays, pauses and stops", function()
@@ -1534,7 +1539,8 @@ describe("Salvager deals list", function()
         ns.db.settings.priceRescan = 0
         ns.Scanner.Play()
         assert.is_true(ns.Scanner.auto)
-        assert.are.equal("browsing", ns.Scanner.state)
+        assert.are.equal("looking", ns.Scanner.state)      -- (the Live scan's first look, SDD 122)
+
         ns.Scanner.Pause()
         assert.is_true(ns.Scanner.paused)
         assert.is_true(ns.Queue.paused)

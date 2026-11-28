@@ -365,6 +365,29 @@ describe("Buying during a scan", function()
         ns.Queue.Clear()
     end)
 
+    it("holds every other request 3 s after a Buy click while Play runs the Live scan, 1 s otherwise (SDD 122)", function()
+        local deal = scanMany(2)
+        local other = ns.Scanner.deals[2]
+        -- Scan once (Play off): the quiet after a click is 1 s.
+        ns.Scanner.Buy(deal)
+        wow.fire(ns, "AUCTION_HOUSE_PURCHASE_COMPLETED", deal.auctionID)
+        wow.tick(ns, 0.5)
+        assert.are.equal("click", ns.Scanner.HoldReason())
+        wow.tick(ns, 0.6)
+        assert.is_nil(ns.Scanner.HoldReason())
+        -- Play's Live scan: a buying streak keeps the auction house for 3 s after each click.
+        ns.Scanner.auto = true
+        assert.is_true(ns.Scanner.LiveMode())
+        ns.Scanner.Buy(other)
+        wow.fire(ns, "AUCTION_HOUSE_PURCHASE_COMPLETED", other.auctionID)
+        wow.tick(ns, 2.8)
+        assert.are.equal("click", ns.Scanner.HoldReason())
+        wow.tick(ns, 0.3)
+        assert.is_nil(ns.Scanner.HoldReason())
+        ns.Scanner.auto = false
+        ns.Queue.Clear()
+    end)
+
     it("shows the gold and the bag space left of the Play/Stop toggle, live, and the footer fits the smallest width", function()
         local bar = ns.UI.footerBar
         local at = {}

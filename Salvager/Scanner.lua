@@ -53,12 +53,15 @@ Scanner.Sort = sortDeals
 
 --- Queues the search of one item. `c` = { keyString, net, limit, ilvl, quality, classID }.
 --- `forBuy` = for a Buy click: it goes first, and past the hold that buying puts on every other request.
-local function checkItem(c, itemKey, onResult, onFail, forBuy)
+--- `overlap` = a Live search: it may go out while other Live searches wait for their answers (Queue, SDD 122).
+local function checkItem(c, itemKey, onResult, onFail, forBuy, overlap)
     ns.Queue.Add({
         itemKey = itemKey, keyString = c.keyString, net = c.net, ilvl = c.ilvl, quality = c.quality,
         classID = c.classID, limit = c.limit, onResult = onResult, onFail = onFail, forBuy = forBuy,
+        overlap = overlap or nil,
     }, forBuy)
 end
+Scanner.CheckItem = checkItem   -- (for the Live scan)
 
 --- The value and buy limit of a quality, gear type and item level now. nil when the band is blocked.
 --- `limits`: ns.Limits() when the caller has it (one table for many deals).
@@ -148,13 +151,14 @@ local function readAuctions(task)
                 high = spread and spread.high and spread.high.value,
                 days = days, daysFew = daysFew, sellSeconds = sellSeconds,
                 epoch = Scanner.browseEpoch,   -- (the browse count at its search: SDD 105)
+                searchedAt = GetTime(),
             }
         end
     end
     -- Rows the player is buying of this item: this answer makes them current again, or says they are gone.
     for id, d in pairs(buying) do
         if d.keyString == task.keyString and not d.pending then
-            if listed[id] then d.epoch = Scanner.browseEpoch end
+            if listed[id] then d.epoch, d.searchedAt = Scanner.browseEpoch, GetTime() end
             afterSearch(d, listed[id])
         end
     end
@@ -170,23 +174,48 @@ local function readAuctions(task)
     ns.Log("checked item %s: %d auctions, %d under %s", task.keyString, n, #Scanner.deals - before, ns.Money(maxBuy))
     sortDeals()
 end
+Scanner.ReadAuctions = readAuctions   -- (for the Live scan)
 
---- One round of Play: the material prices first when they are older than the setting, then the gear.
+
+--- Does Play run the Live scan now (SDD 122)? Not when this session found the browse not sorted by price: then it
+--- runs the full rounds.
+local function liveMode() return Scanner.auto and ns.Live and ns.Live.Usable() or false end
+Scanner.LiveMode = liveMode
+
+--- One round of Play: the material prices first when they are older than the setting, then the gear: a Live round,
+--- or a full round when the Live scan fell back.
 local function startCycle(clear)
     local every = ns.db.settings.priceRescan
     local age = ns.Prices.OldestAge()
+    local live = liveMode()
     if every > 0 and age >= every * 60 and not ns.Busy() then
         ns.Log("material prices are %s old (limit %d min): scanning them first",
             age == math.huge and "missing or" or (math.floor(age / 60) .. " min"), every)
-        ns.ScanBoth(clear)
+        if live then
+            if clear then Scanner.ClearDeals() end
+            ns.Live.AfterPrices()
+        else
+            ns.ScanBoth(clear)
+        end
+    elseif live then
+        ns.Live.Round(clear)
     else
         Scanner.Scan(clear)
     end
 end
+Scanner.StartCycle = startCycle
 
+--- The next round of Play: `liveInterval` seconds after a Live round ended, `autoInterval` after a full one.
+--- (`Scanner.nextAt`: when, for the status text. Only the timer set last starts a round.)
+local cycleToken = 0
 local function scheduleNext()
     if not Scanner.auto then return end
-    C_Timer.After(ns.db.settings.autoInterval, function()
+    local wait = liveMode() and ns.Live.Rest() or ns.db.settings.autoInterval
+    Scanner.nextAt = GetTime() + wait
+    cycleToken = cycleToken + 1
+    local token = cycleToken
+    C_Timer.After(wait, function()
+        if token ~= cycleToken then return end
         if not (Scanner.auto and ns.Queue.open) or Scanner.paused or Scanner.state ~= "idle" then return end
         if ns.Prices.scanning then
             -- A material scan is running: this round waits for it. (After "Scan both", the gear scan
@@ -197,6 +226,7 @@ local function scheduleNext()
         startCycle()
     end)
 end
+Scanner.ScheduleNext = scheduleNext
 
 --- The time the scans of this round waited for purchases, by reason (`Scanner.HoldReason`), counted while a material
 --- or gear scan runs; said once at its end and started again (SDD 105k).
@@ -242,7 +272,7 @@ local function buildPlan()
         for classID, x in pairs({ [Data.CLASS_ARMOR] = row.armor, [Data.CLASS_WEAPON] = row.weapon }) do
             local list = bands[row.quality][classID]
             -- Never above the most the player pays for one item.
-            list[#list + 1] = { up = row.up, net = x.value, limit = math.min(x.limit, cap), blocked = x.blocked }
+            list[#list + 1] = { lo = row.lo, up = row.up, net = x.value, limit = math.min(x.limit, cap), blocked = x.blocked }
         end
     end
     local passes = {}
@@ -260,10 +290,13 @@ local function buildPlan()
     end
     return passes
 end
+Scanner.BuildPlan = buildPlan   -- (for the Live scan)
+Scanner.QUALITY_FILTER, Scanner.CLASS_NAME = QUALITY_FILTER, CLASS_NAME
 
 ------------------------------------------------------------------ judging a page
 
-local function judge(r, pass, sum)
+--- Judges one browse row. `ctx` = { seen, candidates }: the keys taken this round and the candidates for a search.
+local function judge(r, pass, sum, ctx)
     local key, price = r.itemKey, r.minPrice
     sum.browsed = sum.browsed + 1
     if not key or not price or price <= 0 then sum.noPrice = sum.noPrice + 1 return end
@@ -305,10 +338,18 @@ local function judge(r, pass, sum)
     end
     if price > band.limit then sum.overLimit = sum.overLimit + 1 return end
     local keyString = ns.KeyString(key)
-    if scan.seen[keyString] then return end
-    scan.seen[keyString] = true
-    scan.candidates[#scan.candidates + 1] = { key = key, keyString = keyString, net = band.net, limit = band.limit,
-        ilvl = ilvl, quality = pass.quality, classID = pass.classID, margin = margin, price = price }
+    if ctx.seen[keyString] then return end
+    ctx.seen[keyString] = true
+    ctx.candidates[#ctx.candidates + 1] = { key = key, keyString = keyString, net = band.net, limit = band.limit,
+        ilvl = ilvl, quality = pass.quality, classID = pass.classID, margin = margin, price = price,
+        quantity = r.totalQuantity or 0 }
+end
+Scanner.Judge = judge   -- (for the Live scan)
+
+--- The counts of one scan's judging, all zero.
+function Scanner.NewSum()
+    return { browsed = 0, overLimit = 0, noDisenchant = 0, learning = 0, noValue = 0, noPrice = 0, candidates = 0,
+        levelDiffers = 0, levelOut = 0, wrongQuality = 0, best = nil }
 end
 
 ------------------------------------------------------------------ after the browse
@@ -501,9 +542,10 @@ function nextPass()
     ns.Fire("SALVAGER_SCAN")
 end
 
---- Empties the Gear list.
+--- Empties the Gear list. (The Live scan forgets what it searched: every key is new again.)
 function Scanner.ClearDeals()
     wipe(Scanner.deals)
+    if ns.Live then ns.Live.Forget() end
     ns.Fire("SALVAGER_DEALS")
 end
 
@@ -523,8 +565,7 @@ function Scanner.Scan(clear)
     Scanner.browseSeq = (Scanner.browseSeq or 0) + 1
     scan = {
         seq = Scanner.browseSeq, passes = passes, index = 0, candidates = {}, seen = {}, startedAt = GetTime(),
-        sum = { browsed = 0, overLimit = 0, noDisenchant = 0, learning = 0, noValue = 0, noPrice = 0, candidates = 0,
-            levelDiffers = 0, levelOut = 0, wrongQuality = 0, best = nil },
+        sum = Scanner.NewSum(),
     }
     Scanner.browsed = 0
     if clear then Scanner.ClearDeals() end
@@ -552,7 +593,7 @@ local function onPage(added)
     end
     lastBrowseAt = GetTime()
     for i = from, #list do
-        local ok, err = pcall(judge, list[i], pass, sum)
+        local ok, err = pcall(judge, list[i], pass, sum, scan)
         if not ok then ns.Log("ERROR judging item %d of a page of %s: %s", i, pass.name, tostring(err)) end
     end
     if not scan then return end
@@ -569,12 +610,21 @@ ns.On("AUCTION_HOUSE_BROWSE_FAILURE", function()
 end)
 
 -- Another window's browse replaces our results: give up this scan and let Play retry.
+--- Sends a browse of this addon (the hook below tells it from another window's).
+function Scanner.SendBrowse(query)
+    ourSend = true
+    local ok, err = pcall(AH.SendBrowseQuery, query)
+    ourSend = false
+    return ok, err
+end
+
 if hooksecurefunc then
     hooksecurefunc(AH, "SendBrowseQuery", function()
         -- Any browse, ours or another window's, makes the item searches held so far stale: a purchase of an
         -- auction found before it gets no answer (SDD 105). Counted, so a Buy click knows.
         Scanner.browseEpoch = Scanner.browseEpoch + 1
         Scanner.browseAt = GetTime()
+        if not ourSend and ns.Live then ns.Live.ForeignBrowse() end
         if not ourSend and scan and Scanner.state == "browsing" then
             ns.Log("gear scan dropped: another addon or window started a browse")
             scan = nil
@@ -618,7 +668,9 @@ function Scanner.Stop()
     ns.Queue.Clear(true)   -- a price the player just asked for (Post) still comes
     Scanner.browseSeq = (Scanner.browseSeq or 0) + 1
     scan = nil
+    if ns.Live then ns.Live.Abort() end
     Scanner.state = "idle"
+    Scanner.nextAt = nil
     ns.Prices.scanning = false
     ns.scanBothPending = false
     if ns.Listings and ns.Listings.checking then
@@ -643,13 +695,16 @@ ns.On("AUCTION_HOUSE_CLOSED", function()
     Scanner.auto = false
     Scanner.paused = false
     scan = nil
+    if ns.Live then ns.Live.Abort() ns.Live.Forget() end
     Scanner.state = "idle"
+    Scanner.nextAt = nil
     wipe(Scanner.deals)
 end)
 
 ------------------------------------------------------------------ buying
 
 local BUY_QUIET = 1.0      -- seconds after a Buy click in which searches wait (more clicks may follow)
+local LIVE_BUY_QUIET = 3   -- the same while the Live scan runs: a buying streak keeps the auction house (SDD 122)
 local BUY_EXPIRES = 3      -- seconds a purchase gets for its answer, from its click or the answer before it (said)
 local BUSY_HOLD = 2        -- extra seconds everything is held after the auction house dropped a purchase
 local DROP_WINDOW = 2      -- a "request dropped" this soon after a Buy click is taken to be about the purchase
@@ -675,7 +730,8 @@ end
 --- now" is offered), "purchase" (one is on its way). Where the mouse is does not hold anything (0.3.142, the user:
 --- the scan must not stop under the mouse; SDD 105b).
 function Scanner.HoldReason()
-    if GetTime() - lastBuyAt < BUY_QUIET then return "click" end
+    if GetTime() - lastBuyAt < (liveMode() and LIVE_BUY_QUIET or BUY_QUIET) then return "click" end
+
     if next(waiting) then return "waiting" end
     -- (A purchase from a price list, Buy.lua, SDD 128, holds the same way.)
     if ns.Buy and ns.Buy.Busy() then return "purchase" end
@@ -697,6 +753,13 @@ function Scanner.HoldReason()
     return next(pendingBuys) and "purchase" or nil
 end
 
+--- How a purchase went, for its log line: the time from its click to the answer, and its search then (SDD 122).
+local function answerNote(d)
+    if not d.buySentAt then return "" end
+    return string.format("; answered %.2fs after the click, its search was %s (%s old)", GetTime() - d.buySentAt,
+        d.sentCurrent and "current" or "stale", d.searchedAt and string.format("%.0fs", d.buySentAt - d.searchedAt) or "?")
+end
+
 --- Is a purchase on its way, waiting, offered as "Buy now", or was Buy clicked a moment ago? Then nothing else talks
 --- to the auction house: a request sent now would be dropped, would make it drop the purchase, or (a browse) would
 --- make the purchase's search stale.
@@ -711,6 +774,7 @@ function Scanner.Prefetch(d)
     if d.epoch == nil or d.epoch >= Scanner.browseEpoch then return end
     if prefetched[d.keyString] == Scanner.browseEpoch then return end
     prefetched[d.keyString] = Scanner.browseEpoch
+    Scanner.prefetchAt = GetTime()   -- (the Live scan sends no look right after it: the click comes, SDD 122)
     ns.Log("searching %s again: the mouse is on its Buy and a browse came after its search", d.link or d.itemID)
     Scanner.Recheck(d, true)
 end
@@ -726,6 +790,11 @@ local function inFlight()
             scan.askedAt and string.format(", a page asked %.1fs ago", GetTime() - scan.askedAt) or "")
     end
     if Scanner.browseAt then parts[#parts + 1] = string.format("last browse sent %.1fs ago", GetTime() - Scanner.browseAt) end
+    local live = ns.Live and ns.Live.Current()
+    if live then
+        parts[#parts + 1] = string.format("live round %s, look %d/%d", live.phase, live.index, #live.slice)
+    end
+    if #ns.Queue.flying > 1 then parts[#parts + 1] = #ns.Queue.flying .. " searches in flight" end
     local n = 0
     for _ in pairs(pendingBuys) do n = n + 1 end
     if n > 0 then parts[#parts + 1] = n .. " purchases on their way" end
@@ -744,6 +813,9 @@ local function send(deal, later)
     forget(deal)
     deal.pending = true
     deal.clickedAt = GetTime()
+    -- (For the purchase's log line: when it went out, and whether its search was current then, SDD 122.)
+    deal.buySentAt = deal.clickedAt
+    deal.sentCurrent = deal.epoch == nil or deal.epoch >= Scanner.browseEpoch
     ns.Gold.Expect("buy", -deal.buyout, deal.link, 120)
     lastBuyAt = deal.clickedAt
     buySeq = buySeq + 1
@@ -896,8 +968,9 @@ end)
 ns.On("AUCTION_HOUSE_THROTTLED_SYSTEM_READY", pollWaiting)
 
 --- Searches a deal's item again, so its rows show what is listed now. `forBuy` = for a Buy click that waits for it
---- (first in line, past every hold).
-function Scanner.Recheck(deal, forBuy)
+--- (first in line, past every hold). `live` = { why, onDone }: a search of the Live scan (it may overlap others,
+--- SDD 122); onDone() when it is answered or given up. Returns true when a search was queued.
+function Scanner.Recheck(deal, forBuy, live)
     local t = deal and deal.task
     if not t or not ns.Queue.open then return end
     -- The value and limit of now: prices or settings may have changed since the scan. (A click keeps the auction it
@@ -909,18 +982,28 @@ function Scanner.Recheck(deal, forBuy)
         ns.Fire("SALVAGER_DEALS")
         return
     end
-    ns.Log(forBuy and "searching item %s again for a Buy click" or "rechecking item %s after a purchase", t.keyString)
+    ns.Log(live and ("searching item %s again: " .. live.why)
+        or (forBuy and "searching item %s again for a Buy click" or "rechecking item %s after a purchase"), t.keyString)
     local c = { keyString = t.keyString, net = band.net, limit = band.limit, ilvl = t.ilvl, quality = t.quality,
         classID = t.classID }
-    checkItem(c, t.itemKey, function(task) readAuctions(task) ns.Fire("SALVAGER_DEALS") end,
+    local done = live and live.onDone or function() end
+    checkItem(c, t.itemKey, function(task)
+        if forBuy then Scanner.prefetchAt = GetTime() end
+        readAuctions(task)
+        ns.Fire("SALVAGER_DEALS")
+        done(task)
+    end,
         function()
             if forBuy and deal.wait == "search" then
                 forget(deal)
                 ns.Print("the search of %s got no answer: click Buy again if it is still listed", deal.link or "the gear")
             end
             ns.Fire("SALVAGER_DEALS")
-        end, forBuy)
+            done()
+        end, forBuy, live and true)
+    return true
 end
+
 
 --- The auction a group's Buy buys: one the player clicked that waits or says "Buy now", else the cheapest one not
 --- being bought already.
@@ -1044,7 +1127,7 @@ ns.On("AUCTION_HOUSE_PURCHASE_COMPLETED", function(auctionID)
         -- (`lo`, `hi`: the pessimistic and optimistic values of one disenchant when bought, SDD 116.)
         ns.Ledger.AuctionPurchase(ns.db.ledger, d.itemID, d.buyout, d.value, time(), d.link,
             { q = d.quality, cls = d.classID, band = o and o.band, ilvl = d.ilvl, v = ns.VERSION, lo = d.low, hi = d.high })
-        ns.Log("bought %s for %s, value %s", d.link or d.itemID, ns.Money(d.buyout), ns.Money(d.value))
+        ns.Log("bought %s for %s, value %s%s", d.link or d.itemID, ns.Money(d.buyout), ns.Money(d.value), answerNote(d))
         ns.Fire("SALVAGER_LEDGER")
         recheckLater(d)
     end
@@ -1063,14 +1146,17 @@ ns.On("AUCTION_HOUSE_SHOW_ERROR", function()
     lastAnswerAt = GetTime()
     removeDeal(d.auctionID)
     ns.Print("could not buy %s (sold or changed)", d.link or "the gear")
-    ns.Log("could not buy %s for %s", d.link or d.itemID, ns.Money(d.buyout))
+    ns.Log("could not buy %s for %s%s", d.link or d.itemID, ns.Money(d.buyout), answerNote(d))
+
     recheckLater(d)
     ns.Fire("SALVAGER_DEALS")
 end)
 
 -- New settings (a buy limit, the most to pay, the gear type): rows that are no deal under them go at once.
 ns.On("SALVAGER_SETTINGS", function()
+    if ns.Live then ns.Live.Forget() end   -- (limits may have moved: every gear is new to the next Live round)
     local gone, limits = 0, nil
+
     for i = #Scanner.deals, 1, -1 do
         local d = Scanner.deals[i]
         if not limits and not inHand(d) then limits = ns.Limits() end

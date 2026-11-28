@@ -1,5 +1,18 @@
 # Changelog
 
+## Salvager 0.4.1
+
+### Buying
+- Play runs a live scan: short rounds that look only at the cheapest listings of each quality, gear type and item
+  level band, search only the gear that is new, cheaper or more since its last search, and make the top three deals
+  current again. Between rounds the scan rests (8 seconds by default, Options), so the auction house is free when you
+  click Buy, and a Buy click goes through at once. Nothing is sent for 3 seconds after a Buy click, so a buying
+  streak keeps the auction house.
+- The status line says what the live scan does: "Live: 18 targets, round 2.1 s, next in 6 s".
+- If the auction house does not return the listings in price order, Play falls back to the full rounds (every page)
+  for the rest of the session and says so. Scan once: Gear always reads every page.
+- The log has one line per round and per purchase (time from click to answer), so the timing can be checked.
+
 ## Salvager 0.4.0
 
 The biggest update since 0.3.113: a new forecast, honest books, and a new interface.

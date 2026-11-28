@@ -73,13 +73,15 @@ flipping is out of scope for now.
 8. **Opening stock** is entered by hand (`/salv stock`).
 9. **Buying** needs one click per auction (`PlaceBid` needs a hardware event). Nothing buys on its own.
 10. **Search pacing:** one search at a time, gated by `IsThrottledMessageSystemReady`; an item the client
-    already holds results for is refreshed, never searched again (a second search never answers).
+    already holds results for is refreshed, never searched again (a second search never answers). Since 0.4.1 the
+    Live scan's searches overlap: up to 3 in flight, each on its own clock (122d).
 11. **Gear scan:** one browse pass per quality and gear type (so both are known without asking the game),
     every page read. The auction house does **not** return browse results in price order on Forever
     (measured 2026-11-25: stops triggered at random pages), so there is no early stop by price. Each row is
     judged when its page arrives, from the listing's price and item level against a band table built once
     per scan: no per-item game lookups. Later pages are read from the event's payload, not by re-reading the
     whole list. Item searches follow only for items under their buy limit, best margin first, at most 60.
+    Since 0.4.1 this is Scan once: Gear and Play's fallback; Play runs the Live scan (122).
 12. **Item levels:** `SalvagerDB.ilvl` (learned from `GetItemInfo`, kept between sessions) first, else the
     listing's item level. Unknown items are requested in the background (5 per tick, 20 when a scan had to
     skip items), never in a burst. The scan log reports listings whose level differs from the game's data.
@@ -107,6 +109,7 @@ flipping is out of scope for now.
 18. **Searches wait for the browse:** a search sent while browse pages load made the auction house drop a
     page (seen 2026-11-25: a pass ended at 2500 of ~9000 items). The queue holds searches during a browse
     (except one the player asked for), and a page that does not come is asked for again twice (4 s each).
+    The same during the Live scan's looks (122).
 19. **Mail is booked by count, not by identity.** Mails have no ID, and two purchases (or sales) of the same
     item at the same price are identical mails. Until 0.3.4 a mail was skipped when one with the same sender,
     subject, money and days left had been booked: 4 of 5 Azure Silk Hoods bought together were lost
@@ -875,7 +878,8 @@ flipping is out of scope for now.
        Uncommon Weapons 33 s (was 4.5), Epic Armor, one page, 29 s and 19 s, a browse of 658 listings 87 s, the 20
        gear checks 81 s (were 27–29). Now a new pass (`nextPass`), the next page, the stall watcher's resends,
        searches (gear, materials, your auctions, undercut checks), cancels and posts wait for `Scanner.Buying()`
-       only: a click a moment ago (1 s), a click that waits for the auction house or its search, "Buy now"
+       only: a click a moment ago (1 s; 3 s while Play runs the Live scan, 122e), a click that waits for the auction
+       house or its search, "Buy now"
        offered (20 s at most), a purchase on its way (g). A click during a browse buys through c–e.
     - c. A click with the auction house ready and the search current sends the purchase in the click.
     - d. A click on a stale deal does not send it: its item is searched first (`Scanner.Recheck(deal, true)`:
@@ -1465,7 +1469,8 @@ flipping is out of scope for now.
 The TOC's order: pure modules first (no game API, the specs load them alone: `Util`, `Data`, `NoDisenchant`,
 `Model`, `Ledger`, `History`, `Craft` the recipe in money (128), `Journal`, `Statement`, `Competition`), then `Core` (namespace, saved data, events,
 the forecast glue, slash commands), the game glue (`Queue` searches, `Items` item levels, `Prices`, `Scanner` the
-gear scan and buying, `Buy` buying from a price list (128), `Disenchant`, `Mail`, `Gold` the journal's glue, `Report` the chat report, `Backup`,
+gear scan and buying, `Buy` buying from a price list (128), `Live` Play's Live scan (122), `Disenchant`, `Mail`, `Gold`
+the journal's glue, `Report` the chat report, `Backup`,
 `Tooltip`, `Listings` your auctions, `Convert` essences), the widgets (`Widgets`, `Tables`, `Chart`), and the
 windows (`Post`, `MaterialsWindow`, `LimitsWindow`, `UI` the main window, `LedgerWindow`, `StandWindow`,
 `BreakdownWindow`, `GearWindow` Gear Details, `MarketWindow`, `OddsWindow`, `ReportsWindow`, `DisenchantWindow`,
@@ -1474,7 +1479,7 @@ windows (`Post`, `MaterialsWindow`, `LimitsWindow`, `UI` the main window, `Ledge
 
 ## Data
 
-`SalvagerBackup` (account-wide): `list` of ledger copies (88). `SalvagerDB` (account-wide): `settings` (`timeZone`, 110, `highlightReturn`, 116h), `prices`, `ledger` (`purchases`, `stock`, `pools`, `disenchants`, `sales`),
+`SalvagerBackup` (account-wide): `list` of ledger copies (88). `SalvagerDB` (account-wide): `settings` (`timeZone`, 110, `highlightReturn`, 116h, `liveInterval`, 122), `prices`, `ledger` (`purchases`, `stock`, `pools`, `disenchants`, `sales`),
 `money` (gold journal), `sessions` (97), `competition` (109), `disenchantSeen` (112), `quality` and `ilvl` (learned item data), `auraSeen` and `auraSnapshots` (to learn the Salvager's aura spell ID; matched by name until then),
 `posted` and `listings` (29), `history` (57), `log` and `logDay` (69), `windows` and `window` (places, sizes, views and
 filters; `windows.mini.open`, 127c), `groups` (103), `columns` (95), `sorts` (127f), `layout` (94), and one-time flags (`historySeeded`, `buyResendBlocked`, 65,
@@ -1493,6 +1498,8 @@ filters; `windows.mini.open`, 127c), `groups` (103), `columns` (95), `sorts` (12
    half of the time: check with about 50 disenchants with the Salvager in 31-35 or 41-45.
 4. Whether the Blueprint is sold as single auctions and the Arcane Salvager as a commodity (128b: the game's answer is
    logged when it differs), and whether the recipe's tool is the Runed Golden Rod (128a).
+5. Whether the browse sorted by Price then Name comes back in price order on Forever (122c), and whether required
+   levels 8 under the item level reach the gear of each band (122a): the first Play session's "live round" lines.
 
 Answered: essences get the Salvager bonus, about half the dust's (74a, 0.3.125), and the shape is learned per material
 kind from all bands (118).
@@ -1558,6 +1565,62 @@ kind from all bands (118).
     `reasons`. `spec/ratchet_spec.lua` proves it: a column made 40 px wider fails the check, the baseline does not move
     to it without ALLOW_WORSE. The sim gate keeps its own baseline beside the tool (`ratchet.json` there, local).
 
+122. **The Live scan: Play keeps scanning and a Buy click goes through at once** (0.4.1, the user, 2026-11-28: "scans
+    run continuously AND a Buy click goes through at once, as with ForeverForge Auction"). Before: a round of Play read
+    every page of up to 6 browses (Uncommon Armor alone about 20 800 listings, 42–48 pages, 33–45 s), then up to 60 item
+    searches (about 50 s); the auction house was busy almost all the time (251 of 576 Buy clicks found it busy), every
+    Buy was off while it was busy (105m), and each browse made every listed deal stale (105). Facts read from FFA 2.8.19
+    and TSM 4.15.9 (facts only, no code): the lock reopens 0.69–0.74 s after each message (about 81 a minute), answers
+    come in about 0.23 s; FFA's sniper never pages the whole house: per target one browse sorted by Price then Name,
+    page 1 only, round-robin; it searches an item only when it is new, cheaper or has more quantity than at its last
+    look; up to 4 searches in flight, each given up after 2 s on its own clock; on a drop it resends only the newest
+    search, at most twice, not after a browse; and nothing is looked at while a find waits or a purchase is out, so the
+    auction house is idle when the player clicks. `Live.lua`; Play runs it, Scan once: Gear keeps the full browse (11).
+    - a. Targets: per selected quality and gear type first one look over all its selected bands (no required-level
+       floor, so gear without a required level is in it); when that look has more than a page under its highest buy
+       limit, the session looks at that quality and gear type per selected item level band from then on (`Live.split`,
+       one log line), plus one look for gear with no required level (required level up to 1, at the highest limit).
+       A band's look asks for required levels from its lowest item level minus 8 (`REQ_BELOW`) up to its highest (none
+       above 60); the row's own item level decides its band, client-side, as in the full scan (`Scanner.Judge`, the
+       level filter). Gear whose required level is more than 8 under its item level is not seen by a band's look (a
+       risk; the merged look and the full rounds see it). The options' required-level filter narrows every look.
+    - b. A look: `SendBrowseQuery` with that quality and gear type, sorts {Price asc, Name asc}; page 1, and the next
+       page only while the page's last row is at or under the target's buy limit and the page was in price order, at
+       most 3 pages (`LOOK_PAGES`). A look with no page in 3 s is sent again (twice at most), a dropped one too, then
+       given up for the round. Another addon's browse ends the round's looks.
+    - c. The guard (in code): each page's price-order breaks are counted (`judge`); more than 3 or 1 % of its rows
+       (`SORT_MIN_BREAKS`, `SORT_TOLERANCE`) logs "live: browse not price-sorted (<target>: N breaks in N rows, N
+       allowed): Play runs full rounds for the rest of this session", says it in the chat, and starts the full round at
+       once; Play then runs full rounds every `autoInterval` seconds. Measured with Price only until 0.4.0: not in price
+       order (Uncommon Armor 11 122 breaks in 23 968 listings, 2026-11-28 02:36). With Price then Name: **not measured
+       yet** (the first Play session after 0.4.1 says it in the log).
+    - d. Search only what changed: `Live.seen[keyString] = { minPrice, quantity, t }` from the look the key was last
+       searched after; a key under its limit is searched when new, cheaper, with more quantity, or its search is older
+       than 60 s (`SEEN_MAX_AGE`); the others' rows stay. A look that shows a listed key dearer drops its rows under that
+       price (they are sold). The best first, at most the item checks setting. Emptying the Gear list and any settings
+       change forget `seen`. The searches do not wait for each other: when the lock opens the next one goes, up to 3
+       in flight (`Queue.MAX_IN_FLIGHT`), each on its own 3 s clock; a late answer is used; on a drop only the newest is
+       sent again, at most twice, and not when a browse went out after it. Other searches still go one at a time. A
+       reply without the suffix for a suffixed key is not taken: the log of 2026-11-28 has no "answered without its
+       event" line.
+    - e. Idle for buying: a round is its looks (4 a round, `LOOKS_PER_ROUND`, round-robin over the targets), the
+       changed keys' searches and the top-3 refresh; then it rests `liveInterval` seconds (default 8, Options), and at
+       least twice the round's length (`REST_PER_ROUND`), so the auction house is free about two thirds of the time
+       whatever a round costs (live_spec: 69 % of a simulated minute with 18 targets). No look goes out while buying
+       (`Scanner.Buying()`), while a search is in flight, or for 3 s after a search for the deal under the mouse (so no
+       browse comes between an item's search and its click); while Play runs the Live scan the quiet after a Buy click
+       is 3 s instead of 1 s (`LIVE_BUY_QUIET`: a buying streak keeps the auction house).
+    - f. Staleness (105): each look is a browse and makes the listed deals stale; the epoch logic and the search on
+       hover (105i) stay, and after each round the top 3 deals of the active sort (`TOP_REFRESH`) whose search a look
+       made stale are searched again, so Buy Top's next ones buy with one click.
+    - g. Measured in the log: per round "live round N: L looks of T targets, P pages, R gear listings, B breaks, U
+       under their limit, S searched, K unchanged (not searched), F top deals searched again, D sold rows gone, 2.1s;
+       held for purchases 0.0s; auction house free 68% of the 13s since the last round" (free: the lock open and no
+       request of ours on its way); per purchase "bought ... ; answered 0.31s after the click, its search was current
+       (4s old)" (also on "could not buy"). The Buy click's line names the Live round and the searches in flight.
+    - h. UI: the status says "Live: 18 targets, round 2.1 s, next in 6 s" (or "looking 2/4", "searching 3"; "Full
+       rounds: browse not price-sorted" after the fallback); Play's tooltip explains Live and the fallback; Options has
+       "Play, Live: rest between rounds (seconds)" next to the full rounds' interval. No new window.
 
 123. **Widths the client agrees with** (0.4.0, the user, 2026-11-28: the client logged gaps the stand-in and the sim
     did not: "main/materials ... Material>Price 91", "ledger/purchases/batch ... Gear>Item level 227, Item level>Paid

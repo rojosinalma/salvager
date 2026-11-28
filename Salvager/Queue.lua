@@ -1,11 +1,14 @@
--- Salvager: one-at-a-time queue for auction house searches.
+-- Salvager: the queue for auction house searches.
 -- The server takes about one search every 0.7 s (IsThrottledMessageSystemReady).
 -- A second SendSearchQuery for an item the client already holds results for
 -- never answers, so those are refreshed instead.
+-- One search at a time, except the Live scan's (`overlap`, SDD 122): when the lock opens, the next of them goes out
+-- even if an earlier one has no answer yet, up to MAX_IN_FLIGHT, each on its own clock.
 local _, ns = ...
 
 local AH = C_AuctionHouse
-local Queue = { items = {}, current = nil, open = false, lost = 0, late = 0 }
+-- `flying`: the searches sent and not answered yet, oldest first; `current`: the newest of them (nil: none).
+local Queue = { items = {}, flying = {}, current = nil, open = false, lost = 0, late = 0 }
 ns.Queue = Queue
 
 -- Seconds to wait for an answer (one normally comes in about 0.3 s; while purchases are answered it can take over
@@ -14,6 +17,9 @@ local REPLY_TIMEOUT = 3
 local MAX_TRIES = 2         -- times a search is sent again after no answer
 local STUCK_WAIT = 1.5      -- seconds of "not ready" before sending anyway
 local CACHE_GAP = 0.1       -- an answer this soon after a refresh is the client's cache
+local MAX_IN_FLIGHT = 3     -- Live searches out at once (SDD 122); every other search goes alone
+local OVERLAP_RESENDS = 2   -- times a dropped Live search is sent again (SDD 122)
+Queue.MAX_IN_FLIGHT = MAX_IN_FLIGHT
 
 local COMMODITY_SORTS = { { sortOrder = Enum.AuctionHouseSortOrder.Price, reverseSort = false } }
 local ITEM_SORTS = {
@@ -37,12 +43,38 @@ local function ready()
     return false
 end
 
+local function setCurrent() Queue.current = Queue.flying[#Queue.flying] end
+
+--- The task is no longer in flight.
+local function land(task)
+    for i = #Queue.flying, 1, -1 do
+        if Queue.flying[i] == task then table.remove(Queue.flying, i) end
+    end
+    setCurrent()
+end
+
+function ns.KeyString(key)
+    return string.format("%d:%d:%d", key.itemID or 0, key.itemLevel or 0, key.itemSuffix or 0)
+end
+
 --- Adds a search. task = { commodity = itemID } or { itemKey = key }, plus
 --- onResult(task) and onFail(task). A search for the same thing as a queued one is not sent twice:
---- the two become one search, and both get its answer.
+--- the two become one search, and both get its answer. (The same for one in flight that was sent after the last
+--- browse: a second search of it would never answer.)
 --- With `urgent`, the task goes first and is sent even while the queue is paused
 --- (something the player just clicked).
 function Queue.Add(task, urgent)
+    if task.itemKey then
+        local ks = ns.KeyString(task.itemKey)
+        local browseAt = ns.Scanner and ns.Scanner.browseAt or -math.huge
+        for _, t in ipairs(Queue.flying) do
+            if t.itemKey and ns.KeyString(t.itemKey) == ks and (t.sentAt or 0) > browseAt then
+                t.others = t.others or {}
+                t.others[#t.others + 1] = task
+                return
+            end
+        end
+    end
     for i, t in ipairs(Queue.items) do
         if (task.owned and t.owned) or (task.commodity and t.commodity == task.commodity)
             or (task.itemKey and t.itemKey and ns.KeyString(t.itemKey) == ns.KeyString(task.itemKey)) then
@@ -71,27 +103,27 @@ end
 function Queue.Clear(keepUrgent)
     if not keepUrgent then
         wipe(Queue.items)
+        wipe(Queue.flying)
         Queue.current = nil
         return
     end
     for i = #Queue.items, 1, -1 do
         if not Queue.items[i].urgent then table.remove(Queue.items, i) end
     end
-    if Queue.current and not Queue.current.urgent then Queue.current = nil end
+    for i = #Queue.flying, 1, -1 do
+        if not Queue.flying[i].urgent then table.remove(Queue.flying, i) end
+    end
+    setCurrent()
 end
 
 --- Holds the queue: nothing new goes out until resumed. An answer already on its way still counts.
 function Queue.SetPaused(on)
     Queue.paused = on and true or false
-    if Queue.current then Queue.current.sentAt = GetTime() end
+    for _, t in ipairs(Queue.flying) do t.sentAt = GetTime() end
 end
 
 function Queue.Pending()
-    return #Queue.items + (Queue.current and 1 or 0)
-end
-
-function ns.KeyString(key)
-    return string.format("%d:%d:%d", key.itemID or 0, key.itemLevel or 0, key.itemSuffix or 0)
+    return #Queue.items + #Queue.flying
 end
 
 local function describe(task)
@@ -124,10 +156,9 @@ local function send(task)
     end
 end
 
-local function finish(ok)
-    local task = Queue.current
-    Queue.current = nil
+local function finish(task, ok)
     if not task then return end
+    land(task)
     if not ok then
         Queue.lost = Queue.lost + 1
         local again = not task.once and (task.tries or 0) < MAX_TRIES
@@ -163,64 +194,83 @@ local function hasResults(task)
     return AH.HasSearchResults(task.itemKey) and true or false
 end
 
+--- A search whose own clock ran out (REPLY_TIMEOUT).
+local function expire(task)
+    if task.refreshed then
+        -- A refresh that only gave the cached answer: use what the client has.
+        Queue.late = Queue.late + 1
+        ns.Log("search: the refresh of %s got no new answer in %.0fs, using what the game holds",
+            describe(task), REPLY_TIMEOUT)
+        finish(task, true)
+    elseif hasResults(task) then
+        -- The answer came, but not the event that announces it.
+        Queue.late = Queue.late + 1
+        ns.Log("search: %s was answered without its event, using the results", describe(task))
+        finish(task, true)
+    else
+        finish(task, false)
+    end
+end
+
+--- May the next search go out while others are in flight? Only one that may overlap (a Live search, or the one a
+--- Buy click waits for), when every one in flight is a Live search, fewer than MAX_IN_FLIGHT, and the lock is open.
+local function mayOverlap(task)
+    if not (task.overlap or task.forBuy) or #Queue.flying >= MAX_IN_FLIGHT then return false end
+    for _, t in ipairs(Queue.flying) do if not t.overlap then return false end end
+    return not AH.IsThrottledMessageSystemReady or AH.IsThrottledMessageSystemReady()
+end
+
 local function pump()
     if not Queue.open then return end
-    if Queue.paused and not (Queue.current or (Queue.items[1] and Queue.items[1].urgent)) then return end
-    local task = Queue.current
-    if task then
-        if GetTime() - task.sentAt >= REPLY_TIMEOUT then
-            if task.refreshed then
-                -- A refresh that only gave the cached answer: use what the client has.
-                Queue.late = Queue.late + 1
-                ns.Log("search: the refresh of %s got no new answer in %.0fs, using what the game holds",
-                    describe(task), REPLY_TIMEOUT)
-                finish(true)
-            elseif hasResults(task) then
-                -- The answer came, but not the event that announces it.
-                Queue.late = Queue.late + 1
-                ns.Log("search: %s was answered without its event, using the results", describe(task))
-                finish(true)
-            else
-                finish(false)
-            end
-        end
-        return
+    -- Each search in flight on its own clock.
+    for i = #Queue.flying, 1, -1 do
+        local t = Queue.flying[i]
+        if t and GetTime() - t.sentAt >= REPLY_TIMEOUT then expire(t) end
     end
+    if Queue.paused and not (Queue.items[1] and Queue.items[1].urgent) then return end
     if #Queue.items == 0 then return end
+    if #Queue.flying > 0 and not mayOverlap(Queue.items[1]) then return end
     -- A search sent while the gear browse loads its pages makes the auction house drop a page:
-    -- searches wait for the browse, except one the player just asked for.
-    if ns.Scanner and ns.Scanner.state == "browsing" and not Queue.items[1].urgent then return end
+    -- searches wait for the browse (and for the Live scan's looks), except one the player just asked for.
+    local state = ns.Scanner and ns.Scanner.state
+    if (state == "browsing" or state == "looking") and not Queue.items[1].urgent then return end
     -- Buying first: while a purchase is on its way, waits or is offered, Buy was clicked a moment ago, or the mouse is
     -- where Buy is clicked, searches wait. Not the search a Buy click waits for (SDD 105).
     if ns.Scanner and ns.Scanner.Buying() and not Queue.items[1].forBuy then return end
     -- (Not the read of your auctions: it is how a cancel is known, SDD 77a; it waited for the cancel's 8 s before.)
     if ns.Listings and ns.Listings.Cancelling() and not Queue.items[1].owned then return end
-    if not ready() then return end
-    Queue.current = table.remove(Queue.items, 1)
-    Queue.current.lateSince = nil
-    local ok, err = pcall(send, Queue.current)
+    if #Queue.flying == 0 and not ready() then return end
+    local task = table.remove(Queue.items, 1)
+    task.lateSince = nil
+    Queue.flying[#Queue.flying + 1] = task
+    setCurrent()
+    local ok, err = pcall(send, task)
     if not ok then
         ns.Print("search failed: %s", tostring(err))
-        ns.Log("ERROR sending %s: %s", describe(Queue.current), tostring(err))
-        finish(false)
+        ns.Log("ERROR sending %s: %s", describe(task), tostring(err))
+        finish(task, false)
     end
 end
 
 local function answered(match)
-    local task = Queue.current
-    -- The late answer of a search that waits to be sent again: use it, and do not send it again.
-    local first = Queue.items[1]
-    if not task and first and first.lateSince and match(first) then
-        Queue.current = table.remove(Queue.items, 1)
-        ns.Log("search: the answer for %s came late (%.1fs), not sent again", describe(first),
-            GetTime() - first.lateSince)
-        Queue.late = Queue.late + 1
-        finish(true)
-        return
+    -- In flight: the oldest one it answers.
+    for _, t in ipairs(Queue.flying) do
+        if match(t) then
+            if t.refreshed and GetTime() - t.sentAt < CACHE_GAP then return end
+            finish(t, true)
+            return
+        end
     end
-    if not task or not match(task) then return end
-    if task.refreshed and GetTime() - task.sentAt < CACHE_GAP then return end
-    finish(true)
+    -- The late answer of a search that waits to be sent again: use it, and do not send it again.
+    for i, t in ipairs(Queue.items) do
+        if t.lateSince and match(t) then
+            table.remove(Queue.items, i)
+            ns.Log("search: the answer for %s came late (%.1fs), not sent again", describe(t), GetTime() - t.lateSince)
+            Queue.late = Queue.late + 1
+            finish(t, true)
+            return
+        end
+    end
 end
 
 local function commodityAnswer(itemID)
@@ -243,18 +293,22 @@ ns.On("ITEM_SEARCH_RESULTS_ADDED", itemAnswer)
 -- The auction house takes one request at a time from all addons together. When two arrive close
 -- to each other it throws one away and says so, without saying which. If one of ours went out a
 -- moment ago, it is sent again as soon as the auction house is ready, instead of waiting 3 s for
--- an answer that will not come.
+-- an answer that will not come. Only the newest search (with several in flight the drop is about the last request),
+-- and not when a browse went out after it (then the drop may be the browse's); a Live search at most
+-- OVERLAP_RESENDS times.
 local MAX_RESENDS = 3
 ns.On("AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED", function()
     local task = Queue.current
-    if not task or GetTime() - task.sentAt > 2 or (task.resends or 0) >= MAX_RESENDS then return end
+    local most = task and (task.overlap and OVERLAP_RESENDS or MAX_RESENDS)
+    if not task or GetTime() - task.sentAt > 2 or (task.resends or 0) >= most then return end
     -- With a purchase on its way the dropped request may be the purchase: do not push more at it.
     if ns.Scanner and ns.Scanner.Buying() then return end
+    if ns.Scanner and ns.Scanner.browseAt and ns.Scanner.browseAt > task.sentAt then return end
     task.resends = (task.resends or 0) + 1
     Queue.dropped = (Queue.dropped or 0) + 1
     ns.Log("search: the auction house dropped %s (busy with another request), sending it again (%d of %d)",
-        describe(task), task.resends, MAX_RESENDS)
-    Queue.current = nil
+        describe(task), task.resends, most)
+    land(task)
     table.insert(Queue.items, 1, task)
 end)
 ns.On("AUCTION_HOUSE_THROTTLED_SYSTEM_READY", function() pump() end)

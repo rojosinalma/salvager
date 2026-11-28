@@ -36,9 +36,14 @@ By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_foreve
    minimap button, or its X, to hide or show it). The **_** button in the main window's title bar minimizes it; the
    gear icon next to it opens the options.
 2. Under **Scan once**, click **Both**: material prices first (about 20 seconds), then the gear.
-3. Click ▶ (play) to scan the gear again every 20 seconds; it turns into ■ (stop), which ends it. Tick
-   **Arcane Salvager** in the Scan settings when you disenchant near the Arcane Salvager: the gear is then valued
-   with its bonus.
+3. Click ▶ (play) to scan the gear live; it turns into ■ (stop), which ends it. Each short round looks at the
+   cheapest listings of a few qualities, gear types and item level bands, searches only the gear that changed, and
+   makes the top three deals current again; then it rests (8 seconds, Options), so the auction house is free when
+   you click Buy. The status at the bottom says "Live: 18 targets, round 2.1 s, next in 6 s". If the auction house
+   does not sort the listings by price, Play scans full rounds (every page, every 20 seconds) for the rest of the
+   session, and the status says so.
+   Tick **Arcane Salvager** in the Scan settings when you disenchant near the Arcane Salvager: the gear is then
+   valued with its bonus.
 4. **Gear** lists every auction of gear below its buy limit, best average profit first. Its profit shows as
    "low - avg - high": the pessimistic outcome (9 in 10 disenchants give this or more), the average over many
    pieces and the optimistic outcome (1 in 10 gives this or more); point at it for every outcome of one

@@ -34,7 +34,8 @@ local DEFAULTS = {
         gearClasses = "both",      -- "weapons" | "armor" | "both"
         minLevel = 0,              -- required-level filter for the gear scan (0 = none)
         maxLevel = 0,
-        autoInterval = 20,         -- seconds between gear scans in auto mode
+        autoInterval = 20,         -- seconds between Play's full gear rounds (when the Live scan fell back, SDD 122)
+        liveInterval = 8,          -- seconds Play's Live scan rests between rounds (SDD 122)
         maxChecks = 60,            -- item searches per gear scan (best candidates first)
         autoOpen = true,           -- open the window with the auction house
         restoreWindows = true,     -- and with it the Ledger, Log and Materials windows that were open last time
@@ -1063,7 +1064,7 @@ local HELP = {
     "/salv gear weapons|armor|both - which gear types the scan looks at",
     "/salv config - the options panel",
     "/salv levels 20 60 - required level range for the gear scan (0 0 = all)",
-    "/salv interval 20 - seconds between gear scans while Play runs",
+    "/salv interval 20 - seconds between Play's full gear rounds (when the Live scan fell back)",
     "/salv rescan 10 - minutes after which Play scans the material prices again (0 = never)",
     "/salv stock <material> <quantity> <cost each> - opening stock, e.g. /salv stock 11137 40 6s",
     "/salv report - disenchant results by band",
