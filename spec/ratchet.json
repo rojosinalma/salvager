@@ -1,0 +1,1136 @@
+{
+  "layout-empty": {
+    "breakdown/-/default": {
+      "cut": 0,
+      "gap": 18,
+      "overlap": 0,
+      "width": 516
+    },
+    "breakdown/-/smallest": {
+      "cut": 0,
+      "gap": 0,
+      "overlap": 0,
+      "width": 257
+    },
+    "disenchant/-/default": {
+      "cut": 0,
+      "gap": 116,
+      "overlap": 0,
+      "width": 496
+    },
+    "disenchant/-/smallest": {
+      "cut": 0,
+      "gap": 112,
+      "overlap": 0,
+      "width": 492
+    },
+    "ledger/Accuracy/default": {
+      "cut": 0,
+      "gap": 392,
+      "overlap": 0,
+      "width": 1019
+    },
+    "ledger/Accuracy/smallest": {
+      "cut": 0,
+      "gap": 392,
+      "overlap": 0,
+      "width": 1019
+    },
+    "ledger/Purchases/All purchases/default": {
+      "cut": 0,
+      "gap": 280,
+      "overlap": 0,
+      "width": 674
+    },
+    "ledger/Purchases/All purchases/smallest": {
+      "cut": 0,
+      "gap": 280,
+      "overlap": 0,
+      "width": 674
+    },
+    "ledger/Purchases/Current batch/default": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 978
+    },
+    "ledger/Purchases/Current batch/smallest": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 978
+    },
+    "ledger/Purchases/Not picked up/default": {
+      "cut": 0,
+      "gap": 327,
+      "overlap": 0,
+      "width": 618
+    },
+    "ledger/Purchases/Not picked up/smallest": {
+      "cut": 0,
+      "gap": 327,
+      "overlap": 0,
+      "width": 618
+    },
+    "ledger/Purchases/default": {
+      "cut": 0,
+      "gap": 280,
+      "overlap": 0,
+      "width": 674
+    },
+    "ledger/Purchases/smallest": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 978
+    },
+    "ledger/Sales/Competition/default": {
+      "cut": 0,
+      "gap": 32,
+      "overlap": 0,
+      "width": 715
+    },
+    "ledger/Sales/Competition/smallest": {
+      "cut": 0,
+      "gap": 32,
+      "overlap": 0,
+      "width": 715
+    },
+    "ledger/Sales/History/default": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 437
+    },
+    "ledger/Sales/History/smallest": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 437
+    },
+    "ledger/Sales/Open and sold/default": {
+      "cut": 0,
+      "gap": 33,
+      "overlap": 0,
+      "width": 430
+    },
+    "ledger/Sales/Open and sold/smallest": {
+      "cut": 0,
+      "gap": 33,
+      "overlap": 0,
+      "width": 430
+    },
+    "ledger/Sales/default": {
+      "cut": 0,
+      "gap": 33,
+      "overlap": 0,
+      "width": 430
+    },
+    "ledger/Sales/smallest": {
+      "cut": 0,
+      "gap": 32,
+      "overlap": 0,
+      "width": 715
+    },
+    "limits/-/default": {
+      "cut": 0,
+      "gap": 16,
+      "overlap": 0,
+      "width": 773
+    },
+    "limits/-/smallest": {
+      "cut": 0,
+      "gap": 16,
+      "overlap": 0,
+      "width": 773
+    },
+    "main/Gear/default": {
+      "cut": 0,
+      "gap": 134,
+      "overlap": 0,
+      "width": 803
+    },
+    "main/Gear/smallest": {
+      "cut": 0,
+      "gap": 134,
+      "overlap": 0,
+      "width": 803
+    },
+    "main/Materials/default": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 884
+    },
+    "main/Materials/smallest": {
+      "cut": 0,
+      "gap": 22,
+      "overlap": 0,
+      "width": 884
+    },
+    "market/Disenchant value/default": {
+      "cut": 0,
+      "gap": 0,
+      "overlap": 0,
+      "width": 0
+    },
+    "market/Disenchant value/smallest": {
+      "cut": 0,
+      "gap": 0,
+      "overlap": 0,
+      "width": 0
+    },
+    "market/Essences/default": {
+      "cut": 0,
+      "gap": 0,
+      "overlap": 0,
+      "width": 0
+    },
+    "market/Essences/smallest": {
+      "cut": 0,
+      "gap": 0,
+      "overlap": 0,
+      "width": 0
+    },
+    "market/Materials/default": {
+      "cut": 0,
+      "gap": 0,
+      "overlap": 0,
+      "width": 0
+    },
+    "market/Materials/smallest": {
+      "cut": 0,
+      "gap": 0,
+      "overlap": 0,
+      "width": 0
+    },
+    "market/Profit/default": {
+      "cut": 0,
+      "gap": 0,
+      "overlap": 0,
+      "width": 0
+    },
+    "market/Profit/smallest": {
+      "cut": 0,
+      "gap": 0,
+      "overlap": 0,
+      "width": 0
+    },
+    "market/Time of day/default": {
+      "cut": 0,
+      "gap": 0,
+      "overlap": 0,
+      "width": 0
+    },
+    "market/Time of day/smallest": {
+      "cut": 0,
+      "gap": 0,
+      "overlap": 0,
+      "width": 0
+    },
+    "materials/-/default": {
+      "cut": 0,
+      "gap": 19,
+      "overlap": 0,
+      "width": 886
+    },
+    "materials/-/smallest": {
+      "cut": 0,
+      "gap": 19,
+      "overlap": 0,
+      "width": 886
+    },
+    "odds/-/default": {
+      "cut": 0,
+      "gap": 28,
+      "overlap": 0,
+      "width": 1168
+    },
+    "odds/-/smallest": {
+      "cut": 0,
+      "gap": 28,
+      "overlap": 0,
+      "width": 613
+    },
+    "post/-/default": {
+      "cut": 0,
+      "gap": 0,
+      "overlap": 0,
+      "width": 0
+    },
+    "post/-/smallest": {
+      "cut": 0,
+      "gap": 0,
+      "overlap": 0,
+      "width": 0
+    },
+    "reports/Competition/default": {
+      "cut": 0,
+      "gap": 480,
+      "overlap": 0,
+      "width": 918
+    },
+    "reports/Competition/smallest": {
+      "cut": 0,
+      "gap": 302,
+      "overlap": 0,
+      "width": 740
+    },
+    "reports/Gear/Bands/default": {
+      "cut": 0,
+      "gap": 197,
+      "overlap": 0,
+      "width": 837
+    },
+    "reports/Gear/Bands/smallest": {
+      "cut": 0,
+      "gap": 197,
+      "overlap": 0,
+      "width": 837
+    },
+    "reports/Gear/History/default": {
+      "cut": 0,
+      "gap": 417,
+      "overlap": 0,
+      "width": 837
+    },
+    "reports/Gear/History/smallest": {
+      "cut": 0,
+      "gap": 417,
+      "overlap": 0,
+      "width": 837
+    },
+    "reports/Gear/default": {
+      "cut": 0,
+      "gap": 197,
+      "overlap": 0,
+      "width": 837
+    },
+    "reports/Gear/smallest": {
+      "cut": 0,
+      "gap": 417,
+      "overlap": 0,
+      "width": 837
+    },
+    "reports/Gold/All gold changes/default": {
+      "cut": 0,
+      "gap": 166,
+      "overlap": 0,
+      "width": 435
+    },
+    "reports/Gold/All gold changes/smallest": {
+      "cut": 0,
+      "gap": 166,
+      "overlap": 0,
+      "width": 435
+    },
+    "reports/Gold/Statement/default": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 465
+    },
+    "reports/Gold/Statement/smallest": {
+      "cut": 0,
+      "gap": 0,
+      "overlap": 0,
+      "width": 399
+    },
+    "reports/Gold/default": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 465
+    },
+    "reports/Gold/smallest": {
+      "cut": 0,
+      "gap": 166,
+      "overlap": 0,
+      "width": 435
+    },
+    "reports/Materials/default": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 588
+    },
+    "reports/Materials/smallest": {
+      "cut": 0,
+      "gap": 67,
+      "overlap": 0,
+      "width": 399
+    },
+    "reports/Odds/default": {
+      "cut": 0,
+      "gap": 28,
+      "overlap": 0,
+      "width": 1168
+    },
+    "reports/Odds/smallest": {
+      "cut": 0,
+      "gap": 28,
+      "overlap": 0,
+      "width": 613
+    }
+  },
+  "layout-extreme": {
+    " / Gear/default": {
+      "cut": 0,
+      "width": 1113
+    },
+    " / Gear/smallest": {
+      "cut": 0,
+      "width": 1113
+    },
+    " / Materials/default": {
+      "cut": 0,
+      "width": 968
+    },
+    " / Materials/smallest": {
+      "cut": 0,
+      "width": 968
+    },
+    "/default": {
+      "cut": 0,
+      "width": 968
+    },
+    "/smallest": {
+      "cut": 0,
+      "width": 1113
+    },
+    "Breakdown/default": {
+      "cut": 0,
+      "width": 768
+    },
+    "Breakdown/smallest": {
+      "cut": 0,
+      "width": 663
+    },
+    "Disenchant/default": {
+      "cut": 0,
+      "width": 1102
+    },
+    "Disenchant/smallest": {
+      "cut": 0,
+      "width": 439
+    },
+    "Gear/default": {
+      "cut": 0,
+      "width": 749
+    },
+    "Gear/smallest": {
+      "cut": 0,
+      "width": 749
+    },
+    "Ledger / Accuracy/default": {
+      "cut": 0,
+      "width": 1143
+    },
+    "Ledger / Accuracy/smallest": {
+      "cut": 0,
+      "width": 1143
+    },
+    "Ledger / Purchases / All purchases/default": {
+      "cut": 0,
+      "width": 1037
+    },
+    "Ledger / Purchases / All purchases/smallest": {
+      "cut": 0,
+      "width": 1037
+    },
+    "Ledger / Purchases / Current batch (588)/default": {
+      "cut": 0,
+      "width": 1407
+    },
+    "Ledger / Purchases / Current batch (588)/smallest": {
+      "cut": 0,
+      "width": 1407
+    },
+    "Ledger / Purchases / Not picked up (12)/default": {
+      "cut": 0,
+      "width": 727
+    },
+    "Ledger / Purchases / Not picked up (12)/smallest": {
+      "cut": 0,
+      "width": 727
+    },
+    "Ledger / Purchases/default": {
+      "cut": 0,
+      "width": 1407
+    },
+    "Ledger / Purchases/smallest": {
+      "cut": 0,
+      "width": 1037
+    },
+    "Ledger / Sales / Competition/default": {
+      "cut": 0,
+      "width": 1255
+    },
+    "Ledger / Sales / Competition/smallest": {
+      "cut": 0,
+      "width": 1255
+    },
+    "Ledger / Sales / History/default": {
+      "cut": 0,
+      "width": 727
+    },
+    "Ledger / Sales / History/smallest": {
+      "cut": 0,
+      "width": 727
+    },
+    "Ledger / Sales / Open and sold/default": {
+      "cut": 0,
+      "width": 866
+    },
+    "Ledger / Sales / Open and sold/smallest": {
+      "cut": 0,
+      "width": 866
+    },
+    "Ledger / Sales/default": {
+      "cut": 0,
+      "width": 1255
+    },
+    "Ledger / Sales/smallest": {
+      "cut": 0,
+      "width": 866
+    },
+    "Ledger/default": {
+      "cut": 0,
+      "width": 1143
+    },
+    "Ledger/smallest": {
+      "cut": 0,
+      "width": 866
+    },
+    "Limits/default": {
+      "cut": 0,
+      "width": 773
+    },
+    "Limits/smallest": {
+      "cut": 0,
+      "width": 773
+    },
+    "Log/default": {
+      "cut": 0,
+      "width": 640
+    },
+    "Log/smallest": {
+      "cut": 0,
+      "width": 360
+    },
+    "Market / Disenchant value/default": {
+      "cut": 0,
+      "width": 821
+    },
+    "Market / Disenchant value/smallest": {
+      "cut": 0,
+      "width": 821
+    },
+    "Market / Essences/default": {
+      "cut": 0,
+      "width": 846
+    },
+    "Market / Essences/smallest": {
+      "cut": 0,
+      "width": 846
+    },
+    "Market / Materials/default": {
+      "cut": 0,
+      "width": 854
+    },
+    "Market / Materials/smallest": {
+      "cut": 0,
+      "width": 854
+    },
+    "Market / Profit/default": {
+      "cut": 0,
+      "width": 765
+    },
+    "Market / Profit/smallest": {
+      "cut": 0,
+      "width": 765
+    },
+    "Market / Time of day/default": {
+      "cut": 0,
+      "width": 854
+    },
+    "Market / Time of day/smallest": {
+      "cut": 0,
+      "width": 854
+    },
+    "Market/default": {
+      "cut": 0,
+      "width": 900
+    },
+    "Market/smallest": {
+      "cut": 0,
+      "width": 854
+    },
+    "Materials/default": {
+      "cut": 0,
+      "width": 957
+    },
+    "Materials/smallest": {
+      "cut": 0,
+      "width": 957
+    },
+    "Mini/default": {
+      "cut": 0,
+      "width": 216
+    },
+    "Mini/smallest": {
+      "cut": 0,
+      "width": 216
+    },
+    "Odds/default": {
+      "cut": 0,
+      "width": 1184
+    },
+    "Odds/smallest": {
+      "cut": 0,
+      "width": 621
+    },
+    "Options/default": {
+      "cut": 0,
+      "width": 560
+    },
+    "Options/smallest": {
+      "cut": 0,
+      "width": 560
+    },
+    "Post/default": {
+      "cut": 0,
+      "width": 782
+    },
+    "Post/smallest": {
+      "cut": 0,
+      "width": 782
+    },
+    "Reports / Competition/default": {
+      "cut": 0,
+      "width": 1447
+    },
+    "Reports / Competition/smallest": {
+      "cut": 0,
+      "width": 614
+    },
+    "Reports / Gear / Bands/default": {
+      "cut": 0,
+      "width": 997
+    },
+    "Reports / Gear / Bands/smallest": {
+      "cut": 0,
+      "width": 837
+    },
+    "Reports / Gear / History/default": {
+      "cut": 0,
+      "width": 837
+    },
+    "Reports / Gear / History/smallest": {
+      "cut": 0,
+      "width": 837
+    },
+    "Reports / Gear/default": {
+      "cut": 0,
+      "width": 837
+    },
+    "Reports / Gear/smallest": {
+      "cut": 0,
+      "width": 837
+    },
+    "Reports / Gold / All gold changes/default": {
+      "cut": 0,
+      "width": 435
+    },
+    "Reports / Gold / All gold changes/smallest": {
+      "cut": 0,
+      "width": 435
+    },
+    "Reports / Gold / Statement/default": {
+      "cut": 0,
+      "width": 547
+    },
+    "Reports / Gold / Statement/smallest": {
+      "cut": 0,
+      "width": 399
+    },
+    "Reports / Gold/default": {
+      "cut": 0,
+      "width": 435
+    },
+    "Reports / Gold/smallest": {
+      "cut": 0,
+      "width": 399
+    },
+    "Reports / Materials/default": {
+      "cut": 0,
+      "width": 976
+    },
+    "Reports / Materials/smallest": {
+      "cut": 0,
+      "width": 399
+    },
+    "Reports / Odds/default": {
+      "cut": 0,
+      "width": 1184
+    },
+    "Reports / Odds/smallest": {
+      "cut": 0,
+      "width": 621
+    },
+    "Reports/default": {
+      "cut": 0,
+      "width": 1184
+    },
+    "Reports/smallest": {
+      "cut": 0,
+      "width": 399
+    },
+    "Stand/default": {
+      "cut": 0,
+      "width": 415
+    },
+    "Stand/smallest": {
+      "cut": 0,
+      "width": 415
+    }
+  },
+  "layout-typical": {
+    "breakdown/-/default": {
+      "cut": 0,
+      "gap": 31,
+      "overlap": 0,
+      "width": 603
+    },
+    "breakdown/-/smallest": {
+      "cut": 0,
+      "gap": 28,
+      "overlap": 0,
+      "width": 600
+    },
+    "disenchant/-/default": {
+      "cut": 0,
+      "gap": 246,
+      "overlap": 0,
+      "width": 800
+    },
+    "disenchant/-/smallest": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 439
+    },
+    "gear/-/default": {
+      "cut": 0,
+      "gap": 325,
+      "overlap": 0,
+      "width": 625
+    },
+    "gear/-/smallest": {
+      "cut": 0,
+      "gap": 325,
+      "overlap": 0,
+      "width": 625
+    },
+    "ledger/Accuracy/default": {
+      "cut": 0,
+      "gap": 381,
+      "overlap": 0,
+      "width": 1118
+    },
+    "ledger/Accuracy/smallest": {
+      "cut": 0,
+      "gap": 381,
+      "overlap": 0,
+      "width": 1118
+    },
+    "ledger/Purchases/All purchases/default": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 785
+    },
+    "ledger/Purchases/All purchases/smallest": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 785
+    },
+    "ledger/Purchases/Current batch/default": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 1526
+    },
+    "ledger/Purchases/Current batch/smallest": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 1526
+    },
+    "ledger/Purchases/Not picked up/default": {
+      "cut": 0,
+      "gap": 105,
+      "overlap": 0,
+      "width": 629
+    },
+    "ledger/Purchases/Not picked up/smallest": {
+      "cut": 0,
+      "gap": 105,
+      "overlap": 0,
+      "width": 629
+    },
+    "ledger/Purchases/default": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 785
+    },
+    "ledger/Purchases/smallest": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 1526
+    },
+    "ledger/Sales/Competition/default": {
+      "cut": 0,
+      "gap": 18,
+      "overlap": 0,
+      "width": 933
+    },
+    "ledger/Sales/Competition/smallest": {
+      "cut": 0,
+      "gap": 18,
+      "overlap": 0,
+      "width": 933
+    },
+    "ledger/Sales/History/default": {
+      "cut": 0,
+      "gap": 209,
+      "overlap": 0,
+      "width": 629
+    },
+    "ledger/Sales/History/smallest": {
+      "cut": 0,
+      "gap": 209,
+      "overlap": 0,
+      "width": 629
+    },
+    "ledger/Sales/Open and sold/default": {
+      "cut": 0,
+      "gap": 53,
+      "overlap": 0,
+      "width": 700
+    },
+    "ledger/Sales/Open and sold/smallest": {
+      "cut": 0,
+      "gap": 53,
+      "overlap": 0,
+      "width": 700
+    },
+    "ledger/Sales/default": {
+      "cut": 0,
+      "gap": 53,
+      "overlap": 0,
+      "width": 700
+    },
+    "ledger/Sales/smallest": {
+      "cut": 0,
+      "gap": 18,
+      "overlap": 0,
+      "width": 933
+    },
+    "limits/-/default": {
+      "cut": 0,
+      "gap": 16,
+      "overlap": 0,
+      "width": 773
+    },
+    "limits/-/smallest": {
+      "cut": 0,
+      "gap": 16,
+      "overlap": 0,
+      "width": 773
+    },
+    "main/Gear/default": {
+      "cut": 0,
+      "gap": 134,
+      "overlap": 0,
+      "width": 930
+    },
+    "main/Gear/smallest": {
+      "cut": 0,
+      "gap": 134,
+      "overlap": 0,
+      "width": 930
+    },
+    "main/Materials/default": {
+      "cut": 0,
+      "gap": 19,
+      "overlap": 0,
+      "width": 930
+    },
+    "main/Materials/smallest": {
+      "cut": 0,
+      "gap": 24,
+      "overlap": 0,
+      "width": 930
+    },
+    "market/Disenchant value/default": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 900
+    },
+    "market/Disenchant value/smallest": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 821
+    },
+    "market/Essences/default": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 900
+    },
+    "market/Essences/smallest": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 808
+    },
+    "market/Materials/default": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 900
+    },
+    "market/Materials/smallest": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 835
+    },
+    "market/Profit/default": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 900
+    },
+    "market/Profit/smallest": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 727
+    },
+    "market/Time of day/default": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 900
+    },
+    "market/Time of day/smallest": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 835
+    },
+    "materials/-/default": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 930
+    },
+    "materials/-/smallest": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 930
+    },
+    "odds/-/default": {
+      "cut": 0,
+      "gap": 28,
+      "overlap": 0,
+      "width": 1184
+    },
+    "odds/-/smallest": {
+      "cut": 0,
+      "gap": 28,
+      "overlap": 0,
+      "width": 621
+    },
+    "post/-/default": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 647
+    },
+    "post/-/smallest": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 647
+    },
+    "reports/Competition/default": {
+      "cut": 0,
+      "gap": 665,
+      "overlap": 0,
+      "width": 1157
+    },
+    "reports/Competition/smallest": {
+      "cut": 0,
+      "gap": 127,
+      "overlap": 0,
+      "width": 478
+    },
+    "reports/Gear/Bands/default": {
+      "cut": 0,
+      "gap": 55,
+      "overlap": 0,
+      "width": 837
+    },
+    "reports/Gear/Bands/smallest": {
+      "cut": 0,
+      "gap": 55,
+      "overlap": 0,
+      "width": 837
+    },
+    "reports/Gear/History/default": {
+      "cut": 0,
+      "gap": 203,
+      "overlap": 0,
+      "width": 837
+    },
+    "reports/Gear/History/smallest": {
+      "cut": 0,
+      "gap": 203,
+      "overlap": 0,
+      "width": 837
+    },
+    "reports/Gear/default": {
+      "cut": 0,
+      "gap": 55,
+      "overlap": 0,
+      "width": 837
+    },
+    "reports/Gear/smallest": {
+      "cut": 0,
+      "gap": 203,
+      "overlap": 0,
+      "width": 837
+    },
+    "reports/Gold/All gold changes/default": {
+      "cut": 0,
+      "gap": 166,
+      "overlap": 0,
+      "width": 435
+    },
+    "reports/Gold/All gold changes/smallest": {
+      "cut": 0,
+      "gap": 166,
+      "overlap": 0,
+      "width": 435
+    },
+    "reports/Gold/Statement/default": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 501
+    },
+    "reports/Gold/Statement/smallest": {
+      "cut": 0,
+      "gap": 0,
+      "overlap": 0,
+      "width": 399
+    },
+    "reports/Gold/default": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 501
+    },
+    "reports/Gold/smallest": {
+      "cut": 0,
+      "gap": 166,
+      "overlap": 0,
+      "width": 435
+    },
+    "reports/Materials/default": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 781
+    },
+    "reports/Materials/smallest": {
+      "cut": 0,
+      "gap": 16,
+      "overlap": 0,
+      "width": 399
+    },
+    "reports/Odds/default": {
+      "cut": 0,
+      "gap": 28,
+      "overlap": 0,
+      "width": 1184
+    },
+    "reports/Odds/smallest": {
+      "cut": 0,
+      "gap": 28,
+      "overlap": 0,
+      "width": 621
+    },
+    "stand/-/default": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 366
+    },
+    "stand/-/smallest": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 366
+    }
+  },
+  "perf": {
+    "disenchant": 25.107,
+    "judge per listing (us)": 0.166,
+    "ledger/Accuracy": 20.340,
+    "ledger/Purchases": 54.650,
+    "ledger/Purchases/All purchases": 51.089,
+    "ledger/Purchases/Current batch": 28.709,
+    "ledger/Purchases/Not picked up": 15.151,
+    "ledger/Sales": 3.204,
+    "ledger/Sales/Competition": 3.284,
+    "ledger/Sales/History": 21.253,
+    "ledger/Sales/Open and sold": 3.031,
+    "limits": 0.526,
+    "log": 0.053,
+    "main/Gear": 4.634,
+    "main/Materials": 4.886,
+    "market/Disenchant value": 1.083,
+    "market/Essences": 0.374,
+    "market/Materials": 0.422,
+    "market/Profit": 13.155,
+    "market/Time of day": 0.793,
+    "materials": 0.325,
+    "reports/Competition": 0.379,
+    "reports/Gear": 12.482,
+    "reports/Gear/Bands": 12.176,
+    "reports/Gear/History": 12.093,
+    "reports/Gold": 0.922,
+    "reports/Gold/All gold changes": 0.129,
+    "reports/Gold/Statement": 0.923,
+    "reports/Materials": 9.805,
+    "reports/Odds": 13.900,
+    "tick: Ledger Sales countdown": 0.002
+  },
+  "reasons": {},
+  "suite": {
+    "all": {
+      "luacheck": 0,
+      "specs": 337
+    }
+  }
+}

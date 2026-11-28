@@ -9,7 +9,7 @@ local Gear = {}
 ns.GearWindow = Gear
 
 local GREY, GOLD, GREEN, RED = "|cff808080", "|cffffd100", "|cff40ff40", "|cffff4040"
-local WIDTH, HEIGHT, MIN_H = 620, 780, 620
+local WIDTH, HEIGHT, MIN_H = 620, 780, 620   -- the size it opens with (Widgets.FitTables sets the width)
 local TOP, ROW_H, FEW, SUB = 78, 22, 20, 14
 local f, icon, nameText, nameArea, facts, buyButton, closeButton
 local parts = {}   -- per section: { title = label, list = Widgets.List }
@@ -82,7 +82,8 @@ local SECTIONS = {
             .. "value)\": the band's rule is not measured on Forever, so the limit rests on its pessimistic value, "
             .. "not the average." } },
         { "Time to sell", 90, "RIGHT", help = { "Time to sell", "How long its materials take to sell, from the post "
-            .. "to the sale, by their part of the value (counted as 1 day at least)." } },
+            .. "to the sale, by their part of the value (counted as 1 day at least). Grey with * = few sales: it leans "
+            .. "on all your sales together." } },
         { "Avg return per day", 80, "RIGHT", help = { "Avg return per day", "The average return divided by the days "
             .. "until the materials sell (at least 1)." } } } },
     build = { title = "What one disenchant gives", columns = {
@@ -126,8 +127,9 @@ end
 function Gear.MeasureRows(d)
     local lim = Gear.Limit(d)
     local perDay = ns.Scanner.ReturnPerDay(d)
-    local few = d.daysFew and " (few sales)" or ""
-    return { { cells = { grey(string.format("%+d%%", math.floor(ns.Scanner.Return(d) * 100 + 0.5))), ns.LoseText(d.lose),
+    local few = d.daysFew and "*" or ""
+    return { { notes = d.daysFew and { ns.FEW_SALES_NOTE } or nil,
+        cells = { grey(string.format("%+d%%", math.floor(ns.Scanner.Return(d) * 100 + 0.5))), ns.LoseText(d.lose),
         lim and ns.MoneyColumn(lim.limit) or grey("-"), lim and lim.setBy or grey("-"),
         d.days and ((d.daysFew and GREY or "") .. ns.DurationText(d.sellSeconds) .. few .. (d.daysFew and "|r" or ""))
             or grey("not known yet"),
@@ -288,7 +290,7 @@ function Gear.Refresh()
     -- As wide as its tables' columns need, up to the screen (SDD 107).
     local lists = {}
     for _, key in ipairs(ORDER) do lists[#lists + 1] = parts[key].list end
-    if W.FitTables(f, WIDTH, lists, d.auctionID) then for _, l in ipairs(lists) do l:Refresh() end end
+    W.FitTables(f, lists, d.auctionID)
     local why = Gear.BuyReason(now)
     buyButton:SetEnabled(why == nil)
     buyButton.reason = why
@@ -301,6 +303,7 @@ end
 local function build()
     -- As wide as its tables; the height is the player's (the last table scrolls).
     f = W.Window("SalvagerGearFrame", "Salvager Gear Details", "gear", WIDTH, HEIGHT, WIDTH, MIN_H, "vertical")
+    f.layoutName = "gear"
     -- The heading (UI.md Statements 1): what it is, the gear with its icon; its name shows the game's tooltip.
     icon = f:CreateTexture(nil, "ARTWORK")
     icon:SetSize(32, 32)
@@ -322,6 +325,11 @@ local function build()
     facts:SetPoint("RIGHT", f, "RIGHT", -14, 0)
     facts:SetJustifyH("LEFT")
     facts:SetWordWrap(false)
+    -- The heading (the name, its facts line) is content too (SDD 120); the tables' titles wrap.
+    f.extraNeed = function()
+        local function sw(fs) return tonumber((fs:GetStringWidth())) or 0 end
+        return math.ceil(14 + 32 + 8 + math.max(sw(nameText), sw(facts)) + 14)
+    end
     for _, key in ipairs(ORDER) do
         local title = W.Label(f, "", "GameFontNormal")
         local list = W.List(f, { rowHeight = ROW_H })

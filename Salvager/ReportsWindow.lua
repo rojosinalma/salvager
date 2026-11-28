@@ -745,7 +745,7 @@ function Reports.Save()
     end
 end
 local FILTERED = { gear = true }
-local MIN_W = 1050   -- the smallest width: the longest filter row (Gear: Search, Period, Gear, Quality, Bands, Salvager)
+local MIN_W = 1050   -- the width it opens with, before its content is measured (Widgets.FitTables sets it)
 local COMP_ROOM = 14 + 2 * 20 + 6 + 4   -- under the tables (14), two titles, the gaps
 -- The least height (SDD 113): the Competition view's three tables of TABLE_MIN each under the tabs and the filter row.
 local MIN_H = TABS_TOP + W.BAR_H.tabs + 4 + W.BAR_H.filters + 4 + 3 * W.TABLE_MIN + COMP_ROOM
@@ -798,7 +798,7 @@ function Reports.Resized()
     if not f or not f:IsShown() then return end
     if Reports.view ~= "odds" or ns.Odds.PoppedOut() then return Reports.Refresh() end
     oddsView.stack:Refresh()
-    if W.FitTables(f, MIN_W, { oddsView.stack }, Reports.FitKey()) then oddsView.stack:Refresh() end
+    W.FitTables(f, { oddsView.stack }, Reports.FitKey())
 end
 
 function Reports.Refresh()
@@ -871,9 +871,7 @@ function Reports.Refresh()
     end
     -- As wide as the table's columns need, up to the screen (SDD 107).
     local shown = (competition and { comp.summary, comp.names, comp.mats }) or (odds and { oddsView.stack }) or { list }
-    if W.FitTables(f, MIN_W, shown, Reports.FitKey()) then
-        for _, l in ipairs(shown) do l:Refresh() end
-    end
+    W.FitTables(f, shown, Reports.FitKey())
     if competition then comp.drop:Update() end
     for key, b in pairs(tabs) do b:SetSelected(key == Reports.view) end
     rangeDrop:SetOptions(Reports.PeriodOptions(), 190)
@@ -882,6 +880,7 @@ end
 
 local function build()
     f = W.Window("SalvagerReportsFrame", "Salvager Reports", "reports", MIN_W, 480, MIN_W, MIN_H)
+    f.layoutName = "reports"
     local old = OLD_VIEW[f.saved.view]
     if old then f.saved.view, f.saved.gearTab = old[1], old[2] end
     if TITLES[f.saved.view] then Reports.view = f.saved.view end
@@ -1024,6 +1023,8 @@ local function build()
     comp.drop:SetPoint("LEFT", matLabel, "RIGHT", 6, 0)
     local matArea = W.HelpArea(filterRow, matLabel, "Material", MAT_HELP)
     comp.controls = { matLabel, matArea, comp.drop }
+    filterRow:Track(matLabel, "L")
+    filterRow:Track(comp.drop, "L")
     -- The Gold view's subtabs, on the row under the tabs (subtabs only).
     bars.gold = W.Bar(f, "subtabs"):Place(TABS_TOP + W.BAR_H.tabs + 4, 12, 12)
     for _, t in ipairs(GOLD_TABS) do
@@ -1070,6 +1071,13 @@ local function build()
         Reports.Refresh()
     end)
     comp.parts = { comp.summary, comp.namesTitle, comp.names, comp.matsTitle, comp.mats, comp.bar }
+    -- The Competition view's two titles are content too: the window is at least as wide as they are.
+    f.extraNeed = function()
+        if Reports.view ~= "competition" then return 0 end
+        local w = 0
+        for _, t in ipairs({ comp.namesTitle, comp.matsTitle }) do w = math.max(w, tonumber((t:GetStringWidth())) or 0) end
+        return math.ceil(w) + 2 + 24
+    end
     Reports.comp = comp   -- (the specs read it)
     for _, l in ipairs({ comp.summary, comp.names, comp.mats }) do
         l.onColumnsChanged = function() Reports.Refresh() end

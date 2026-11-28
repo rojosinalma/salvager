@@ -81,19 +81,28 @@ function Stand.Refresh()
     for i, l in ipairs(lines) do l:SetText(facts[i] or "") end
     list:SetSource(#rows, function(i) return rows[i] end)
     list:Refresh()
+    W.FitTables(f, { list }, "stand")
 end
 
 local function build()
     f = W.Window("SalvagerStandFrame", "Salvager Stand", "stand", 460, 440, 460, 260, "vertical")
+    f.layoutName = "stand"
+    f.onResize = function() if f:IsShown() then Stand.Refresh() end end
     title = W.Label(f, "", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -32)
     lines = {}
     for i = 1, 5 do
         local l = W.Label(f, "", "GameFontHighlightSmall")
         if i == 1 then l:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8) else l:SetPoint("TOPLEFT", lines[i - 1], "BOTTOMLEFT", 0, -4) end
-        l:SetWidth(432)
         l:SetJustifyH("LEFT")
+        l:SetWordWrap(false)
         lines[i] = l
+    end
+    -- The heading and its facts (one line each) are content too (SDD 120).
+    f.extraNeed = function()
+        local w = tonumber((title:GetStringWidth())) or 0
+        for _, l in ipairs(lines) do w = math.max(w, tonumber((l:GetStringWidth())) or 0) end
+        return math.ceil(14 + w + 14)
     end
     list = W.List(f, { rowHeight = 20 })
     list:SetColumns(COLUMNS, "stand")

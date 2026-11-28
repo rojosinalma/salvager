@@ -332,7 +332,8 @@ end
 
 ------------------------------------------------------------------ the window
 
-local MIN_W, LIST_W = 900, 370   -- the window's smallest width; the list's, where its columns need no more
+local MIN_W = 900      -- the width it opens with, before its content is measured (Widgets.FitTables sets it)
+local CHART_MIN = 496  -- the chart's least width: it has no text of its own to measure; it takes what the list leaves
 
 local VIEWS = { material = Material, value = Value, profit = Profit, essence = Essence, hour = Hour }
 local ORDER = { "material", "value", "profit", "essence", "hour" }
@@ -419,18 +420,18 @@ function Market.Refresh()
     list:SetColumns(cols, "market." .. Market.view)
     list:SetSource(#rows, function(i) return rows[i] end)
     list:Refresh()
-    -- The list is as wide as its columns need (at least LIST_W), the window wider by as much, up to the screen
-    -- (SDD 107); the chart keeps the rest.
-    local need = rawget(list, "fitWidth")
-    local lw = math.max(LIST_W, type(need) == "number" and need or 0)
-    lw = math.min(lw, math.floor(W.ScreenWidth()) - (MIN_W - LIST_W))
-    -- (The width is the smallest one the view needs; one the player widened to stays, one that only came from
-    -- another view's list shrinks back to this one's, SDD 113.)
-    f.FitWidth(MIN_W + lw - LIST_W, Market.view)
+    -- The list is as wide as its columns need (all of them, the first in full), the chart at least CHART_MIN at its
+    -- right; the window as wide as both, or its rows of controls, up to the screen (SDD 107, 120). The player may make
+    -- it wider (the chart takes it, and that width stays); one that only came from another view shrinks back.
+    local need = rawget(list, "neededWidth")
+    local lw = type(need) == "number" and math.ceil(need) or list:GetWidth()
+    lw = math.min(lw, math.floor(W.ScreenWidth()) - 24 - 10 - CHART_MIN)
+    list.margin = 24 + 10 + CHART_MIN
     if math.abs((list:GetWidth() or 0) - lw) >= 1 then
         list:SetWidth(lw)
         list:Refresh()
     end
+    W.FitTables(f, { list }, Market.view)
     rangeDrop:Update()
     -- The search first, where the view has one; the Time filter first where it has none.
     local searchable = not NO_SEARCH[Market.view]
@@ -458,8 +459,11 @@ end
 
 local function build()
     f = W.Window("SalvagerMarketFrame", "Salvager Market", "market", MIN_W, 480, MIN_W, 320)
+    f.layoutName = "market"
     -- The chart takes the width the list leaves: the player may make the window wider, and that width stays.
     f.fitGrows = true
+    -- (0.4.0: a width saved before the windows were tight came from a list sized for extremes: dropped once.)
+    if not f.saved.tightW then f.saved.tightW, f.saved.w = true, nil end
     if (tonumber(f.saved.w) or 0) > MIN_W then f.userW = f.saved.w end
     if VIEWS[f.saved.view] then Market.view = f.saved.view end
     for key, value in pairs(f.saved.pick or {}) do Market.pick[key] = value end
@@ -520,7 +524,7 @@ local function build()
     list = W.List(f, { rowHeight = 22 })
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -88)
     list:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 12, 14)
-    list:SetWidth(LIST_W)
+    list:SetWidth(370)   -- (until the first fit: Market.Refresh sets it from the columns)
     -- A click on a column title sorts by it; a second click turns the order around.
     list.onSort = function(col)
         local sort = sortOf(Market.view)

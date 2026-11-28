@@ -1322,9 +1322,10 @@ flipping is out of scope for now.
     - e. Gear list (the user's decision): one profit column "Profit: low - avg - high" (help in full), each cell one
        text "-4g 33s - +24g 92s - +55g 33s" (`ns.RangeText`, short money `Util.MoneyShort`: gold and silver from 1g,
        else silver and copper), each part green or red by its sign. Columns: Gear, Type, Item level, Buyout, Profit
-       range, Avg return, Loss chance, Buy; Expected value left the list (its value is in the tooltip). The column
+       range, Loss chance, Avg return, Buy (0.4.0, the user, 2026-11-28: Loss chance next to the range; until then
+       Avg return came first); Expected value left the list (its value is in the tooltip). The column
        sorts by the average (`dealSort` "profit"), Avg return by the average return; Buy Top as before. Width: the
-       widest of its titles, cells and its `sample` (`ns.RANGE_SAMPLE`, 4-digit gold). Hovering the cell
+       widest of its titles and cells now (0.4.0, 119; was the `sample` `ns.RANGE_SAMPLE`, 4-digit gold). Hovering the cell
        (`row.rangeArea`, a click passes to the row) shows the breakdown tooltip; the rest of the row the item's.
        UI.md Tables 1 has the exception.
     - f. The deal's tooltip (`UI.AddDealLines`: row, profit cell, Buy Top, the gear above it): Item level, Buyout,
@@ -1474,3 +1475,65 @@ filters), `groups` (103), `columns` (95), `layout` (94), and one-time flags (`hi
 
 Answered: essences get the Salvager bonus, about half the dust's (74a, 0.3.125), and the shape is learned per material
 kind from all bands (118).
+
+120. **One width authority; windows and columns as tight as their content** (0.4.0, the user, 2026-11-28: "Why is
+    controlling the size of columns so damn hard, I've told you many times to keep windows tight and it keeps getting
+    bigger. Are you even testing?"; "set up guardrails in code and don't rely on prose"). Measured in his layout dump of
+    0.3.151: the empty Current batch spread its 11 titles over 940 px (gaps of 53 to 80 px), the Materials window was
+    1092 px with 170 px of spare in its first column, the main window's empty Gear list 986 px. The causes found in the
+    code: every window held a raised constant as its smallest width (Reports 1050, Ledger 890, main 940, Odds 760,
+    Breakdown 720, Gear Details 620, Disenchant 520, Market 900 with its list at 370, Materials 520), sized for the fit
+    spec's extreme data or its longest filter row with every filter shown; the gold readout kept room for the gold cap;
+    the range column a 4-digit-gold sample; every column 10 px of padding and 6 px gaps, so texts sat 6 to 26 px apart
+    by their justification; the first column took whatever the window had over that; and no spec tested that a window
+    is no wider than its content needs.
+    - a. The width authority (`Widgets.lua`, "the width authority"): a column is `ceil(widest text now) + CELL_PAD`
+       (2) — its title with its sort arrow, the rows of the data (up to 400), a total in its larger font, a control's
+       width where the column holds one (`least`: the Limits' money boxes); `sample` only for a live column (the
+       countdowns, the Age) and only while it has rows. Two columns' boxes are `Widgets.ColumnGap(a, b)` apart so their
+       texts are NORMAL_GAP (16 px) apart whatever their justification. `Widgets.FitColumns` (every table: List,
+       CardList, the main window's own) and `Widgets.FitTables(f, lists, view, extra)` (every window with a table) are
+       the only places that size them. A window is as wide as its widest row of content now: a table's columns with the
+       first one in full (`list.neededWidth`), an empty table's note (never cut, UI.md Tables 6), a row of controls
+       (`bar:Need()`: the regions on show, measured where they are drawn, `bar.parts` with their side), the title, and
+       `f.extraNeed` (the main window's settings block, the Breakdown's and Gear Details' headings, the Competition
+       titles, the Post's market lines, the Stand's facts). No window keeps a constant smallest width: the smallest is
+       its controls' (and notes', and one card per row). The first column takes only what the window has over its
+       columns (a few px, or what the controls force). The gold and bag readouts are their text now.
+    - b. Cells: money of 1 gold or more shows gold and silver (`Util.ShortMoneyText` through `Widgets.CellText`, in
+       every table cell, measured and drawn alike), the full amount on the row's hover (`Widgets.AddExactLines`).
+       "(few sales)" became a grey value with "*", explained in the column's help and the row's hover
+       (`ns.FEW_SALES_NOTE`, `row.notes`).
+    - c. The self-check (`Widgets.CheckLayout`, always on, after each fit): the window no wider than its content's
+       need + 8 px (`SLACK`), every column gap within NORMAL_GAP + 4 (the first one may be what the controls give it).
+       One Log line per window and view per session: "layout: <window>/<view> wider than its content by N px", or
+       "column gaps over 16 px: <title>><title> <px>". `make layout` lists them with the dump.
+    - d. The gates: (1) `spec/tight_spec.lua` with typical data (the shapes of the user's own: its material prices,
+       its most bought gear, a few gold): every window, view and size, measured from the stand-in's rects
+       (`spec/layoutcheck.lua`: tables, rows of controls, the settings, headings, notes): no window wider than its
+       tightest row + 8 px, every gap 16 ± 2 px, nothing cut; the same with no data; a window shrinks when its table
+       empties; no width change over 10 refreshes or a round of the tabs; the countdowns draw only their cells. On the
+       code before this change it found 113 too-wide views and 96 gaps. The extreme-data checks of `fit_spec` stay
+       (nothing cut, at most the screen). (2) The real-font gate, `make sim-check` (`.agents/tools/wow-ui-sim/check.sh`,
+       a local dev tool, not in git; skipped with a message where it is missing): every window and view with the
+       game's fonts, the same rules, a table, exit 1 on a problem; on the old code 63 of 64 views were too wide (the
+       Reports' Gold by 646 px). `make install` runs `check` and `sim-check`. (3) `make layout` adds the same rules on
+       the client's dump and the self-check's Log lines.
+    - e. The Ledger's countdowns draw only their cells each second (`list:RefreshLive`, `row.live`): the whole table
+       each second took 2.4 ms at ten times the data. Options' "and reopen the windows that were open last time" (all
+       come back since 0.3.137). The Market drops a width saved before this change once (`saved.tightW`).
+
+121. **Ratchets** (0.4.0, the user, 2026-11-28: "Have ratchets so we don't fuck up things again"). Numbers that may only
+    get better, in git: `spec/ratchet.json`. The specs write what they measure to `.ratchet/` (gitignored):
+    `layout-typical` and `layout-empty` (tight_spec: per window, view and size the width, the largest gap, cut texts,
+    overlaps), `layout-extreme` (fit_spec: cut texts, the width up to the screen), `perf` (`spec/perf_spec.lua`:
+    synthetic data at the caps, 5000 purchases, disenchants and sales; each window and view's refresh, best of 3, the
+    countdown tick, the scan's judge per listing) and `suite` (the specs passed, luacheck's warnings).
+    `scripts/ratchet.lua` (Lua 5.1, run in the test image) compares: a width larger by more than 1 px, a larger gap, a
+    cut text or an overlap, fewer specs, a luacheck warning, a timing over 1.5 times its baseline (2 ms floor) is
+    worse; `make check` fails with a table of what got worse and by how much. `make ratchet` moves the baseline to the
+    better numbers only (a timing only when 20 % better, so a lucky run does not set it) and adds new ones; a looser one
+    needs `make ratchet ALLOW_WORSE=<Lua patterns on set:key:field> REASON="why"`, and the reason goes into the file's
+    `reasons`. `spec/ratchet_spec.lua` proves it: a column made 40 px wider fails the check, the baseline does not move
+    to it without ALLOW_WORSE. The sim gate keeps its own baseline beside the tool (`ratchet.json` there, local).
+

@@ -3,3 +3,4 @@ AGENTS.md
 .worktrees/
 .env
 dist/
+.ratchet/

@@ -441,12 +441,14 @@ function ns.DurationText(seconds)
     return string.format("%d d %d h", math.floor(h / 24), h % 24)
 end
 
---- Time to sell as text, grey with "(few sales)" when it rests on few sales (UI.md Data 2).
+--- Time to sell as text, grey with "*" when it rests on few sales (UI.md Data 2; the column's help and the row's hover
+--- say what the "*" means, ns.FEW_SALES_NOTE).
+ns.FEW_SALES_NOTE = "* few sales: weighing under 5, it leans on all your sales together."
 function ns.TimeToSellText(id)
     local x = ns.TimeToSell(id)
     if not x.seconds then return "|cff808080-|r" end
     local text = ns.DurationText(x.seconds)
-    if x.few then return "|cff808080" .. text .. " (few sales)|r" end
+    if x.few then return "|cff808080" .. text .. "*|r" end
     return text
 end
 
@@ -504,11 +506,11 @@ end
 --- deposits lost per unit sold (Model.UnitValue). The statement's stock and the Reports' Materials value use it.
 function ns.UnitValue(id) return Model.UnitValue(id, ns.PriceOf, ns.ValueOptions()) end
 
---- The sell price ratio as text: "99.8%", grey with "(few sales)" when it rests on few sales (UI.md Data 2).
+--- The sell price ratio as text: "99.8%", grey with "*" when it rests on few sales (UI.md Data 2).
 function ns.SellRatioText(id)
     local r = ns.SellRatio(id)
     local text = string.format("%.1f%%", r.ratio * 100)
-    if r.few then return "|cff808080" .. text .. " (few sales)|r" end
+    if r.few then return "|cff808080" .. text .. "*|r" end
     return text
 end
 
@@ -817,8 +819,6 @@ function ns.RangeText(low, avg, high, unproven)
     return ns.SignedShort(low) .. sep .. ns.SignedShort(avg) .. sep .. ns.SignedShort(high)
         .. (unproven and (SIGN_GREY .. "?|r") or "")
 end
---- The widest range cell (a column of live values keeps the width of its widest one, UI.md Tables 2).
-ns.RANGE_SAMPLE = ns.RangeText(-99999000, -99999000, -99999000, true)
 
 --- A weight of results or sales (SDD 118) as text: whole when it is about whole ("539"), else one decimal ("412.3").
 function ns.WeightText(n)

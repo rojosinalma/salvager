@@ -29,11 +29,11 @@ Materials.HELP = {
         .. "average cost. Red = a sale at this price loses money." },
     [10] = { "Sell price ratio", "What one unit really sold for (before the cut) against the price when you posted it: "
         .. "the median of your sales, recent ones weighing more (a sale counts 0.5^(its age in days / 30)). Deal values "
-        .. "and buy limits use the price times this ratio. \"few sales\" = sales weighing under 5: it leans on all "
+        .. "and buy limits use the price times this ratio. Grey with * = few sales (weighing under 5): it leans on all "
         .. "your sales together, and with none at all on 100%. "
         .. "The material's tooltip has the number of sales and the deposits lost per unit sold." },
     [11] = { "Time to sell", "How long your posts of it took to sell: from the post to the sale, the median of your "
-        .. "sales, recent ones weighing more (posts made with Salvager). \"few sales\" = sales weighing under 5: it "
+        .. "sales, recent ones weighing more (posts made with Salvager). Grey with * = few sales (weighing under 5): it "
         .. "leans on all your materials together. Return per day in the Gear tab's tooltips uses it." },
 }
 
@@ -47,7 +47,6 @@ for i, help in pairs(Materials.HELP) do Materials.COLUMNS[i].help = help end
 
 -- The window's own size: it fits its content and has no resize corner.
 local WIDTH, TOP, BOTTOM, ROW_H = 800, 58, 40, 24   -- (TOP: under the filter row; BOTTOM: over the footer)
-local MIN_W = 520   -- the footer: the status, Scan owned and Scan materials
 
 local function ago(seconds)
     if not seconds then return "-" end
@@ -108,6 +107,8 @@ function Materials.Rows()
                 (price and avg) and ((gain >= 0 and "|cff40ff40" or "|cffff4040") .. ns.Money(gain) .. "|r") or "-",
                 ratio, ns.TimeToSellText(m.id) },
             itemID = m.id, post = true, canPost = bags > 0, suggest = suggest,
+            -- (What a "*" in the row means, on its hover.)
+            notes = (ns.SellRatio(m.id).few or ns.TimeToSell(m.id).few) and { ns.FEW_SALES_NOTE } or nil,
         } end
     end
     if #out == 0 then
@@ -187,23 +188,15 @@ function Materials.Refresh()
     local fit = math.max(1, math.min(#rows, math.floor((room - TOP - BOTTOM - ROW_H) / ROW_H)))
     f:SetHeight(TOP + ROW_H * (fit + 1) + BOTTOM)
     list:SetSource(#rows, function(i) return rows[i] end)
-    list:Refresh()
-    -- As wide as its columns need, no wider (the Post column ends with its button), and wide enough for the
-    -- row of buttons above the list.
-    local needed = rawget(list, "neededWidth")
-    if type(needed) == "number" then
-        local w = math.min(math.floor(W.ScreenWidth()), math.max(MIN_W, math.ceil(needed) + 24))
-        if math.abs((f:GetWidth() or 0) - w) >= 1 then
-            f:SetWidth(w)
-            list:Refresh()
-        end
-    end
     dataOnly:SetChecked(ns.db.settings.materialsDataOnly)
     if ns.Prices.scanning then
         status:SetText(string.format("Scanning %d/%d", ns.Prices.done, ns.Prices.total))
     else
         status:SetText(ns.Queue.open and "" or "Auction house closed: Post and scans need it open")
     end
+    list:Refresh()
+    -- As wide as its columns (the Post column ends with its button) or its footer need, no wider (SDD 120).
+    W.FitTables(f, { list }, "materials")
 end
 
 local function requestRefresh()
@@ -219,6 +212,7 @@ end
 
 local function build()
     f = W.Window("SalvagerMaterialsFrame", "Salvager Materials", "materials", WIDTH, 520, WIDTH, 120, true)
+    f.layoutName = "materials"
     -- No tabs: the filter row is right under the title bar (the filter at the left, the help at its right end);
     -- the footer has the status at the left and the scans at the right (UI.md Controls 1).
     local filters = W.Bar(f, "filters"):Place(28, 12, 12)

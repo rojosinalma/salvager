@@ -1,25 +1,48 @@
 DOCKER_IMAGE := salvager-test
-RUN := docker run --rm -v "$(CURDIR)":/src $(DOCKER_IMAGE)
+RUN := docker run --rm -u "$$(id -u):$$(id -g)" -v "$(CURDIR)":/src $(DOCKER_IMAGE)
+# (The ratchet's loosening needs its two variables inside the container.)
+RUN_ENV := docker run --rm -u "$$(id -u):$$(id -g)" -e ALLOW_WORSE -e REASON -v "$(CURDIR)":/src $(DOCKER_IMAGE)
+SHELL := /bin/bash
+# The real-font gate (a local dev tool, not in git): wow-ui-sim with the game's fonts. SIM_TOOL may point elsewhere.
+SIM_TOOL ?= $(CURDIR)/.agents/tools/wow-ui-sim
 
 # Local settings (gitignored): INSTALL_HOST, ADDONS_DIR, CURSEFORGE_*. See .env.example.
 -include .env
 export
 
-.PHONY: image test lint check install layout package release
+.PHONY: image test lint check ratchet ratchet-check sim-check install layout package release
 
 image:
 	docker build -q -t $(DOCKER_IMAGE) test/
 
+# The specs write what they measure to .ratchet/ (gitignored); busted's and luacheck's outputs are kept there too.
 test: image
-	$(RUN) busted --lpath="./?.lua" spec
+	@mkdir -p .ratchet
+	set -o pipefail; $(RUN) busted --lpath="./?.lua" spec 2>&1 | tee .ratchet/busted.txt
 
 lint: image
-	$(RUN) luacheck -q Salvager spec
+	@mkdir -p .ratchet
+	set -o pipefail; $(RUN) luacheck -q Salvager spec scripts/ratchet.lua 2>&1 | tee .ratchet/luacheck.txt
 
-check: test lint
+# Every measured number against its baseline (spec/ratchet.json, SDD 121): a table of what got worse, and fail.
+ratchet-check: image
+	$(RUN) lua scripts/ratchet.lua check
+
+check: test lint ratchet-check
+
+# Moves the baseline to the better numbers only. A looser one on purpose:
+#   make ratchet ALLOW_WORSE='layout%-typical:ledger/.*:width' REASON="why"   (Lua patterns, comma separated)
+ratchet: test lint
+	$(RUN_ENV) lua scripts/ratchet.lua tighten
+
+# Every window and view drawn with the game's fonts (wow-ui-sim, glass mounted): bloat, gaps, cut texts, and the
+# sim's own ratchet. Skipped where the tool is not there (it is not in git).
+sim-check:
+	@if [ -x "$(SIM_TOOL)/check.sh" ]; then SIM_SRC="$(CURDIR)/Salvager" "$(SIM_TOOL)/check.sh"; \
+	else echo "sim-check: skipped, $(SIM_TOOL)/check.sh not here (a local dev tool, not in git)"; fi
 
 # Replaces the addon folder on the gaming PC (Windows OpenSSH). Reload the game UI after (/reload).
-install: check
+install: check sim-check
 	@if [ -z "$(INSTALL_HOST)" ] || [ -z "$(ADDONS_DIR)" ]; then echo "install: set INSTALL_HOST and ADDONS_DIR in .env"; exit 1; fi
 	ssh -o RequestTTY=no $(INSTALL_HOST) 'if (Test-Path "$(ADDONS_DIR)/Salvager") { Remove-Item -Recurse -Force "$(ADDONS_DIR)/Salvager" }'
 	scp -q -r Salvager "$(INSTALL_HOST):$(ADDONS_DIR)/"

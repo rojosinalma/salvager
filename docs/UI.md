@@ -49,7 +49,7 @@ reply must say so.
     buttons: two columns (Salvager, Ledger, Materials; Reports, Market, Log), Disenchant across both under them.
 14. Checked by the specs (rows of tabs hold tabs only; filters under the subtabs; every row fits the smallest width;
     `spec/fit_spec.lua`: no cut text, no overlap in a row, nothing outside its window, at the smallest and the
-    default size, SDD 106)
+    default size, SDD 106; `spec/tight_spec.lua`: no window or column wider than its content, Tables 2, SDD 120)
     and by `make layout` (a row of tabs with another control; a statement's amounts not at the panel's right edge; a
     tab, subtab or dropdown with the red button's art).
 15. Start and stop of one thing is one toggle button: the play arrow while it is off, the stop square while it runs;
@@ -62,15 +62,25 @@ reply must say so.
    low - avg - high", its help in full), each part green or red by its sign; the column sorts by the average, and
    the cell's hover lists every outcome. A range is never a single number in disguise: its parts are real outcomes
    and the average, each named.
-2. A column is as wide as its widest content, title included (with its sort arrow). No fixed spare width, the button
-   column included. The first column (the row's label) takes the spare width, so the last column ends at the
-   table's right edge, in every table (as in a statement, Statements 2; the main window's own Gear and Materials tables
-   too); in a stack of cards, the columns line up
-   at the cards' right edge. Text that does not fit ends with "..." and shows in full on hover. A column of live
-   values is as wide as its widest possible value (`sample`). A window is as wide as its tables' shown columns need,
-   up to the screen, and no wider: a tab change gives it the new view's width (narrower too), never the width of
-   the view before; a column is never left out silently: where the screen (or a window the player made narrower) is
-   too narrow, a note at the right end of the titles says how many are left out, and its tooltip which ones.
+2. Tight, measured, never a constant (the user, 2026-11-28; SDD 120). A column is as wide as the widest text it shows
+   now: its title (with its sort arrow) and its rows (on show and in the data), plus 2 px; an empty table is as wide as
+   its titles (or its note, Tables 6). Only a live column (a countdown, an age) keeps the width of its widest possible
+   value (`sample`), and only while it has rows; nothing else uses an extreme sample. The texts of two columns next to
+   each other are 16 px apart (± 2), whatever their justification. A window is as wide as its widest row of content
+   needs now: the shown table's columns, or a row of its controls (filter row, footer, the main window's settings), or
+   a heading, if wider; its smallest width is what its controls need, measured. No spare width: the first column takes
+   only a remainder of a few pixels, or the width the controls force, so the last column ends at the table's right
+   edge (in a stack of cards, at the cards' right edge, the columns lined up). In numbers: no window wider than its
+   content needs + 8 px, no gap over 16 + 2 px (the self-check logs over 16 + 4). Text that does not fit ends with
+   "..." and shows in full on hover. A tab change gives the window the new view's width (narrower too); a window
+   shrinks when its table empties. A column is never left out silently: where the screen (or a window the player made
+   narrower) is too narrow, a note at the right end of the titles says how many are left out, and its tooltip which
+   ones. Money of 1 gold or more shows gold and silver only in a cell, the copper on the row's hover; a value that
+   rests on few results or sales is grey with "*", the column's help and the row's hover say what it means.
+   Three gates hold this, and the numbers are ratcheted (they may only get better, `spec/ratchet.json`, `make
+   ratchet`): `spec/tight_spec.lua` (typical data, every window, view and size, in `make check`); `make sim-check`
+   (the game's fonts in wow-ui-sim, before `make install`); `make layout` (the client's dump, and the addon's own
+   self-check lines in the Log: "layout: <window>/<view> wider than its content by N px").
 3. A table with sections is one inset per section, or a heading row per section with its own
    totals. A value that is the same for every row of a section goes in the heading, not in the rows.
 4. Rows the player acts on first come first (open before sold, newest before oldest).
@@ -145,7 +155,7 @@ reply must say so.
 ## Layout
 
 1. A setting lives in one place. What the main window sets is not in the options.
-2. Windows remember their place, size, tab and filters. A window that only lists content fits it;
+2. Windows remember their place, size, tab and filters. A window that only lists content fits it (Tables 2);
    a window with long lists is resizable in the direction that helps.
 3. Secondary views are subtabs of the view they belong to, the main one first. Two levels at most; subtabs look
    different from tabs: each is a segment of a segmented control (a small box with an edge, so it reads as
@@ -156,7 +166,7 @@ reply must say so.
    opened from the mini panel, or while the main window is closed, are independent of it. The game's auction
    house is one click away (Auction house button), and Salvager one click back (its button under the
    auction house). Hiding windows never stops a scan.
-6. Nothing overlaps, at the smallest size a window allows. Two or more tables in a view share the height, each at
+6. Nothing overlaps, at the smallest size a window allows (its smallest width is its controls', measured: Tables 2). Two or more tables in a view share the height, each at
    least its titles and two rows; a bar between two of them moves the border (drag it; a right-click resets it). A filter row that is full wraps to a second filter row,
    or the window's smallest width grows; a control never moves to a row of tabs. A text that can grow either wraps
    and pushes what is under it down, or is one line cut at the next control.

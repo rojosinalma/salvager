@@ -82,6 +82,28 @@ function Util.MoneyShort(copper, icons, signed)
     return sign .. Util.FormatMoney(copper, icons)
 end
 
+--- A table cell's money in short (UI.md Tables 2, SDD 120): every amount of 1 gold or more in `text` loses its copper
+--- ("12g 34s 56c" -> "12g 35s", rounded to the silver), the coins as icons or letters, any color and sign kept.
+--- The full amount goes in the row's hover. Returns the text, and true when it changed.
+local function escaped(s) return (s:gsub("%p", "%%%0")) end
+local SHORT_PATTERNS = {}
+for _, set in ipairs({ { Util.COIN.g, Util.COIN.s, Util.COIN.c }, { "g", "s", "c" } }) do
+    SHORT_PATTERNS[#SHORT_PATTERNS + 1] = { "(%d+)" .. escaped(set[1]) .. " (%d+)" .. escaped(set[2]) .. " (%d+)"
+        .. escaped(set[3]), set[1], set[2] }
+end
+function Util.ShortMoneyText(text)
+    if type(text) ~= "string" then return text, false end
+    local changed = false
+    for _, p in ipairs(SHORT_PATTERNS) do
+        text = text:gsub(p[1], function(g, s, c)
+            local silver = tonumber(g) * 100 + tonumber(s) + (tonumber(c) >= 50 and 1 or 0)
+            changed = true
+            return string.format("%d%s %02d%s", math.floor(silver / 100), p[2], silver % 100, p[3])
+        end)
+    end
+    return text, changed
+end
+
 --- Parses "1g50s", "20s", "35c", "1g 2s 3c". A bare number means silver.
 --- Returns copper, or nil when the text is not money.
 function Util.ParseMoney(text)

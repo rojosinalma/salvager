@@ -12,7 +12,7 @@ ns.DisenchantPanel = Panel
 
 local GREY, GOLD = "|cff808080", "|cffffd100"
 local BUTTON = "SalvagerDisenchantButton"
-local W0, H0, MIN_W, MIN_H = 640, 440, 520, 320   -- default and smallest size
+local W0, H0, MIN_W, MIN_H = 640, 440, 520, 320   -- the size it opens with (Widgets.FitTables sets the width)
 local TOP, TITLE_H, FOOT = 28, 20, 44              -- under the title bar; a table's title; over the footer
 local BUTTON_W, CLOSE_W = 120, 64
 
@@ -309,13 +309,14 @@ function Panel.Layout()
     bags:SetHeight(hTop)
     bags:Refresh()
     results:Refresh()
-    if W.FitTables(f, MIN_W, { bags, results }, "disenchant") then bags:Refresh() results:Refresh() end
+    W.FitTables(f, { bags, results }, "disenchant")
 end
 
 ------------------------------------------------------------------ the window
 
 local function build()
     f = W.Window("SalvagerDisenchantFrame", "Salvager Disenchant", "disenchant", W0, H0, MIN_W, MIN_H)
+    f.layoutName = "disenchant"
     lootNote = W.Label(f, GREY .. "Auto Loot is off: after each disenchant, the loot window needs a click (Options, "
         .. "Controls, Auto Loot).|r", "GameFontHighlightSmall")
     lootNote:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -TOP)
@@ -368,6 +369,8 @@ local function build()
     nextLabel:SetWordWrap(false)
     nextLabel.canCut = true   -- (one line cut at the count; the full name is on the first row)
     Panel.bars = { footer = footer }   -- (the specs read them)
+    -- The Results title is content too (SDD 120); the bags' title and the Auto Loot note may be cut.
+    f.extraNeed = function() return math.ceil(14 + (tonumber((resultsTitle:GetStringWidth())) or 0) + 14) end
     Panel.bags, Panel.results, Panel.lootNote, Panel.nextLabel, Panel.leftLabel = bags, results, lootNote, nextLabel,
         leftLabel
     f.onResize = Panel.Layout

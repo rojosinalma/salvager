@@ -395,6 +395,8 @@ local function recalc()
     end
     d.list:SetSource(#rows, function(i) return rows[i] end)
     d.list:Refresh()
+    -- The form at the left (its prose wraps in LEFT_W), the listings' table at the right as wide as its columns (SDD 120).
+    W.FitTables(d, { d.list }, "post")
     d.toEven:SetEnabled(s.breakEven ~= nil)
     d.toLowest:SetEnabled(s.lowest ~= nil)
     local blocked = Post.Blocked()
@@ -406,6 +408,9 @@ end
 local function build()
     -- A window of its own: drag it where you want it, and it opens there the next time.
     d = W.Window("SalvagerPostFrame", "Salvager Post", "post", 730, 400, 730, 400, true)
+    d.layoutName = "post"
+    -- (Its width is its content's: a size set from elsewhere fits it again.)
+    d.onResize = function() if d:IsShown() and d.list then W.FitTables(d, { d.list }, "post") end end
     d:SetFrameStrata("DIALOG")
 
     d.icon = d:CreateTexture(nil, "ARTWORK")
@@ -487,6 +492,12 @@ local function build()
             .. "cheaper. The number on the last line above \"Your price\" is what must sell before yours does." } },
     }, "post.market")
     d.list:SetPoint("TOPLEFT", d, "TOPLEFT", 382, -70)
+    d.list.margin = 382 + 14   -- (the form at its left: 350 px of prose that wraps, a layout constant)
+    d.extraNeed = function()
+        local w = 0
+        for _, l in ipairs(d.marketLines) do w = math.max(w, tonumber((l:GetStringWidth())) or 0) end
+        return math.ceil(384 + w + 14)
+    end
     d.list:SetPoint("BOTTOMRIGHT", d, "BOTTOMRIGHT", -14, 44)
     -- The footer: at the left the two buttons that set the price, under the price; at the right end the main
     -- action, Post, then Cancel, the last one (UI.md Actions 5, Controls 7).

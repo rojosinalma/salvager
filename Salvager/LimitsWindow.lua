@@ -7,7 +7,9 @@ local Data, W = ns.Data, ns.Widgets
 local Limits = {}
 ns.LimitsWindow = Limits
 
-local WIDTH, ROW_H = 780, 24
+local WIDTH, ROW_H = 780, 24   -- the width it opens with (Widgets.FitTables sets it)
+-- A column of boxes is as wide as the boxes and their x (the reset button, 20 px, 6 px into the boxes' frame).
+local EDIT_W = W.MONEY_W + 14
 local EDIT = { [3] = "armor", [5] = "weapon" }   -- the columns with the gold, silver and copper boxes
 
 local COLUMNS = {
@@ -15,11 +17,11 @@ local COLUMNS = {
     { "Armor: recommended", 120, "RIGHT", help = { "Armor: recommended", "The most to pay for one piece of armor of this "
         .. "band: its value after the cut, less the min profit, or less the min return when that asks for more. A % "
         .. "after the amount: the min return sets it. ?: a material of the band has no price yet." } },
-    { "Armor: limit used", 184, "CENTER", help = { "Armor: limit used", "The most the scan pays for one piece of armor "
+    { "Armor: limit used", 184, "LEFT", least = EDIT_W, help = { "Armor: limit used", "The most the scan pays for one piece of armor "
         .. "of this band. Type your own (yellow); the x next to it goes back to the recommended one. Grey: the scan "
         .. "does not look at armor, or at this quality." } },
     { "Weapons: recommended", 120, "RIGHT", help = { "Weapons: recommended", "The same for weapons." } },
-    { "Weapons: limit used", 184, "CENTER", help = { "Weapons: limit used", "The same for weapons." } },
+    { "Weapons: limit used", 184, "LEFT", least = EDIT_W, help = { "Weapons: limit used", "The same for weapons." } },
 }
 
 local function recommendedText(x, dim)
@@ -123,8 +125,21 @@ end
 function Limits.Refresh()
     if not f or not f:IsShown() then return end
     local rows = Limits.Rows()
+    -- The x next to the boxes shows only where a limit of your own is set: the columns keep room for it only then.
+    local manual = false
+    for _, r in ipairs(rows) do
+        for _, which in pairs(EDIT) do
+            local x = r.limits and r.limits[which]
+            if x and x.manual then manual = true end
+        end
+    end
+    for col in pairs(EDIT) do COLUMNS[col].least = W.MONEY_W + (manual and 14 or 0) end
     list:SetSource(#rows, function(i) return rows[i] end)
+    status:SetText(ns.db.settings.cautious and "Cautious pricing is on: the limits count every material at its "
+        .. "lowest amount." or "")
     list:Refresh()
+    -- (The width first: the boxes follow the cells where they are drawn.)
+    W.FitTables(f, { list }, "limits")
     for _, row in ipairs(list.rows) do
         local data = row:IsShown() and rawget(row, "data") or nil
         if data and data.limits then
@@ -132,15 +147,13 @@ function Limits.Refresh()
             for col, which in pairs(EDIT) do
                 local e = edits[which]
                 e:ClearAllPoints()
-                e:SetPoint("LEFT", row.cells[col], "LEFT", 14, 0)
+                e:SetPoint("LEFT", row.cells[col], "LEFT", 0, 0)
                 showEdit(e, row.cells[col]:IsShown() and data.limits[which] or nil, data.dim[which])
             end
         elseif rawget(row, "edits") then
             for _, e in pairs(row.edits) do showEdit(e, nil) end
         end
     end
-    status:SetText(ns.db.settings.cautious and "Cautious pricing is on: the limits count every material at its "
-        .. "lowest amount." or "")
 end
 
 local function build()
@@ -154,7 +167,8 @@ local function build()
     status:SetPoint("RIGHT", help, "LEFT", -10, 0)
     status:SetJustifyH("LEFT")
     status:SetWordWrap(false)
-    list = W.List(f, { rowHeight = ROW_H, fit = false })
+    f.layoutName = "limits"
+    list = W.List(f, { rowHeight = ROW_H })
     list:SetColumns(COLUMNS)
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -30)
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 40)

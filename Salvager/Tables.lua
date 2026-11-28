@@ -216,9 +216,11 @@ function Widgets.List(parent, opts)
     local TOGGLE = math.min(ROW_H, 18)   -- the open / close sign
     local HEAD_H = opts.header == false and 0 or ROW_H
     -- MAX_COLS: the cells made per row; a table with more columns is refused (SetColumns), not cut.
-    local MAX_ROWS, MAX_COLS, GAP, BAR_W = 60, 12, 6, 18
+    local MAX_ROWS, MAX_COLS, GAP, BAR_W = 60, 12, Widgets.COL_GAP, 18
     local MIN_FIRST = 90       -- the first column never gets narrower than this
-    local ACTION_W = opts.actionWidth or 0   -- room on the right for a row's button and warning sign
+    -- The buttons' column (opts.actionWidth set): the warning sign (22) and the button (64), right after the last
+    -- column, then 4 px. Its width is the button's: a true constant.
+    local ACTION_W = opts.actionWidth and (22 + 64 + 4) or 0
     local list = CreateFrame("Frame", nil, parent)
     if list.SetClipsChildren then list:SetClipsChildren(true) end
     list.offset, list.count, list.columns = 0, 0, {}
@@ -360,12 +362,15 @@ function Widgets.List(parent, opts)
         row.cells[1].canCut = true
         row:SetScript("OnEnter", function(self)
             local data = self.data
+            -- The amounts a cell shows short (gold and silver), in full; a cell's note ("*": few sales).
+            local function exact() Widgets.AddExactLines(GameTooltip, list.columns, data) end
             -- A row's own help: what the line is and how it is computed.
             local tip = data and data.tip
             if tip then
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:SetText(tip[1], 1, 1, 1)
                 for i = 2, #tip do GameTooltip:AddLine(tip[i], 1, 0.82, 0, true) end
+                exact()
                 GameTooltip:Show()
                 return
             end
@@ -373,9 +378,11 @@ function Widgets.List(parent, opts)
             if not link then
                 -- A cut first cell shows in full on hover (UI.md Tables 2).
                 local first = self.cells[1]
-                if data and first:IsShown() and first:IsTruncated() then
+                local cut = data and first:IsShown() and first:IsTruncated()
+                if cut or Widgets.HasExactLines(list.columns, data) then
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    GameTooltip:SetText(first:GetText() or "", 1, 1, 1, 1, true)
+                    GameTooltip:SetText(cut and first:GetText() or Widgets.CellText(data.cells[1]) or "", 1, 1, 1, 1, true)
+                    exact()
                     GameTooltip:Show()
                 end
                 return
@@ -384,6 +391,7 @@ function Widgets.List(parent, opts)
             GameTooltip:SetHyperlink(link)
             local hint = ns.RowHint and ns.RowHint(data)
             if hint then GameTooltip:AddLine(hint, 0.5, 0.8, 1) end
+            exact()
             GameTooltip:Show()
         end)
         row:SetScript("OnClick", function(self)
@@ -474,21 +482,33 @@ function Widgets.List(parent, opts)
             if not data or data.span then return nil end
             return data.cells, (data.indent or 0) + (data.itemID and ROW_H or 0) + (data.open ~= nil and TOGGLE + 4 or 0)
         end, nil, samples) or nil
+        -- A column that holds a control (`least`: the control's width, a true constant) is at least that wide.
+        if need then
+            for i, col in ipairs(cols) do if col.least then need[i] = math.max(need[i], col.least) end end
+        end
         -- A total's texts are in the larger font: measured in the small one, then scaled.
         if need then
             for r = 1, math.min(self.count, 400) do
                 local data = self.getRow(r)
                 if data and data.bold and not data.span then
                     for i = 1, #cols do
-                        local w = Widgets.TextWidth(data.cells[i])
+                        local w = Widgets.TextWidth(Widgets.CellText(data.cells[i]))
                         if i == 1 then w = w and (w + (data.indent or 0) / BOLD_SCALE) end
-                        if w then need[i] = math.max(need[i], math.ceil(w * BOLD_SCALE) + 10) end
+                        if w then need[i] = math.max(need[i], math.ceil(w * BOLD_SCALE) + Widgets.CELL_PAD) end
                     end
                 end
             end
         end
+        -- The space before each column: its text NORMAL_GAP from the one before, whatever their justification.
+        local gapBefore, prev = {}, 1
+        for i = 2, #cols do
+            if shown[i] then
+                gapBefore[i] = Widgets.ColumnGap(cols[prev][3] or "LEFT", cols[i][3] or "LEFT")
+                prev = i
+            end
+        end
         local fixed = 0
-        for i = 2, #cols do if shown[i] then fixed = fixed + (need and need[i] or cols[i][2]) + GAP end end
+        for i = 2, #cols do if shown[i] then fixed = fixed + (need and need[i] or cols[i][2]) + gapBefore[i] end end
         local allFixed = fixed
         -- Where text is measured: the first column keeps room for its text (up to MIN_FIRST); a column that would
         -- leave it less is left out, from the right, and the first column takes its room too.
@@ -501,7 +521,7 @@ function Widgets.List(parent, opts)
             for i = #cols, 2, -1 do
                 if avail - noteW - fixed >= least then break end
                 if fits[i] then
-                    fits[i], fixed = false, fixed - need[i] - GAP
+                    fits[i], fixed = false, fixed - need[i] - gapBefore[i]
                     table.insert(leftOut, 1, tostring(Widgets.ColumnKey(cols[i])))
                     if HEAD_H > 0 then noteW = math.ceil(Widgets.TextWidth(NOTE_SAMPLE) or 100) + GAP end
                 end
@@ -520,12 +540,13 @@ function Widgets.List(parent, opts)
         local first = math.max(MIN_FIRST, avail - fixed)
         -- The first column (the row's label) takes all the free width, so the other columns end at the right edge
         -- (UI.md Tables 2): in a statement and in every other table alike.
-        if need then first = math.max(40, avail - fixed) end
+        if need then first = math.max(math.min(40, need[1]), avail - fixed) end
         local xs, ws, x = {}, {}, 4
         for i, col in ipairs(cols) do
+            if i > 1 and ((need and fits[i]) or (not need and shown[i])) then x = x + gapBefore[i] end
             xs[i], ws[i] = x, (i == 1 and first or (need and need[i] or col[2]))
             if not need then fits[i] = shown[i] and (i == 1 or (x + ws[i] <= avail + 4)) end
-            if (need and fits[i]) or (not need and shown[i]) then x = x + ws[i] + GAP end
+            if (need and fits[i]) or (not need and shown[i]) then x = x + ws[i] end
         end
         -- Where no other column fits (or none shows), the first one takes the width.
         local second
@@ -546,11 +567,26 @@ function Widgets.List(parent, opts)
         -- The width the columns need, the buttons' column and the scroll bar included (a window that fits
         -- its list reads it), with the first column at its full width even where this one cut it. nil where
         -- text cannot be measured.
-        local full = need and (4 + need[1] + GAP + allFixed) or nil
-        self.neededWidth = need and (actionX and (full + 22 + 64 + 6) or full) + BAR_W + 8 or nil
+        local full = need and (4 + need[1] + allFixed) or nil
+        -- An empty table's note (a row with `span`) is shown in full (UI.md Tables 6): it is content too.
+        local noteNeed = 0
+        if need then
+            for r = 1, math.min(self.count, 400) do
+                local data = self.getRow(r)
+                if data and data.span then
+                    noteNeed = math.max(noteNeed, math.ceil(Widgets.TextWidth(data.cells[1]) or 0) + BAR_W + 12)
+                end
+            end
+        end
+        self.neededWidth = need and math.max(full + ACTION_W + BAR_W + 4, noteNeed) or nil
+        self.noteWidth = need and noteNeed or nil   -- (a window keeps it at its smallest width too)
+        -- What the first column was given over its text (a window forced wider by its controls): the self-check
+        -- allows that much more after it (Widgets.CheckLayout).
+        self.spare = need and fits[1] and math.max(0, ws[1] - need[1]) or 0
         -- The narrowest width that leaves no column out: the first one with room for its text up to MIN_FIRST
         -- (a window that fits its tables reads it, Widgets.FitTables).
-        self.fitWidth = need and math.ceil(math.min(need[1], MIN_FIRST) + allFixed + BAR_W + 8 + ACTION_W) or nil
+        self.fitWidth = need and math.max(noteNeed, math.ceil(4 + math.min(need[1], MIN_FIRST) + allFixed + BAR_W + 4
+            + ACTION_W)) or nil
         if actionX and rawget(list, "actionTitle") then
             list.actionTitle:ClearAllPoints()
             list.actionTitle:SetPoint("TOPLEFT", self, "TOPLEFT", actionX + 22, 0)
@@ -632,7 +668,7 @@ function Widgets.List(parent, opts)
                         if i == 1 then fs.canCut = not data.span end
                         fs:SetJustifyH(col[3] or "LEFT")
                         fs:SetFontObject(data.bold and BOLD_FONT or "GameFontHighlightSmall")
-                        fs:SetText(data.cells[i] or "")
+                        fs:SetText(Widgets.CellText(data.cells[i]))
                         fs:Show()
                     else
                         fs:Hide()
@@ -641,6 +677,27 @@ function Widgets.List(parent, opts)
                 row:Show()
             end
         end
+    end
+
+    --- Draws again only the live cells of the rows on screen (row.live = { [column] = function() -> text, seconds
+    --- left }: a countdown), in the widths they have (a live column keeps its `sample`'s width). Returns true when one
+    --- reached its end: the caller draws the table again.
+    function list.RefreshLive()
+        local ended = false
+        for _, row in ipairs(rows) do
+            local data = row:IsShown() and row.data
+            if data and data.live then
+                for i, fn in pairs(data.live) do
+                    local fs = row.cells[i]
+                    if fs and fs:IsShown() then
+                        local text, left = fn()
+                        if left and left <= 0 then ended = true end
+                        fs:SetText(Widgets.CellText(text))
+                    end
+                end
+            end
+        end
+        return ended
     end
 
     list:SetScript("OnSizeChanged", function() list:Refresh() end)
@@ -714,11 +771,19 @@ function Widgets.CardList(parent)
     -- hidden with the chooser takes no room; a column with `sep` starts SEP px later, after its line.
     -- The first column (the row's label) takes the card's spare width (`extra`), so the other columns end at the
     -- card's right edge and line up over cards of any indent.
+    -- The space after column c: the next shown column's text NORMAL_GAP from its own (Widgets.ColumnGap); 0 at the end.
+    local function gapAfter(c)
+        local cols, shown = stack.columns, stack.colShown
+        for n = c + 1, #cols do
+            if shown[n] then return Widgets.ColumnGap(cols[c][3] or "LEFT", cols[n][3] or "LEFT") end
+        end
+        return 0
+    end
     local function columnX(i, extra)
         local cols, ws, shown = stack.columns, stack.widths, stack.colShown
         local x = 30
         for c = 1, i - 1 do
-            if shown[c] then x = x + ws[c] + (c == 1 and extra or 0) + 8 + (cols[c].sep and SEP or 0) end
+            if shown[c] then x = x + ws[c] + (c == 1 and extra or 0) + gapAfter(c) + (cols[c].sep and SEP or 0) end
         end
         -- (Every line before it moves it on, its own too: the columns after a line overlapped it by 4 px, 0.3.151.)
         if cols[i] and cols[i].sep then x = x + SEP end
@@ -1017,9 +1082,10 @@ function Widgets.CardList(parent)
         local room = widthOf and (tonumber((widthOf())) or 0) - BAR_W or tonumber((scroll:GetWidth())) or 0
         content:SetWidth(math.max(10, room))
         -- What one card's columns take (the icon, the gaps, the separators), and the widest indent.
+        -- (The icon's 30 px, the columns their gaps apart, 8 px after the last one.)
         local used, indent, pairs_ = 30 + 8, 0, false
         for i = 1, #cols do
-            if self.colShown[i] then used = used + self.widths[i] + 8 + (cols[i].sep and SEP or 0) end
+            if self.colShown[i] then used = used + self.widths[i] + gapAfter(i) + (cols[i].sep and SEP or 0) end
         end
         for _, data in ipairs(self.data) do
             indent = math.max(indent, data.indent or 0)

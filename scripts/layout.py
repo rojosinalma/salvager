@@ -625,6 +625,93 @@ def problems(name, win, dump):
                 out.append(f"{key} column \"{plain(title)}\": {len(hits)} of {len(rows)} rows {what} "
                            f"(row {n}: \"{short(text, 36)}\")")
     out += control_problems(regions, win)
+    out += tight_problems(name, win)
+    return out
+
+
+# ---------- tightness (UI.md Tables 2, SDD 120): the same rules as the specs and the sim gate ----------
+
+NORMAL, TOL, SLACK = 16, 2, 8
+BAR_GAP = {"tabrow": 12, "subtabrow": 12, "filterrow": 12, "footer": 12, "settings": 24}
+
+
+def text_span(r):
+    """Where a text's letters are in its box (left, right), from its width as measured and its justification."""
+    left, _, w, _ = r["rect"]
+    sw = float(r["sw"]) if r.get("sw") not in (None, "?") else w
+    tw = min(sw, w)
+    j = r.get("j", "L")
+    if j == "R":
+        return left + w - tw, left + w
+    if j == "C":
+        return left + (w - tw) / 2, left + (w + tw) / 2
+    return left, left + tw
+
+
+def tight_problems(name, win):
+    """A window wider than its widest row of content + SLACK, and the gaps between columns off the normal one."""
+    out = []
+    regions = [region(line) for line in items(win.get("regions"))]
+    by_key = {r["key"]: r for r in regions}
+    wx, ww = float(win["x"]), float(win["w"])
+    rows = []   # (what, slack)
+    for key, info in (win.get("lists") or {}).items():
+        lr = by_key.get(key)
+        if lr is None or "V" not in lr["flags"] or not lr["rect"]:
+            continue
+        ll, lb, lw, lh = lr["rect"]
+        top = lb + lh
+        heads = [r for r in regions if r["kind"] == "FontString" and r["key"].startswith(key + ".")
+                 and r["key"].count(".") == key.count(".") + 1 and "V" in r["flags"] and r["rect"] and r["text"]
+                 and abs(r["rect"][1] + r["rect"][3] - top) < 3]
+        heads.sort(key=lambda r: r["rect"][0])
+        cols = []
+        for h in heads:
+            hl, _, hw, _ = h["rect"]
+            lo, hi = text_span(h)
+            for row in items(info.get("rows")):
+                for c in items(row.get("cells")):
+                    c = cell(c)
+                    if "S" in c["flags"] and c["text"] and c["rect"] and abs(c["rect"][0] - hl) < 1.5 \
+                            and abs(c["rect"][2] - hw) < 1.5:
+                        a, b = text_span(c)
+                        lo, hi = min(lo, a), max(hi, b)
+            cols.append((plain(h["text"])[:20], lo, hi, abs(hw - 64) < 0.5 and h.get("j") == "C"))
+        excess, first = 0, None
+        for i in range(1, len(cols)):
+            gap = cols[i][1] - cols[i - 1][2]
+            if cols[i][3]:
+                continue   # the buttons' column: a button under a centred title
+            if i == 1:
+                first = gap
+            elif gap > NORMAL + TOL + 2 or gap < NORMAL - TOL - 2:
+                out.append(f"column gap {gap:.0f} px (normal {NORMAL}): {key}: {cols[i - 1][0]} > {cols[i][0]}")
+            excess += max(0, gap - NORMAL - TOL)
+        tail = max(0, (ll + lw - 22) - cols[-1][2] - 4) if cols else 0
+        rows.append((f"table {key}", excess + tail))
+    # Rows of controls: what lies left of the middle counts from the left end, the rest from the right.
+    for r in regions:
+        gap = BAR_GAP.get(r.get("k", ""))
+        if not gap or "V" not in r["flags"] or not r["rect"]:
+            continue
+        bl, _, bw, _ = r["rect"]
+        kids = [x for x in regions if x["key"].startswith(r["key"] + ".") and x["key"].count(".") == r["key"].count(".") + 1
+                and "V" in x["flags"] and x["rect"] and x["rect"][2] > 1 and x["kind"] != "Texture" and x.get("k") != "help"
+                and (x["kind"] != "FontString" or x["text"])]
+        left = [text_span(x)[1] if x["kind"] == "FontString" else x["rect"][0] + x["rect"][2]
+                for x in kids if x["rect"][0] + x["rect"][2] / 2 < bl + bw / 2]
+        right = [text_span(x)[0] if x["kind"] == "FontString" else x["rect"][0]
+                 for x in kids if x["rect"][0] + x["rect"][2] / 2 >= bl + bw / 2]
+        if left and right:
+            rows.append((r["key"], min(right) - max(left) - gap))
+        elif left:
+            rows.append((r["key"], bl + bw - max(left) - 2))
+        elif right:
+            rows.append((r["key"], min(right) - bl - 2))
+    if rows:
+        what, least = min(rows, key=lambda x: x[1])
+        if least > SLACK:
+            out.insert(0, f"wider than its content by {least:.0f} px (its tightest row: {what})")
     return out
 
 
@@ -728,6 +815,12 @@ def main():
     windows = dump.get("windows") or {}
     print(f"dump: Salvager {dump.get('version')}, {dump.get('entries', '?')} regions, {dump.get('size', '?')} bytes"
           + (" (region limit reached)" if dump.get("full") else ""))
+    # The addon's own self-check (Widgets.CheckLayout, SDD 120): its Log lines of this session.
+    log = items((saved.get("SalvagerDB") or {}).get("log"))
+    checks = [l for l in log if isinstance(l, str) and " layout: " in l]
+    print(f"the addon's self-check: {len(checks)} layout lines in the Log" + (":" if checks else ""))
+    for l in checks[-MAX_LISTED:]:
+        print(f"  - {l}")
     shown = sorted(n for n, w in windows.items() if isinstance(w, dict) and w.get("shown"))
     for n, w in sorted(windows.items()):
         if isinstance(w, dict) and w.get("error"):

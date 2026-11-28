@@ -870,8 +870,9 @@ describe("Salvager window and options", function()
         local need = ns.Widgets.FitColumns({ "Name", "Qty" }, 2, function(r)
             return ({ { "Soul Dust", "5" }, { "Large Glimmering Shard", "12" } })[r], 20
         end)
-        assert.are.equal(22 * 6 + 20 + 10, need[1])                -- the longest name, its icon, the padding
-        assert.are.equal(3 * 6 + 10, need[2])                      -- the title "Qty" is wider than "12"
+        local PAD = ns.Widgets.CELL_PAD
+        assert.are.equal(22 * 6 + 20 + PAD, need[1])               -- the longest name, its icon, the padding
+        assert.are.equal(3 * 6 + PAD, need[2])                     -- the title "Qty" is wider than "12"
         local list = ns.Widgets.List(_G.UIParent, {})
         list:SetColumns({ { "Item", 220 }, { "Paid", 84, "RIGHT" } })
         local rows = { { cells = { "Boots", "1g 20s" } } }
@@ -880,7 +881,7 @@ describe("Salvager window and options", function()
         local width
         list.headers[2].SetWidth = function(_, w) width = w end
         list:Refresh()
-        assert.are.equal(6 * 6 + 10, width)                        -- "1g 20s", not the 84 written in the code
+        assert.are.equal(6 * 6 + PAD, width)                       -- "1g 20s", not the 84 written in the code
         -- A column with a sample keeps the sample's width, with the widest digit, while its values shrink.
         local digits = ns.Widgets.TextWidth
         ns.Widgets.TextWidth = function(text) return text and (#text * 6 + (text:find("8") and 4 or 0)) or 0 end
@@ -888,7 +889,7 @@ describe("Salvager window and options", function()
         list:SetColumns({ { "Item", 220 }, { "Time", 62, "RIGHT", sample = "00:00:00" } })
         rows = { { cells = { "Boots", "1:05" } } }
         list:Refresh()
-        assert.are.equal(8 * 6 + 4 + 10, width)                    -- "88:88:88", not "1:05"
+        assert.are.equal(8 * 6 + 4 + PAD, width)                   -- "88:88:88", not "1:05"
         ns.Widgets.TextWidth = digits
         -- Every window draws with fitted columns.
         for _, v in ipairs({ "deals", "materials" }) do
@@ -919,23 +920,21 @@ describe("Salvager window and options", function()
         local ARROW = " |TInterface\\Buttons\\Arrow-Down-Up:10|t"
         local function want(view, i, title)
             local w = shownWidth(title)
-            for _, r in ipairs(ns.UI.Rows(view)) do w = math.max(w, shownWidth(r.cells[i])) end
-            return w + 10
+            for _, r in ipairs(ns.UI.Rows(view)) do w = math.max(w, shownWidth(ns.Widgets.CellText(r.cells[i]))) end
+            return w + ns.Widgets.CELL_PAD
         end
         local widths = {}
         for i = 1, 8 do ns.UI.headers[i].SetWidth = function(_, w) widths[i] = w end end
         ns.UI.view = "deals"
         ns.db.settings.dealSort = "return"
         ns.UI.Refresh()
-        assert.are.equal(want("deals", 6, "Avg return" .. ARROW), widths[6])      -- the title with its arrow
+        assert.are.equal(want("deals", 7, "Avg return" .. ARROW), widths[7])      -- the title with its arrow
         local RANGE = "Profit: low - avg - high"
-        local range = math.max(want("deals", 5, RANGE), shownWidth(ns.Widgets.WidestDigits(ns.RANGE_SAMPLE)) + 10)
-        assert.are.equal(range, widths[5])                                       -- as wide as its widest value
+        assert.are.equal(want("deals", 5, RANGE), widths[5])                     -- as wide as its values now
         ns.db.settings.dealSort = "profit"
         ns.UI.Refresh()
-        assert.are.equal(math.max(want("deals", 5, RANGE .. ARROW),
-            shownWidth(ns.Widgets.WidestDigits(ns.RANGE_SAMPLE)) + 10), widths[5])
-        assert.are.equal(want("deals", 6, "Avg return"), widths[6])
+        assert.are.equal(want("deals", 5, RANGE .. ARROW), widths[5])
+        assert.are.equal(want("deals", 7, "Avg return"), widths[7])
         -- The Materials tab's Age grows while it shows: its width stays that of "88m" (8 the widest digit here).
         ns.Widgets.TextWidth = function(text)
             return text and (shownWidth(text) + select(2, text:gsub("8", "")) * 4) or 0
@@ -947,7 +946,7 @@ describe("Salvager window and options", function()
         ns.db.prices[11083] = { p = 433, t = time() - 58 * 60 }
         ns.UI.Refresh()
         assert.are.equal(now, widths[3])
-        assert.are.equal(3 * 6 + 2 * 4 + 10, widths[3])
+        assert.are.equal(3 * 6 + 2 * 4 + ns.Widgets.CELL_PAD, widths[3])
         for i = 1, 8 do ns.UI.headers[i].SetWidth = nil end
         ns.Widgets.TextWidth = real
         ns.UI.view = "deals"
@@ -2997,14 +2996,15 @@ describe("Sessions and the statement in a simulated client", function()
         ns.Reports.Refresh()
         local want = shownWidth("Amount")   -- (a total's texts are in the larger font: 12 pt against 10)
         for _, r in ipairs(rows) do
-            want = math.max(want, r.bold and (math.ceil(shownWidth(r.cells[2]) * 1.2)) or shownWidth(r.cells[2]))
+            local cell = ns.Widgets.CellText(r.cells[2])   -- (money in short: gold and silver, SDD 120)
+            want = math.max(want, r.bold and (math.ceil(shownWidth(cell) * 1.2)) or shownWidth(cell))
         end
         local right = 860 - 18 - 4          -- the table's right: its width, less the scroll bar and the inset
         local x2 = list.headers[2].points[1][4]
-        assert.are.equal(want + 10, widths[2])
+        assert.are.equal(want + ns.Widgets.CELL_PAD, widths[2])
         assert.are.equal(right, x2 + widths[2])                          -- the amounts end at the right edge
         assert.are.equal(right, list.amountsRight)
-        assert.are.equal(x2 - 6 - 4, widths[1])                          -- the labels fill the free width
+        assert.are.equal(x2 - ns.Widgets.ColumnGap("LEFT", "RIGHT") - 4, widths[1])   -- the labels fill the free width
         assert.is_true(widths[1] > 600)
         -- A table that is not a statement does the same: its label column takes the free width, so its last
         -- column ends at the right edge (UI.md Tables 2), here the Gear Bands table of a wide window.
@@ -3277,12 +3277,13 @@ describe("Salvager control hierarchy (UI.md Controls)", function()
 
     it("fits every row in its window at the smallest width", function()
         for _, fr in ipairs(env.frames) do
-            if rawget(fr, "used") and rawget(fr, "items") then
+            -- (What a row shows now, measured, bar:Need: the smallest width is measured from it, SDD 120.)
+            if rawget(fr, "used") and rawget(fr, "items") and fr:IsVisible() and rawget(fr, "inset") then
                 local w = windowOf(fr)
                 local min = rawget(w, "minWidth")
                 assert.is_number(min, "a row in a window without a smallest width")
-                assert.is_true(fr.used <= min - 20, string.format("%s needs %d px in a window of %d",
-                    fr.uiKind, fr.used, min))
+                assert.is_true(fr:Need() + fr.inset <= min + 0.5, string.format("%s needs %d px in a window of %d",
+                    fr.uiKind, fr:Need() + fr.inset, min))
             end
         end
     end)
@@ -3406,7 +3407,7 @@ describe("Salvager gear, Gear details and headings that open and close (0.3.129)
         head.scripts.OnLeave(head)
         for _, want in ipairs({ "Item level = 28", "Buyout = ", "Pessimistic (9 in 10 get this or more) = ",
             "Optimistic (1 in 10 gets this or more) = ", "Average value (over many pieces) = ",
-            "Average profit (over many pieces) = ", "Avg return = ", "Loss chance = ", "Time to sell (its materials) = ",
+            "Average profit (over many pieces) = ", "Loss chance = ", "Avg return = ", "Time to sell (its materials) = ",
             "Avg return per day = ", "Rule: documented" }) do
             assert.is_truthy(fromTop:find(want, 1, true), want)
         end
@@ -3416,7 +3417,7 @@ describe("Salvager gear, Gear details and headings that open and close (0.3.129)
         assert.is_truthy(fromTop:find("Click: Gear Details", 1, true))
         -- The profit range and the average return with their sign: green when they gain (UI.md Tables 7).
         assert.is_truthy(head.item.cells[5]:find("|cff40ff40%+"))
-        assert.is_truthy(head.item.cells[6]:find("^|cff40ff40%+"))
+        assert.is_truthy(head.item.cells[7]:find("^|cff40ff40%+"))
         -- A click on the gear above Buy Top opens its Gear Details.
         local realOpen, opened = ns.GearWindow.Open, nil
         ns.GearWindow.Open = function(deal) opened = deal end

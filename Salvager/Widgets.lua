@@ -351,14 +351,16 @@ function Widgets.NoMatch(search)
 end
 
 --- Three boxes (gold, silver, copper) in one frame. onChange(copper) runs when a box loses focus.
+-- (The gold box holds three digits: up to 999 gold.)
+local BOX_W, SMALL_W, COIN, COIN_GAP, NEXT_GAP, LEFT_PAD = 36, 30, 13, 3, 11, 6
+--- The width of Widgets.Money's frame (a control: a true constant; a table column that holds one is that wide).
+Widgets.MONEY_W = LEFT_PAD + BOX_W + 2 * SMALL_W + 3 * (COIN_GAP + COIN) + 2 * NEXT_GAP + 2
 function Widgets.Money(parent, onChange)
     -- Layout: [box] coin  [box] coin  [box] coin. Each coin sits right after its own box, and the
     -- frame is as wide as all of it, so whatever comes next starts after the last coin.
-    -- (The gold box holds three digits: up to 999 gold.)
-    local BOX_W, SMALL_W, COIN, COIN_GAP, NEXT_GAP, LEFT_PAD = 36, 30, 13, 3, 11, 6
     local frame = CreateFrame("Frame", nil, parent)
     frame.uiKind = "edit"
-    frame:SetSize(LEFT_PAD + BOX_W + 2 * SMALL_W + 3 * (COIN_GAP + COIN) + 2 * NEXT_GAP + 2, 20)
+    frame:SetSize(Widgets.MONEY_W, 20)
     local m = { boxes = {}, frame = frame }
     local prevCoin
     for i, icon in ipairs({ "UI-GoldIcon", "UI-SilverIcon", "UI-CopperIcon" }) do
@@ -744,14 +746,20 @@ Widgets.CheckDropdown = Widgets.Dropdown
 --- bar:AddCheck(check) a check box with its label on its right. bar.used = the width it needs (the specs keep it
 --- within the window's smallest width). Hide the bar to hide its row.
 local BAR_H = { tabs = 30, subtabs = 24, filters = 26, footer = 28 }
+local CUT_MIN = 120   -- the room a text that may be cut keeps in a row of controls (bar:Need)
 Widgets.BAR_H = BAR_H
 function Widgets.Bar(parent, kind, height)
     local bar = CreateFrame("Frame", nil, parent)
     bar.uiKind = kind == "footer" and "footer" or (kind:gsub("s$", "") .. "row")
     bar.kind = kind
     bar:SetHeight(height or BAR_H[kind] or 24)
-    bar.used, bar.items = 0, {}
+    bar.used, bar.items, bar.parts = 0, {}, {}
     local last, lastRight
+    -- Every region of the row and its side ("L": placed from the left end, "R": from the right end), for bar:Need.
+    function bar.Track(self, region, side)
+        self.parts[#self.parts + 1] = { region = region, side = side or "L" }
+        return region
+    end
     local bottom = kind == "tabs"   -- (tabs stand on the row's line)
     if bottom then
         local base = bar:CreateTexture(nil, "BACKGROUND")
@@ -764,14 +772,14 @@ function Widgets.Bar(parent, kind, height)
         self:ClearAllPoints()
         self:SetPoint("TOPLEFT", parent, "TOPLEFT", left or 10, -top)
         self:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -(right or 10), -top)
-        self.top = top
+        self.top, self.inset = top, (left or 10) + (right or 10)
         return self
     end
     function bar.PlaceBottom(self, y, left, right)
         self:ClearAllPoints()
         self:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", left or 10, y)
         self:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -(right or 10), y)
-        self.bottom = y
+        self.bottom, self.inset = y, (left or 10) + (right or 10)
         return self
     end
     function bar.Add(self, region, width, gap)
@@ -787,6 +795,7 @@ function Widgets.Bar(parent, kind, height)
         self.used = self.used + (last and gap or 2) + (width or tonumber(region:GetWidth()) or 0)
         last = region
         self.items[#self.items + 1] = region
+        self:Track(region, "L")
         return region
     end
     function bar.AddRight(self, region, width, gap)
@@ -798,6 +807,7 @@ function Widgets.Bar(parent, kind, height)
         self.used = self.used + (lastRight and gap or 2) + (width or tonumber(region:GetWidth()) or 0) + (lastRight and 0 or 12)
         lastRight = region
         self.items[#self.items + 1] = region
+        self:Track(region, "R")
         return region
     end
     function bar.AddLabel(self, text, gap)
@@ -811,8 +821,37 @@ function Widgets.Bar(parent, kind, height)
     end
     function bar.AddCheck(self, check, gap)
         self:Add(check, 24 + 2 + textWidth(check.label and check.label:GetText()), gap or (last and 14 or nil))
+        if check.label then self:Track(check.label, "L") end
         last = check.label or check
         return check
+    end
+    --- The width the row needs now (the width authority, Widgets.ContentWidth): measured from what it shows, the
+    --- regions placed from the left to the right end of the last one shown, those placed from the right likewise,
+    --- 12 px between the two parts. Where the client has not placed them yet: `used` (every region, shown or not).
+    function bar.Need(self)
+        local l, r = self:GetLeft(), self:GetRight()
+        if not (l and r) then return self.used end
+        local left, right = 0, 0
+        for _, part in ipairs(self.parts) do
+            local x = part.region
+            if x:IsShown() and (tonumber((x:GetWidth())) or 0) > 0 then
+                -- (A text counts as wide as it is, not its box: a status line may be stretched to the row's end.)
+                local text = x.GetObjectType and x:GetObjectType() == "FontString"
+                    and tonumber(((x.GetUnboundedStringWidth or x.GetStringWidth)(x))) or nil
+                -- (A text that may be cut, "..." at the next control, holds the row at CUT_MIN at most.)
+                if text and rawget(x, "canCut") then text = math.min(text, CUT_MIN) end
+                if part.side == "L" then
+                    local xl, xr = x:GetLeft(), x:GetRight()
+                    if text and xl then xr = xl + text end
+                    if xr then left = math.max(left, xr - l) end
+                else
+                    local xl, xr = x:GetLeft(), x:GetRight()
+                    if text and xr then xl = xr - text end
+                    if xl then right = math.max(right, r - xl) end
+                end
+            end
+        end
+        return math.ceil(left + right + ((left > 0 and right > 0) and 12 or 0) + (left > 0 and right == 0 and 2 or 0))
     end
     return bar
 end
@@ -848,6 +887,8 @@ end
 
 --- The addon's version at the left end of a window's title bar, small and dim, centered on the bar's height.
 --- It is left out where it would come near the centered title at the window's smallest width (`minW`).
+-- The room a window's title needs on each side of its text: the close button and its margins.
+local TITLE_ROOM = 36
 function Widgets.TitleVersion(f, title, minW)
     local v = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     v:SetText("v" .. ns.VERSION)
@@ -864,8 +905,19 @@ function Widgets.TitleVersion(f, title, minW)
     end
     local own, other = width(v), width(title)
     if own and other and 8 + own + 12 > (minW - other) / 2 then v:Hide() end
-    f.versionText = v
+    f.versionText, f.titleText = v, title
+    f.titleNeed = other and math.ceil(other + 2 * TITLE_ROOM) or nil
     return v
+end
+
+--- The version shows where it stays 12 px clear of the title at the window's width now (a window that fits its
+--- content changes width with the view).
+function Widgets.FitVersion(f, w)
+    local v, title = rawget(f, "versionText"), rawget(f, "titleText")
+    if not (v and title) then return end
+    local own = tonumber(((v.GetUnboundedStringWidth or v.GetStringWidth)(v)))
+    local other = tonumber(((title.GetUnboundedStringWidth or title.GetStringWidth)(title)))
+    if own and other then v:SetShown(8 + own + 12 <= (w - other) / 2) end
 end
 
 -- A window can be dragged partly off the screen, until only this much of its title bar is left on it (SDD 98).
@@ -978,7 +1030,11 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
             if f.onResize then f.onResize() end
         end)
         -- A fixed window that fits its tables: exactly that wide.
-        function f.FitWidth(width) f:SetWidth(width) end
+        function f.FitWidth(width)
+            f:SetWidth(width)
+            f.fitNeed, f.minWidth = width, width
+            Widgets.FitVersion(f, width)
+        end
         f:Hide()
         return f
     end
@@ -1012,7 +1068,8 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
         if vertical then
             bounds(width, width)
             f:SetWidth(width)
-            f.fitNeed = width
+            f.fitNeed, f.minWidth = width, width
+            Widgets.FitVersion(f, width)
             return
         end
         local changed = view ~= rawget(f, "fitView")
@@ -1023,13 +1080,15 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
             lo, hi = width, math.max(width, maxW)
             if changed and not rawget(f, "userW") then want = width else want = math.max(now, width) end
         else
-            lo = math.max(minW, least or 0)
+            -- (The smallest width is the content's measured one, `least`: no constant holds it wider.)
+            lo = least or minW
             hi = math.max(lo, width)
             if changed then f.userW = nil end
             want = math.max(lo, math.min(hi, rawget(f, "userW") or hi))
         end
         bounds(lo, hi)
         f.minWidth, f.fitNeed = lo, (not rawget(f, "fitGrows")) and hi or nil
+        Widgets.FitVersion(f, want)
         -- (While the player drags the corner, only the bounds change: the drag sets the width.)
         if not rawget(f, "sizing") and math.abs(now - want) >= 1 then f:SetWidth(want) end
     end
@@ -1068,29 +1127,217 @@ function Widgets.ScreenWidth()
     return tonumber((UIParent:GetWidth())) or tonumber((GetScreenWidth and GetScreenWidth())) or 1024
 end
 
---- A window that fits its tables (SDD 107, 113, UI.md Tables 2): at least `base` wide, and as wide as each of `lists`
---- needs to leave no column out (`list.fitWidth`, plus the room around the list in the window), at most the
---- screen. Only where the screen is too narrow does a table leave columns out, and its note says so. `view` names
---- the view on show: after a change the window takes the new view's width (it shrinks back where it needs less).
---- `full`: the first column at its full width too (`list.neededWidth`: the Ledger, SDD 91).
---- @return boolean changed  the width changed: refresh the lists again
-function Widgets.FitTables(f, base, lists, view, full)
-    local w, least = base, nil
-    for _, l in ipairs(lists) do
-        local n = rawget(l, "leastWidth")
-        if type(n) == "number" then least = math.max(least or 0, math.ceil(n + (rawget(l, "margin") or 24))) end
+------------------------------------------------------------------ the width authority (UI.md Tables 2, SDD 120)
+-- Every table's column widths and every window's width come from here, from what they show now, measured:
+--   a column = its widest text now (title with its sort arrow, the rows on show and in the data) + CELL_PAD;
+--   columns are COL_GAP apart, so the texts of two columns next to each other are NORMAL_GAP (± 2) apart;
+--   a window = its widest row of content now: a table's columns, a row of controls (bar:Need), its title, a block
+--   (f.extraNeed); never a constant. A window wider than that by more than SLACK, or a gap wider than NORMAL_GAP +
+--   GAP_TOL (beyond what the first column takes where controls force the width), is a bug: Widgets.CheckLayout logs it.
+Widgets.CELL_PAD, Widgets.COL_GAP = 2, 14
+Widgets.NORMAL_GAP = Widgets.CELL_PAD + Widgets.COL_GAP
+
+--- The space between the boxes of two columns next to each other (justified `a`, then `b`), so that their texts
+--- are NORMAL_GAP apart whatever their justification: a box's CELL_PAD is at the side its text does not touch
+--- (a left-justified text's right, a right-justified text's left, half each side of a centred one).
+local function padRight(j) return (j == "RIGHT") and 0 or (j == "CENTER" and Widgets.CELL_PAD / 2 or Widgets.CELL_PAD) end
+local function padLeft(j) return (j == "RIGHT") and Widgets.CELL_PAD or (j == "CENTER" and Widgets.CELL_PAD / 2 or 0) end
+function Widgets.ColumnGap(a, b) return Widgets.NORMAL_GAP - padRight(a or "LEFT") - padLeft(b or "LEFT") end
+Widgets.SLACK, Widgets.GAP_TOL = 8, 4
+
+--- The text a table cell shows: money of 1 gold or more as gold and silver (Util.ShortMoneyText; the full amount is
+--- on the row's hover, Widgets.AddExactLines). Measured and drawn alike.
+local shortOf, shortN = {}, 0
+function Widgets.CellText(text)
+    if type(text) ~= "string" then return text == nil and "" or tostring(text) end
+    local hit = shortOf[text]
+    if hit then return hit end
+    local short = Util.ShortMoneyText(text)
+    if shortN > 4000 then shortOf, shortN = {}, 0 end
+    shortOf[text], shortN = short, shortN + 1
+    return short
+end
+
+local function exactCells(cols, data)
+    local out = {}
+    if type(data) ~= "table" or type(data.cells) ~= "table" then return out end
+    for i, text in ipairs(data.cells) do
+        if type(text) == "string" and Widgets.CellText(text) ~= text then
+            local col = cols and cols[i]
+            local title = col and (type(col) == "table" and Widgets.ColumnKey(col) or col) or ""
+            out[#out + 1] = { tostring(title), text }
+        end
     end
-    local fw = tonumber((f:GetWidth())) or 0
+    return out
+end
+--- Has the row a cell shown short, or a note?
+function Widgets.HasExactLines(cols, data)
+    return #exactCells(cols, data) > 0 or (type(data) == "table" and type(data.notes) == "table" and #data.notes > 0)
+end
+--- Adds to a tooltip the full amounts of the row's cells shown short, and its notes (data.notes: lines, the
+--- explanation of a "*" in a cell).
+function Widgets.AddExactLines(tip, cols, data)
+    for _, x in ipairs(exactCells(cols, data)) do tip:AddDoubleLine(x[1], x[2], 1, 0.82, 0, 1, 1, 1) end
+    if type(data) == "table" and type(data.notes) == "table" then
+        for _, line in ipairs(data.notes) do tip:AddLine(line, 0.5, 0.5, 0.5, true) end
+    end
+end
+
+--- What the window's controls need now: each row of controls on show (bar:Need and its insets), its title with
+--- the close button, and f.extraNeed() (a block that is not a row: the main window's settings).
+function Widgets.ControlsWidth(f)
+    local w = rawget(f, "titleNeed") or 0
+    for _, c in ipairs({ f:GetChildren() }) do
+        if type(rawget(c, "parts")) == "table" and rawget(c, "inset") and c:IsShown() then
+            w = math.max(w, c:Need() + c.inset)
+        end
+    end
+    local extra = rawget(f, "extraNeed")
+    if extra then w = math.max(w, tonumber((extra())) or 0) end
+    return math.ceil(w)
+end
+
+--- A window that fits its content (SDD 107, 113, 120, UI.md Tables 2): as wide as its widest row of content needs
+--- now: each of `lists` with all its columns, the first in full (`list.neededWidth`, plus the room around it:
+--- `list.margin`, 24), its controls (Widgets.ControlsWidth), and `extra` (a width computed by the window from
+--- measured parts: the Market's chart). At most the screen. Its smallest width is its controls' (and one card per row
+--- for a stack of cards); narrower, a table leaves columns out with its note. `view` names the view on show: after a
+--- change the window takes the new view's width (narrower too). Then the self-check (Widgets.CheckLayout).
+--- @return boolean changed  the width changed (the lists are laid out again already)
+function Widgets.FitTables(f, lists, view, extra)
+    local controls = Widgets.ControlsWidth(f)
+    local w, least = math.max(controls, extra or 0), controls
     for _, l in ipairs(lists) do
-        -- (The room around a table is a constant, 12 px each side, or its `margin`: read live, a table's width lags
-        -- its window's for a frame after a change, as the main window's did in 0.3.143.)
-        local n = full and rawget(l, "neededWidth") or rawget(l, "fitWidth")
-        if type(n) == "number" then w = math.max(w, math.ceil(n + (rawget(l, "margin") or 24))) end
+        local margin = rawget(l, "margin") or 24
+        local n = rawget(l, "neededWidth") or rawget(l, "fitWidth")
+        if type(n) == "number" then w = math.max(w, math.ceil(n + margin)) end
+        local lw = rawget(l, "leastWidth")
+        if type(lw) == "number" then least = math.max(least, math.ceil(lw + margin)) end
+        -- (An empty table's note is never cut, UI.md Tables 6: not at the smallest width either.)
+        local note = rawget(l, "noteWidth")
+        if type(note) == "number" and note > 0 then least = math.max(least, math.ceil(note + margin)) end
     end
     w = math.min(w, math.floor(Widgets.ScreenWidth()))
-    local before = fw
-    f.FitWidth(w, view, least and math.min(least, w))
-    return math.abs((tonumber((f:GetWidth())) or 0) - before) >= 1
+    local before = tonumber((f:GetWidth())) or 0
+    f.contentNeed, f.fitLists = w, lists
+    f.FitWidth(w, view, math.min(least, w))
+    local changed = math.abs((tonumber((f:GetWidth())) or 0) - before) >= 1
+    -- (A new width lays the tables out again here, so the check reads them as drawn.)
+    if changed then for _, l in ipairs(lists) do l:Refresh() end end
+    Widgets.CheckLayout(f, lists, view)
+    return changed
+end
+
+--- The texts of a table's columns on screen, left to right: { { title, l, r, justify }, ... } (each column's widest
+--- text, from its title and its cells on show). `columns` = { { header = fs, cells = { fs, ... } }, ... }.
+local function textSpan(fs)
+    local l, r = fs:GetLeft(), fs:GetRight()
+    if not (l and r) then return nil end
+    local tw = tonumber(((fs.GetUnboundedStringWidth or fs.GetStringWidth)(fs))) or 0
+    tw = math.min(tw, r - l)
+    local j = fs:GetJustifyH()
+    if j == "RIGHT" then return r - tw, r end
+    if j == "CENTER" then return (l + r - tw) / 2, (l + r + tw) / 2 end
+    return l, l + tw
+end
+function Widgets.ColumnSpans(columns)
+    local out = {}
+    for _, col in ipairs(columns) do
+        local lo, hi
+        for _, fs in ipairs(col.cells or {}) do
+            if fs:IsShown() and (fs:GetText() or "") ~= "" then
+                local a, b = textSpan(fs)
+                if a then lo, hi = math.min(lo or a, a), math.max(hi or b, b) end
+            end
+        end
+        local h = col.header
+        if col.box and h and h:IsShown() then
+            local a, b = h:GetLeft(), h:GetRight()
+            if a then lo, hi = math.min(lo or a, a), math.max(hi or b, b) end
+        end
+        if h and h:IsShown() and (h:GetText() or "") ~= "" then
+            local a, b = textSpan(h)
+            if a then lo, hi = math.min(lo or a, a), math.max(hi or b, b) end
+        end
+        if lo then out[#out + 1] = { title = col.title or (h and h:GetText()) or "", l = lo, r = hi } end
+    end
+    return out
+end
+
+--- The columns of a Widgets.List on screen (its titles and the cells of the rows shown), for Widgets.ColumnSpans.
+function Widgets.ListColumns(list)
+    local cols = {}
+    local headers, rows = rawget(list, "headers"), rawget(list, "rows")
+    if not (headers and rows and list.columns) then return cols end
+    for i, col in ipairs(list.columns) do
+        if headers[i] and headers[i]:IsShown() then
+            local cells = {}
+            for _, row in ipairs(rows) do
+                if row:IsShown() and row.data and not row.data.span then cells[#cells + 1] = row.cells[i] end
+            end
+            -- (A column of controls, `least`: its content is the whole box.)
+            cols[#cols + 1] = { title = tostring(Widgets.ColumnKey(col)), header = headers[i], cells = cells,
+                box = col.least ~= nil }
+        end
+    end
+    return cols
+end
+
+--- The layout problems of a table from its columns' spans: the gaps wider than NORMAL_GAP + GAP_TOL (the first
+--- one may be `spare` wider: the room a window forced wider by its controls gives the first column).
+--- @return number most  the largest gap over the normal one; table text  "Gear>Item level 53"
+function Widgets.WideGaps(spans, spare)
+    local most, parts = 0, {}
+    for i = 2, #spans do
+        local gap = spans[i].l - spans[i - 1].r
+        local over = gap - Widgets.NORMAL_GAP - (i == 2 and (spare or 0) or 0)
+        if over > Widgets.GAP_TOL then
+            parts[#parts + 1] = string.format("%s>%s %d", spans[i - 1].title, spans[i].title, math.floor(gap + 0.5))
+        end
+        most = math.max(most, over)
+    end
+    return most, parts
+end
+
+--- The self-check (always on, cheap: after a window's fit, the titles and the rows on screen): the window no wider
+--- than its content needs + SLACK, every column gap normal. One Log line per window and view per session: "layout:
+--- <window>/<view> wider than its content by N px (columns ...)". `f.layoutName` names the window (its key).
+local logged = {}
+Widgets.layoutLogged = logged
+function Widgets.CheckLayout(f, lists, view)
+    local name = (rawget(f, "layoutName") or "window") .. "/" .. tostring(view or "-")
+    if logged[name] then return end
+    local w, need = tonumber((f:GetWidth())) or 0, rawget(f, "contentNeed")
+    local problems = {}
+    local over = need and math.floor(w - need + 0.5) or 0
+    if need and over > Widgets.SLACK and not rawget(f, "userW") and not rawget(f, "fitGrows") then
+        problems[#problems + 1] = string.format("wider than its content by %d px", over)
+    end
+    local controls = Widgets.ControlsWidth(f)
+    for _, l in ipairs(lists or {}) do
+        local spansOf = rawget(l, "spansOf")
+        if l:IsShown() and (spansOf or rawget(l, "headers")) then
+            local spans = spansOf and spansOf() or Widgets.ColumnSpans(Widgets.ListColumns(l))
+            -- (Where the window is wider than this table needs, by its controls or another table, its first column
+            -- takes that room.)
+            local function field(k)
+                local v = rawget(l, k)
+                if v == nil then v = l[k] end
+                return type(v) == "number" and v or nil
+            end
+            local own = (field("neededWidth") or 0) + (field("margin") or 24)
+            local spare = math.max(0, math.max(controls, need or 0) - own)
+            local most, parts = Widgets.WideGaps(spans, spare)
+            if most > Widgets.GAP_TOL then
+                problems[#problems + 1] = "column gaps over " .. Widgets.NORMAL_GAP .. " px: " .. table.concat(parts, ", ")
+            end
+        end
+    end
+    if #problems > 0 then
+        logged[name] = true
+        if ns.Log then ns.Log("layout: %s %s", name, table.concat(problems, "; ")) end
+    end
+    return problems
 end
 
 function Widgets.Label(parent, text, template)
@@ -1201,6 +1448,10 @@ end
 --- @return table|nil  widths per column; nil when the client cannot measure text
 function Widgets.FitColumns(titles, count, cellsOf, pad, samples)
     local need = {}
+    -- (A live column keeps its sample's width while it has rows; an empty table is as wide as its titles.)
+    local any = false
+    for r = 1, math.min(count, 400) do if cellsOf(r) then any = true break end end
+    if not any then samples = nil end
     for i, title in ipairs(titles) do
         local w = Widgets.TextWidth(title)
         if not w then return nil end
@@ -1212,13 +1463,13 @@ function Widgets.FitColumns(titles, count, cellsOf, pad, samples)
     for r = 1, math.min(count, 400) do
         local cells, extra = cellsOf(r)
         for i = 1, #titles do
-            local w = cells and Widgets.TextWidth(cells[i]) or 0
+            local w = cells and Widgets.TextWidth(Widgets.CellText(cells[i])) or 0
             if not w then return nil end
             if i == 1 then w = w + (extra or 0) end
             if w > need[i] then need[i] = w end
         end
     end
-    for i = 1, #titles do need[i] = math.ceil(need[i]) + (pad or 10) end
+    for i = 1, #titles do need[i] = math.ceil(need[i]) + (pad or Widgets.CELL_PAD) end
     return need
 end
 

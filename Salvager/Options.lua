@@ -172,7 +172,7 @@ local function populate(panel, standalone)
     local autoOpen = W.Check(panel, "Open the window with the auction house", nil,
         function(on) s.autoOpen = on changed("autoOpen", on) end)
     at(autoOpen, 20)
-    local restore = W.Check(panel, "and reopen the Ledger, Log and Materials windows that were open last time",
+    local restore = W.Check(panel, "and reopen the windows that were open last time",
         "Open is remembered from the buttons, the commands and a window's X. Escape and leaving the auction house "
             .. "close everything at once and do not change it.",
         function(on) s.restoreWindows = on changed("restoreWindows", on) end)

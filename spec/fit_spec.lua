@@ -7,216 +7,11 @@ local wow = require("spec.wow")
 local WINDOWS = { "SalvagerFrame", "SalvagerMiniFrame", "SalvagerLedgerFrame", "SalvagerOddsFrame", "SalvagerMaterialsFrame",
     "SalvagerMarketFrame", "SalvagerReportsFrame", "SalvagerLogFrame", "SalvagerLimitsFrame", "SalvagerOptionsFrame",
     "SalvagerPostFrame", "SalvagerGearFrame", "SalvagerBreakdownFrame", "SalvagerStandFrame", "SalvagerDisenchantFrame" }
-local ROWS = { tabrow = true, subtabrow = true, filterrow = true, footer = true }
-local POPUP = { DIALOG = true, TOOLTIP = true, FULLSCREEN_DIALOG = true }
+local layoutcheck = require("spec.layoutcheck")
 local EPS = 0.5
 local ns_   -- (the addon, for the debug lines)
-
-local function rect(r)
-    local l, b, w, h = wow.rectOf(r)
-    if not l then return nil end
-    return { l = l, b = b, r = l + w, t = b + h, w = w, h = h }
-end
-
-local function inside(a, box) return a.l >= box.l - EPS and a.r <= box.r + EPS and a.b >= box.b - EPS and a.t <= box.t + EPS end
-local function apart(a, box) return a.r <= box.l + EPS or a.l >= box.r - EPS or a.t <= box.b + EPS or a.b >= box.t - EPS end
-local function clipTo(a, box)
-    if not box then return a end
-    return { l = math.max(a.l, box.l), r = math.min(a.r, box.r), b = math.max(a.b, box.b), t = math.min(a.t, box.t) }
-end
-
--- The field that holds `r` in its parent or its parent's parent ("cells", "footer2"), to say which one it is.
-local function key(r)
-    for _, p in ipairs({ rawget(r, "parent"), rawget(r, "parent") and rawget(r.parent, "parent") }) do
-        if type(p) == "table" then
-            for k, v in pairs(p) do
-                if v == r and type(k) == "string" then return k end
-                if type(v) == "table" and type(k) == "string" and k ~= "_children" and k ~= "_regions" then
-                    for _, x in ipairs(v) do if x == r then return k end end
-                end
-            end
-        end
-    end
-end
-
-local function name(r)
-    local text = rawget(r, "text")
-    local what = (rawget(r, "uiKind") or r.kind) .. (key(r) and ("." .. key(r)) or "")
-    return what .. (type(text) == "string" and text ~= "" and (" \"" .. text:sub(1, 60) .. "\"") or "")
-end
-
-local function isList(obj)
-    return type(rawget(obj, "headers")) == "table" and type(rawget(obj, "rows")) == "table"
-        and type(rawget(obj, "columns")) == "table"
-end
-
--- The problems of one window as it is drawn now; `where` names the window, the view and the size.
-local function tableName(obj)
-    if isList(obj) then return tostring(obj.columns[1] and obj.columns[1][1]) end
-    return "of cards"
-end
-
-local function problems(win, where, out, atDefault)
-    local box = rect(win)
-    local tables = {}
-    local function add(msg) out[#out + 1] = where .. ": " .. msg end
-    local function visit(obj, clip, list)
-        if not obj:IsShown() then return end
-        if POPUP[rawget(obj, "_strata") or ""] then return end
-        local r = rect(obj)
-        if r and r.w > 0 and r.h > 0 then
-            local seen = clipTo(r, clip)
-            local hidden = clip and (seen.l >= seen.r - EPS or seen.b >= seen.t - EPS)
-            if hidden then return end   -- (scrolled away)
-            if not clip and not inside(r, box) and obj.kind ~= "Texture" then
-                add(string.format("%s outside the window (%.0f..%.0f of %.0f..%.0f wide, %.0f..%.0f of %.0f..%.0f high)",
-                    name(obj), r.l, r.r, box.l, box.r, r.b, r.t, box.b, box.t))
-            end
-        end
-        if obj.kind == "FontString" then
-            if rawget(obj, "buttonText") then
-                local b = rect(obj.parent)
-                local tw = wow.textWidth(obj.text, obj:GetFont() and select(2, obj:GetFont()))
-                if b and tw > b.w - 4 + EPS and (obj.text or "") ~= "" then
-                    add(string.format("%s: text %.0f px in a button of %.0f", name(obj.parent), tw, b.w))
-                end
-            elseif wow.isCut(obj) and not rawget(obj, "canCut") then
-                add(string.format("%s cut: %.0f px of text in %.0f%s", name(obj), obj:GetStringWidth(), r and r.w or -1,
-                    list and (" (table " .. tostring(list.columns[1] and list.columns[1][1]) .. ")") or ""))
-            end
-            return
-        end
-        if obj.kind == "Texture" then return end
-        local inner = clip
-        if obj:DoesClipChildren() and r then inner = clip and clipTo(r, clip) or r end
-        if ROWS[rawget(obj, "uiKind") or ""] then
-            -- The controls and texts of a row: none overlaps another, all inside the row's ends.
-            local items = {}
-            local function collect(x)
-                if not x:IsShown() or rawget(x, "uiKind") == "help" then return end   -- (a help area lies over its label)
-                local xr = rect(x)
-                if not xr or xr.w <= 0 then return end
-                if x.kind == "FontString" and (x.text or "") == "" then return end
-                -- A check box with its label is one item.
-                local label = rawget(x, "label")
-                if type(label) == "table" and label:IsShown() and (label.text or "") ~= "" then
-                    local lr = rect(label)
-                    if lr then xr = { l = math.min(xr.l, lr.l), r = math.max(xr.r, lr.r), b = math.min(xr.b, lr.b),
-                        t = math.max(xr.t, lr.t) } end
-                end
-                items[#items + 1] = { x = x, r = xr }
-            end
-            for _, c in ipairs(obj._children) do if not POPUP[rawget(c, "_strata") or ""] then collect(c) end end
-            for _, t in ipairs(obj._regions) do if t.kind == "FontString" then collect(t) end end
-            for i = 1, #items do
-                local a = items[i]
-                if r and (a.r.l < r.l - EPS or a.r.r > r.r + EPS) then
-                    add(string.format("%s beyond its %s's ends (%.0f..%.0f of %.0f..%.0f)", name(a.x), obj.uiKind,
-                        a.r.l, a.r.r, r.l, r.r))
-                end
-                for j = i + 1, #items do
-                    local b = items[j]
-                    if not apart(a.r, b.r) then
-                        add(string.format("%s overlaps %s in the %s (%.0f..%.0f and %.0f..%.0f)", name(a.x), name(b.x),
-                            obj.uiKind, a.r.l, a.r.r, b.r.l, b.r.r))
-                    end
-                end
-            end
-        end
-        if atDefault and isList(obj) and r then
-            local right, n = nil, 0
-            for i, h in ipairs(obj.headers) do
-                if h:IsShown() and obj.columns[i] then
-                    n = n + 1
-                    local hr = rect(h)
-                    if hr and (not right or hr.r > right) then right = hr.r end
-                end
-            end
-            -- (Left at the right: the scroll bar and its gaps, 22 px; 32 where the rows' buttons are the last column.)
-            local action = rawget(obj, "actionTitle")
-            if action and action:IsShown() then local ar = rect(action) if ar then right = math.max(right or 0, ar.r) end end
-            if n >= 2 and right and r.r - right > 34 then
-                add(string.format("table %s: its last column ends %.0f px before its right edge", tostring(obj.columns[1][1]),
-                    r.r - right))
-            end
-        end
-        -- The main window's own table (the Gear and Materials tabs): its last column, the buttons', ends at the list's
-        -- right edge too (the first column takes the spare width).
-        if atDefault and ns_ and obj == ns_.UI.list and r then
-            local right
-            for _, h in ipairs(ns_.UI.headers) do
-                if h:IsShown() and (h.text or "") ~= "" then local hr = rect(h) if hr then right = math.max(right or 0, hr.r) end end
-            end
-            for _, row in ipairs(ns_.UI.rows) do
-                if row:IsShown() and row.buy:IsShown() then local br = rect(row.buy) if br then right = math.max(right or 0, br.r) end end
-            end
-            if os.getenv("FIT_DEBUG") then print("main table", where, r.r, right) end
-            if right and r.r - right > 12 then
-                add(string.format("the main window's table: its last column ends %.0f px before its right edge", r.r - right))
-            end
-        end
-        if atDefault and rawget(obj, "cards") and rawget(obj, "widths") and r then
-            -- A stack of cards (the Odds): in each card, the last column ends at the card's right edge.
-            for _, card in ipairs(obj.cards) do
-                if card:IsShown() and card.heads:IsShown() then
-                    local cr, right = rect(card), nil
-                    for i, h in ipairs(card.headTexts) do
-                        if h:IsShown() and i > 1 then local hr = rect(h) if hr then right = math.max(right or 0, hr.r) end end
-                    end
-                    if cr and right and inside(cr, clip or box) and cr.r - right > 34 then
-                        add(string.format("cards %s: the last column ends %.0f px before the card's right edge",
-                            tostring(card.title.text), cr.r - right))
-                    end
-                end
-            end
-        end
-        -- A table leaves no column out at the default size (on a 1920 wide screen): the window fits its columns
-        -- (SDD 107). At the smallest size a column may be left out, and then the table's note says so. FIT_DEBUG=1
-        -- lists them.
-        if isList(obj) then
-            local W, dropped = ns_.Widgets, {}
-            for i, col in ipairs(obj.columns) do
-                local wanted = W.ColumnShown(rawget(obj, "columnSet"), W.ColumnKey(col))
-                if i > 1 and wanted and not obj.headers[i]:IsShown() then dropped[#dropped + 1] = tostring(col[1]) end
-            end
-            if #dropped > 0 then
-                local text = "table " .. tostring(obj.columns[1][1]) .. " leaves out " .. table.concat(dropped, ", ")
-                if atDefault then add(text) end
-                local note = rawget(obj, "leftOutNote")
-                if rawget(obj, "headers")[1]:IsShown() and not (note and note:IsShown()) then
-                    add(text .. " without its note")
-                end
-                if os.getenv("FIT_DEBUG") then print(where .. ": " .. text) end
-            end
-        end
-        -- The tables of the window (lists and stacks of cards), for the check that none overlaps another.
-        if r and not clip and (isList(obj) or rawget(obj, "cards")) then tables[#tables + 1] = { obj = obj, r = r } end
-        local within = list
-        if isList(obj) then within = obj end
-        for _, c in ipairs(obj._children) do visit(c, inner, within) end
-        for _, t in ipairs(obj._regions) do visit(t, inner, within) end
-    end
-    visit(win, nil)
-    -- No table overlaps another, and each is at least as tall as its titles and two rows (SDD 113).
-    for i, a in ipairs(tables) do
-        local least = 3 * 22
-        if isList(a.obj) then
-            local rowH = rawget(a.obj.rows[1], "_h") or 22
-            -- (A table of one row may be as tall as that row.)
-            least = ((a.obj.headers[1]:IsShown() and 1 or 0) + math.min(2, math.max(1, rawget(a.obj, "count") or 2))) * rowH
-        end
-        if a.r.h < least - EPS then
-            add(string.format("table %s: %.0f px high, less than its titles and two rows (%.0f)", tableName(a.obj), a.r.h, least))
-        end
-        for j = i + 1, #tables do
-            local b = tables[j]
-            if not apart(a.r, b.r) then
-                add(string.format("table %s overlaps table %s (%.0f..%.0f and %.0f..%.0f high)", tableName(a.obj),
-                    tableName(b.obj), a.r.b, a.r.t, b.r.b, b.r.t))
-            end
-        end
-    end
-end
+local rect = layoutcheck.rect
+local function problems(win, where, out, atDefault) return layoutcheck.problems(win, where, out, atDefault, ns_) end
 
 -- Every size change reaches the frames that watch it, as in the client.
 local function sized(f)
@@ -454,10 +249,17 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
     end
     -- A tab change: at the smallest size the player sizes it down again (a view change gives the window the new view's
     -- width, SDD 113); at the default size each view's width is noted, to check it comes back (no other view's width).
-    local widths = {}
+    local widths, extreme = {}, {}
     local function view(win, where, atDefault)
         if not atDefault then smallest(win) end
+        local before = #found
         problems(win, where, found, atDefault)
+        -- (The ratchet's numbers, SDD 121: with extreme data a window may grow up to the screen, never cut a text.)
+        local cut = 0
+        for i = before + 1, #found do if found[i]:find(" cut: ", 1, true) then cut = cut + 1 end end
+        local key = where:gsub(" at %d+x%d+", ""):gsub("^Salvager", ""):gsub("Frame", "") .. (atDefault and "/default" or "/smallest")
+        extreme[key] = { width = math.floor(win:GetWidth() + 0.5), cut = cut }
+        if win:GetWidth() > 1920 + EPS then found[#found + 1] = where .. ": wider than the screen" end
         if atDefault then
             local w, need = win:GetWidth(), rawget(win, "fitNeed")
             if type(need) == "number" and w > need + EPS then
@@ -498,6 +300,7 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
             default(win)
             each(win, global .. " at " .. math.floor(win:GetWidth()) .. "x" .. math.floor(win:GetHeight()), true)
         end
+        require("spec.ratchetout").write("layout-extreme", extreme)
         assert.are.equal("", table.concat(found, "\n"))
     end)
     it("drew the competition tables with data (the Ledger's subtab, the Reports' tab)", function()
@@ -535,38 +338,44 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
         assert.are.equal(gearW, main:GetWidth())
         local lo, _, hi = main:GetResizeBounds()
         if lo then assert.are.same({ gearW, gearW }, { lo, hi }) end   -- only the height can be dragged
-        -- The Ledger: Competition, then History (890, its smallest).
+        -- The Ledger: History, then Competition (wider), then History again: back to History's width, measured.
         ns.LedgerWindow.Show()
         local ledger = _G.SalvagerLedgerFrame
-        tab(ledger, "Sales") sub(ledger, "Competition")
-        assert.is_true(ledger:GetWidth() > 890)
+        tab(ledger, "Sales") sub(ledger, "History")
+        local historyW = ledger:GetWidth()
+        assert.are.equal(rawget(ledger, "contentNeed"), historyW)
+        sub(ledger, "Competition")
+        assert.is_true(ledger:GetWidth() > historyW)
         sub(ledger, "History")
-        assert.are.equal(890, ledger:GetWidth())
+        assert.are.equal(historyW, ledger:GetWidth())
         -- The Reports: Competition, then Gold (its smallest); narrowed by the player, the next tab is as wide as it needs.
         ns.Reports.Show()
         local reports = _G.SalvagerReportsFrame
         rawset(reports, "userW", nil)
+        tab(reports, "Gold")
+        local goldW = reports:GetWidth()
         tab(reports, "Competition")
         local compW = reports:GetWidth()
-        assert.is_true(compW > 1050)
+        assert.is_true(compW > goldW, compW .. " " .. goldW)
         tab(reports, "Gold")
-        assert.are.equal(1050, reports:GetWidth())
+        assert.are.equal(goldW, reports:GetWidth())
         tab(reports, "Competition")
-        rawset(reports, "userW", 1050)
-        reports:SetWidth(1050)
+        local least = reports:GetResizeBounds()
+        rawset(reports, "userW", least)
+        reports:SetWidth(least)
         sized(reports)
-        assert.are.equal(1050, reports:GetWidth())
+        assert.are.equal(least, reports:GetWidth())
         tab(reports, "Gold")
         tab(reports, "Competition")
         assert.are.equal(compW, reports:GetWidth())
-        -- The Market: Essences is wider than Materials; back on Materials it shrinks back.
+        -- The Market: Essences has a width of its own; back on Materials it is Materials' again.
         if not _G.SalvagerMarketFrame or not _G.SalvagerMarketFrame:IsShown() then ns.Market.Toggle() end
         local market = _G.SalvagerMarketFrame
         rawset(market, "userW", nil)
         tab(market, "Materials")
         local mw = market:GetWidth()
         tab(market, "Essences")
-        assert.is_true(market:GetWidth() > mw)
+        assert.is_true(market:GetWidth() ~= mw, mw .. " both")
         tab(market, "Materials")
         assert.are.equal(mw, market:GetWidth())
     end)
@@ -794,14 +603,12 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
         ns.Odds.Filter().both = nil
         assert.are.equal("", table.concat(seen, "\n"))
     end)
-    it("keeps the Gear list's profit range as wide as its widest value, every range cell in full (SDD 116)", function()
+    it("keeps the Gear list's profit range as wide as its widest value now, every range cell in full (SDD 116, 120)", function()
         ns.UI.Show()
         local win = _G.SalvagerFrame
         for _, t in ipairs(tabsOf(win, "tab")) do if t.text == "Gear" then t:Click() end end
         local h = ns.UI.headers[5]
         assert.is_truthy(h.text:find("Profit: low - avg - high", 1, true))
-        local sample = wow.textWidth(ns.Widgets.WidestDigits(ns.RANGE_SAMPLE), 10)
-        assert.is_true(rect(h).w >= sample, string.format("%.0f < %.0f", rect(h).w, sample))
         local n = 0
         for _, row in ipairs(ns.UI.rows) do
             local cell = row.cells[5]

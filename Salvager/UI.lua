@@ -24,10 +24,9 @@ local VIEWS = {
         icon = true,
         indent = 46,
         actionTitle = "Buy",
-        header = { "Gear", "Type", "Item level", "Buyout", "Profit: low - avg - high", "Avg return", "Loss chance" },
-        sortable = { [5] = "profit", [6] = "return" },
-        -- (The range cell holds three amounts: as wide as the widest it can be, SDD 116.)
-        samples = { [5] = ns.RANGE_SAMPLE },
+        -- (Loss chance before Avg return: the risk next to the profit range, the user, 2026-11-28.)
+        header = { "Gear", "Type", "Item level", "Buyout", "Profit: low - avg - high", "Loss chance", "Avg return" },
+        sortable = { [5] = "profit", [7] = "return" },
         -- Shown when the mouse is over a column's title.
         help = {
             [4] = { "Buyout", "What this auction costs. \"!\" after it, on an orange row: an unusually high average "
@@ -40,19 +39,19 @@ local VIEWS = {
                 .. "loss. A grey \"?\" after the optimistic one: not proven on Forever.\n\n"
                 .. "Hover a value for every outcome of one disenchant. The average is over many pieces; one disenchant "
                 .. "gives one of the outcomes.\n\nClick to list the deals by the average profit." },
-            [6] = { "Avg return", "The average profit as a share of the buyout: what each gold you pay brings back on top, "
-                .. "on average over many pieces. When your gold is what limits you, buy the highest first.\n\n"
-                .. "Click to list the deals by the average return." },
-            [7] = { "Loss chance", "The chance that ONE disenchant of this gear is worth less than its buyout, after the cut.\n\n"
+            [6] = { "Loss chance", "The chance that ONE disenchant of this gear is worth less than its buyout, after the cut.\n\n"
                 .. "Example: you pay 10s for a piece of gear. 3 times out of 4 it gives dust worth 5s: you lose 5s. 1 time "
                 .. "out of 4 it gives an essence worth 30s: you gain 20s. Loss chance is 75%. Over many pieces you still "
                 .. "gain: the average is 11s 25c per piece, so 1s 25c of profit each.\n\n"
                 .. "Green: under 30%. Yellow: 30% or more. Red: 60% or more.\n\n"
                 .. "A high Loss chance with a good average profit needs many pieces before the average shows. A low "
                 .. "Loss chance is safe even for a few pieces." },
+            [7] = { "Avg return", "The average profit as a share of the buyout: what each gold you pay brings back on top, "
+                .. "on average over many pieces. When your gold is what limits you, buy the highest first.\n\n"
+                .. "Click to list the deals by the average return." },
         },
         cols = { { 205, "LEFT" }, { 46, "CENTER" }, { 34, "CENTER" }, { 80, "RIGHT" }, { 240, "RIGHT" },
-            { 44, "RIGHT" }, { 54, "CENTER" } },
+            { 54, "CENTER" }, { 44, "RIGHT" } },
     },
     materials = {
         id = "materials",   -- (the same set as the Materials window's list: one choice for both)
@@ -116,8 +115,8 @@ local function highHelp() return string.format(UI.HIGH_HELP, tonumber(ns.db.sett
 
 local function dealCells(d, label)
     return { label, CLASS_NAME[d.classID or ns.ClassOf(d.itemID)] or "", tostring(d.ilvl or ""),
-        ns.Money(d.buyout) .. (UI.HighReturn(d) and (" " .. ORANGE .. "!|r") or ""), rangeText(d), returnText(d),
-        ns.LoseText(d.lose) }
+        ns.Money(d.buyout) .. (UI.HighReturn(d) and (" " .. ORANGE .. "!|r") or ""), rangeText(d), ns.LoseText(d.lose),
+        returnText(d) }
 end
 
 --- The Gear tab's rows: auctions grouped by the gear's name, best profit first. A group with more than one auction
@@ -312,6 +311,15 @@ local function colShown(view, i)
     return i == 1 or not view.id or W.ColumnShown(view.id, view.header[i])
 end
 
+-- The space after column i of a view: the next shown column's text NORMAL_GAP from its own (Widgets.ColumnGap);
+-- 0 after the last one.
+local function gapAfter(view, i)
+    for n = i + 1, #view.cols do
+        if colShown(view, n) then return W.ColumnGap(view.cols[i][2], view.cols[n][2]) end
+    end
+    return 0
+end
+
 local function widths(view, data)
     local titles = {}
     for i, title in ipairs(view.measure or view.header) do titles[i] = shownTitle(view, i, title) end
@@ -325,10 +333,11 @@ local function widths(view, data)
     local w = {}
     if need then
         for i = 1, #view.cols do w[i] = need[i] end
-        -- The first column (the row's label) takes the spare width, so the last column (the buttons') ends at the
-        -- list's right edge, as in every table (UI.md Tables 2).
+        -- The width authority (SDD 120): every column its text's width, COL_GAP apart; the first column takes only
+        -- what the window has over that (a window its controls make wider), so the buttons' column ends at the
+        -- list's right edge (UI.md Tables 2).
         local used = view.indent or (view.icon and 30 or 4)
-        for i = 1, #view.cols do if colShown(view, i) then used = used + w[i] + 6 end end
+        for i = 1, #view.cols do if colShown(view, i) then used = used + w[i] + gapAfter(view, i) end end
         if view.actionTitle then used = used + 22 + 64 end   -- (the warning sign and the button, as `layout` puts them)
         local room = tonumber((UI.list and UI.list:GetWidth())) or 0
         UI.tableNeed = used   -- (the list's width that shows every column in full: the window widens to it)
@@ -372,7 +381,7 @@ local function layout(view, data)
             row.cells[i]:ClearAllPoints()
             row.cells[i]:SetPoint("LEFT", row, "LEFT", x, 0)
         end
-        if col and colShown(view, i) then x = x + w[i] + 6 end
+        if col and colShown(view, i) then x = x + w[i] + gapAfter(view, i) end
     end
     xs[#view.cols + 1] = x
     if helpButton then
@@ -390,7 +399,7 @@ local function layout(view, data)
         end
         t:ClearAllPoints()
         t:SetPoint("TOPLEFT", UI.list, "TOPLEFT", xs[gh[1]], 0)
-        t:SetWidth(math.max(10, xs[gh[2] + 1] - xs[gh[1]] - 6))
+        t:SetWidth(math.max(10, xs[gh[2] + 1] - xs[gh[1]] - W.COL_GAP))   -- (a group's title: over its columns)
         t:SetText(gh[3])
         t:Show()
     end
@@ -504,8 +513,8 @@ function UI.AddDealLines(tip, d)
     end
     line("Average value (over many pieces)", ns.Money(d.value))
     line("Average profit (over many pieces)", profitText(d))
-    line("Avg return", returnText(d))
     line("Loss chance", ns.LoseText(d.lose))
+    line("Avg return", returnText(d))
     -- Return per day (SDD 100): in the tooltip, not a column, while it equals Return for nearly every deal.
     local perDay = ns.Scanner.ReturnPerDay(d)
     local few = d.daysFew and " (few sales)" or ""
@@ -606,6 +615,8 @@ function UI.Refresh()
     materialsOnly:SetChecked(ns.db.settings.materialsDataOnly)
     local view = VIEWS[UI.view]
     ROWS = fitRows()
+    -- (Texts the width is measured from, before the fit.)
+    levelHint:SetText((ns.db.settings.ilvlMin > 0 or ns.db.settings.ilvlMax > 0) and "" or "0 = any")
     local data = SOURCES[UI.view]()
     UI.tableNeed = nil
     local w = layout(view, data)
@@ -617,10 +628,13 @@ function UI.Refresh()
         -- change, and the window then took the whole screen: 0.3.143.)
         -- (At least as wide as the footer's buttons and readouts at their widest, 10 + 24 px around them: at 940 the
         -- gold overlapped Log, 0.3.151.)
-        local least = math.max(MIN_W, math.ceil((tonumber(rawget(P.footerBar, "used")) or 0) + 34))
+        -- (The width authority, SDD 120: the rows of controls on show (footer, tabs, the Materials view's filter row)
+        -- and the Gear view's settings, measured; or the table's columns; nothing else.)
+        local least = W.ControlsWidth(f)
         UI.leastWidth = least
         local want = math.min(math.floor(W.ScreenWidth()),
             math.max(least, UI.tableNeed and math.ceil(UI.tableNeed + 4 + LIST_MARGIN) or least))
+        f.contentNeed = want
         if want ~= f.minWidth then
             f.minWidth = want
             if f.SetResizeBounds then f:SetResizeBounds(want, MIN_H, want, UIParent:GetHeight())
@@ -661,7 +675,7 @@ function UI.Refresh()
         for i, fs in ipairs(row.cells) do
             local col = view.cols[i]
             if col and item and colShown(view, i) then
-                fs:SetWidth(w[i]) fs:SetJustifyH(col[2]) fs:SetText(item.cells[i] or "") fs:Show()
+                fs:SetWidth(w[i]) fs:SetJustifyH(col[2]) fs:SetText(W.CellText(item.cells[i])) fs:Show()
             else
                 fs:Hide()
             end
@@ -735,7 +749,29 @@ function UI.Refresh()
     footer2:SetText(line2)
     updateBuyTop()
     lastRefresh = GetTime()
+    -- The self-check (SDD 120): no wider than the content, normal gaps.
+    if not UI.fitting then W.CheckLayout(f, { UI.mainTable }, UI.view) end
 end
+
+--- The main window's own table as the self-check reads it (Widgets.CheckLayout): its columns on screen, its need.
+UI.mainTable = {
+    IsShown = function() return f ~= nil and f:IsShown() end,
+    spansOf = function()
+        local view, cols = VIEWS[UI.view], {}
+        for i, h in ipairs(headers) do
+            if h:IsShown() and view.cols[i] then
+                local cells = {}
+                for _, row in ipairs(rows) do if row:IsShown() then cells[#cells + 1] = row.cells[i] end end
+                cols[#cols + 1] = { title = view.header[i], header = h, cells = cells }
+            end
+        end
+        return W.ColumnSpans(cols)
+    end,
+}
+setmetatable(UI.mainTable, { __index = function(_, k)
+    if k == "neededWidth" then return UI.tableNeed and (UI.tableNeed + 4) end
+    if k == "margin" then return LIST_MARGIN end
+end })
 
 --- Redraws soon, at most four times a second (for events that come in bursts during a scan).
 function UI.RequestRefresh()
@@ -775,6 +811,7 @@ local function rowTooltip(self)
     GameTooltip:SetHyperlink(link)
     local hint = UI.view == "materials" and ns.RowHint(item)
     if hint then GameTooltip:AddLine(hint, 0.5, 0.8, 1) end
+    W.AddExactLines(GameTooltip, VIEWS[UI.view] and VIEWS[UI.view].header, item)
     local d = UI.view == "deals" and (item.deal or (item.group and ns.Scanner.Cheapest(item.group.deals)))
     if d then
         UI.AddDealLines(GameTooltip, d)
@@ -787,6 +824,12 @@ end
 local function build()
     f = CreateFrame("Frame", "SalvagerFrame", UIParent, "BasicFrameTemplateWithInset")
     f.minWidth = MIN_W
+    f.layoutName = "main"
+    -- The Gear view's settings block is content too (Widgets.ControlsWidth): its rows, plus its 10 px insets.
+    f.extraNeed = function()
+        if not (P.settingsBox and P.settingsBox:IsShown() and P.settingsNeed) then return 0 end
+        return P.settingsNeed() + 20
+    end
     local saved = ns.db.window
     f:SetSize(WIDTH, math.max(MIN_H, saved.h or HEIGHT))   -- (the width follows the view: Refresh)
     f:SetFrameStrata("HIGH")
@@ -919,7 +962,7 @@ local function build()
     bags:SetJustifyH("RIGHT")
     bags:SetWordWrap(false)
     bags.uiKind = "readout"
-    local bagW = math.ceil(measure(bags, ns.LedgerWindow.BAG_SAMPLE) or 116) + 4
+    local bagW = math.ceil(measure(bags, ns.LedgerWindow.BagText()) or 60) + 4
     bags:SetWidth(bagW)
     P.footerBar:AddRight(bags, bagW, 12)
     W.HelpArea(P.footerBar, bags, "Bag space", ns.LedgerWindow.BAG_HELP)
@@ -927,8 +970,8 @@ local function build()
     gold:SetJustifyH("RIGHT")
     gold:SetWordWrap(false)
     gold.uiKind = "readout"
-    -- (the most gold a character can hold: 2^31 - 1 copper, 214748g 36s 47c)
-    local goldW = math.ceil(measure(gold, ns.Money(2147483647)) or 96) + 4
+    -- (As wide as the gold it shows now, UI.fitReadouts; the footer's need is measured from it, bar:Need.)
+    local goldW = math.ceil(measure(gold, ns.Money(GetMoney() or 0)) or 60) + 4
     gold:SetWidth(goldW)
     P.footerBar:AddRight(gold, goldW, 8)
     W.HelpArea(P.footerBar, gold, "Gold", "The gold you have now.")
@@ -1181,6 +1224,32 @@ local function build()
     levelHint:SetPoint("RIGHT", checksLabel, "LEFT", -8, 0)
     levelHint:SetJustifyH("LEFT")
     levelHint:SetWordWrap(false)
+    -- What the settings need (the width authority, SDD 120): per row, its controls from the left to the right end of
+    -- the last one, 24 px, its controls at the right end; measured where they are drawn.
+    local settingsRows = {
+        { left = function() return qualityDrop:GetRight() end, right = onceLabel },
+        { left = function() return maxPrice:Right():GetRight() end, right = cautious },
+        { left = function()
+            local r = ilvlMax:GetRight()
+            local hint = tonumber((levelHint:GetStringWidth())) or 0
+            return r and (r + (hint > 0 and 8 + hint or 0))
+        end, right = checksLabel },
+    }
+    function P.settingsNeed()
+        local l, r = box:GetLeft(), box:GetRight()
+        if not (l and r) then return 0 end
+        local most = 0
+        for _, row in ipairs(settingsRows) do
+            local a = row.left()
+            local b = row.right:GetLeft()
+            if row.right.GetObjectType and row.right:GetObjectType() == "FontString" then
+                local rr = row.right:GetRight()
+                if rr then b = rr - (tonumber((row.right:GetStringWidth())) or 0) end
+            end
+            if a and b then most = math.max(most, (a - l) + 24 + (r - b)) end
+        end
+        return math.ceil(most)
+    end
 
     ---------------------------------------------------------------- tabs, right under the title bar
     -- The row holds the tabs only (UI.md Controls 3): the pop-out, the materials' filter and Scan owned are on the
@@ -1287,6 +1356,8 @@ local function build()
     actionHeader:SetJustifyH("CENTER")
     actionHeader:SetPoint("TOPRIGHT", list, "TOPRIGHT", -4, 0)
     UI.actionHeader, UI.rows = actionHeader, rows   -- (the fit spec measures them)
+    -- (The checks outside the addon read the table from its frame: the sim gate, the layout dump.)
+    list.tableParts = { headers = headers, rows = rows, action = actionHeader }
     for i = 1, MAX_COLS do
         local h = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         h:SetHeight(ROW_H)

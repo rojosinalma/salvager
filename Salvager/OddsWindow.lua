@@ -351,26 +351,27 @@ end
 -- The pop-out window: no tabs, the filter rows right under the title bar. As wide as two cards per row; it can be
 -- made narrower down to one per row (SDD 113, 114).
 local OUT_TOP = 28
-local OUT_MIN_W = 760   -- the smallest width: the filter row (Gear, Quality, Bands, Salvager and the button)
+local OUT_MIN_W = 760   -- the width it opens with, before its content is measured (Widgets.FitTables sets it)
 local OUT_CONTENT = OUT_TOP + 2 * (W.BAR_H.filters + 2) + 6
 
 function Odds.RefreshOut()
     if not (oddsFrame and oddsFrame:IsShown()) then return end
     oddsOut:Refresh()
-    if W.FitTables(oddsFrame, OUT_MIN_W, { oddsOut.stack }, "odds") then oddsOut.stack:Refresh() end
+    W.FitTables(oddsFrame, { oddsOut.stack }, "odds")
 end
 
 -- A size change: only the cards are laid out again in the new width (the cards are not built again).
 local function resizedOut()
     if not (oddsFrame and oddsFrame:IsShown()) then return end
     oddsOut.stack:Refresh()
-    if W.FitTables(oddsFrame, OUT_MIN_W, { oddsOut.stack }, "odds") then oddsOut.stack:Refresh() end
+    W.FitTables(oddsFrame, { oddsOut.stack }, "odds")
 end
 
 local function buildOut()
     oddsFrame = W.Window("SalvagerOddsFrame", "Salvager Odds", "odds", OUT_MIN_W, 520, OUT_MIN_W,
         OUT_CONTENT + W.TABLE_MIN + 14)
     oddsFrame.onResize = resizedOut
+    oddsFrame.layoutName = "odds"
     oddsOut = Odds.NewView(oddsFrame, W.Bar(oddsFrame, "filters"):Place(OUT_TOP, 12, 12),
         W.Bar(oddsFrame, "filters"):Place(OUT_TOP + W.BAR_H.filters + 2, 12, 12), true)
     oddsOut.stack:SetPoint("TOPLEFT", oddsFrame, "TOPLEFT", 12, -OUT_CONTENT)

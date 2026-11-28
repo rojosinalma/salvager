@@ -9,7 +9,7 @@ local Breakdown = {}
 ns.Breakdown = Breakdown
 
 local GREY, GOLD, GREEN, RED = "|cff808080", "|cffffd100", "|cff40ff40", "|cffff4040"
-local MIN_W = 720   -- the smallest width: the heading's two lines
+local MIN_W = 720   -- the width it opens with, before its content is measured (Widgets.FitTables sets it)
 
 local function help(title, text) return { title, text } end
 local SHARED = {
@@ -147,12 +147,13 @@ function Breakdown.Refresh()
     local bands = Breakdown.BandRows(matID)
     parts[4]:SetSource(#bands, function(i) return bands[i] end)
     parts[4]:Refresh()
-    -- As wide as its tables need, at least MIN_W, no wider; a new material is a new view (SDD 113).
-    if W.FitTables(f, MIN_W, { parts[2], parts[4] }, matID) then parts[2]:Refresh() parts[4]:Refresh() end
+    -- As wide as its tables and its heading need, no wider; a new material is a new view (SDD 113, 120).
+    W.FitTables(f, { parts[2], parts[4] }, matID)
 end
 
 local function build()
-    f = W.Window("SalvagerBreakdownFrame", "Salvager Breakdown", "breakdown", 800, 480, MIN_W, 320)
+    f = W.Window("SalvagerBreakdownFrame", "Salvager Breakdown", "breakdown", MIN_W, 480, MIN_W, 320)
+    f.layoutName = "breakdown"
     icon = f:CreateTexture(nil, "ARTWORK")
     icon:SetSize(26, 26)
     icon:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -30)
@@ -179,6 +180,14 @@ local function build()
     listB:SetColumns(columns("Band"), "breakdown.band")
     listB:SetPoint("TOPLEFT", listA, "BOTTOMLEFT", 0, -24)
     listB:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
+    -- The heading (the name, its two summary lines) and the tables' titles are content too (SDD 120).
+    f.extraNeed = function()
+        local function sw(fs) return tonumber((fs:GetStringWidth())) or 0 end
+        local w = 14 + 26 + 8 + sw(name) + 14
+        for _, l in ipairs({ summary[1], summary[2] }) do w = math.max(w, 14 + sw(l) + 14) end
+        for _, l in ipairs({ titleA, titleB }) do w = math.max(w, 14 + sw(l) + 14) end
+        return math.ceil(w)
+    end
     parts = { titleA, listA, titleB, listB, W.SplitBar(f, listA, Breakdown.Room, function(part)
         f.saved.split = part
         Breakdown.Refresh()

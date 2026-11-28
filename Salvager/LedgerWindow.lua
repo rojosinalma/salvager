@@ -174,6 +174,7 @@ local function purchaseFilter()
     if x.show ~= "done" and x.show ~= "waiting" then x.show = "all" end
     return x
 end
+Window.PurchaseFilter = purchaseFilter   -- (the specs set its search)
 Window.PurchaseFilter = purchaseFilter
 
 local function filterPasses(x, classID, quality, ilvl, salvager)
@@ -738,10 +739,16 @@ function Window.ListingRows()
         else
             status = "listed"
         end
+        local built = time()
         rows[#rows + 1] = {
             itemID = r.itemID, link = r.link,
             -- A click shows where it stands among the other sellers' listings.
             onClick = r.commodity and function() ns.Stand.Show(r) end or nil,
+            -- The countdown runs: only its cell is drawn again each second (list:RefreshLive).
+            live = left and { [3] = function()
+                local now = left - (time() - built)
+                return countdown(now), now
+            end } or nil,
             cells = { r.qty .. "x " .. ((r.link and r.link:match("%[(.-)%]")) or ns.MaterialName(r.itemID)), status,
                 countdown(left),
                 ns.Money(r.each), ns.Money(gross), ns.Money(net), cost and ns.Money(cost) or (GREY .. "not known|r"),
@@ -792,11 +799,16 @@ function Window.SoldRows(history)
                 cost = ns.Money(s.cost) .. ((s.untracked or 0) > 0 and (GREY .. " +" .. s.untracked .. "?|r") or "")
                 profit = signed(s.profit)
             end
+            local left, built = due and dueOf(s), time()
             rows[#rows + 1] = {
                 itemID = s.id,
+                live = left and { [3] = function()
+                    local now = left - (time() - built)
+                    return GOLD .. countdown(now) .. "|r", now
+                end } or nil,
                 cells = { s.count .. "x " .. ns.MaterialName(s.id),
                     when(s.t),
-                    due and (GOLD .. countdown(dueOf(s)) .. "|r") or (s.paidAt and when(s.paidAt) or (GREY .. "-|r")),
+                    due and (GOLD .. countdown(left) .. "|r") or (s.paidAt and when(s.paidAt) or (GREY .. "-|r")),
                     ns.Money(math.floor(s.gross / s.count + 0.5)),
                     ns.Money(s.gross), ns.Money(s.net), cost, profit },
             }
@@ -1031,8 +1043,7 @@ function Window.SetSalesSplit(part)
     Window.Refresh()
 end
 
-local WIDTH = 890   -- the ledger window's width; wider where the tables on show need it (860 until 0.3.151: the
-                    -- Purchases filter row needs 869 with its dropdowns as wide as their values)
+local WIDTH = 890   -- the width it opens with, before its content is measured (Widgets.FitTables sets it)
 -- The least height (SDD 113): the rows above the tables (the tabs, a subtab row or a filter row), two titles, two
 -- tables of TABLE_MIN each and the footer, so the Sales and Accuracy tables never overlap.
 local MIN_H = TABS_TOP + W.BAR_H.tabs + 4 + W.BAR_H.filters + 4 + 44 + 2 * W.TABLE_MIN + FOOT
@@ -1159,8 +1170,8 @@ function Window.Refresh()
     -- As wide as the tables on show need (all their columns, the first one not cut, SDD 91), at least its own width,
     -- and no wider (SDD 113): each view sets it again, so a view that needs less makes it narrower.
     local shown = split and { salesParts[2], salesParts[4] } or { list }
-    if W.FitTables(f, WIDTH, shown, Window.view, true) then for _, l in ipairs(shown) do l:Refresh() end end
     summary:SetText((Window.Summary()))
+    W.FitTables(f, shown, Window.view .. (sales and ("/" .. salesTab) or purchases and ("/" .. purchaseTab) or ""))
     for name, button in pairs(tabs) do button:SetSelected(name == Window.view) end
     -- The two listing buttons belong to the Sales view; the bag space to the Purchases view. The totals have a
     -- line of their own above them, so no view's controls cut them.
@@ -1196,6 +1207,7 @@ end
 local function build()
     -- As wide as its tables need; the height is the player's.
     f = W.Window("SalvagerLedgerFrame", "Salvager Ledger", "ledger", WIDTH, 480, WIDTH, MIN_H, "vertical")
+    f.layoutName = "ledger"
     -- The footer, two lines: the ledger's totals (one short line of the whole width, all of them behind the chart
     -- button before it), and under them the view's actions or its bag space at the right.
     bars.footer = W.Bar(f, "footer"):PlaceBottom(8, 12, 24)
@@ -1277,6 +1289,7 @@ local function build()
     bagLabel:SetPoint("RIGHT", bars.footer, "RIGHT", -2, 0)
     bagLabel:SetJustifyH("RIGHT")
     bagArea = W.HelpArea(bars.footer, bagLabel, "Bag space", Window.BAG_HELP)
+    bars.footer:Track(bagLabel, "R")
     bagLabel:Hide()
     bagArea:Hide()
     list = W.List(f, { rowHeight = 22 })
@@ -1405,12 +1418,16 @@ function Window.Restore()
     end
 end
 
--- The countdowns of the Sales view run: once a second while it shows.
+-- The countdowns of the Sales view run: once a second while it shows, only their cells (list:RefreshLive; the whole
+-- table each second took 2.4 ms at ten times the data). One that reaches 0 draws the view again.
 local lastCount = 0
 ns.OnTick(function()
     if f and f:IsShown() and Window.view == "sales" and GetTime() - lastCount >= 1 then
         lastCount = GetTime()
-        Window.Refresh()
+        local parts = Window.salesParts
+        if not (parts and parts[2]:IsShown()) then return end
+        local a, b = parts[2]:RefreshLive(), parts[4]:RefreshLive()
+        if a or b then Window.Refresh() end
     end
 end)
 

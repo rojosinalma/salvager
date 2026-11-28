@@ -26,7 +26,11 @@ The biggest update since 0.3.113: a new forecast, honest books, and a new interf
 - One order everywhere: tabs, subtabs, a filter row, the content, a footer; real game tabs and dropdowns.
 - A mini panel (minimap button, away from the auction house) and a Disenchant panel with a one-key disenchant
   button and a filter in Options.
-- Windows fit their tables, resize smoothly, can be dragged partly off the screen (/salv windows reset), and
-  remember their place. Search boxes in Reports and Market.
+- Windows and columns as tight as what they show: every column as wide as its text, the same small gap between
+  columns, a window no wider than its widest table or row of controls, narrower again when a table empties. Amounts
+  of 1 gold or more show gold and silver in tables (the copper on hover); "few sales" is a grey value with "*".
+- The Gear list shows Loss chance next to the profit range, before Avg return.
+- Windows resize smoothly, can be dragged partly off the screen (/salv windows reset), and remember their place.
+  Search boxes in Reports and Market.
 - Faster with a long history: a settings change, the Ledger's Current batch, Accuracy and purchases, and the
   Disenchant panel redraw several times faster with thousands of records.
