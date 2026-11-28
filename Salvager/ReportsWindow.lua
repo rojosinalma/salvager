@@ -901,7 +901,8 @@ function Reports.Refresh()
 end
 
 local function build()
-    f = W.Window("SalvagerReportsFrame", "Salvager Reports", "reports", MIN_W, 480, MIN_W, MIN_H)
+    -- (The width follows the view; only the height can be dragged: the user, 0.4.0.)
+    f = W.Window("SalvagerReportsFrame", "Salvager Reports", "reports", MIN_W, 480, MIN_W, MIN_H, "vertical")
     f.layoutName = "reports"
     local old = OLD_VIEW[f.saved.view]
     if old then f.saved.view, f.saved.gearTab = old[1], old[2] end

@@ -135,33 +135,36 @@ end
 
 --- The columns: the game's table, a line, then yours (with the Salvager's when both show). Two titles read "Result
 --- rate": their keys tell them apart in the column chooser.
+-- (Short titles, the user, 0.4.0: the cards were as wide as their titles. The groups are told apart by the lines
+-- between them, the Salvager's color, and each title's help: left the game's table, then your disenchants, then with
+-- the Salvager.)
 local TABLE_HELP = "By the game's disenchant table the addon uses (Classic's table; not confirmed for Forever)."
 local COLUMNS = {
     { "Material", 150, help = { "Material", "What a disenchant in this band can give: the game's table, and what came "
         .. "in yours that the table does not have (\"not expected\"). Click one: where yours came from." } },
-    { "Result rate", 60, "CENTER", key = "Result rate (table)", help = { "Result rate (the game's table)",
+    { "Rate", 60, "CENTER", key = "Result rate (table)", help = { "Rate: result rate (the game's table)",
         "How often this material comes from one disenchant in this band. " .. TABLE_HELP } },
-    { "Quantity", 56, "CENTER", key = "Quantity (table)", help = { "Quantity (the game's table)",
+    { "Qty", 56, "CENTER", key = "Quantity (table)", help = { "Qty: quantity (the game's table)",
         "How many come when a disenchant gives it. " .. TABLE_HELP } },
-    { "Results", 50, "CENTER", sep = true, help = { "Results (your disenchants)", "How many of your disenchants in "
+    { "Seen", 50, "CENTER", sep = true, key = "Results", help = { "Seen: results (your disenchants)", "How many of your disenchants in "
         .. "this band gave this material (as the Salvager filter says; without the Salvager while \"Show with and "
         .. "without the Salvager\" is on)." } },
-    { "Result rate", 60, "CENTER", key = "Result rate (yours)", help = { "Result rate (your disenchants)",
+    { "Rate", 60, "CENTER", key = "Result rate (yours)", help = { "Rate: result rate (your disenchants)",
         "How often it came in your disenchants in this band: Results ÷ Disenchants." } },
-    { "Avg quantity", 70, "CENTER", help = { "Avg quantity (your disenchants)", "How many came on average "
+    { "Avg qty", 70, "CENTER", key = "Avg quantity", help = { "Avg qty: average quantity (your disenchants)", "How many came on average "
         .. "when a disenchant of yours gave it: an average of whole units (one disenchant gives a whole number)." } },
 }
 -- The Salvager's columns: after a line of their own, in the Salvager's color (titles and values; grey still says
 -- "too few" or "none"). Their keys stay the plain titles (the column chooser's saved choices).
 local COLOR_HELP = "In the Salvager's color (light blue): with the Salvager, observed only."
 local SALVAGER_COLUMNS = {
-    { SALV .. "Rate with Salvager|r", 70, "CENTER", key = "Rate with Salvager", sep = true, help = {
-        "Rate with Salvager (your disenchants)", "How often it came in your disenchants with the Arcane Salvager's "
+    { SALV .. "Rate|r", 70, "CENTER", key = "Rate with Salvager", sep = true, help = {
+        "Rate (light blue): rate with the Salvager (your disenchants)", "How often it came in your disenchants with the Arcane Salvager's "
         .. "bonus. Only dust and essence: the Salvager adds to them, not to shards. The game has no table of it.",
         COLOR_HELP } },
-    { SALV .. "Avg quantity with Salvager|r", 80, "CENTER", key = "Quantity with Salvager", help = {
-        "Avg quantity with Salvager (your disenchants)", "How many came on average with the Salvager's bonus, when a "
-        .. "disenchant gave it (an average of whole units).", COLOR_HELP } },
+    { SALV .. "Avg qty|r", 80, "CENTER", key = "Quantity with Salvager", help = {
+        "Avg qty (light blue): average quantity with the Salvager (your disenchants)",
+        "How many came on average with the Salvager's bonus, when a disenchant gave it (an average of whole units).", COLOR_HELP } },
 }
 Odds.SALVAGER_COLUMNS = SALVAGER_COLUMNS
 function Odds.Columns()

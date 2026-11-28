@@ -521,9 +521,12 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
                 local where = case[1] .. (both and " (with and without the Salvager)" or "")
                 assert.are.equal(2, odds.stack.perRow, where .. " at the default width")
                 problems(win, where .. " default", seen, true)
-                smallest(win)
-                assert.are.equal(1, odds.stack.perRow, where .. " at the smallest width")
-                problems(win, where .. " smallest", seen, false)
+                -- (Reports has a fixed width since 0.4.0, the user: only the pop-out can be made narrower.)
+                if case[1] == "SalvagerOddsFrame" then
+                    smallest(win)
+                    assert.are.equal(1, odds.stack.perRow, where .. " at the smallest width")
+                    problems(win, where .. " smallest", seen, false)
+                end
                 -- Two cards of a row share its width; each card's columns end at its right edge (problems, above).
                 default(win)
                 local a, b = odds.stack.cards[3], odds.stack.cards[4]   -- (Armor, Uncommon, then the first two bands)
@@ -555,12 +558,21 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
         ns.Odds.Filter().both = nil
         assert.are.equal("", table.concat(seen, "\n"))
     end)
+    it("gives Reports a fixed width: the view sets it, only the height can be dragged (0.4.0, the user)", function()
+        for _, v in ipairs({ "gold", "gear", "materials", "competition", "odds" }) do
+            ns.Reports.ShowView(v)
+            local win = _G.SalvagerReportsFrame
+            local lo, _, hi = win:GetResizeBounds()
+            assert.are.equal(lo, hi, v)
+            assert.is_true(math.abs(win:GetWidth() - lo) < 1, v)
+        end
+    end)
     it("resizes the Odds smoothly both ways: one or two cards per row as the width allows, nothing jumps back", function()
         local seen = {}
         for _, both in ipairs({ false, true }) do
             ns.Odds.Filter().both = both or nil
+            -- (Only the pop-out resizes sideways: Reports has a fixed width since 0.4.0, checked below.)
             for _, case in ipairs({
-                { "SalvagerReportsFrame", function() ns.Reports.ShowView("odds") end, function() return ns.Reports.oddsView end },
                 { "SalvagerOddsFrame", function() ns.Odds.PopOut() end, function() return ns.Odds.out end } }) do
                 ns.UI.Show()
                 case[2]()
