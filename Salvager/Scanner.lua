@@ -163,15 +163,20 @@ local function readAuctions(task)
         end
     end
     if wrong > 0 then
-        ns.Log("item %s: %d auctions left out, their item is not %s %s of item level %s as it was valued",
-            task.keyString, wrong, ns.QUALITY_NAME[task.quality] or tostring(task.quality),
-            CLASS_NAME[task.classID] or tostring(task.classID), tostring(task.ilvl))
+        ns.Log("DEBUG", "search", string.format("%s: %d auctions left out, their item is not %s %s of item level %s as "
+            .. "it was valued", ns.LogItem(ns.LogBook.ItemOf(task.keyString)), wrong,
+            ns.QUALITY_NAME[task.quality] or tostring(task.quality), CLASS_NAME[task.classID] or tostring(task.classID),
+            tostring(task.ilvl)), { key = task.keyString, auctions = wrong, quality = task.quality,
+            classID = task.classID, ilvl = task.ilvl })
     end
     if unknown > 0 then
-        ns.Log("item %s: %d auctions left out, the game did not tell their quality, gear type or item level yet",
-            task.keyString, unknown)
+        ns.Log("DEBUG", "search", string.format("%s: %d auctions left out, the game did not tell their quality, gear "
+            .. "type or item level yet", ns.LogItem(ns.LogBook.ItemOf(task.keyString)), unknown),
+            { key = task.keyString, auctions = unknown })
     end
-    ns.Log("checked item %s: %d auctions, %d under %s", task.keyString, n, #Scanner.deals - before, ns.Money(maxBuy))
+    ns.Log("DEBUG", "search", string.format("checked %s: %d auctions, %d under %s",
+        ns.LogItem(ns.LogBook.ItemOf(task.keyString)), n, #Scanner.deals - before, ns.Money(maxBuy)),
+        { key = task.keyString, auctions = n, deals = #Scanner.deals - before, maxBuy = maxBuy })
     sortDeals()
 end
 Scanner.ReadAuctions = readAuctions   -- (for the Live scan)
@@ -189,8 +194,9 @@ local function startCycle(clear)
     local age = ns.Prices.OldestAge()
     local live = liveMode()
     if every > 0 and age >= every * 60 and not ns.Busy() then
-        ns.Log("material prices are %s old (limit %d min): scanning them first",
-            age == math.huge and "missing or" or (math.floor(age / 60) .. " min"), every)
+        ns.Log("INFO", "scan", string.format("material prices are %s old (limit %d min): scanning them first",
+            age == math.huge and "missing or" or (math.floor(age / 60) .. " min"), every),
+            { age = age ~= math.huge and math.floor(age) or nil, limitMin = every })
         if live then
             if clear then Scanner.ClearDeals() end
             ns.Live.AfterPrices()
@@ -240,8 +246,9 @@ local function logHolds()
             parts[#parts + 1] = string.format("%s %.1fs", why, t)
         end
     end
-    ns.Log("scan held for purchases: %s", total > 0 and string.format("%.1fs (%s)", total, table.concat(parts, ", "))
-        or "not at all")
+    ns.Log("INFO", "scan", "scan held for purchases: " .. (total > 0 and string.format("%.1fs (%s)", total,
+        table.concat(parts, ", ")) or "not at all"), { seconds = total, purchase = Scanner.holds.purchase,
+        waiting = Scanner.holds.waiting, click = Scanner.holds.click })
     wipe(Scanner.holds)
 end
 Scanner.LogHolds = logHolds
@@ -250,8 +257,11 @@ local function checkDone()
     Scanner.checked = Scanner.checked + 1
     ns.Fire("SALVAGER_DEALS")
     if Scanner.checked >= Scanner.toCheck then
-        ns.Log("show top done: %d gear searches in %.0fs; %d searches got no answer and were sent again, %d used the game's "
-            .. "held results", Scanner.toCheck, GetTime() - (Scanner.checksAt or GetTime()), ns.Queue.lost, ns.Queue.late)
+        local seconds = GetTime() - (Scanner.checksAt or GetTime())
+        ns.Log("INFO", "scan", string.format("show top done: %d gear searches in %.0fs; %d searches got no answer and "
+            .. "were sent again, %d used the game's held results", Scanner.toCheck, seconds, ns.Queue.lost,
+            ns.Queue.late), { searches = Scanner.toCheck, seconds = math.floor(seconds + 0.5), lost = ns.Queue.lost,
+            late = ns.Queue.late })
         logHolds()
         setState("idle")
         scheduleNext()
@@ -361,20 +371,27 @@ local function queueChecks()
     sum.seconds = GetTime() - scan.startedAt
     Scanner.summary = sum
     scan = nil
-    ns.Log("gear scan: %d gear listings in %.0fs, %d under their limit, %d over, %d not disenchantable, %d level not known yet, "
-        .. "%d outside the level filter, %d without a value, %d without a buyout (min profit %s)", sum.browsed, sum.seconds,
-        sum.candidates, sum.overLimit, sum.noDisenchant, sum.learning, sum.levelOut, sum.noValue, sum.noPrice,
-        ns.Money(ns.db.settings.minProfit))
+    ns.Log("INFO", "scan", string.format("gear scan: %d gear listings in %.0fs, %d under their limit, %d over, %d not "
+        .. "disenchantable, %d level not known yet, %d outside the level filter, %d without a value, %d without a buyout "
+        .. "(min profit %s)", sum.browsed, sum.seconds, sum.candidates, sum.overLimit, sum.noDisenchant, sum.learning,
+        sum.levelOut, sum.noValue, sum.noPrice, ns.Money(ns.db.settings.minProfit)), { listings = sum.browsed,
+        seconds = math.floor(sum.seconds + 0.5), underLimit = sum.candidates, overLimit = sum.overLimit,
+        noDisenchant = sum.noDisenchant, levelUnknown = sum.learning, levelOut = sum.levelOut, noValue = sum.noValue,
+        noBuyout = sum.noPrice, minProfit = ns.db.settings.minProfit })
     if sum.best then
-        ns.Log("closest: item %d ilvl %s at %s, buy limit %s, value %s, margin %s", sum.best.itemID,
-            tostring(sum.best.ilvl), ns.Money(sum.best.price), ns.Money(sum.best.limit), ns.Money(sum.best.value),
-            ns.Money(sum.best.margin))
+        local b = sum.best
+        ns.Log("INFO", "scan", string.format("closest: %s of item level %s at %s, buy limit %s, value %s, margin %s",
+            ns.LogItem(b.itemID), tostring(b.ilvl), ns.Money(b.price), ns.Money(b.limit), ns.Money(b.value),
+            ns.Money(b.margin)), { item = b.itemID, ilvl = b.ilvl, price = b.price, limit = b.limit, value = b.value,
+            margin = b.margin })
     end
     if sum.wrongQuality > 0 then
-        ns.Log("gear scan: %d gear listings left out, they came in the browse of another quality or gear type", sum.wrongQuality)
+        ns.Log("DEBUG", "scan", string.format("gear scan: %d gear listings left out, they came in the browse of another "
+            .. "quality or gear type", sum.wrongQuality), { listings = sum.wrongQuality })
     end
     if sum.levelDiffers > 0 then
-        ns.Log("item levels: %d listings differ from the game's data (%s)", sum.levelDiffers, sum.levelExample)
+        ns.Log("DEBUG", "scan", string.format("item levels: %d listings differ from the game's data (%s)",
+            sum.levelDiffers, sum.levelExample), { listings = sum.levelDiffers })
     end
     setState("checking")
     Scanner.toCheck, Scanner.checked = 0, 0
@@ -403,7 +420,10 @@ local function queueChecks()
             if how == "part" then kept = kept + 1 else table.remove(Scanner.deals, i) end
         end
     end
-    if kept > 0 then ns.Log("gear scan: %d deals kept as they were, their browse did not load in full", kept) end
+    if kept > 0 then
+        ns.Log("WARN", "scan", string.format("gear scan: %d deals kept as they were, their browse did not load in full",
+            kept), { deals = kept })
+    end
     Scanner.toCheck = #candidates
     for _, c in ipairs(candidates) do
         checkItem(c, c.key, function(task) readAuctions(task) checkDone() end, checkDone)
@@ -420,9 +440,11 @@ local nextPass, advance
 
 local function finishPass(why)
     local pass = scan.pass
-    ns.Log("browse %s: %d gear listings in %d pages, %.1fs%s%s", pass.name, pass.got, pass.pages, GetTime() - pass.startedAt,
-        pass.breaks > 0 and string.format(", not in price order (%d breaks)", pass.breaks) or ", in price order",
-        why and (", " .. why) or "")
+    local seconds = GetTime() - pass.startedAt
+    ns.Log("DEBUG", "scan", string.format("browse %s: %d gear listings in %d pages, %.1fs%s%s", pass.name, pass.got,
+        pass.pages, seconds, pass.breaks > 0 and string.format(", not in price order (%d breaks)", pass.breaks)
+        or ", in price order", why and (", " .. why) or ""), { pass = pass.name, listings = pass.got, pages = pass.pages,
+        seconds = math.floor(seconds * 10 + 0.5) / 10, breaks = pass.breaks, why = why })
     nextPass()
 end
 
@@ -455,8 +477,8 @@ ns.On("AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED", function()
     local pass = scan.pass
     if not scan.askedAt or GetTime() - scan.askedAt > 2 or (pass.resends or 0) >= 3 then return end
     pass.resends = (pass.resends or 0) + 1
-    ns.Log("browse %s: the auction house dropped the request for page %d (busy with another request), asking again",
-        pass.name, pass.pages + 1)
+    ns.Log("WARN", "scan", string.format("browse %s: the auction house dropped the request for page %d (busy with "
+        .. "another request), asking again", pass.name, pass.pages + 1), { pass = pass.name, page = pass.pages + 1 })
     C_Timer.After(0.8, function()
         if scan and scan.pass == pass and Scanner.state == "browsing" and not Scanner.paused then
             lastBrowseAt = GetTime()
@@ -479,14 +501,16 @@ local function watchBrowse(seq)
         local pass = scan.pass
         if pass and pass.pages > 0 and (pass.retries or 0) < STALL_RETRIES then
             pass.retries = (pass.retries or 0) + 1
-            ns.Log("browse %s: no page for %ds after page %d, asking again (%d of %d)", pass.name, BROWSE_STALL,
-                pass.pages, pass.retries, STALL_RETRIES)
+            ns.Log("WARN", "scan", string.format("browse %s: no page for %ds after page %d, asking again (%d of %d)",
+                pass.name, BROWSE_STALL, pass.pages, pass.retries, STALL_RETRIES), { pass = pass.name,
+                page = pass.pages, retry = pass.retries, seconds = BROWSE_STALL })
             AH.RequestMoreBrowseResults()
         elseif pass and pass.pages == 0 and (pass.retries or 0) < STALL_RETRIES and pass.query then
             -- Not even the first page came: send the browse again.
             pass.retries = (pass.retries or 0) + 1
-            ns.Log("browse %s: no first page for %ds, sending the browse again (%d of %d)", pass.name, BROWSE_STALL,
-                pass.retries, STALL_RETRIES)
+            ns.Log("WARN", "scan", string.format("browse %s: no first page for %ds, sending the browse again (%d of %d)",
+                pass.name, BROWSE_STALL, pass.retries, STALL_RETRIES), { pass = pass.name, retry = pass.retries,
+                seconds = BROWSE_STALL })
             ourSend = true
             pcall(AH.SendBrowseQuery, pass.query)
             ourSend = false
@@ -533,7 +557,7 @@ function nextPass()
     ourSend = false
     if not ok then
         ns.Print("browse failed: %s", tostring(err))
-        ns.Log("ERROR browse: %s", tostring(err))
+        ns.Log("ERROR", "scan", "the browse failed: " .. tostring(err))
         scan = nil
         setState("idle")
         scheduleNext()
@@ -572,9 +596,11 @@ function Scanner.Scan(clear)
     local names = {}
     for _, p in ipairs(passes) do names[#names + 1] = p.name end
     local s = ns.db.settings
-    ns.Log("gear scan started: %s; levels %d-%d; min profit %s, min return %s, max price %s", table.concat(names, ", "),
-        s.minLevel, s.maxLevel, ns.Money(s.minProfit), s.minReturn > 0 and (s.minReturn .. "%") or "off",
-        s.maxPrice > 0 and ns.Money(s.maxPrice) or "none")
+    ns.Log("INFO", "scan", string.format("gear scan started: %s; levels %d-%d; min profit %s, min return %s, max price %s",
+        table.concat(names, ", "), s.minLevel, s.maxLevel, ns.Money(s.minProfit),
+        s.minReturn > 0 and (s.minReturn .. "%") or "off", s.maxPrice > 0 and ns.Money(s.maxPrice) or "none"),
+        { passes = #names, minLevel = s.minLevel, maxLevel = s.maxLevel, minProfit = s.minProfit,
+            minReturn = s.minReturn, maxPrice = s.maxPrice })
     setState("browsing")
     watchBrowse(scan.seq)
     nextPass()
@@ -594,7 +620,10 @@ local function onPage(added)
     lastBrowseAt = GetTime()
     for i = from, #list do
         local ok, err = pcall(judge, list[i], pass, sum, scan)
-        if not ok then ns.Log("ERROR judging item %d of a page of %s: %s", i, pass.name, tostring(err)) end
+        if not ok then
+            ns.Log("ERROR", "scan", string.format("Lua error judging listing %d of a page of %s: %s", i, pass.name,
+                tostring(err)), { pass = pass.name, listing = i })
+        end
     end
     if not scan then return end
     pass.got = pass.got + (#list - from + 1)
@@ -626,7 +655,7 @@ if hooksecurefunc then
         Scanner.browseAt = GetTime()
         if not ourSend and ns.Live then ns.Live.ForeignBrowse() end
         if not ourSend and scan and Scanner.state == "browsing" then
-            ns.Log("gear scan dropped: another addon or window started a browse")
+            ns.Log("WARN", "scan", "gear scan dropped: another addon or window started a browse")
             scan = nil
             setState("idle")
             scheduleNext()
@@ -640,7 +669,7 @@ function Scanner.Play()
     local wasPaused = Scanner.paused
     Scanner.auto, Scanner.paused = true, false
     ns.Queue.SetPaused(false)
-    ns.Log(wasPaused and "auto scan resumed" or "auto scan started")
+    ns.Log("INFO", "scan", wasPaused and "auto scan resumed" or "auto scan started")
     if scan and scan.held then
         scan.held = false
         lastBrowseAt = GetTime()
@@ -656,7 +685,7 @@ function Scanner.Pause()
     if not Scanner.auto and not ns.Busy() then return end
     Scanner.paused = true
     ns.Queue.SetPaused(true)
-    ns.Log("scanning paused")
+    ns.Log("INFO", "scan", "scanning paused")
     ns.Fire("SALVAGER_SCAN")
 end
 
@@ -677,7 +706,7 @@ function Scanner.Stop()
         ns.Listings.checking = nil
         ns.Fire("SALVAGER_LISTINGS")
     end
-    ns.Log("scanning stopped")
+    ns.Log("INFO", "scan", "scanning stopped")
     ns.Fire("SALVAGER_SCAN")
 end
 
@@ -747,7 +776,8 @@ function Scanner.HoldReason()
     dropped[d.auctionID] = d
     d.pending = false
     lastAnswerAt = GetTime()
-    ns.Log("purchase of %s got no answer in %ds", d.link or d.itemID, BUY_EXPIRES)
+    ns.Log("WARN", "buy", string.format("purchase of %s got no answer in %ds", ns.LogItem(d.itemID, d.link), BUY_EXPIRES),
+        { item = d.itemID, auction = d.auctionID, seconds = BUY_EXPIRES })
     ns.Print("no answer yet for %s: click Buy again if it is still listed", d.link or "the gear")
     ns.Fire("SALVAGER_DEALS")
     return next(pendingBuys) and "purchase" or nil
@@ -758,6 +788,15 @@ local function answerNote(d)
     if not d.buySentAt then return "" end
     return string.format("; answered %.2fs after the click, its search was %s (%s old)", GetTime() - d.buySentAt,
         d.sentCurrent and "current" or "stale", d.searchedAt and string.format("%.0fs", d.buySentAt - d.searchedAt) or "?")
+end
+
+--- The same as data for the log record: `kv` with the answer's time and its search's age (s, one decimal).
+local function answerData(d, kv)
+    if not d.buySentAt then return kv end
+    kv.answerS = math.floor((GetTime() - d.buySentAt) * 100 + 0.5) / 100
+    kv.searchCurrent = d.sentCurrent and true or false
+    kv.searchAgeS = d.searchedAt and math.floor(d.buySentAt - d.searchedAt + 0.5) or nil
+    return kv
 end
 
 --- Is a purchase on its way, waiting, offered as "Buy now", or was Buy clicked a moment ago? Then nothing else talks
@@ -775,7 +814,8 @@ function Scanner.Prefetch(d)
     if prefetched[d.keyString] == Scanner.browseEpoch then return end
     prefetched[d.keyString] = Scanner.browseEpoch
     Scanner.prefetchAt = GetTime()   -- (the Live scan sends no look right after it: the click comes, SDD 122)
-    ns.Log("searching %s again: the mouse is on its Buy and a browse came after its search", d.link or d.itemID)
+    ns.Log("INFO", "buy", string.format("searching %s again: the mouse is on its Buy and a browse came after its search",
+        ns.LogItem(d.itemID, d.link)), { item = d.itemID, auction = d.auctionID })
     Scanner.Recheck(d, true)
 end
 
@@ -836,7 +876,8 @@ local function offer(d)
     d.buyNow, d.readyAt = true, GetTime()
     waiting[d.auctionID] = d
     ns.Print("auction house ready: click Buy now for %s", d.link or "the gear")
-    ns.Log("purchase of %s: the auction house is ready, Buy now offered", d.link or d.itemID)
+    ns.Log("INFO", "buy", string.format("purchase of %s: the auction house is ready, Buy now offered",
+        ns.LogItem(d.itemID, d.link)), { item = d.itemID, auction = d.auctionID })
     ns.Fire("SALVAGER_DEALS")
 end
 
@@ -860,7 +901,8 @@ function afterSearch(d, listed)
         forget(d)
         removeDeal(d.auctionID)
         ns.Print("%s is no longer listed: someone else bought it", d.link or "the gear")
-        ns.Log("purchase of %s: its search no longer lists it, row removed", d.link or d.itemID)
+        ns.Log("INFO", "buy", string.format("purchase of %s: its search no longer lists it, row removed",
+            ns.LogItem(d.itemID, d.link)), { item = d.itemID, auction = d.auctionID })
         return
     end
     if not ns.db.buyResendBlocked then
@@ -872,7 +914,8 @@ function afterSearch(d, listed)
     end
     -- Current again: its Buy is a plain Buy, on as soon as the auction house is free (no "Buy now" state, 0.4.0).
     forget(d)
-    ns.Log("purchase of %s: its search is current again, Buy is on", d.link or d.itemID)
+    ns.Log("INFO", "buy", string.format("purchase of %s: its search is current again, Buy is on",
+        ns.LogItem(d.itemID, d.link)), { item = d.itemID, auction = d.auctionID })
     ns.Fire("SALVAGER_DEALS")
 end
 
@@ -898,16 +941,19 @@ function Scanner.Buy(deal, top)
     if not ready and ns.db.buyResendBlocked then
         busyClicks = busyClicks + 1
         if busyClicks == 1 then
-            ns.Log("Buy click on %s%s: the auction house is still answering; nothing sent, the next click after its "
-                .. "answer buys (in flight: %s)", deal.link or deal.itemID, top and " (Buy Top)" or "", inFlight())
+            ns.Log("WARN", "buy", string.format("Buy click on %s%s: the auction house is still answering; nothing sent, "
+                .. "the next click after its answer buys (in flight: %s)", ns.LogItem(deal.itemID, deal.link),
+                top and " (Buy Top)" or "", inFlight()), { item = deal.itemID, auction = deal.auctionID,
+                top = top and true or nil })
         end
         return
     end
     local stale = deal.epoch ~= nil and deal.epoch < Scanner.browseEpoch
-    ns.Log("Buy click on %s: auction house %s, %s%s; in flight: %s", deal.link or deal.itemID,
-        ready and "ready" or "busy",
+    ns.Log("INFO", "buy", string.format("Buy click on %s: auction house %s, %s%s; in flight: %s",
+        ns.LogItem(deal.itemID, deal.link), ready and "ready" or "busy",
         stale and "a browse came after its search" or "its search is current", deal.buyNow and ", Buy now" or "",
-        inFlight())
+        inFlight()), { item = deal.itemID, auction = deal.auctionID, buyout = deal.buyout, ready = ready and true or false,
+        stale = stale and true or false, buyNow = deal.buyNow and true or nil })
     lastBuyAt = GetTime()
     if stale and deal.task then
         forget(deal)
@@ -920,7 +966,8 @@ function Scanner.Buy(deal, top)
         send(deal)
     elseif not ns.db.buyResendBlocked then
         send(deal, true)
-        ns.Log("purchase of %s: the auction house is busy, it goes out the moment it is ready", deal.link or deal.itemID)
+        ns.Log("INFO", "buy", string.format("purchase of %s: the auction house is busy, it goes out the moment it is "
+            .. "ready", ns.LogItem(deal.itemID, deal.link)), { item = deal.itemID, auction = deal.auctionID })
         C_Timer.After(1, function() Scanner.SendWaiting(true) end)   -- in case the "ready" event does not come
         ns.Fire("SALVAGER_DEALS")
         return
@@ -944,11 +991,14 @@ local function pollWaiting()
             forget(d)
             ns.Print("the auction house did not answer for %s in %ds: click Buy again if it is still listed",
                 d.link or "the gear", WAIT_MAX)
-            ns.Log("purchase of %s: waited %ds, given up", d.link or d.itemID, WAIT_MAX)
+            ns.Log("WARN", "buy", string.format("purchase of %s: waited %ds, given up", ns.LogItem(d.itemID, d.link),
+                WAIT_MAX), { item = d.itemID, auction = d.auctionID, seconds = WAIT_MAX })
             ns.Fire("SALVAGER_DEALS")
         elseif d.buyNow and now - d.readyAt >= BUY_NOW_HOLD then
             forget(d)
-            ns.Log("purchase of %s: Buy now not clicked in %ds, the scan goes on", d.link or d.itemID, BUY_NOW_HOLD)
+            ns.Log("INFO", "buy", string.format("purchase of %s: Buy now not clicked in %ds, the scan goes on",
+                ns.LogItem(d.itemID, d.link), BUY_NOW_HOLD), { item = d.itemID, auction = d.auctionID,
+                seconds = BUY_NOW_HOLD })
             ns.Fire("SALVAGER_DEALS")
         end
     end
@@ -977,13 +1027,16 @@ function Scanner.Recheck(deal, forBuy, live)
     -- clicked whatever they say now: the player decided.)
     local band = currentBand(t.quality, t.classID, t.ilvl) or (forBuy and { net = t.net, limit = t.limit })
     if not band then
-        ns.Log("rechecking item %s: its band has no value or limit now, its rows go", t.keyString)
+        ns.Log("INFO", "search", string.format("rechecking %s: its band has no value or limit now, its rows go",
+            ns.LogItem(ns.LogBook.ItemOf(t.keyString))), { key = t.keyString })
         removeKey(t.keyString)
         ns.Fire("SALVAGER_DEALS")
         return
     end
-    ns.Log(live and ("searching item %s again: " .. live.why)
-        or (forBuy and "searching item %s again for a Buy click" or "rechecking item %s after a purchase"), t.keyString)
+    ns.Log("DEBUG", "search", string.format(live and ("searching %s again: " .. live.why)
+        or (forBuy and "searching %s again for a Buy click" or "rechecking %s after a purchase"),
+        ns.LogItem(ns.LogBook.ItemOf(t.keyString))), { key = t.keyString, forBuy = forBuy and true or nil,
+        live = live and true or nil })
     local c = { keyString = t.keyString, net = band.net, limit = band.limit, ilvl = t.ilvl, quality = t.quality,
         classID = t.classID }
     local done = live and live.onDone or function() end
@@ -1030,7 +1083,8 @@ local function free(d, why)
     d.pending, d.resend = false, nil
     lastBuyAt = GetTime() + BUSY_HOLD
     ns.Print("purchase of %s was dropped by the auction house: click Buy again", d.link or "the gear")
-    ns.Log("purchase of %s dropped by the auction house, row freed (%s)", d.link or d.itemID, why)
+    ns.Log("WARN", "buy", string.format("purchase of %s dropped by the auction house, row freed (%s)",
+        ns.LogItem(d.itemID, d.link), why), { item = d.itemID, auction = d.auctionID })
     ns.Fire("SALVAGER_DEALS")
 end
 
@@ -1051,8 +1105,10 @@ function Scanner.SendWaiting(force)
     lastBuyAt = d.clickedAt
     ns.NoteRequest("buy")
     local ok, err = pcall(AH.PlaceBid, d.auctionID, d.buyout)
-    ns.Log("purchase of %s sent%s%s", d.link or d.itemID, d.queued and " (it waited for the auction house)"
-        or string.format(" again (%d of %d)", d.resends, MAX_BUY_RESENDS), ok and "" or (": " .. tostring(err)))
+    ns.Log(ok and "INFO" or "ERROR", "buy", string.format("purchase of %s sent%s%s", ns.LogItem(d.itemID, d.link),
+        d.queued and " (it waited for the auction house)" or string.format(" again (%d of %d)", d.resends,
+        MAX_BUY_RESENDS), ok and "" or (": " .. tostring(err))), { item = d.itemID, auction = d.auctionID,
+        resends = d.resends, queued = d.queued and true or nil })
     d.queued = nil
     if not ok then free(d, "the game refused it") end
     -- More of them waiting: the next one after this one.
@@ -1076,8 +1132,8 @@ ns.On("AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED", function()
             else
                 d.resend = true
                 d.clickedAt = GetTime()   -- (it stays "on its way": everything else keeps waiting)
-                ns.Log("purchase of %s dropped by the auction house: sending it again when it is ready",
-                    d.link or d.itemID)
+                ns.Log("WARN", "buy", string.format("purchase of %s dropped by the auction house: sending it again "
+                    .. "when it is ready", ns.LogItem(d.itemID, d.link)), { item = d.itemID, auction = d.auctionID })
                 -- In case the "ready" event does not come.
                 C_Timer.After(1, function() Scanner.SendWaiting(true) end)
             end
@@ -1091,7 +1147,8 @@ local function blocked(addon)
     if addon ~= "Salvager" then return end
     if not ns.db.buyResendBlocked then
         ns.db.buyResendBlocked = true
-        ns.Log("the game does not allow a purchase without a click: purchases are not sent again from now on")
+        ns.Log("WARN", "buy", "the game does not allow a purchase without a click: purchases are not sent again from "
+            .. "now on")
     end
     for _, d in pairs(pendingBuys) do
         if d.sentByAddon then free(d, "the game blocked a purchase sent without a click") end
@@ -1127,7 +1184,9 @@ ns.On("AUCTION_HOUSE_PURCHASE_COMPLETED", function(auctionID)
         -- (`lo`, `hi`: the pessimistic and optimistic values of one disenchant when bought, SDD 116.)
         ns.Ledger.AuctionPurchase(ns.db.ledger, d.itemID, d.buyout, d.value, time(), d.link,
             { q = d.quality, cls = d.classID, band = o and o.band, ilvl = d.ilvl, v = ns.VERSION, lo = d.low, hi = d.high })
-        ns.Log("bought %s for %s, value %s%s", d.link or d.itemID, ns.Money(d.buyout), ns.Money(d.value), answerNote(d))
+        ns.Log("INFO", "buy", string.format("bought %s for %s, value %s%s", ns.LogItem(d.itemID, d.link),
+            ns.Money(d.buyout), ns.Money(d.value), answerNote(d)), answerData(d, { item = d.itemID,
+            auction = d.auctionID, paid = d.buyout, value = d.value, ilvl = d.ilvl }))
         ns.Fire("SALVAGER_LEDGER")
         recheckLater(d)
     end
@@ -1146,7 +1205,8 @@ ns.On("AUCTION_HOUSE_SHOW_ERROR", function()
     lastAnswerAt = GetTime()
     removeDeal(d.auctionID)
     ns.Print("could not buy %s (sold or changed)", d.link or "the gear")
-    ns.Log("could not buy %s for %s%s", d.link or d.itemID, ns.Money(d.buyout), answerNote(d))
+    ns.Log("ERROR", "buy", string.format("could not buy %s for %s%s", ns.LogItem(d.itemID, d.link), ns.Money(d.buyout),
+        answerNote(d)), answerData(d, { item = d.itemID, auction = d.auctionID, buyout = d.buyout }))
 
     recheckLater(d)
     ns.Fire("SALVAGER_DEALS")
@@ -1167,7 +1227,8 @@ ns.On("SALVAGER_SETTINGS", function()
         end
     end
     if gone > 0 then
-        ns.Log("settings changed: %d deals left out, they are over their buy limit now", gone)
+        ns.Log("INFO", "scan", string.format("settings changed: %d deals left out, they are over their buy limit now",
+            gone), { deals = gone })
         ns.Fire("SALVAGER_DEALS")
     end
 end)

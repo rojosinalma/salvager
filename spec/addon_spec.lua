@@ -1428,7 +1428,7 @@ describe("Salvager scan safety", function()
         wow.tick(ns, 2)
         assert.are.equal(sent, #env.ah.sent)    -- not sent a second time
         local late = false
-        for _, m in ipairs(ns.db.log) do if m:find("came late", 1, true) then late = true end end
+        for _, m in ipairs(ns.LogLines()) do if m:find("came late", 1, true) then late = true end end
         assert.is_true(late)
     end)
 end)
@@ -1469,8 +1469,8 @@ describe("Salvager deals list", function()
         assert.are.equal(500, env.ah.bids[#env.ah.bids].amount)
         for _, id in ipairs({ 11083, 11082, 11084 }) do ns.db.prices[id] = { p = 433, t = env.clock } end   -- a band with a value
         local function rechecked()
-            for _, l in ipairs(ns.db.log) do
-                if l:find("rechecking item 5001:28:0 after a purchase", 1, true) then return true end
+            for _, rec in ipairs(ns.db.log) do
+                if rec.kv and rec.kv.key == "5001:28:0" and rec.msg:find("after a purchase", 1, true) then return true end
             end
             return false
         end
@@ -2194,33 +2194,12 @@ describe("Salvager log window", function()
         wow.fire(ns, "ADDON_LOADED", "Salvager")
     end)
 
-    it("shows the items of a line by name, with the item as the line's tooltip", function()
-        local row = ns.LogWindow.Row("19:00:01 price Soul Dust (11083): 4s 30c over 20 units, 19 results")
-        assert.are.equal("item:11083", row.link)
-        assert.is_truthy(row.cells[1]:find("[Soul Dust]", 1, true))
-        assert.is_nil(row.cells[1]:find("(11083)", 1, true))
-        row = ns.LogWindow.Row("19:00:02 search: no answer for commodity 11083 after 2.0s, trying again")
-        assert.are.equal("item:11083", row.link)
-        assert.is_truthy(row.cells[1]:find("[Soul Dust]", 1, true))
-        row = ns.LogWindow.Row("19:00:03 checked item 7048:29:0: 12 auctions, 3 under 12s")
-        assert.are.equal("item:7048", row.link)
-        row = ns.LogWindow.Row("19:00:04 search: no answer for item 7048:29:0 after 2.0s, trying again")
-        assert.are.equal("item:7048", row.link)
-        assert.is_truthy(row.cells[1]:find("[Azure Silk Hood]", 1, true))
-        assert.is_truthy(row.cells[1]:find("(level 29)", 1, true))
-        row = ns.LogWindow.Row("19:00:05 bought |cff1eff00|Hitem:7048::::::::30:::::|h[Azure Silk Hood]|h|r for 11s 47c")
-        assert.are.equal("item:7048", row.link)
-        row = ns.LogWindow.Row("19:00:06 auction house opened")
-        assert.is_nil(row.link)
-        assert.are.equal("19:00:06 auction house opened", row.cells[1])
-    end)
-
     it("lists the newest line at the bottom and follows it", function()
         for i = 1, 200 do ns.Log("line %d", i) end
         ns.LogWindow.Show()
         local list
         for _, fr in ipairs(env.frames) do if rawget(fr, "getRow") and rawget(fr, "count") then list = fr end end
-        assert.is_truthy(list.getRow(list.count).cells[1]:find("line 200", 1, true))
+        assert.is_truthy(list.getRow(list.count).cells[4]:find("line 200", 1, true))
         assert.is_true(list.atBottom)
         list.offset = 0                                      -- scrolled up to read
         list:Refresh()
@@ -2712,24 +2691,27 @@ describe("Salvager layout dump", function()
     end
 
     it("writes every row on screen of a list in full, with the font, the justification and the color", function()
-        local long = string.rep("a long log line ", 10)        -- 160 characters: more than the cut of hidden texts
+        local long = string.rep("a long log line ", 6)         -- 96 characters: more than the cut of hidden texts
         for i = 1, 50 do ns.Log(i == 50 and long or ("line %d"), i) end
         ns.LogWindow.Show()
+        ns.LogWindow.list.GetWidth = function() return 1400 end   -- (room for the long line in full)
+        ns.LogWindow.Refresh()
         local layout, info = logList()
         assert.are.same({ w = "1920", h = "1080", scale = "1", eff = "1" }, layout.screen)
         assert.are.equal("1", layout.windows.log.scale)
         -- The list follows its last line: the rows on screen are the last ones, the rows scrolled away are not written.
-        local fit = math.floor(560 / 15)
-        local count = #ns.db.log
+        local fit = math.floor((ns.LogWindow.list:GetHeight() - 15) / 15)
+        local count = ns.LogWindow.list.count                  -- the records and a heading row per day
+        assert.is_true(count > #ns.db.log)
         assert.are.equal(count, info.count)
         assert.are.equal(fit, #info.rows)
         assert.are.equal(info.rowsShown, #info.rows)
         assert.are.equal(count - fit + 1, info.rows[1].n)
         assert.are.equal(count, info.rows[#info.rows].n)
-        local last = info.rows[#info.rows].cells[1]
+        local last = info.rows[#info.rows].cells[4]            -- the Message column
         local flags, width, text = last:match("^([^\t]*)\t([^\t]*)\t([^\t]*)")
         assert.are.equal("SV", flags)
-        assert.are.equal("140", width)
+        assert.is_truthy(tonumber(width))
         assert.is_truthy(text:find(long, 1, true))            -- in full
         assert.is_truthy(last:find("\tf=10", 1, true))
         assert.is_truthy(last:find("\tj=L", 1, true))
@@ -3069,7 +3051,7 @@ describe("Sessions and the statement in a simulated client", function()
         load(_G.SalvagerDB, env.money, env.clock + 30, false, true)
         assert.are.equal(start, ns.db.sessions.open.start)
         assert.are.equal(0, #ns.db.sessions.list)
-        assert.is_truthy(table.concat(ns.db.log, "\n"):find("reloaded with", 1, true))
+        assert.is_truthy(table.concat(ns.LogLines(), "\n"):find("reloaded with", 1, true))
         assert.are.equal(807, ns.Gold.Statement(start).trading)         -- the session's trading goes on
     end)
 

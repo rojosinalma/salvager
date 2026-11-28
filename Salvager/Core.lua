@@ -107,7 +107,8 @@ function ns.MeasureServerTime(quiet)
     if offset == nil or offset == serverOffset then return serverOffset end
     local was = serverOffset
     serverOffset = offset
-    ns.Log("server time: %s%s", Util.OffsetName(offset), was and (" (was " .. Util.OffsetName(was) .. ")") or "")
+    ns.Log("INFO", "session", "server time: " .. Util.OffsetName(offset) .. (was and (" (was " .. Util.OffsetName(was) .. ")")
+        or ""), { offset = offset, was = was })
     if not quiet and ns.db and ns.db.settings.timeZone == "server" then ns.Fire("SALVAGER_SETTINGS") end
     return offset
 end
@@ -142,24 +143,7 @@ local function measureEveryHour()
     C_Timer.After(SERVER_CHECK, measureEveryHour)
 end
 
-local LOG_MAX = 5000
-
---- Adds a line to the activity log (SalvagerDB.log): "HH:MM:SS text". A line "== <date> ==" starts each day.
-function ns.Log(fmt, ...)
-    if not ns.db then return end
-    local ok, msg = pcall(string.format, fmt, ...)
-    if not ok then msg = tostring(fmt) end
-    msg = Util.PlainMoney(msg)
-    local log = ns.db.log
-    local day = ns.Date("%Y-%m-%d")
-    if ns.db.logDay ~= day then
-        ns.db.logDay = day
-        log[#log + 1] = "== " .. ns.Date("%A %d %B %Y") .. " =="
-    end
-    log[#log + 1] = ns.Date("%H:%M:%S") .. " " .. msg
-    ns.logChanged = true
-    Util.Cap(log, LOG_MAX)
-end
+-- The activity log (ns.Log) is in Log.lua.
 
 -- A bound dropped records (Util.Dropped): one Log line with the count. At most one line a minute per kind, so a
 -- full list does not write a line per new record; the drops between are counted into the next line, or into one
@@ -167,7 +151,10 @@ end
 local DROP_LINE_EVERY = 60
 local drops = {}
 local function logDrops(what, d)
-    ns.Log("bound: %d oldest %s dropped (%d kept)", d.n, what, d.max)
+    -- (The log's own oldest records going is how it works: DEBUG. Any other bound: WARN.)
+    local own = what == "log records"
+    ns.Log(own and "DEBUG" or "WARN", own and "ui" or "ledger", string.format("bound: %d oldest %s dropped (%d kept)",
+        d.n, what, d.max), { what = what, dropped = d.n, kept = d.max })
     d.n, d.at = 0, time()
 end
 function Util.OnDrop(what, n, max)
@@ -201,7 +188,7 @@ function ns.Fire(event, ...)
         local ok, err = pcall(fn, ...)
         if not ok then
             ns.Print("error in %s: %s", event, tostring(err))
-            ns.Log("ERROR in %s: %s", event, tostring(err))
+            ns.Log("ERROR", "ui", string.format("Lua error in %s: %s", event, tostring(err)), { event = event })
         end
     end
 end
@@ -228,7 +215,7 @@ frame:SetScript("OnUpdate", function(_, elapsed)
     tickSum = 0
     for _, fn in ipairs(ticks) do
         local ok, err = pcall(fn)
-        if not ok then ns.Log("ERROR in ticker: %s", tostring(err)) end
+        if not ok then ns.Log("ERROR", "ui", "Lua error in the ticker: " .. tostring(err), { event = "ticker" }) end
     end
 end)
 
@@ -251,7 +238,7 @@ local deferred = {}
 function ns.Defer(label, ready, fn, what, until_)
     deferred[label] = { ready = ready, fn = fn }
     ns.Print("%s starts by itself when %s", what, until_)
-    ns.Log("%s waits until %s", what, until_)
+    ns.Log("INFO", "ui", string.format("%s waits until %s", what, until_), { action = label })
 end
 
 ns.OnTick(function()
@@ -776,7 +763,7 @@ function ns.ScanBoth(clear)
     if ns.Busy() then return end
     if clear then ns.Scanner.ClearDeals() end
     ns.scanBothPending = true
-    ns.Log("scan both: materials, then gear")
+    ns.Log("INFO", "scan", "scan both: materials, then gear")
     ns.Prices.Scan()
     ns.Fire("SALVAGER_SCAN")
 end
@@ -796,7 +783,7 @@ function ns.SetGearType(kind, on)
     else
         ns.db.settings.gearClasses = (w and a) and "both" or (w and "weapons" or "armor")
     end
-    ns.Log("gear type set to %s", ns.db.settings.gearClasses)
+    ns.Log("INFO", "options", "gear type set to " .. ns.db.settings.gearClasses, { gearClasses = ns.db.settings.gearClasses })
     ns.Fire("SALVAGER_SETTINGS")
 end
 
@@ -911,7 +898,8 @@ end
 function ns.SetLimitOverride(quality, classID, band, copper)
     local key = ns.BandKey(quality, classID, band)
     ns.db.settings.limitOverride[key] = copper
-    ns.Log("buy limit %s = %s", key, copper and ns.Money(copper) or "recommended")
+    ns.Log("INFO", "options", string.format("buy limit of %s set to %s", key, copper and ns.Money(copper) or "recommended"),
+        { band = key, limit = copper })
     ns.Fire("SALVAGER_SETTINGS")
 end
 
@@ -953,10 +941,12 @@ end
 function ns.RollUp()
     local r = Ledger.Archive(ns.db.ledger, time(), { posted = ns.db.posted, valueAt = valueAtPost })
     if r.disenchants + r.sales + r.posts + r.merged == 0 then return r end
-    ns.Log("ledger: rolled up %d disenchants and %d sales from before %s into the archive, %d posts from then dropped"
-        .. "%s%s (totals and learning kept)", r.disenchants, r.sales, ns.Date("%m-%d %H:%M", r.upTo), r.posts,
-        r.early and string.format(" (past %d records of one kind)", Ledger.MAX_FULL) or "",
-        r.merged > 0 and string.format(", %d older days merged per 30 days", r.merged) or "")
+    ns.Log("INFO", "ledger", string.format("rolled up %d disenchants and %d sales from before %s into the archive, %d "
+        .. "posts from then dropped%s%s (totals and learning kept)", r.disenchants, r.sales, ns.Date("%m-%d %H:%M", r.upTo),
+        r.posts, r.early and string.format(" (past %d records of one kind)", Ledger.MAX_FULL) or "",
+        r.merged > 0 and string.format(", %d older days merged per 30 days", r.merged) or ""),
+        { disenchants = r.disenchants, sales = r.sales, posts = r.posts, merged = r.merged, upTo = r.upTo,
+            early = r.early or nil })
     if ns.ForecastChanged then ns.ForecastChanged() end
     return r
 end
@@ -976,11 +966,15 @@ ns.On("ADDON_LOADED", function(name)
     Ledger.Init(ns.db.ledger)
     ns.Competition.Init(ns.db.competition)
     local doubles = Ledger.DropDoubleSales(ns.db.ledger)
-    if doubles > 0 then ns.Log("ledger: removed %d sale(s) that an older version booked twice", doubles) end
+    if doubles > 0 then
+        ns.Log("INFO", "ledger", string.format("removed %d sale(s) that an older version booked twice", doubles),
+            { sales = doubles })
+    end
     if Ledger.NeedsRecost(ns.db.ledger) then
         ns.Backup.Save("before sharing the costs per band")
         local n, sold = Ledger.Recost(ns.db.ledger)
-        ns.Log("ledger: material costs shared per band once (%d disenchants, %d sales booked again)", n, sold)
+        ns.Log("INFO", "ledger", string.format("material costs shared per band once (%d disenchants, %d sales booked "
+            .. "again)", n, sold), { disenchants = n, sales = sold })
         ns.db.recostFixed = true
     end
     -- The 0.3.120 replay booked the units no record explains without keeping the books (up to 0.4.0, SDD 125):
@@ -992,10 +986,11 @@ ns.On("ADDON_LOADED", function(name)
             if list[i].ledger and Ledger.NeedsRecost(list[i].ledger) then
                 local n, moved, missed = Ledger.FixRecost(ns.db.ledger, list[i].ledger)
                 if n + missed > 0 then
-                    ns.Log("books: the cost sharing of 0.3.120 booked %s %s on %d sales of units no record explains: "
-                        .. "repaired from the backup of %s%s", ns.Money(math.abs(moved)), moved < 0 and "too much"
-                        or "too little", n, ns.Date("%m-%d %H:%M", list[i].t),
-                        missed > 0 and string.format(" (%d sales changed since: not repaired)", missed) or "")
+                    ns.Log("INFO", "books", string.format("the cost sharing of 0.3.120 booked %s %s on %d sales of "
+                        .. "units no record explains: repaired from the backup of %s%s", ns.Money(math.abs(moved)),
+                        moved < 0 and "too much" or "too little", n, ns.Date("%m-%d %H:%M", list[i].t),
+                        missed > 0 and string.format(" (%d sales changed since: not repaired)", missed) or ""),
+                        { sales = n, moved = moved, missed = missed, backup = list[i].t })
                 end
                 break
             end
@@ -1013,38 +1008,43 @@ ns.On("ADDON_LOADED", function(name)
                 items[#items + 1] = string.format("%s %d (%d disenchants paid, %d not disenchanted)",
                     it.link or ("item " .. it.itemID), it.restored, it.costed, it.back)
             end
-            ns.Log("ledger: %d purchases the old bound of 50 per item dropped restored from the auction house record: "
-                .. "%s; %s of cost moved onto %d disenchants of no known cost; every booked sale's cost booked again "
-                .. "once (%d changed; units sold now of known cost %d, gone from stock %d): profit %s -> %s",
-                r.restored, table.concat(items, ", "), ns.Money(r.cost), r.costed, r.sales, r.shifted, r.gone,
-                ns.Money(r.profitBefore), ns.Money(r.profitAfter))
+            ns.Log("INFO", "ledger", string.format("%d purchases the old bound of 50 per item dropped restored from the "
+                .. "auction house record: %s; %s of cost moved onto %d disenchants of no known cost; every booked sale's "
+                .. "cost booked again once (%d changed; units sold now of known cost %d, gone from stock %d): profit %s "
+                .. "-> %s", r.restored, table.concat(items, ", "), ns.Money(r.cost), r.costed, r.sales, r.shifted, r.gone,
+                ns.Money(r.profitBefore), ns.Money(r.profitAfter)), { restored = r.restored, cost = r.cost,
+                costed = r.costed, sales = r.sales, shifted = r.shifted, gone = r.gone, profitBefore = r.profitBefore,
+                profitAfter = r.profitAfter })
         end
     end
     -- The books' check (SDD 125): opened once on an older ledger, with what it holds from before the records.
     local opened = Ledger.OpenBooks(ns.db.ledger)
     if opened and opened ~= 0 then
-        ns.Log("books: %s of cost on known units from before the records (opening stock, a cleared history) kept as "
-            .. "carried in", ns.Money(opened))
+        ns.Log("INFO", "books", ns.Money(opened) .. " of cost on known units from before the records (opening stock, a "
+            .. "cleared history) kept as carried in", { carriedIn = opened })
     end
     -- Old records that wait for a mail or a disenchant that will not come (Ledger.Expire), then the roll-up.
     local bought, purchases, sales, matched = Ledger.Expire(ns.db.ledger, time())
     if bought + purchases + sales + matched > 0 then
-        ns.Log("ledger: dropped after %d days: %d purchases with no mail, %d never disenchanted, %d records of "
-            .. "auction-house purchases whose mail came; %d sales counted as paid", Ledger.EXPIRE_AFTER / 86400, bought,
-            purchases, matched, sales)
+        ns.Log("WARN", "ledger", string.format("dropped after %d days: %d purchases with no mail, %d never "
+            .. "disenchanted, %d records of auction-house purchases whose mail came; %d sales counted as paid",
+            Ledger.EXPIRE_AFTER / 86400, bought, purchases, matched, sales), { days = Ledger.EXPIRE_AFTER / 86400,
+            noMail = bought, notDisenchanted = purchases, matched = matched, salesPaid = sales })
     end
     ns.RollUp()
     local books = Ledger.Books(ns.db.ledger)
     if books.off ~= 0 then
-        ns.Log("books: off by %s (paid %s + materials bought %s + carried in %s, sales cost %s + stock %s)",
-            ns.Money(books.off), ns.Money(books.paid), ns.Money(books.bought), ns.Money(books.other),
-            ns.Money(books.sold), ns.Money(books.stock))
+        ns.Log("WARN", "books", string.format("off by %s (paid %s + materials bought %s + carried in %s, sales cost %s "
+            .. "+ stock %s)", ns.Money(books.off), ns.Money(books.paid), ns.Money(books.bought), ns.Money(books.other),
+            ns.Money(books.sold), ns.Money(books.stock)), { off = books.off, paid = books.paid, bought = books.bought,
+            carriedIn = books.other, salesCost = books.sold, stock = books.stock })
     end
     -- Windows renamed in 0.3.4: keep their place and size.
     local w = ns.db.windows
     if w.results then w.ledger, w.results = w.ledger or w.results, nil end
     if w.activity then w.log, w.activity = w.log or w.activity, nil end
-    ns.Log("loaded %s, salvager for buys: %s", ns.VERSION, tostring(ns.SalvagerForBuy()))
+    ns.Log("INFO", "session", string.format("loaded %s, salvager for buys: %s", ns.VERSION, tostring(ns.SalvagerForBuy())),
+        { version = ns.VERSION, salvager = ns.SalvagerForBuy() })
     ns.Fire("SALVAGER_READY")
 end)
 
@@ -1078,7 +1078,8 @@ local HELP = {
     "/salv macros - create the Salvager Buy and Salvager DE macros again (a deleted one)",
     "/salv disenchant - the Disenchant panel: each click on its Disenchant button (or the key bound to it) is one cast",
     "/salv breakdown <material> - where a material came from, e.g. /salv breakdown 11083",
-    "/salv log - the log window; /salv log 20 prints the last 20 lines in chat",
+    "/salv log - the log window; /salv log 20 prints the last 20 lines in chat; /salv log export writes the log as "
+        .. "text to the saved data (on /reload)",
     "/salv reset ledger confirm - clear all purchases, stock and history (a backup is kept)",
     "/salv restore - put the last ledger backup back (it asks first)",
     "/salv windows reset - every Salvager window back on the screen, at its default place",
@@ -1176,12 +1177,14 @@ SlashCmdList.SALVAGER = function(msg)
         ns.LimitsWindow.Toggle()
     elseif cmd == "macros" then
         ns.Macros.Create(true)
+    elseif cmd == "log" and (args[2] or ""):lower() == "export" then
+        ns.LogBook.SaveExport()
     elseif cmd == "log" and not tonumber(args[2]) or cmd == "activity" then
         ns.LogWindow.Toggle()
     elseif cmd == "log" then
         local n = tonumber(args[2])
-        local log = ns.db.log
-        for i = math.max(1, #log - n + 1), #log do ns.Print(log[i]) end
+        local log = ns.LogBook.Records()
+        for i = math.max(1, #log - n + 1), #log do ns.Print(ns.LogText(log[i])) end
     elseif cmd == "auras" then
         if ns.Disenchant then ns.Disenchant.PrintAuras() end
     elseif cmd == "windows" and (args[2] or ""):lower() == "reset" then

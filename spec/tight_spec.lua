@@ -272,7 +272,7 @@ describe("Windows and columns as tight as their content, with typical data (SDD 
         everyWindow(ns, found, numbers)
         -- The addon's own self-check (Widgets.CheckLayout, the one the client runs) says nothing either.
         for i = before + 1, #ns.db.log do
-            local line = tostring(ns.db.log[i])
+            local line = ns.LogText(ns.db.log[i])
             if line:find("layout: ", 1, true) then found[#found + 1] = "self-check: " .. line end
         end
         ratchet.write("layout-typical", numbers)
@@ -396,7 +396,7 @@ describe("Windows and columns as tight as their content, with typical data (SDD 
         W.CheckLayout(win, { list }, "bloat")
         W.CheckLayout(win, { list }, "bloat")
         local lines = {}
-        for i = before + 1, #ns.db.log do lines[#lines + 1] = tostring(ns.db.log[i]) end
+        for i = before + 1, #ns.db.log do lines[#lines + 1] = ns.LogText(ns.db.log[i]) end
         local text = table.concat(lines, "\n")
         assert.is_truthy(text:find("layout: materials/bloat wider than its content by 40 px", 1, true), text)
         local _, n = text:gsub("layout: materials/bloat", "")
@@ -406,7 +406,7 @@ describe("Windows and columns as tight as their content, with typical data (SDD 
         local count = #ns.db.log
         W.layoutLogged["materials/materials"] = nil
         W.CheckLayout(win, { list }, "materials")
-        for i = count + 1, #ns.db.log do assert.is_nil(tostring(ns.db.log[i]):find("layout:", 1, true)) end
+        for i = count + 1, #ns.db.log do assert.is_nil(ns.LogText(ns.db.log[i]):find("layout:", 1, true)) end
     end)
 
     it("logs any text of a window the client cuts, not only the tables' (the self-check, SDD 127)", function()

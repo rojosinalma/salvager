@@ -352,8 +352,8 @@ flipping is out of scope for now.
     `/salv gold <hours>`: start, now, money in the mail (unpaid sales), after pickup, by kind, and the buys
     that lost, marking those that were valued as something they were not. Each purchase keeps its judgment
     (`j` = quality, gear type, band, item level, version), copied to the disenchant as `judged`.
-69. **Activity log:** 5000 lines; a `== <date> ==` line starts each day; session lines at login and logout
-    (character, gold, version). The Log window filters all lines, trades and gold, or errors (remembered).
+69. **Activity log:** 5000 records; session lines at login and logout (character, gold, version). Structured
+    records, levels, categories and the Log window's table since 0.4.x: 129.
 70. **Books, after the review of 2026-11-26** (0.3.79):
     - a. `PostCommodity` and `CancelAuction` are restricted (they need the click): they cannot wait for a
        purchase and go out later, so Post and Cancel undercut are off while a purchase is on its way, with
@@ -1468,20 +1468,20 @@ flipping is out of scope for now.
 
 The TOC's order: pure modules first (no game API, the specs load them alone: `Util`, `Data`, `NoDisenchant`,
 `Model`, `Ledger`, `History`, `Craft` the recipe in money (128), `Journal`, `Statement`, `Competition`), then `Core` (namespace, saved data, events,
-the forecast glue, slash commands), the game glue (`Queue` searches, `Items` item levels, `Prices`, `Scanner` the
+the forecast glue, slash commands), `Log` (the activity log, 129), the game glue (`Queue` searches, `Items` item levels, `Prices`, `Scanner` the
 gear scan and buying, `Buy` buying from a price list (128), `Live` Play's Live scan (122), `Disenchant`, `Mail`, `Gold`
 the journal's glue, `Report` the chat report, `Backup`,
 `Tooltip`, `Listings` your auctions, `Convert` essences), the widgets (`Widgets`, `Tables`, `Chart`), and the
 windows (`Post`, `MaterialsWindow`, `LimitsWindow`, `UI` the main window, `LedgerWindow`, `StandWindow`,
 `BreakdownWindow`, `GearWindow` Gear Details, `MarketWindow`, `OddsWindow`, `ReportsWindow`, `DisenchantWindow`,
-`LogWindow`, `Options`, `Macros` the two macros (127k), `MiniPanel`, `Minimap`, `Layout` the layout dump, 94).
+`LogView` the Log's table and filters, `LogWindow`, `Options`, `Macros` the two macros (127k), `MiniPanel`, `Minimap`, `Layout` the layout dump, 94).
 `Bindings.xml`: the Disenchant key (112g).
 
 ## Data
 
 `SalvagerBackup` (account-wide): `list` of ledger copies (88). `SalvagerDB` (account-wide): `settings` (`timeZone`, 110, `highlightReturn`, 116h, `liveInterval`, 122), `prices`, `ledger` (`purchases`, `stock`, `pools`, `disenchants`, `sales`),
 `money` (gold journal), `sessions` (97), `competition` (109), `disenchantSeen` (112), `quality` and `ilvl` (learned item data), `auraSeen` and `auraSnapshots` (to learn the Salvager's aura spell ID; matched by name until then),
-`posted` and `listings` (29), `history` (57), `log` and `logDay` (69), `windows` and `window` (places, sizes, views and
+`posted` and `listings` (29), `history` (57), `log` (records, 129; `logDay` up to 0.4.0), `logExport` (129), `windows` and `window` (places, sizes, views and
 filters; `windows.mini.open`, 127c), `groups` (103), `columns` (95), `sorts` (127f), `layout` (94), and one-time flags (`historySeeded`, `buyResendBlocked`, 65,
 `falseCancelsDropped`, 75, `firstSalvagerBatchFixed`, 74b, `purchasesRestored`, 124, `recostFixed`, 125, `macrosMade`,
 127k). `settings.salvagerBuy`: the main window's Arcane Salvager box (127b; `settings.salvager` until it is settled). In
@@ -1915,3 +1915,36 @@ kind from all bands (118).
     - h. Specs: `spec/craft_spec.lua`, `spec/besttime_spec.lua` (synthetic history), `spec/buy_spec.lua` (the books,
        and the stand-in's auction house, which now records commodity purchases in `ah.commodityBuys` and tells
        `isCommodity` from `env.items[id].commodity`).
+
+129. **The structured log** (0.4.x, the user's approved brief of 2026-11-28, branch log). Was: text lines
+    "HH:MM:SS text" with a "== <date> ==" line per day, IDs in the text, one filter (all, trades and gold, errors).
+    - a. A record is `{ t, lvl, cat, msg, kv }` in `SalvagerDB.log`: Unix time; ERROR (a Lua error, a failed action),
+       WARN (something dropped, limited, given up, a fallback, no answer), INFO (what the player did and what the
+       addon did for him), DEBUG (the detail of each search and page); one category word (session, scan, search,
+       buy, mail, disenchant, post, sale, ledger, books, gold, competition, layout, ui, options); `msg` one short
+       sentence in the player's terms (names, money as coins, written as g s c); `kv` the data for the agent (item
+       and auction IDs, band, copper amounts, seconds, counts, flags; a table inside is one level of keys).
+    - b. One API, `ns.Log(lvl, cat, msg, kv)` (`Log.lua`). The old form `ns.Log(fmt, ...)` goes through a shim:
+       INFO and `ui`, ERROR where the text starts with "ERROR", the category word it starts with ("ledger: ...").
+       Moved to the new form: Core, Scanner, Queue, Listings, Mail, Disenchant, Gold, Prices, Backup; the window
+       files (Post, Convert, UI, Widgets, Options, MiniPanel, the Disenchant, Materials and Odds windows) still use
+       the shim, until a follow-up (`spec/log_spec.lua` lists them and fails when one no longer needs it).
+    - c. Bounded at `LogBook.MAX` (5000), oldest first (`Util.Cap`, "log records"): its drop line is DEBUG (the
+       log's rotation is how it works); every other bound's drop line is WARN.
+    - d. The old text lines become records at the first read: their time from "HH:MM:SS" and the day line before
+       them (lines before the first day line: the day before it; none: today), on the shown clock; level and
+       category as the shim gives them. `Prices.SeedHistory` reads the records.
+    - e. Text for the agent, logfmt: `2026-11-28T03:49:03+01:00 INFO disenchant "<msg>" item=4251 got.11083=2`
+       (ISO time on the shown clock with its offset, level, category, the message quoted without color codes or
+       links, then key=value sorted by key; a value with spaces or quotes is quoted). `/salv log export` writes the
+       whole log as such lines to `SalvagerDB.logExport` (replaced each time; on disk after /reload); the layout
+       dump (94) keeps `log` = the count of records per level and the 200 newest ERROR and WARN lines. `make layout`
+       prints the counts, the ERROR and WARN lines, the layout self-check lines, and writes the export to
+       `.agents/tmp/layout/log.txt`.
+    - f. The Log window (`LogView.lua`): Time | Level | Category | Message, oldest first, a heading row per day;
+       the level's word in its color (ERROR red, WARN orange, INFO white, DEBUG grey; the message in that color but
+       for INFO); filters Search (the message), Level (the least level shown, Info and up at first; the old Errors
+       filter becomes ERROR) and Category (any of them, at least one). The Message column is last: Widgets.List lets
+       only its first column take the spare width and cut, so the message is cut to the room the other three columns
+       leave (their widest words, measured) with "...", and its hover shows the level, category and time, the whole
+       message, then its data, one field per line. The window's smallest width is 560 (its filter row: Search, Level, Category).

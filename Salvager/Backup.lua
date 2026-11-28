@@ -30,7 +30,7 @@ function Backup.Save(reason)
     local list = store()
     list[#list + 1] = { t = time(), reason = reason, version = ns.VERSION, ledger = Util.Copy(ns.db.ledger) }
     Util.Cap(list, Backup.MAX)
-    ns.Log("backup: the ledger copied (%s)", reason)
+    ns.Log("INFO", "ledger", "backup: the ledger copied (" .. tostring(reason) .. ")", { backups = #list })
 end
 
 --- Puts the newest backup back. What it replaces becomes a backup itself, so a restore can be undone too.
@@ -45,10 +45,11 @@ function Backup.Restore()
     -- A copy from before 0.3.120 has its costs shared per band once (what it replaces is kept above).
     if Ledger.NeedsRecost(ns.db.ledger) then
         local n, sold = Ledger.Recost(ns.db.ledger)
-        ns.Log("ledger: material costs shared per band once (%d disenchants, %d sales booked again)", n, sold)
+        ns.Log("INFO", "ledger", string.format("material costs shared per band once (%d disenchants, %d sales booked "
+            .. "again)", n, sold), { disenchants = n, sales = sold })
     end
     Ledger.OpenBooks(ns.db.ledger)
-    ns.Log("backup: the ledger of %s restored", ns.Date("%m-%d %H:%M", b.t))
+    ns.Log("INFO", "ledger", "backup: the ledger of " .. ns.Date("%m-%d %H:%M", b.t) .. " restored", { backup = b.t })
     ns.Print("the ledger of %s is back", ns.Date("%m-%d %H:%M", b.t))
     ns.Fire("SALVAGER_LEDGER")
     return true
@@ -67,7 +68,7 @@ function Backup.ClearHistory()
     n = n + #(ns.db.competition.events or {})
     ns.Competition.Clear(ns.db.competition)
     ns.Print("ledger history cleared (%d entries). A backup is kept: Options, Restore backup.", n)
-    ns.Log("ledger history cleared (%d entries)", n)
+    ns.Log("INFO", "ledger", string.format("ledger history cleared (%d entries)", n), { entries = n })
     ns.Fire("SALVAGER_LEDGER")
 end
 

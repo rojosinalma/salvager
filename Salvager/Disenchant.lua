@@ -99,7 +99,10 @@ local function book(p, got)
     local msg = string.format("%s gave %s, worth %s", link, table.concat(parts, ", "), ns.Money(rec.value))
     if rec.costKnown then msg = msg .. string.format(" (paid %s)", ns.Money(rec.cost)) end
     ns.Print(msg)
-    ns.Log("disenchant: %s%s", msg, salvager and (" [Salvager: " .. how .. "]") or "")
+    local kv = { item = itemID, ilvl = ilvl, quality = quality, classID = classID, band = rec.band, got = got,
+        value = rec.value, paid = rec.costKnown and rec.cost or nil, planned = planned,
+        salvager = salvager and how or nil, stacks = p.stacks }
+    ns.Log("INFO", "disenchant", msg .. (salvager and (" [Salvager: " .. how .. "]") or ""), kv)
     ns.Fire("SALVAGER_LEDGER")
 end
 
@@ -161,7 +164,8 @@ ns.On("LOOT_READY", function()
     if any then
         book(p, got)
     else
-        ns.Log("disenchant of %s: the loot holds no disenchanting material, not booked", p.link)
+        ns.Log("WARN", "disenchant", string.format("disenchant of %s: the loot holds no disenchanting material, not "
+            .. "booked", p.link), { item = ns.ItemID(p.link) })
     end
 end)
 
@@ -177,5 +181,8 @@ ns.On("SALVAGER_READY", function()
             n = n + 1
         end
     end
-    if n > 0 then ns.Log("disenchants: %d of the first Salvager batch now count as with the Salvager", n) end
+    if n > 0 then
+        ns.Log("INFO", "disenchant", string.format("%d of the first Salvager batch now count as with the Salvager", n),
+            { disenchants = n })
+    end
 end)

@@ -108,7 +108,7 @@ describe("Times in a simulated client", function()
         assert.is_truthy(help[2]():find("Times in server time", 1, true))
         -- The log writes its lines on that clock.
         ns.Log("a line")
-        assert.is_truthy(ns.db.log[#ns.db.log]:find("^23:13:20 a line"))
+        assert.is_truthy(ns.LogText(ns.db.log[#ns.db.log]):find("^23:13:20 INFO ui: a line"))
         -- Back to local.
         ns.Options.Open() ns.Options.Open()
         _G.SalvagerOptionsFrame.timesDrop.checks[1]:Click()
@@ -138,7 +138,7 @@ describe("Times in a simulated client", function()
         wow.tick(ns, 0.1)
         assert.are.equal("00:13", ns.Clock(T))        -- read at the hour
         assert.are.equal(1, drawn)
-        assert.is_truthy(ns.db.log[#ns.db.log]:find("server time: UTC+2 (was UTC+1)", 1, true))
+        assert.is_truthy(ns.LogText(ns.db.log[#ns.db.log]):find("server time: UTC+2 (was UTC+1)", 1, true))
     end)
 
     it("reads the realm's hours and minutes where the calendar time is missing", function()

@@ -309,6 +309,11 @@ function Layout.Save()
             dump.hidden[tostring(set)] = table.concat(names, "\t")
         end
     end
+    -- The log for `make layout` (SDD 129): the count of records per level, the newest ERROR and WARN lines (logfmt).
+    if ns.db and ns.LogBook then
+        local ok, log = pcall(ns.LogBook.Dump)
+        dump.log = ok and log or { error = tostring(log) }
+    end
     -- Bounded in the saved file: past MAX_BYTES the regions go, from the last window (hidden ones are last), then
     -- the lists' rows, from the last window too; the list records stay, they are the smallest part.
     dump.size = ns.Util.SavedSize(dump)

@@ -158,6 +158,53 @@ def items(t):
     return list(t or [])
 
 
+# ---------- the log (SDD 129) ----------
+
+LOG_LISTED = 50   # ERROR and WARN lines printed, the newest
+
+
+def log_text(rec):
+    """A record of SalvagerDB.log (or an old text line) as one line."""
+    if isinstance(rec, dict):
+        return f"{rec.get('lvl', '?')} {rec.get('cat', '?')}: {rec.get('msg', '')}"
+    return str(rec)
+
+
+def log_report(db, dump):
+    """Counts by level, the ERROR and WARN lines (logfmt, from the dump), the addon's layout self-check lines, and
+    the text of /salv log export into OUT/log.txt."""
+    log = items(db.get("log"))
+    part = (dump or {}).get("log") if isinstance(dump, dict) else None
+    if isinstance(part, dict) and isinstance(part.get("counts"), dict):
+        counts = part["counts"]
+        lines = [str(l) for l in items(part.get("lines"))]
+    else:
+        counts, lines = {}, []
+        for rec in log:
+            lvl = rec.get("lvl", "INFO") if isinstance(rec, dict) else "INFO"
+            counts[lvl] = counts.get(lvl, 0) + 1
+            if lvl in ("ERROR", "WARN"):
+                lines.append(log_text(rec))
+    print("log: " + ", ".join(f"{counts.get(k, 0)} {k}" for k in ("ERROR", "WARN", "INFO", "DEBUG"))
+          + (f"; the {min(len(lines), LOG_LISTED)} newest ERROR and WARN lines:" if lines else ""))
+    for l in lines[-LOG_LISTED:]:
+        print(f"  {l}")
+    # The addon's own self-check (Widgets.CheckLayout, SDD 120): its Log lines of this session.
+    checks = [log_text(l) for l in log
+              if (isinstance(l, dict) and (l.get("cat") == "layout" or "layout: " in str(l.get("msg", ""))))
+              or (isinstance(l, str) and " layout: " in l)]
+    print(f"the addon's self-check: {len(checks)} layout lines in the Log" + (":" if checks else ""))
+    for l in checks[-MAX_LISTED:]:
+        print(f"  - {l}")
+    export = db.get("logExport")
+    if isinstance(export, dict) and export.get("lines"):
+        path = os.path.join(OUT, "log.txt")
+        os.makedirs(OUT, exist_ok=True)
+        with open(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
+            f.write("\n".join(str(l) for l in items(export["lines"])) + "\n")
+        print(f"/salv log export: {len(items(export['lines']))} lines -> {os.path.relpath(path, ROOT)}")
+
+
 # ---------- the dump ----------
 
 def nums(rect):
@@ -829,7 +876,9 @@ def main():
         fail("usage: layout.py [--file Salvager.lua]")
     with open(path, encoding="utf-8", errors="replace") as f:
         saved = Lua(f.read()).globals()
-    dump = (saved.get("SalvagerDB") or {}).get("layout")
+    db = saved.get("SalvagerDB") or {}
+    dump = db.get("layout")
+    log_report(db, dump)
     if not isinstance(dump, dict):
         fail("no layout dump in the saved variables: /reload once with Salvager 0.3.114 or later")
     os.makedirs(OUT, exist_ok=True)
@@ -839,12 +888,6 @@ def main():
     windows = dump.get("windows") or {}
     print(f"dump: Salvager {dump.get('version')}, {dump.get('entries', '?')} regions, {dump.get('size', '?')} bytes"
           + (" (region limit reached)" if dump.get("full") else ""))
-    # The addon's own self-check (Widgets.CheckLayout, SDD 120): its Log lines of this session.
-    log = items((saved.get("SalvagerDB") or {}).get("log"))
-    checks = [l for l in log if isinstance(l, str) and " layout: " in l]
-    print(f"the addon's self-check: {len(checks)} layout lines in the Log" + (":" if checks else ""))
-    for l in checks[-MAX_LISTED:]:
-        print(f"  - {l}")
     shown = sorted(n for n, w in windows.items() if isinstance(w, dict) and w.get("shown"))
     for n, w in sorted(windows.items()):
         if isinstance(w, dict) and w.get("error"):

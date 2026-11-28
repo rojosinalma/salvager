@@ -67,7 +67,8 @@ local function depositLost(auctionID, itemID, qty, why, fallback)
     if p then p.lost = why end
     if not amount or amount <= 0 or not Data.MATERIAL_BY_ID[itemID] then return end
     ns.Ledger.DepositLost(ns.db.ledger, itemID, qty, amount, why, time())
-    ns.Log("listings: %dx %s %s, deposit lost %s", qty, ns.MaterialName(itemID), why, ns.Money(amount))
+    ns.Log("INFO", "post", string.format("%dx %s %s, deposit lost %s", qty, ns.MaterialName(itemID), why,
+        ns.Money(amount)), { item = itemID, qty = qty, why = why, deposit = amount })
     ns.Fire("SALVAGER_LEDGER")
     return amount
 end
@@ -108,7 +109,7 @@ function Listings.Read()
             local known = postedPrice(info.auctionID)
             if known and qty > 1 and price ~= known and price == known * qty and not l.priceIsTotal then
                 l.priceIsTotal = true
-                ns.Log("listings: this client reports the total price of a listing, not the price each")
+                ns.Log("INFO", "post", "this client reports the total price of a listing, not the price each")
             end
             local each = known or (l.priceIsTotal and math.floor(price / qty + 0.5)) or price
             rows[#rows + 1] = {
@@ -142,8 +143,10 @@ function Listings.Read()
         local start = ns.Gold.SessionStart()
         if start and (not prevT or prevT < start) and r.due - ns.Gold.MAIL_DELAY < start then rec.away = true end
         booked = true
-        ns.Log("sold %dx %s at %s each: %s after cut, profit %s (money in %d min)", r.qty, ns.MaterialName(r.itemID),
-            ns.Money(r.each), ns.Money(rec.net), ns.Money(rec.profit), math.floor((r.left or 0) / 60 + 0.5))
+        ns.Log("INFO", "sale", string.format("sold %dx %s at %s each: %s after cut, profit %s (money in %d min)", r.qty,
+            ns.MaterialName(r.itemID), ns.Money(r.each), ns.Money(rec.net), ns.Money(rec.profit),
+            math.floor((r.left or 0) / 60 + 0.5)), { item = r.itemID, qty = r.qty, each = r.each, net = rec.net,
+            profit = rec.profit, auction = r.auctionID, mailIn = r.left and math.floor(r.left) or nil })
         ns.Print("sold %dx %s: %s after cut, profit %s%s. The money comes by mail in about %d min.", r.qty,
             ns.MaterialName(r.itemID), ns.Money(rec.net), ns.Money(rec.profit),
             rec.untracked > 0 and string.format(" (%d had no recorded cost)", rec.untracked) or "",
@@ -164,7 +167,7 @@ function Listings.Refresh(now, after)
     if after then Listings.afterRead = after end
     ns.Queue.Add({ owned = true, once = true, onResult = function() end,
         onFail = function()
-            ns.Log("listings: the auction house did not send your auctions")
+            ns.Log("WARN", "post", "the auction house did not send your auctions")
             local cb = Listings.afterRead
             Listings.afterRead = nil
             if cb then cb(false) end
@@ -255,7 +258,8 @@ function Listings.Observe(itemID)
     end
     local added = ns.Competition.Observe(ns.db.competition, itemID, lines, mine, time(), UnitName("player"))
     if #added > 0 then
-        ns.Log("competition: %d undercut(s) of your %s seen (%s)", #added, ns.MaterialName(itemID), added[1].o)
+        ns.Log("INFO", "competition", string.format("%d undercut(s) of your %s seen (%s)", #added,
+            ns.MaterialName(itemID), added[1].o), { item = itemID, undercuts = #added, seller = added[1].o })
         ns.Fire("SALVAGER_COMPETITION")
     end
 end
@@ -294,7 +298,7 @@ function Listings.CheckRows(check)
         return
     end
     check.total = #ids
-    ns.Log("listings: checking %d listed materials for undercuts", #ids)
+    ns.Log("DEBUG", "post", string.format("checking %d listed materials for undercuts", #ids), { materials = #ids })
     local function step()
         local c = Listings.checking
         if c ~= check then return end
@@ -302,7 +306,7 @@ function Listings.CheckRows(check)
         if c.done >= c.total then
             Listings.checking = nil
             local n = Listings.CountUndercut()
-            ns.Log("listings: check done, %d undercut", n)
+            ns.Log("INFO", "post", string.format("undercut check done, %d undercut", n), { undercut = n })
             -- A repeated check speaks only when the count changed since the last one.
             if not c.quiet or n ~= Listings.lastCount then
                 ns.Print(n > 0 and "%d of your listings are undercut" or "none of your listings is undercut", n)
@@ -332,7 +336,8 @@ function Listings.Cancelling()
     if not p then return false end
     if GetTime() - p.t < CANCEL_WAIT then return true end
     Listings.pending = nil
-    ns.Log("listings: the cancel of %s got no answer", ns.MaterialName(p.row.itemID))
+    ns.Log("WARN", "post", string.format("the cancel of %s got no answer", ns.MaterialName(p.row.itemID)),
+        { item = p.row.itemID, auction = p.row.auctionID })
     return false
 end
 
@@ -355,8 +360,9 @@ function Listings.CancelNext()
                 if cost and cost > 0 then ns.Gold.Expect("cancel", -cost, ns.MaterialName(row.itemID), 15) end
                 ns.NoteRequest("cancel")
                 AH.CancelAuction(row.auctionID)
-                ns.Log("listings: cancelling %dx %s at %s each%s", row.qty, ns.MaterialName(row.itemID), ns.Money(row.each),
-                    cost and (", cost " .. ns.Money(cost)) or "")
+                ns.Log("INFO", "post", string.format("cancelling %dx %s at %s each%s", row.qty,
+                    ns.MaterialName(row.itemID), ns.Money(row.each), cost and (", cost " .. ns.Money(cost)) or ""),
+                    { item = row.itemID, auction = row.auctionID, qty = row.qty, each = row.each, cost = cost })
                 ns.Fire("SALVAGER_LISTINGS")
                 return true
             end
@@ -398,7 +404,8 @@ local function cancelDone(auctionID, rows)
             -- Undercut when it was cancelled: what it cost goes to the competitors under it (SDD 109).
             if ns.Competition.NoteCancel(ns.db.competition, { t = time(), id = r.itemID, auctionID = auctionID,
                 qty = r.qty, each = r.each, fee = fee, deposit = deposit or 0 }) then
-                ns.Log("competition: %dx %s cancelled while undercut", r.qty, ns.MaterialName(r.itemID))
+                ns.Log("INFO", "competition", string.format("%dx %s cancelled while undercut", r.qty,
+                    ns.MaterialName(r.itemID)), { item = r.itemID, auction = auctionID, qty = r.qty })
             end
         end
     end
@@ -406,7 +413,8 @@ local function cancelDone(auctionID, rows)
         Listings.pending = nil
         ns.Print("cancelled %dx %s (it comes back by mail)%s", p.row.qty, ns.MaterialName(p.row.itemID),
             (p.cost and p.cost > 0) and (", cost " .. ns.Money(p.cost)) or "")
-        ns.Log("listings: cancelled %dx %s", p.row.qty, ns.MaterialName(p.row.itemID))
+        ns.Log("INFO", "post", string.format("cancelled %dx %s", p.row.qty, ns.MaterialName(p.row.itemID)),
+            { item = p.row.itemID, auction = p.row.auctionID, qty = p.row.qty, cost = p.cost })
     end
     return true
 end
@@ -444,21 +452,22 @@ ns.On("AUCTION_HOUSE_SHOW_ERROR", function()
     if not p or not ns.ErrorIs("cancel") then return end
     Listings.pending = nil
     ns.Print("could not cancel %s", ns.MaterialName(p.row.itemID))
-    ns.Log("listings: could not cancel %s", ns.MaterialName(p.row.itemID))
+    ns.Log("ERROR", "post", string.format("could not cancel %s", ns.MaterialName(p.row.itemID)),
+        { item = p.row.itemID, auction = p.row.auctionID })
     ns.Fire("SALVAGER_LISTINGS")
 end)
 
 -- Your auctions, whoever asked for them.
 ns.On("OWNED_AUCTIONS_UPDATED", function()
     local ok, err = pcall(Listings.Read)
-    if not ok then ns.Log("ERROR reading your auctions: %s", tostring(err)) end
+    if not ok then ns.Log("ERROR", "post", "Lua error reading your auctions: " .. tostring(err)) end
 end)
 
 ns.On("AUCTION_HOUSE_SHOW", function() Listings.Refresh() end)
 ns.On("AUCTION_HOUSE_CLOSED", function()
     Listings.checking, Listings.pending, Listings.afterRead = nil, nil, nil
     -- The repeated check is off when the auction house closes; the next visit starts with it off (SDD 108).
-    if Listings.auto then ns.Log("listings: repeated undercut check off (auction house closed)") end
+    if Listings.auto then ns.Log("INFO", "post", "repeated undercut check off (auction house closed)") end
     Listings.auto, Listings.autoNext = false, nil
 end)
 
@@ -472,7 +481,7 @@ function Listings.SetAuto(on)
     if on and not ns.Queue.open then return end
     Listings.auto = on and true or false
     Listings.autoNext = on and 0 or nil   -- (0: the first check as soon as it can run)
-    ns.Log("listings: repeated undercut check %s", on and "on" or "off")
+    ns.Log("INFO", "post", "repeated undercut check " .. (on and "on" or "off"))
     ns.Fire("SALVAGER_LISTINGS")
 end
 
@@ -509,5 +518,8 @@ ns.On("SALVAGER_READY", function()
     for _, p in ipairs(ns.db.posted or {}) do
         if p.lost == "cancelled" then p.lost = nil end
     end
-    if n > 0 then ns.Log("ledger: removed %d lost deposits that were sales, not cancels", n) end
+    if n > 0 then
+        ns.Log("INFO", "ledger", string.format("removed %d lost deposits that were sales, not cancels", n),
+            { deposits = n })
+    end
 end)

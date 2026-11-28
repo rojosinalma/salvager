@@ -23,7 +23,7 @@ local function adopt(name, full)
         if not m.chars[full] or (m.chars[full].t or 0) < (m.chars[old].t or 0) then m.chars[full] = m.chars[old] end
         m.chars[old] = nil
         for _, e in ipairs(m.entries) do if e.c == old then e.c = full end end
-        ns.Log("gold: the records of %s are now under %s", old, full)
+        ns.Log("INFO", "gold", string.format("the records of %s are now under %s", old, full), { from = old, to = full })
     end
 end
 
@@ -92,8 +92,9 @@ local function seen(kindIfChanged, at)
     end
     local e = Journal.Seen(db(), c, balance, at or time(), kind, ref)
     if e then
-        ns.Log("gold: %s%s %s%s, now %s", e.d > 0 and "+" or "", ns.Money(e.d), Journal.KIND_NAME[e.k] or e.k,
-            e.r and (" (" .. e.r .. ")") or "", ns.Money(e.b))
+        ns.Log("INFO", "gold", string.format("%s%s %s%s, now %s", e.d > 0 and "+" or "", ns.Money(e.d),
+            Journal.KIND_NAME[e.k] or e.k, e.r and (" (" .. e.r .. ")") or "", ns.Money(e.b)),
+            { change = e.d, kind = e.k, ref = e.r, balance = e.b, char = c })
         ns.Fire("SALVAGER_GOLD")
     end
 end
@@ -114,10 +115,12 @@ local function start(anyway)
     sessionStart = GetMoney()
     local s, new = Statement.Login(sessions(), Gold.Char(), time(), reloading, Gold.Stock())
     if new then
-        ns.Log("session: %s logged in with %s (Salvager %s)", Gold.Char(), ns.Money(sessionStart), ns.VERSION)
+        ns.Log("INFO", "session", string.format("%s logged in with %s (Salvager %s)", Gold.Char(), ns.Money(sessionStart),
+            ns.VERSION), { char = Gold.Char(), gold = sessionStart, version = ns.VERSION })
     else
-        ns.Log("session: %s reloaded with %s, the session from %s goes on (Salvager %s)", Gold.Char(),
-            ns.Money(sessionStart), ns.Date("%H:%M", s.start), ns.VERSION)
+        ns.Log("INFO", "session", string.format("%s reloaded with %s, the session from %s goes on (Salvager %s)",
+            Gold.Char(), ns.Money(sessionStart), ns.Date("%H:%M", s.start), ns.VERSION), { char = Gold.Char(),
+            gold = sessionStart, since = s.start, version = ns.VERSION })
     end
     ns.Fire("SALVAGER_GOLD")
     return true
@@ -180,8 +183,9 @@ ns.On("PLAYER_LOGOUT", function()
     if sessionStart and ns.db then Statement.Leave(sessions(), time(), Gold.Stock()) end
     local last = Gold.Char() and ns.db and db().chars[Gold.Char()]
     if sessionStart and last then
-        ns.Log("session: logged out with %s (%s%s this session)", ns.Money(last.b), last.b >= sessionStart and "+" or "",
-            ns.Money(last.b - sessionStart))
+        ns.Log("INFO", "session", string.format("logged out with %s (%s%s this session)", ns.Money(last.b),
+            last.b >= sessionStart and "+" or "", ns.Money(last.b - sessionStart)), { gold = last.b,
+            change = last.b - sessionStart })
     end
 end)
 

@@ -266,6 +266,7 @@ local function daysFromCivil(year, month, day)
     local doe = yoe * 365 + math.floor(yoe / 4) - math.floor(yoe / 100) + doy
     return era * 146097 + doe - 719468
 end
+Util.DaysFromCivil = daysFromCivil
 
 Util.OFFSET_STEP = 900          -- s: a time zone is a whole number of quarter hours
 Util.OFFSET_MAX = 14 * 3600     -- s: no time zone is further from UTC

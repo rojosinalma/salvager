@@ -78,15 +78,18 @@ local function store(itemID)
         e = Prices.ReadItem(itemID)
         if e then e.auctionID, e.buyout, e.qty = nil, nil, nil end
     end
-    ns.Log("price %s (%d): %s, %d results", ns.MaterialName(itemID), itemID,
+    local results = commodity and (AH.GetNumCommoditySearchResults(itemID) or 0) or (e and e.listings or 0)
+    ns.Log("DEBUG", "scan", string.format("price %s: %s, %d results", ns.MaterialName(itemID),
         e and (ns.Money(e.p) .. (commodity and (" over " .. e.units .. " units") or " the cheapest buyout each"))
-            or "none listed",
-        commodity and (AH.GetNumCommoditySearchResults(itemID) or 0) or (e and e.listings or 0))
+            or "none listed", results),
+        { item = itemID, price = e and e.p, units = e and e.units, lowest = e and e.lo, results = results,
+            commodity = commodity })
     -- The ceiling comes from the history before this scan, so a spike now does not raise it.
     local cap = e and ns.History.Ceiling(ns.db.history, itemID, time(), e.units)
     if e and cap and e.p > cap then
-        ns.Log("price %s: %s over %d units is far over its recent prices: valued at %s at most", ns.MaterialName(itemID),
-            ns.Money(e.p), e.units, ns.Money(cap))
+        ns.Log("WARN", "scan", string.format("price %s: %s over %d units is far over its recent prices: valued at %s at "
+            .. "most", ns.MaterialName(itemID), ns.Money(e.p), e.units, ns.Money(cap)), { item = itemID, price = e.p,
+            units = e.units, cap = cap })
     end
     -- For the charts: this scan's price, lowest listing and units listed by others.
     local listed = 0
@@ -102,7 +105,10 @@ local function store(itemID)
     -- Who lists under your auctions of it (every material search comes here: SDD 109).
     if commodity then
         local ok, err = pcall(ns.Listings.Observe, itemID)
-        if not ok then ns.Log("ERROR reading the sellers of %s: %s", ns.MaterialName(itemID), tostring(err)) end
+        if not ok then
+            ns.Log("ERROR", "competition", string.format("Lua error reading the sellers of %s: %s",
+                ns.MaterialName(itemID), tostring(err)), { item = itemID })
+        end
     end
     if e then
         e.t, e.cap = time(), cap
@@ -163,7 +169,7 @@ function Prices.Scan(ids)
         return
     end
     Prices.scanning, Prices.done, Prices.total = true, 0, #ids
-    ns.Log("material scan started (%d materials)", #ids)
+    ns.Log("INFO", "scan", string.format("material scan started (%d materials)", #ids), { materials = #ids })
     for _, id in ipairs(ids) do
         ns.Queue.Add(Prices.Task(id, function() store(id) stepDone() end, function() stepDone() end))
     end
@@ -211,21 +217,14 @@ function Prices.SeedHistory()
         end
     end
     for id, e in pairs(db.prices) do add(id, e.t, e.p, e.lo) end
-    -- The log has the time of day only, newest last: walk back from now and step a day at each wrap.
-    local at = date("*t", time())   -- not shown: reads back, once, the log of versions before 0.3.139 (local time)
-    local limit = time()
-    for i = #db.log, 1, -1 do
-        local h, m, sec, id, money = db.log[i]:match("^(%d%d):(%d%d):(%d%d) price .- %((%d+)%): (.-) over %d+ units")
-        local hh, mm, ss = db.log[i]:match("^(%d%d):(%d%d):(%d%d) ")
-        if hh then
-            at.hour, at.min, at.sec = tonumber(hh), tonumber(mm), tonumber(ss)
-            local t = time(at)
-            while t > limit + 60 do
-                t = t - 86400
-                at = date("*t", t)   -- not shown
-            end
-            limit = t
-            if h and sec and m then add(tonumber(id), t, ns.Util.ParseMoney(money)) end
+    -- The log's price records (the old text lines, turned into records with their time, keep their text).
+    for _, rec in ipairs(ns.LogBook.Records()) do
+        local kv = rec.kv
+        if kv and kv.price and rec.msg:find("^price ") then
+            add(kv.item, rec.t, kv.price, kv.lowest)
+        else
+            local id, money = rec.msg:match("^price .- %((%d+)%): (.-) over %d+ units")
+            if id then add(tonumber(id), rec.t, ns.Util.ParseMoney(money)) end
         end
     end
     local keep = 1 - ns.Cut()
@@ -237,12 +236,13 @@ function Prices.SeedHistory()
     end
     for _, post in ipairs(db.posted or {}) do add(post.itemID, post.t, post.each + 1, post.each + 1) end
     ns.History.Merge(db.history, points)
-    ns.Log("price history: filled with %d earlier observations", #points)
+    ns.Log("INFO", "scan", string.format("price history: filled with %d earlier observations", #points),
+        { observations = #points })
     return #points
 end
 ns.On("SALVAGER_READY", function()
     local ok, err = pcall(Prices.SeedHistory)
-    if not ok then ns.Log("ERROR filling the price history: %s", tostring(err)) end
+    if not ok then ns.Log("ERROR", "scan", "Lua error filling the price history: " .. tostring(err)) end
 end)
 
 --- Age in seconds of the oldest material price; math.huge when a material was never scanned.

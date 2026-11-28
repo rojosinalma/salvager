@@ -84,16 +84,8 @@ describe("The gold journal in a simulated client", function()
         env.money = env.realMoney
     end)
 
-    it("starts each day of the log with a date line, and filters trades and errors", function()
-        ns.db.logDay = "1999-01-01"
-        ns.Log("bought [Boots] for 1s")
-        local log = ns.db.log
-        assert.is_truthy(log[#log - 1]:find("^== "))
-        local trades = { "trades", "", { "bought " } }
-        assert.is_true(ns.LogWindow.Matches(log[#log], trades))
-        assert.is_false(ns.LogWindow.Matches("12:00:00 checked item 5", trades))
-        assert.is_true(ns.LogWindow.Matches(log[#log - 1], trades))   -- day lines always show
-        assert.is_truthy(table.concat(log, "\n"):find("session: Tester%-Realm logged in"))
+    it("logs the start of the session", function()
+        assert.is_truthy(table.concat(ns.LogLines(), "\n"):find("INFO session: Tester%-Realm logged in"))
     end)
 
     it("reports the period: start, now, what is in the mail, and the buys that lost", function()

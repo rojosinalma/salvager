@@ -18,6 +18,7 @@ Journal.lua
 Statement.lua
 Competition.lua
 Core.lua
+Log.lua
 Queue.lua
 Items.lua
 Prices.lua
@@ -47,6 +48,7 @@ MarketWindow.lua
 OddsWindow.lua
 ReportsWindow.lua
 DisenchantWindow.lua
+LogView.lua
 LogWindow.lua
 Options.lua
 Macros.lua

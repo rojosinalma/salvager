@@ -129,7 +129,7 @@ describe("No bound drops records without a report", function()
         wow.fire(ns, "ADDON_LOADED", "Salvager")
         local function lines()
             local out = {}
-            for _, l in ipairs(ns.db.log) do if l:find("bound:", 1, true) then out[#out + 1] = l:match("bound: .*") end end
+            for _, l in ipairs(ns.LogLines()) do if l:find("bound:", 1, true) then out[#out + 1] = l:match("bound: .*") end end
             return out
         end
         ns.Util.Cap({ 1, 2, 3 }, 1, "test records")
@@ -324,7 +324,7 @@ describe("The one-time repair at load", function()
         assert.is_true(ns.db.purchasesRestored)
         assert.are.equal("before restoring the purchases the old bound dropped", ns.Backup.Last().reason)
         local found = {}
-        for _, line in ipairs(ns.db.log) do if line:find("old bound of 50 per item", 1, true) then found[#found + 1] = line end end
+        for _, line in ipairs(ns.LogLines()) do if line:find("old bound of 50 per item", 1, true) then found[#found + 1] = line end end
         assert.are.equal(1, #found)
         assert.is_truthy(found[1]:find("10 purchases the old bound", 1, true))
         assert.is_truthy(found[1]:find("booked again once", 1, true))

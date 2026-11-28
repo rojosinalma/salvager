@@ -133,6 +133,20 @@ end
 
 Queue.Describe = describe
 
+-- A search for a Log message (names, not IDs) and its fields.
+local function named(task)
+    if task.owned then return "your auctions" end
+    if task.commodity then return ns.MaterialName(task.commodity) end
+    return ns.LogItem(task.itemKey and task.itemKey.itemID)
+end
+local function fields(task, more)
+    local kv = more or {}
+    if task.commodity then kv.item = task.commodity
+    elseif task.itemKey then kv.item, kv.key = task.itemKey.itemID, ns.KeyString(task.itemKey)
+    elseif task.owned then kv.owned = true end
+    return kv
+end
+
 local function send(task)
     task.sentAt = GetTime()
     task.refreshed = false
@@ -162,8 +176,10 @@ local function finish(task, ok)
     if not ok then
         Queue.lost = Queue.lost + 1
         local again = not task.once and (task.tries or 0) < MAX_TRIES
-        ns.Log("search: no answer for %s after %.1fs%s", describe(task), GetTime() - task.sentAt,
-            again and ", trying again" or ", skipped (another addon may be using the auction house)")
+        local waited = GetTime() - task.sentAt
+        ns.Log("WARN", "search", string.format("no answer for %s after %.1fs%s", named(task), waited,
+            again and ", trying again" or ", skipped (another addon may be using the auction house)"),
+            fields(task, { seconds = math.floor(waited * 10 + 0.5) / 10, again = again }))
         if again then
             task.tries = (task.tries or 0) + 1
             task.lateSince = task.sentAt   -- (its answer may still come before it is sent again: then it is used)
@@ -181,7 +197,8 @@ local function finish(task, ok)
             local good, err = pcall(fn, t)
             if not good then
                 ns.Print("search result error: %s", tostring(err))
-                ns.Log("ERROR reading %s: %s", describe(task), tostring(err))
+                ns.Log("ERROR", "search", string.format("Lua error reading the answer for %s: %s", named(task),
+                    tostring(err)), fields(task))
             end
         end
     end
@@ -199,13 +216,14 @@ local function expire(task)
     if task.refreshed then
         -- A refresh that only gave the cached answer: use what the client has.
         Queue.late = Queue.late + 1
-        ns.Log("search: the refresh of %s got no new answer in %.0fs, using what the game holds",
-            describe(task), REPLY_TIMEOUT)
+        ns.Log("WARN", "search", string.format("the refresh of %s got no new answer in %.0fs, using what the game "
+            .. "holds", named(task), REPLY_TIMEOUT), fields(task, { seconds = REPLY_TIMEOUT }))
         finish(task, true)
     elseif hasResults(task) then
         -- The answer came, but not the event that announces it.
         Queue.late = Queue.late + 1
-        ns.Log("search: %s was answered without its event, using the results", describe(task))
+        ns.Log("WARN", "search", string.format("%s was answered without its event, using the results", named(task)),
+            fields(task))
         finish(task, true)
     else
         finish(task, false)
@@ -247,7 +265,8 @@ local function pump()
     local ok, err = pcall(send, task)
     if not ok then
         ns.Print("search failed: %s", tostring(err))
-        ns.Log("ERROR sending %s: %s", describe(task), tostring(err))
+        ns.Log("ERROR", "search", string.format("the search for %s failed: %s", named(task), tostring(err)),
+            fields(task))
         finish(task, false)
     end
 end
@@ -265,7 +284,9 @@ local function answered(match)
     for i, t in ipairs(Queue.items) do
         if t.lateSince and match(t) then
             table.remove(Queue.items, i)
-            ns.Log("search: the answer for %s came late (%.1fs), not sent again", describe(t), GetTime() - t.lateSince)
+            local late = GetTime() - t.lateSince
+            ns.Log("DEBUG", "search", string.format("the answer for %s came late (%.1fs), not sent again", named(t),
+                late), fields(t, { seconds = math.floor(late * 10 + 0.5) / 10 }))
             Queue.late = Queue.late + 1
             finish(t, true)
             return
@@ -306,8 +327,8 @@ ns.On("AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED", function()
     if ns.Scanner and ns.Scanner.browseAt and ns.Scanner.browseAt > task.sentAt then return end
     task.resends = (task.resends or 0) + 1
     Queue.dropped = (Queue.dropped or 0) + 1
-    ns.Log("search: the auction house dropped %s (busy with another request), sending it again (%d of %d)",
-        describe(task), task.resends, most)
+    ns.Log("WARN", "search", string.format("the auction house dropped the search for %s (busy with another request), "
+        .. "sending it again (%d of %d)", named(task), task.resends, most), fields(task, { resend = task.resends }))
     land(task)
     table.insert(Queue.items, 1, task)
 end)
@@ -315,7 +336,7 @@ ns.On("AUCTION_HOUSE_THROTTLED_SYSTEM_READY", function() pump() end)
 
 ns.On("AUCTION_HOUSE_SHOW", function()
     Queue.open = true
-    ns.Log("auction house opened")
+    ns.Log("INFO", "session", "auction house opened")
 end)
 ns.On("AUCTION_HOUSE_CLOSED", function()
     Queue.open = false

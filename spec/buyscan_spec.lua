@@ -18,7 +18,7 @@ describe("Buying during a scan", function()
         return false
     end
     local function logged(text)
-        for _, m in ipairs(ns.db.log) do if m:find(text, 1, true) then return m end end
+        for _, m in ipairs(ns.LogLines()) do if m:find(text, 1, true) then return m end end
         return nil
     end
     local function click(b) b.scripts.OnClick(b) end
@@ -215,7 +215,7 @@ describe("Buying during a scan", function()
         assert.are.equal("idle", ns.Scanner.state)
         local held
         for i = #ns.db.log, 1, -1 do
-            if ns.db.log[i]:find("scan held for purchases", 1, true) then held = ns.db.log[i] break end
+            if ns.LogText(ns.db.log[i]):find("scan held for purchases", 1, true) then held = ns.LogText(ns.db.log[i]) break end
         end
         return ticks, held
     end
@@ -359,7 +359,7 @@ describe("Buying during a scan", function()
         for _, d in pairs(ns.Scanner.deals) do assert.is_falsy(d.wait or d.buyNow) end
         local busyLines = 0
         for i = log + 1, #ns.db.log do
-            if ns.db.log[i]:find("Buy Top click on", 1, true) then busyLines = busyLines + 1 end
+            if ns.LogText(ns.db.log[i]):find("Buy Top click on", 1, true) then busyLines = busyLines + 1 end
         end
         assert.is_true(busyLines <= 10)                                -- one per busy spell, not one per click
         ns.Queue.Clear()

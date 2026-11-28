@@ -72,8 +72,9 @@ local function book(info)
     if info.type == "buyer" then
         local v = ns.ItemValue(info.link or info.itemID)
         local added = Ledger.MailPurchase(ns.db.ledger, info.itemID, info.count, info.bid, v and v.net, time(), info.link)
-        ns.Log("mail: bought %s for %s%s", info.link or info.itemID, ns.Money(info.bid),
-            added and "" or " (already recorded at the auction house)")
+        ns.Log("INFO", "mail", string.format("bought %s for %s%s", ns.LogItem(info.itemID, info.link), ns.Money(info.bid),
+            added and "" or " (already recorded at the auction house)"), { item = info.itemID, count = info.count,
+            paid = info.bid, value = v and v.net, new = added and true or false })
     else
         -- The mail's money beyond the sale after the cut is the deposit given back.
         local back = info.money - (info.bid - info.cut)
@@ -83,12 +84,15 @@ local function book(info)
         local start = ns.Gold.SessionStart()
         if rec and start and info.daysLeft and time() - (MAIL_DAYS - info.daysLeft) * 86400 < start then rec.away = true end
         if matched > 0 then
-            ns.Log("mail: money for %dx %s (%d already booked when they sold)", info.count, ns.MaterialName(info.matID),
-                matched)
+            ns.Log("INFO", "mail", string.format("money for %dx %s (%d already booked when they sold)", info.count,
+                ns.MaterialName(info.matID), matched), { item = info.matID, count = info.count, matched = matched,
+                money = info.money })
         end
         if rec then
-            ns.Log("mail: sold %dx %s for %s, profit %s", rec.count, ns.MaterialName(info.matID), ns.Money(rec.net),
-                ns.Money(rec.profit))
+            ns.Log("INFO", "sale", string.format("sold %dx %s for %s, profit %s (its mail)", rec.count,
+                ns.MaterialName(info.matID), ns.Money(rec.net), ns.Money(rec.profit)), { item = info.matID,
+                count = rec.count, net = rec.net, profit = rec.profit, cut = info.cut, deposit = back > 0 and back or nil,
+                untracked = rec.untracked ~= 0 and rec.untracked or nil, away = rec.away })
             ns.Print("sold %dx %s: %s after cut, profit %s%s", rec.count, ns.MaterialName(info.matID), ns.Money(rec.net),
                 ns.Money(rec.profit), rec.untracked > 0 and string.format(" (%d had no recorded cost)", rec.untracked) or "")
         end
@@ -139,7 +143,7 @@ local function safe(fn, ...)
     local ok, err = pcall(fn, ...)
     if not ok then
         ns.Print("mail error: %s", tostring(err))
-        ns.Log("ERROR mail: %s", tostring(err))
+        ns.Log("ERROR", "mail", "Lua error reading the mail: " .. tostring(err))
     end
 end
 
@@ -155,8 +159,9 @@ ns.On("MAIL_INBOX_UPDATE", function() safe(settle) end)
 ns.On("MAIL_CLOSED", function()
     for _, w in pairs(watch) do
         if w.asked > w.booked then
-            ns.Log("mail: the mailbox closed before %d take(s) of %s showed as done: not booked", w.asked - w.booked,
-                tostring(w.info and w.info.itemName))
+            ns.Log("WARN", "mail", string.format("the mailbox closed before %d take(s) of %s showed as done: not booked",
+                w.asked - w.booked, tostring(w.info and w.info.itemName)), { takes = w.asked - w.booked,
+                item = w.info and (w.info.itemID or w.info.matID) })
         end
     end
     wipe(watch)

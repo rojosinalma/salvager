@@ -345,7 +345,7 @@ describe("Old ledger records in a simulated client", function()
         assert.are.equal("before sharing the costs per band", ns.Backup.Last().reason)
         assert.is_nil(ns.Backup.Last().ledger.jointCost)
         local lines = 0
-        for _, line in ipairs(ns.db.log) do if line:find("shared per band once", 1, true) then lines = lines + 1 end end
+        for _, line in ipairs(ns.LogLines()) do if line:find("shared per band once", 1, true) then lines = lines + 1 end end
         assert.are.equal(1, lines)
         -- A second load does nothing again.
         local backups = #ns.Backup.List()

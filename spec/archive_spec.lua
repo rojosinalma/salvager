@@ -252,7 +252,7 @@ describe("The archive", function()
         assert.are.equal(0, #ns1.db.ledger.disenchants)
         assert.are.equal(0, #ns1.db.posted)
         local found
-        for _, line in ipairs(ns1.db.log) do
+        for _, line in ipairs(ns1.LogLines()) do
             if line:find("rolled up 12 disenchants and 15 sales", 1, true) then found = line end
         end
         assert.is_truthy(found)

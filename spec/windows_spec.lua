@@ -17,7 +17,7 @@ describe("Salvager windows (0.3.137)", function()
     local function errors()
         local out = {}
         for _, m in ipairs(env.chat) do if m:lower():find("error", 1, true) then out[#out + 1] = m end end
-        for _, l in ipairs(ns.db.log) do if l:find("ERROR", 1, true) then out[#out + 1] = l end end
+        for _, l in ipairs(ns.LogLines()) do if l:find("ERROR", 1, true) then out[#out + 1] = l end end
         return table.concat(out, "\n")
     end
     -- Escape, as the client does it: every frame named in UISpecialFrames that shows is hidden.
