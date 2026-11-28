@@ -58,8 +58,8 @@ local function populate(panel, standalone)
         "GameFontHighlightSmall")
     at(sub, 16, -8)
 
-    -- (What the main window sets is not here: gear, quality, min profit, max price, cautious pricing,
-    -- item levels, item checks per scan.)
+    -- (What the main window sets is not here: gear, quality, min profit, max price, the Arcane Salvager bonus,
+    -- cautious pricing, item levels, Show top (the gear each scan searches).)
     heading("Scanning")
     local minL, minE = numberBox(panel, "Required level from", 36,
         function() return s.minLevel end, function(n) s.minLevel = math.max(0, math.floor(n)) changed("minLevel", n) end,
@@ -81,14 +81,8 @@ local function populate(panel, standalone)
             .. "A material scan takes about 20 seconds. 10 minutes suits prices that move a few percent per hour.")
     at(rescanL, 24)
 
+    -- (The bonus in the buy prices is the main window's "Arcane Salvager" box since 0.4.0: a setting of the scan.)
     heading("Arcane Salvager")
-    local salvLabel = W.Label(panel, "Bonus in buy prices", "GameFontHighlightSmall")
-    at(salvLabel, 24)
-    local salv = W.Choice(panel, { { "auto", "Auto" }, { "on", "On" }, { "off", "Off" } },
-        function(v) s.salvager = v changed("salvager", v) end,
-        "Auto: on when you know the recipe or have an Arcane Salvager in your bags.")
-    salv:SetPoint("LEFT", salvLabel, "RIGHT", 12, 0)
-    controls[#controls + 1] = { refresh = function() salv:Set(s.salvager) end }
     local chL = numberBox(panel, "Starting chance of one extra dust or essence (%)", 36,
         function() return math.floor(s.salvagerChance * 100 + 0.5) end,
         function(n) s.salvagerChance = math.min(100, math.max(0, n)) / 100 changed("salvagerChance", s.salvagerChance) end,
@@ -165,7 +159,7 @@ local function populate(panel, standalone)
             if s.timeZone == v then times:Update() return end
             s.timeZone = v
             changed("timeZone", v)
-        end, TIMES_HELP, "Times shown in")
+                end, TIMES_HELP, "Times shown in", nil, true)
     times:SetPoint("LEFT", timesL, "RIGHT", 12, 0)
     panel.timesDrop = times
     controls[#controls + 1] = { refresh = function() times:Update() end }
@@ -183,6 +177,13 @@ local function populate(panel, standalone)
     controls[#controls + 1] = { refresh = function()
         autoOpen:SetChecked(s.autoOpen) restore:SetChecked(s.restoreWindows) mini:SetChecked(not s.minimap.hide)
     end }
+    -- The two macros (SDD 127): made once at the first login; this makes a deleted one again.
+    local macros = W.Button(panel, "Create the macros again", 170, function() ns.Macros.Create(true) end,
+        "Makes the macros Salvager Buy (clicks Buy Top) and Salvager DE (clicks the Disenchant button) where one is "
+            .. "missing, as account macros. One you changed is left as it is. Drag them from /macro to your bars, or "
+            .. "bind them to keys.\n\nIn combat the game keeps the Disenchant button as it was: the macro casts on the "
+            .. "piece it aimed at before the fight, or does nothing.")
+    macros:SetPoint("LEFT", mini.label, "RIGHT", 24, 0)
 
     heading("Data")
     -- How much the addon keeps on disk, and the history with its backups.

@@ -368,13 +368,13 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
         tab(reports, "Gold")
         tab(reports, "Competition")
         assert.are.equal(compW, reports:GetWidth())
-        -- The Market: Essences has a width of its own; back on Materials it is Materials' again.
+        -- The Charts: Bands has a width of its own; back on Materials it is Materials' again.
         if not _G.SalvagerMarketFrame or not _G.SalvagerMarketFrame:IsShown() then ns.Market.Toggle() end
         local market = _G.SalvagerMarketFrame
         rawset(market, "userW", nil)
         tab(market, "Materials")
         local mw = market:GetWidth()
-        tab(market, "Essences")
+        tab(market, "Bands")
         assert.is_true(market:GetWidth() ~= mw, mw .. " both")
         tab(market, "Materials")
         assert.are.equal(mw, market:GetWidth())
@@ -448,14 +448,18 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
             assert.are.equal(w, win:GetWidth(), where .. ": width")
             assert.are.equal(h, win:GetHeight(), where .. ": height")
             local b, r, f = rect(P.bags), rect(P.results), rect(win)
-            -- The bags table stays at the top; the results table ends over the footer; both reach the right edge.
-            assert.is_true(math.abs((f.t - b.t) - (last and last.top or (f.t - b.t))) < EPS, where .. ": the top table moved")
+            -- The bags table stays at the top, right under the Auto Loot note (which wraps, so it may take another
+            -- line); the results table ends over the footer; both reach the right edge.
+            local note = P.lootNote:IsShown() and rect(P.lootNote)
+            local top = note and (note.b - b.t) or (f.t - b.t)
+            assert.is_true(math.abs(top - (last and last.top or top)) < EPS, where .. ": the top table moved "
+                .. tostring(top) .. " " .. tostring(last and last.top) .. " note " .. tostring(note and note.h) .. " "
+                .. tostring(last and last.nh))
             assert.is_true(math.abs(r.b - f.b - 44) < EPS, where .. ": the results table's bottom")
-            -- (Two tables: each as wide as it needs, at the left, up to the window's right edge; UI.md Tables 2.)
-            for _, t in ipairs({ { P.bags, b }, { P.results, r } }) do
-                local need = rawget(t[1], "neededWidth")
-                local want = math.min(f.r - 12, f.l + 12 + math.ceil(need or 0))
-                assert.is_true(math.abs(t[2].r - want) < 1 + EPS, where .. ": the right edges " .. t[2].r .. " " .. want)
+            -- (Two tables: each spans the window, the same margins as its other rows; UI.md Tables 2, SDD 127.)
+            for _, t in ipairs({ b, r }) do
+                assert.is_true(math.abs(t.r - (f.r - 12)) < 1 + EPS, where .. ": the right edges " .. t.r .. " " .. (f.r - 12))
+                assert.is_true(math.abs(t.l - (f.l + 12)) < 1 + EPS, where .. ": the left edges " .. t.l)
             end
             -- Taller window, taller (or as tall) tables; lower, lower.
             if last then
@@ -463,7 +467,7 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
                 assert.is_true(up and b.h >= last.bh - EPS or (not up and b.h <= last.bh + EPS), where .. ": the top table")
                 assert.is_true(up and r.h >= last.rh - EPS or (not up and r.h <= last.rh + EPS), where .. ": the results")
             end
-            last = { top = f.t - b.t, h = h, bh = b.h, rh = r.h }
+            last = { top = top, h = h, bh = b.h, rh = r.h, nh = note and note.h }
             problems(win, where, seen, false)
         end)
         LW.Batch = realBatch
@@ -551,7 +555,27 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
                         assert.is_true(after ~= nil and heads[after - 1].r.r <= x + EPS, where .. ": a line inside a column")
                     end
                 end
-                assert.are.equal(both and 2 or 1, lines, where .. ": the lines")
+                -- (A line after Material and one before each other group: the game's, yours, the Salvager's.)
+                assert.are.equal(both and 3 or 2, lines, where .. ": the lines")
+                -- A heading over each group ("Game rates", "Your rates", "Salvager rates"), above its titles, centred
+                -- over its columns and never wider than they are; the facts row starts with Results.
+                local want = both and { "Game rates", "Your rates", "Salvager rates" } or { "Game rates", "Your rates" }
+                local groups = {}
+                for _, g in ipairs(a.groupTexts) do if g:IsShown() then groups[#groups + 1] = g end end
+                assert.are.equal(#want, #groups, where .. ": the group headings")
+                local firstOf = { 2, 4, 6 }
+                for n, g in ipairs(groups) do
+                    assert.is_truthy(tostring(g:GetText()):find(want[n], 1, true), where .. ": " .. want[n])
+                    assert.are.equal("CENTER", g:GetJustifyH())
+                    local gr, hr = rect(g), rect(a.headTexts[firstOf[n]])
+                    local lastCol = firstOf[n] + 1
+                    local lr = rect(a.headTexts[lastCol])
+                    assert.is_true(math.abs(gr.l - hr.l) < EPS and math.abs(gr.r - lr.r) < EPS, where .. ": " .. want[n]
+                        .. " spans its columns")
+                    assert.is_true(gr.b >= hr.t - EPS, where .. ": " .. want[n] .. " above its titles")
+                    assert.is_true(g:GetStringWidth() <= gr.w + EPS, where .. ": " .. want[n] .. " fits its group")
+                end
+                assert.is_truthy(a.parts[1]:GetText():find("Results", 1, true))
                 if case[1] == "SalvagerOddsFrame" then ns.Odds.PutBack() end
             end
         end
@@ -657,24 +681,25 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
         end
         assert.are.equal("", table.concat(seen, "\n"))
     end)
-    it("has the mini panel in two columns of buttons, Disenchant across both under them (SDD 114)", function()
+    it("has the mini panel in two columns of buttons, Disenchant across both under them (SDD 114, 127)", function()
         ns.MiniPanel.Show()
         local b = ns.MiniPanel.buttons
         local function r(n) return rect(b[n]) end
-        for _, col in ipairs({ { "Salvager", "Ledger", "Materials" }, { "Reports", "Market", "Log" } }) do
-            for i = 2, 3 do
+        local LEFT, RIGHT = { "Salvager", "Ledger", "Materials", "Limits" }, { "Reports", "Charts", "Log", "Options" }
+        for _, col in ipairs({ LEFT, RIGHT }) do
+            for i = 2, #col do
                 assert.is_true(math.abs(r(col[i]).l - r(col[1]).l) < EPS, col[i] .. " under " .. col[1])
                 assert.is_true(r(col[i]).t <= r(col[i - 1]).b + EPS, col[i] .. " below " .. col[i - 1])
             end
         end
-        for i, left in ipairs({ "Salvager", "Ledger", "Materials" }) do
-            local right = ({ "Reports", "Market", "Log" })[i]
+        for i, left in ipairs(LEFT) do
+            local right = RIGHT[i]
             assert.is_true(math.abs(r(left).t - r(right).t) < EPS, left .. " and " .. right .. " on one row")
             assert.is_true(r(right).l > r(left).r, right .. " right of " .. left)
         end
-        assert.is_true(r("Disenchant").t <= r("Materials").b + EPS)
-        assert.is_true(math.abs(r("Disenchant").l - r("Materials").l) < EPS)
-        assert.is_true(math.abs(r("Disenchant").r - r("Log").r) < EPS)
+        assert.is_true(r("Disenchant").t <= r("Limits").b + EPS)
+        assert.is_true(math.abs(r("Disenchant").l - r("Limits").l) < EPS)
+        assert.is_true(math.abs(r("Disenchant").r - r("Options").r) < EPS)
         -- The Reports button opens the Reports on the tab seen last (the Odds here).
         ns.Reports.ShowView("odds")
         ns.Reports.Toggle()
@@ -690,7 +715,7 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
         assert.is_true(#bottom >= 3)
         assert.is_true(ns.DisenchantPanel.lootNote:IsShown())
     end)
-    it("says so where a table leaves columns out for want of room, and fits them where it can", function()
+    it("shows the columns a table leaves out for want of room unticked in its chooser, and fits them where it can", function()
         local W = ns.Widgets
         local parent = CreateFrame("Frame", nil, UIParent)
         parent:SetSize(300, 200)
@@ -699,23 +724,28 @@ describe("Every window fits its texts at its smallest and its default size (UI.m
         l:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
         l:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, 0)
         l:SetColumns({ { "Gear", 100 }, { "Paid", 80, "RIGHT" }, { "Expected value", 80, "RIGHT" },
-            { "Disenchant value", 80, "RIGHT" }, { "Profit", 80, "RIGHT" } })
+            { "Disenchant value", 80, "RIGHT" }, { "Profit", 80, "RIGHT" } }, "spec.leftout")
         l:SetSource(1, function() return { cells = { NAMES[2], ns.Money(BIG), ns.Money(BIG), ns.Money(BIG), ns.Money(BIG) } } end)
         l:Refresh()
-        local note = l.leftOutNote
         assert.is_true(#l.leftOut > 0)
-        assert.is_true(note:IsShown())
-        assert.are.equal(#l.leftOut .. (#l.leftOut == 1 and " column" or " columns") .. " left out", note:GetText())
-        assert.is_false(wow.isCut(note))
-        -- The note sits after the last column shown, before the scroll bar.
-        local last
-        for i, h in ipairs(l.headers) do if h:IsShown() and l.columns[i] then last = rect(h) end end
-        assert.is_true(last.r <= rect(note).l + EPS and rect(note).r <= rect(l).r - 18 + EPS)
-        -- As wide as it needs (what a window that fits its tables does): nothing left out, no note.
+        -- No note at the right of the titles (it took room, 0.4.0): the column chooser shows them unticked, the
+        -- reason on hover.
+        assert.is_nil(rawget(l, "leftOutNote"))
+        l.chooser.Update()
+        local unticked = {}
+        for _, c in ipairs(l.chooser.checks) do
+            if c:IsShown() and not c:GetChecked() then
+                unticked[#unticked + 1] = rawget(c, "key")
+                assert.are.equal(W.LEFT_OUT_REASON, rawget(c, "reason"))
+            end
+        end
+        assert.are.same(l.leftOut, unticked)
+        -- As wide as it needs (what a window that fits its tables does): nothing left out, every box ticked.
         parent:SetWidth(l.fitWidth)
         l:Refresh()
         assert.are.same({}, l.leftOut)
-        assert.is_false(note:IsShown())
+        l.chooser.Update()
+        for _, c in ipairs(l.chooser.checks) do if c:IsShown() then assert.is_true(c:GetChecked()) end end
         parent:Hide()
     end)
 end)

@@ -56,17 +56,17 @@ local function snapshot()
     ns.Util.Cap(snaps, SNAPSHOTS)
 end
 
---- Did this disenchant have the Salvager bonus? Yes when its effect was seen on the player, when the player
---- says every disenchant has it (`/salv salvager on`), or when the result proves it: more units of a
---- material than the table gives without the bonus.
---- @return boolean, string|nil how it is known ("aura" | "setting" | "result")
+--- Did this disenchant have the Salvager bonus? Yes when its effect was seen on the player (Boosted Disenchanting,
+--- matched by its spell ID), or when the result proves it: more units of a material than the table gives without the
+--- bonus. (Until 0.4.0 the setting "on" marked every disenchant too; the main window's Arcane Salvager box that
+--- replaced it is about the buy prices only.)
+--- @return boolean, string|nil how it is known ("aura" | "result")
 function Disenchant.HadSalvager(seen, outcomes, got)
     if seen then return true, "aura" end
     for _, o in ipairs(outcomes and outcomes.results or {}) do
         local q = o.id and got[o.id]
         if q and o.bonus and o.max and q > o.max then return true, "result" end
     end
-    if ns.db.settings.salvager == "on" then return true, "setting" end
     return false
 end
 

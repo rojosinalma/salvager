@@ -40,17 +40,24 @@ describe("Salvager windows (0.3.137)", function()
     end)
 
     it("works away from the auction house: every window, tab and subtab, and what needs it is off with the reason", function()
-        -- The minimap button opens the mini panel there, not the main window.
-        local mm = _G.SalvagerMinimapButton
-        mm.scripts.OnClick(mm, "LeftButton")
+        -- The mini panel is on from the start (it is where the windows open from); the minimap button's left click
+        -- opens the main window, here too; Shift + left click shows and hides the panel, remembered.
         local panel = ns.MiniPanel.Frame()
         assert.is_true(panel:IsShown())
+        local mm = _G.SalvagerMinimapButton
+        env.shift = true
+        mm.scripts.OnClick(mm, "LeftButton")
+        assert.is_false(panel:IsShown())
+        assert.is_false(ns.db.windows.mini.open)
+        mm.scripts.OnClick(mm, "LeftButton")
+        assert.is_true(panel:IsShown())
+        env.shift = nil
         assert.is_falsy(_G.SalvagerFrame and _G.SalvagerFrame:IsShown())
-        for _, name in ipairs({ "Ledger", "Reports", "Market", "Materials", "Log", "Salvager" }) do
+        for _, name in ipairs({ "Ledger", "Reports", "Charts", "Materials", "Log", "Limits", "Salvager" }) do
             ns.MiniPanel.buttons[name]:Click()
         end
         for _, global in ipairs({ "SalvagerLedgerFrame", "SalvagerReportsFrame", "SalvagerMarketFrame", "SalvagerMaterialsFrame",
-            "SalvagerLogFrame" }) do
+            "SalvagerLogFrame", "SalvagerLimitsFrame" }) do
             local win = _G[global]
             assert.is_true(win:IsShown(), global)
             assert.are.equal("panel", rawget(win, "owner"), global)
@@ -67,7 +74,7 @@ describe("Salvager windows (0.3.137)", function()
         assert.are.equal("", errors())
         -- The main window shows what it can; its scans are off, each with the reason.
         assert.is_true(_G.SalvagerFrame:IsShown())
-        assert.is_false(panel:IsShown())                         -- the main window leads again
+        assert.is_true(panel:IsShown())                          -- the panel stays with the main window
         local play = ns.UI.playButton
         assert.is_false(play:IsEnabled())
         assert.are.equal(ns.Widgets.AH_CLOSED, play.reason)
@@ -154,7 +161,7 @@ describe("Salvager windows (0.3.137)", function()
         ns.UI.Show()
     end)
 
-    it("minimizes to the mini panel: the other windows stay, the panel stays until its X or the main window", function()
+    it("minimizes to the mini panel: the other windows stay, the panel stays until its X", function()
         assert.is_true(_G.SalvagerLedgerFrame:IsShown())
         ns.UI.minimizeButton:Click()
         assert.is_false(_G.SalvagerFrame:IsShown())
@@ -163,19 +170,31 @@ describe("Salvager windows (0.3.137)", function()
         assert.is_true(panel:IsShown())
         escape()                                                 -- Escape leaves the launcher
         assert.is_true(panel:IsShown())
-        -- At the auction house the minimap button opens the main window, as before.
+        -- The minimap button opens the main window; the panel stays. Its X hides it, remembered over a reload.
         local mm = _G.SalvagerMinimapButton
         mm.scripts.OnClick(mm, "LeftButton")
         assert.is_true(_G.SalvagerFrame:IsShown())
+        assert.is_true(panel:IsShown())
+        panel.UserHide()                                         -- (its X: hidden, remembered)
         assert.is_false(panel:IsShown())
+        assert.is_false(ns.db.windows.mini.open)
+        ns.MiniPanel.Restore()                                   -- (what a reload does)
+        assert.is_false(panel:IsShown())
+        ns.MiniPanel.Show()
+        assert.is_true(ns.db.windows.mini.open)
     end)
 
     it("checks undercuts again and again while it is on, waits while you buy, and is off when the auction house closes",
         function()
         ns.LedgerWindow.Show()
         ns.LedgerWindow.tabs.sales:Click()
-        local auto = ns.LedgerWindow.autoButton
+                local auto = ns.LedgerWindow.autoButton
         assert.is_true(auto:IsEnabled())
+        -- The labels without a count (0.4.0): the counts are in the tooltips; each button as wide as its longest label.
+        local check, cancel = ns.LedgerWindow.checkButton, ns.LedgerWindow.cancelButton
+        assert.are.same({ "Check undercuts", "Cancel undercut" }, { check:GetText(), cancel:GetText() })
+        assert.are.equal(1, rawget(check, "count"))
+        assert.is_true(check:GetWidth() < 150 and cancel:GetWidth() < 150)
         auto:Click()
         assert.is_true(ns.Listings.auto)
         answer(10)

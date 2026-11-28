@@ -204,6 +204,8 @@ end
 
 -- Checks one view at one size; adds to `found`, and the numbers to `numbers` (the ratchet).
 local function look(ns, win, name, view, size, found, numbers)
+    -- (The self-check's text scan runs once a second per view: each size here gets its own.)
+    for k in pairs(ns.Widgets.cutChecked) do ns.Widgets.cutChecked[k] = nil end
     if size == "smallest" then smallest(win) else default(win) end
     local where = name .. "/" .. view .. " " .. size
     local m = check.measure(win, ns)
@@ -406,6 +408,319 @@ describe("Windows and columns as tight as their content, with typical data (SDD 
         W.CheckLayout(win, { list }, "materials")
         for i = count + 1, #ns.db.log do assert.is_nil(tostring(ns.db.log[i]):find("layout:", 1, true)) end
     end)
+
+    it("logs any text of a window the client cuts, not only the tables' (the self-check, SDD 127)", function()
+        local W = ns.Widgets
+        ns.Materials.PopOut()
+        local win = _G.SalvagerMaterialsFrame
+        local list = rawget(win, "fitLists")[1]
+        -- A status line in a box too narrow for it (what the main window's "bonus included" was in the client).
+        local fs = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        fs:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 14, 40)
+        fs:SetWidth(60)
+        fs:SetWordWrap(false)
+        fs:SetText("Auction house closed  ·  Arcane Salvager bonus included")
+        W.layoutLogged["materials/cut"] = nil
+        local before = #ns.db.log
+        W.CheckLayout(win, { list }, "cut")
+        local text = tostring(ns.db.log[#ns.db.log])
+        assert.are.equal(before + 1, #ns.db.log)
+        assert.is_truthy(text:find("layout: materials/cut cut text: Auction house closed", 1, true),
+            text)
+        -- Outside the window is cut too; a table's first cell with its text on hover (canCut) is not.
+        fs:SetWidth(400)
+        fs:ClearAllPoints()
+        fs:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", -200, 40)
+        assert.are.equal(1, #W.CutTexts(win))
+        fs.canCut = true
+        assert.are.equal(0, #W.CutTexts(win))
+        fs:Hide()
+    end)
+
+    it("sorts every sortable column of every table both ways by its values, remembered, the groups kept (Tables 10)",
+        function()
+        local W = ns.Widgets
+        local found, sorted = {}, 0
+        local function isFixed(d) return d.head or d.group or d.rule or d.bold or d.span or d.fixed end
+        local function rowsOf(l)
+            local out = {}
+            for r = 1, rawget(l, "count") or 0 do out[#out + 1] = l.getRow(r) end
+            return out
+        end
+        local function lists(win)
+            local out = {}
+            local function walk(x)
+                if not x:IsVisible() then return end
+                if check.isList(x) and x.headers[1]:IsShown() then out[#out + 1] = x end
+                for _, c in ipairs(x._children) do walk(c) end
+            end
+            walk(win)
+            return out
+        end
+        local open = openers(ns)
+        for _, global in ipairs(WINDOWS) do
+            ns.UI.Show()
+            if open[global]() ~= false then
+                local win = _G[global]
+                eachView(win, function(view)
+                    for _, l in ipairs(lists(win)) do
+                        local cols = l.columns
+                        for i = 1, #cols do
+                            if l:Sortable(i) and l.headers[i]:IsShown() then
+                                local where = string.format("%s/%s %s", SHORT[global], view, tostring(W.ColumnKey(cols[i])))
+                                local before = rowsOf(l)
+                                local fixedAt = {}
+                                for k, d in ipairs(before) do if isFixed(d) then fixedAt[k] = d end end
+                                for pass = 1, 2 do
+                                    l:SortBy(i)
+                                    local st = l:SortState(false)
+                                    local now = rowsOf(l)
+                                    if #now ~= #before then
+                                        found[#found + 1] = where .. ": rows lost"
+                                    elseif not (l.presorted or rawget(l, "presorted")) then
+                                        -- In order by the values (sorting again changes nothing); headings, totals
+                                        -- and notes in their places.
+                                        local again = W.SortRows(now, i, st.desc)
+                                        for k = 1, #now do
+                                            if again[k] ~= now[k] then
+                                                found[#found + 1] = where .. ": not in order, pass " .. pass
+                                                break
+                                            end
+                                        end
+                                        for k, d in pairs(fixedAt) do
+                                            if now[k] ~= d then found[#found + 1] = where .. ": a heading moved" break end
+                                        end
+                                    end
+                                    if st.key ~= W.ColumnKey(cols[i]) then found[#found + 1] = where .. ": not saved" end
+                                    if not tostring(l.headers[i]:GetText()):find("Arrow", 1, true) then
+                                        found[#found + 1] = where .. ": no arrow on the sorted title"
+                                    end
+                                    sorted = sorted + 1
+                                end
+                            end
+                        end
+                    end
+                end)
+                if global == "SalvagerOddsFrame" then ns.Odds.PutBack() end
+            end
+        end
+        ns.db.sorts = nil
+        assert.is_true(sorted > 50, sorted .. " sorts")
+        assert.are.equal("", table.concat(found, "\n"))
+    end)
+
+    it("sorts the Odds cards' rows and the main window's lists by a click on a title, remembered", function()
+        local W = ns.Widgets
+        -- The Odds: one order for every card (Your rates: Rate, highest first, then the other way).
+        ns.Reports.ShowView("odds")
+        local stack = ns.Reports.oddsView.stack
+        stack:SortBy(4)
+        assert.are.same({ "Result rate (yours)", true }, { ns.db.sorts.odds.key, ns.db.sorts.odds.desc })
+        local function inOrder(desc)
+            for _, card in ipairs(stack.cards) do
+                local prev
+                for _, row in ipairs(card.rows) do
+                    local v = row:IsShown() and row.data and row.data.sort and row.data.sort[4]
+                    if v then
+                        if prev then assert.is_true(desc and prev >= v or (not desc and prev <= v)) end
+                        prev = v
+                    end
+                end
+            end
+        end
+        inOrder(true)
+        assert.is_truthy(tostring(stack.titles[4]):find("Arrow", 1, true))
+        stack:SortBy(4)
+        inOrder(false)
+        ns.db.sorts.odds = nil
+        ns.Reports.Toggle()
+        -- The main window's Gear list: Buyout, lowest first after two clicks; the scan's order stays Profit.
+        ns.UI.Show()   -- (first: showing it checks the deals again)
+        local kept = ns.Scanner.deals
+        ns.Scanner.deals = {}
+        for i, b in ipairs({ 5000, 1200, 9000, 300 }) do
+            ns.Scanner.deals[i] = { auctionID = 800 + i, itemID = 7000 + i, buyout = b, profit = 100 * i, value = b + 100 * i,
+                classID = 4, ilvl = 20 + i, lose = 0.1 * i }
+        end
+        ns.Scanner.Sort()
+        ns.UI.view = "deals"
+        ns.UI.Refresh()
+        local area
+        for _, fr in ipairs(env.frames) do if rawget(fr, "sortCol") == 4 and fr:IsShown() then area = fr end end
+        assert.is_table(area)
+        area.scripts.OnMouseUp(area)
+        local rows = ns.UI.Rows("deals")
+        for k = 2, #rows do
+            if not rows[k].child and not rows[k - 1].child then assert.is_true(rows[k - 1].sort[4] >= rows[k].sort[4]) end
+        end
+        area.scripts.OnMouseUp(area)
+        rows = ns.UI.Rows("deals")
+        for k = 2, #rows do
+            if not rows[k].child and not rows[k - 1].child then assert.is_true(rows[k - 1].sort[4] <= rows[k].sort[4]) end
+        end
+        assert.are.equal("Buyout", ns.db.sorts["main.deals"].key)
+        assert.are.equal("profit", ns.db.settings.dealSort)
+        ns.db.sorts["main.deals"] = nil
+        assert.are.equal(4, #rows)
+        ns.Scanner.deals = kept
+        ns.UI.Refresh()
+        assert.is_table(W)
+    end)
+
+    it("shows a one-choice dropdown as a plain list, check boxes only for many choices (UI.md Controls 2)", function()
+        local found, singles, multis = {}, 0, 0
+        local function drops(win)
+            local out = {}
+            local function walk(x)
+                if rawget(x, "uiKind") == "dropdown" and x:IsVisible() then out[#out + 1] = x end
+                for _, c in ipairs(x._children) do walk(c) end
+            end
+            walk(win)
+            return out
+        end
+        local function try(win, where)
+            for _, d in ipairs(drops(win)) do
+                local name = where .. " " .. tostring(rawget(d, "title"))
+                local rows = {}
+                for _, c in ipairs(d.checks) do if c:IsShown() then rows[#rows + 1] = c end end
+                if #rows >= 2 then
+                    if rawget(d, "single") then
+                        singles = singles + 1
+                        for _, r in ipairs(rows) do
+                                                        if rawget(r, "uiKind") == "check" then
+                                found[#found + 1] = name .. ": a check box in a one-choice list"
+                                break
+                            end
+                        end
+                        -- An on/off setting is one check box, not a dropdown of two.
+                        local a, b = tostring(rows[1].label.text):lower(), tostring(rows[2].label.text):lower()
+                        if #rows == 2 and ((a == "on" and b == "off") or (a == "yes" and b == "no")) then
+                            found[#found + 1] = name .. ": an on/off setting as a dropdown"
+                        end
+                        -- A click picks and closes; the one picked before back.
+                        local before
+                        for k, r in ipairs(rows) do if r:GetChecked() then before = k end end
+                        d.list:Show()
+                        rows[before == 1 and 2 or 1]:Click()
+                        if d.list:IsShown() then found[#found + 1] = name .. ": the list stays open after a pick" end
+                        if before then d.list:Show() rows[before]:Click() end
+                    else
+                        multis = multis + 1
+                        -- Many choices: a click ticks one and the list stays open; a set that closes it is one choice.
+                        d.list:Show()
+                        local c = rows[1]
+                        c:SetChecked(not c:GetChecked())
+                        c.scripts.OnClick(c)
+                        local closed = not d.list:IsShown()
+                        c:SetChecked(not c:GetChecked())
+                        c.scripts.OnClick(c)
+                        d.list:Hide()
+                        if closed then found[#found + 1] = name .. ": one choice (its pick closes the list) without single" end
+                    end
+                end
+            end
+        end
+        local open = openers(ns)
+        for _, global in ipairs(WINDOWS) do
+            ns.UI.Show()
+            if open[global]() ~= false then
+                local win = _G[global]
+                eachView(win, function(view) try(win, SHORT[global] .. "/" .. view) end)
+                if global == "SalvagerOddsFrame" then ns.Odds.PutBack() end
+            end
+        end
+        ns.Options.Open()
+        try(_G.SalvagerOptionsFrame, "options")
+        -- No row of check boxes where one is on (Widgets.Choice) anywhere in the addon.
+        for _, file in ipairs({ "Post", "Options", "UI", "LedgerWindow", "ReportsWindow", "MarketWindow", "LogWindow" }) do
+            local h = io.open("Salvager/" .. file .. ".lua")
+            local text = h:read("*a")
+            h:close()
+            if text:find("W.Choice(", 1, true) or text:find("Widgets.Choice(", 1, true) then
+                found[#found + 1] = file .. ": a W.Choice"
+            end
+        end
+        assert.is_true(singles >= 6 and multis >= 6, singles .. " one-choice, " .. multis .. " many")
+        assert.are.equal("", table.concat(found, "\n"))
+    end)
+
+    it("sorts inside each group, each row with the rows under it, unknown values last both ways", function()
+        local W = ns.Widgets
+        local rows = {
+            { head = true, cells = { "Armor" } },
+            { cells = { "b", "3" }, indent = 22 }, { cells = { "b1", "9" }, indent = 44 },
+            { cells = { "a", "-" }, indent = 22 },
+            { cells = { "c", "1" }, indent = 22 },
+            { head = true, cells = { "Weapons" } },
+            { cells = { "d", "5" }, indent = 22 }, { cells = { "e", "7" }, indent = 22 },
+            { rule = "final", bold = true, cells = { "Total", "16" } },
+        }
+        local function names(list) local o = {} for _, r in ipairs(list) do o[#o + 1] = r.cells[1] end return o end
+        assert.are.same({ "Armor", "b", "b1", "c", "a", "Weapons", "e", "d", "Total" }, names(W.SortRows(rows, 2, true)))
+        assert.are.same({ "Armor", "c", "b", "b1", "a", "Weapons", "d", "e", "Total" }, names(W.SortRows(rows, 2, false)))
+        -- A statement does not sort; a column with sort = false neither.
+        local cols = { { "Label" }, { "Amount", sort = false } }
+        assert.is_false(W.ColumnSortable(cols, 2))
+        cols.statement = true
+        assert.is_false(W.ColumnSortable(cols, 1))
+    end)
+
+    it("cuts no text in any state that changes texts: the Salvager box, the auction house, Play, a purchase, the panels",
+        function()
+        local W = ns.Widgets
+        local found = {}
+        local function lookAt(label)
+            for k in pairs(W.layoutLogged) do W.layoutLogged[k] = nil end
+            local before = #ns.db.log
+            for _, win in ipairs({ _G.SalvagerFrame, _G.SalvagerDisenchantFrame, _G.SalvagerMiniFrame }) do
+                if win and win:IsShown() then
+                    for _, size in ipairs({ "default", "smallest" }) do
+                        if win ~= _G.SalvagerMiniFrame then
+                            if size == "smallest" then smallest(win) else default(win) end
+                        end
+                        if win == _G.SalvagerFrame then ns.UI.Refresh() elseif win == _G.SalvagerDisenchantFrame then
+                            ns.DisenchantPanel.Refresh() end
+                        for _, t in ipairs(W.CutTexts(win)) do
+                            found[#found + 1] = string.format("%s %s %s: %s", label, tostring(win:GetName()), size, t)
+                        end
+                        local probs = {}
+                        check.problems(win, label .. " " .. tostring(win:GetName()) .. " " .. size, probs, false, ns)
+                        for _, p in ipairs(probs) do found[#found + 1] = p end
+                    end
+                end
+            end
+            for i = before + 1, #ns.db.log do
+                local line = tostring(ns.db.log[i])
+                if line:find("layout: ", 1, true) then found[#found + 1] = label .. " self-check: " .. line end
+            end
+        end
+        ns.UI.Show()
+        ns.MiniPanel.Show()
+        ns.DisenchantPanel.Show()
+        for _, on in ipairs({ true, false }) do
+            ns.SetSalvagerForBuy(on)
+            lookAt("salvager " .. tostring(on))
+        end
+        ns.Scanner.Play()
+        lookAt("play")
+        local done = wow.buying(ns)
+        lookAt("buying")
+        done()
+        ns.Scanner.Stop()
+        wow.fire(ns, "AUCTION_HOUSE_CLOSED")
+        ns.UI.Show()
+        lookAt("closed")
+        -- The Disenchant panel with no piece left.
+        local bags = env.bagItems
+        env.bagItems = {}
+        wow.fire(ns, "BAG_UPDATE_DELAYED")
+        lookAt("panel empty")
+        env.bagItems = bags
+        wow.fire(ns, "BAG_UPDATE_DELAYED")
+        wow.fire(ns, "AUCTION_HOUSE_SHOW")
+        lookAt("open")
+        assert.are.equal("", table.concat(found, "\n"))
+    end)
 end)
 
 describe("Windows as tight as their titles with no data at all (SDD 120)", function()
@@ -415,7 +730,9 @@ describe("Windows as tight as their titles with no data at all (SDD 120)", funct
         wow.fire(ns, "ADDON_LOADED", "Salvager")
         wow.fire(ns, "AUCTION_HOUSE_SHOW")
         local found, numbers = {}, {}
-        everyWindow(ns, found, numbers, { SalvagerStandFrame = true, SalvagerGearFrame = true })
+        -- (No Post with no data: nothing in the bags to post. Until 0.4.0 this passed on the Post window the typical
+        -- data's test had left open, a global of the stand-in.)
+        everyWindow(ns, found, numbers, { SalvagerStandFrame = true, SalvagerGearFrame = true, SalvagerPostFrame = true })
         ratchet.write("layout-empty", numbers)
         assert.are.equal("", table.concat(found, "\n"))
     end)

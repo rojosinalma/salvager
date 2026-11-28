@@ -178,7 +178,7 @@ function M.problems(win, where, out, atDefault, ns)
             end
         end
         -- A table leaves no column out at the default size (on a 1920 wide screen): the window fits its columns
-        -- (SDD 107). At the smallest size a column may be left out, and then the table's note says so. FIT_DEBUG=1
+        -- (SDD 107). At the smallest size a column may be left out, and then its column chooser says so. FIT_DEBUG=1
         -- lists them.
         if isList(obj) then
             local W, dropped = ns_.Widgets, {}
@@ -189,9 +189,9 @@ function M.problems(win, where, out, atDefault, ns)
             if #dropped > 0 then
                 local text = "table " .. tostring(obj.columns[1][1]) .. " leaves out " .. table.concat(dropped, ", ")
                 if atDefault then add(text) end
-                local note = rawget(obj, "leftOutNote")
-                if rawget(obj, "headers")[1]:IsShown() and not (note and note:IsShown()) then
-                    add(text .. " without its note")
+                -- (Its sign is the column chooser: the column unticked there, the reason on hover.)
+                if rawget(obj, "headers")[1]:IsShown() and not rawget(obj, "columnSet") then
+                    add(text .. " with no column chooser to say so")
                 end
                 if os.getenv("FIT_DEBUG") then print(where .. ": " .. text) end
             end
@@ -267,7 +267,7 @@ local function spansOf(columns, right)
         local hr = c.header and rect(c.header)
         for _, x in ipairs(c.texts or {}) do
             if hr and x.w > 0 then
-                local j = c.header:GetJustifyH()
+                local j = c.justify or c.header:GetJustifyH()
                 local a, b
                 if j == "RIGHT" then a, b = hr.r - x.w, hr.r
                 elseif j == "CENTER" then a, b = (hr.l + hr.r - x.w) / 2, (hr.l + hr.r + x.w) / 2
@@ -327,7 +327,7 @@ local function tablesOf(win, ns)
                         end
                     end
                     cols[#cols + 1] = { header = h, cells = cells, controls = controls, texts = texts,
-                        live = obj.columns[i].sample ~= nil }
+                        live = obj.columns[i].sample ~= nil, justify = obj.columns[i][3] or "LEFT" }
                 end
             end
             local action = rawget(obj, "actionTitle")
@@ -390,7 +390,10 @@ local function tablesOf(win, ns)
                         for _, card in ipairs(g.cards) do
                             for _, row in ipairs(card.rows) do if row:IsVisible() then cells[#cells + 1] = row.cells[i] end end
                         end
-                        cols[#cols + 1] = { header = h, cells = cells, sep = obj.columns[i] and obj.columns[i].sep }
+                        -- (A group widened for its heading: the gaps at its columns may be wider, `live`'s rule.)
+                        local wide = rawget(obj, "groupWide")
+                        cols[#cols + 1] = { header = h, cells = cells, sep = obj.columns[i] and obj.columns[i].sep,
+                            live = wide and wide[i] or nil }
                     end
                 end
                 local t = spansOf(cols, g.r - 8)
@@ -475,6 +478,31 @@ function M.measure(win, ns)
         rows[#rows + 1] = { kind = "table", name = t.name, slack = excess + tail }
         for _, b in ipairs(t.notes or {}) do rows[#rows + 1] = { kind = "note", name = t.name, slack = t.right - b } end
     end
+    -- A card's facts in a row, and a heading's summary, are content too (never cut, the card is as wide as they need).
+    local function cardTexts(obj)
+        if not obj:IsVisible() then return end
+        if rawget(obj, "cards") then
+            for _, card in ipairs(obj.cards) do
+                local cr = card:IsVisible() and rect(card)
+                if cr then
+                    local right
+                    for _, fs in ipairs(card.parts or {}) do
+                        local r = hasText(fs) and rect(fs)
+                        if r then right = math.max(right or r.r, r.r) end
+                    end
+                    local sr = hasText(card.summary) and rect(card.summary)
+                    if sr then right = math.max(right or sr.r, sr.r) end
+                    if right then
+                        local tail = (card.more and card.more:IsShown()) and (18 + 5 + 8) or 8
+                        rows[#rows + 1] = { kind = "facts", name = tostring(rawget(card.title, "text") or ""):sub(1, 20),
+                            slack = cr.r - tail - right }
+                    end
+                end
+            end
+        end
+        for _, c in ipairs(obj._children) do cardTexts(c) end
+    end
+    cardTexts(win)
     local function visit(obj)
         if not obj:IsVisible() then return end
         local gap = BARS[rawget(obj, "uiKind") or ""]
@@ -507,7 +535,9 @@ function M.badGaps(m)
             -- (A live column keeps its widest possible value's width, UI.md Tables 2: the gaps at its sides wider.)
             if not g.action and not g.live then
                 local normal = M.NORMAL + (g.sep and M.SEP or 0)
-                most = math.max(most, g.gap)
+                -- (The first gap is the first column's remainder, what the window's widest row leaves it: every
+                -- table spans its window, SDD 127. The window's slack holds it; the ratchet counts the others.)
+                if not g.first then most = math.max(most, g.gap) end
                 if g.gap < normal - M.TOL - EPS or (not g.first and g.gap > normal + M.TOL + EPS) then
                     out[#out + 1] = string.format("%s: %s > %s %.0f px", t.name, g.from, g.to, g.gap)
                 end

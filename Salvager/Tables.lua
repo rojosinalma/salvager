@@ -8,6 +8,9 @@ local Widgets = ns.Widgets
 local FIRST_REASON = "The first column names the row: it always shows."
 local ACTION_REASON = "This column holds the rows' buttons: it always shows."
 Widgets.FIRST_COLUMN_REASON, Widgets.ACTION_COLUMN_REASON = FIRST_REASON, ACTION_REASON
+-- Why a column is unticked that the player did not hide: no room for it (the only sign of a column left out).
+Widgets.LEFT_OUT_REASON = "Left out: the window is as wide as the screen, and this column has no room. Hide another "
+    .. "column to make room for it."
 
 --- The column's name in the chooser and in the saved choice: its title without a sort arrow (`col.key`).
 function Widgets.ColumnKey(col) return col.key or col[1] end
@@ -32,6 +35,143 @@ function Widgets.ShowAllColumns(setId)
     if setId and ns.db and type(ns.db.columns) == "table" then ns.db.columns[setId] = nil end
 end
 
+------------------------------------------------------------------ sorting (UI.md Tables 10)
+-- One implementation for every table (Widgets.List, Widgets.CardList, the main window's): a click on a title sorts by
+-- that column, again turns it round; the arrow is on the sorted title only (and counts in its width, Tables 2); the
+-- choice is saved per table (SalvagerDB.sorts[id] = { key = column key, desc }). A row sorts by `row.sort[i]` where it
+-- gives one, else by its cell's full text (Util.SortValue: money in copper, percents and numbers as numbers, times in
+-- order); unknown ("-", "") last both ways; ties keep the previous order. Headings (row.head, row.group), totals
+-- (row.rule, row.bold) and notes (row.span) stay in place: the rows sort inside each group, each row with the rows
+-- indented under it. A column with `sort = false` (a statement's, the buttons') is not clickable and has no arrow.
+Widgets.SORT_DOWN = " |TInterface\\Buttons\\Arrow-Down-Up:10|t"
+Widgets.SORT_UP = " |TInterface\\Buttons\\Arrow-Up-Up:10|t"
+Widgets.SORT_HINT = "Click: sort by this column; again: the other way round."
+
+--- The saved order of table `id` ({ key, desc } or nil); `create`: make it.
+function Widgets.SortState(id, create)
+    if not (id and ns.db) then return nil end
+    if type(ns.db.sorts) ~= "table" then
+        if not create then return nil end
+        ns.db.sorts = {}
+    end
+    local s = ns.db.sorts[id]
+    if type(s) ~= "table" and create then s = {} ns.db.sorts[id] = s end
+    return type(s) == "table" and s or nil
+end
+
+--- The column index a sort state names in `cols` (by its key, else its index `col`), or nil.
+function Widgets.SortColumn(cols, state)
+    if not (state and cols) then return nil end
+    if state.key ~= nil then
+        for i, col in ipairs(cols) do if Widgets.ColumnKey(col) == state.key then return i end end
+        return nil
+    end
+    local i = tonumber(state.col)
+    return i and cols[i] and i or nil
+end
+
+--- Can the table's column i be sorted? (Not a statement's, not a column of controls, not one with sort = false.)
+function Widgets.ColumnSortable(cols, i)
+    local col = cols and cols[i]
+    if not col or cols.statement or col.sort == false or col.least then return false end
+    return true
+end
+
+--- The title of column i with the arrow where the table is sorted by it.
+function Widgets.SortTitle(title, i, sortedBy, desc)
+    if i ~= sortedBy then return title end
+    return tostring(title) .. (desc and Widgets.SORT_DOWN or Widgets.SORT_UP)
+end
+
+local function fixedRow(d) return d.head or d.group or d.rule or d.bold or d.span or d.fixed end
+local function sortValue(d, i)
+    local v = type(d.sort) == "table" and d.sort[i] or nil
+    if v ~= nil then return v, type(v) == "number" and "number" or "text" end
+    return ns.Util.SortValue(d.cells and d.cells[i])
+end
+
+--- Rows sorted by column i (desc: highest first), groups kept (see above). Returns a new array.
+function Widgets.SortRows(rows, i, desc)
+    local n = #rows
+    if n < 2 then return rows end
+    -- The column's kind: numbers where any row has one (a text in a number column then counts as unknown).
+    local values, numeric = {}, false
+    for r = 1, n do
+        local v, kind = sortValue(rows[r], i)
+        values[r] = { v = v, kind = kind }
+        if kind == "number" then numeric = true end
+    end
+    for r = 1, n do
+        local x = values[r]
+        if numeric and x.kind ~= "number" then x.v = nil end
+        if not numeric and x.v ~= nil then x.v = tostring(x.v) end
+    end
+    -- The tree by indent: each row with the rows indented deeper right under it.
+    local function indentOf(r) return rows[r].indent or 0 end
+    local out = {}
+    local function emit(r, last)   -- row r and its subtree (rows r+1..last), its children sorted
+        out[#out + 1] = rows[r]
+        local kids, k = {}, r + 1
+        while k <= last do
+            local e = k + 1
+            while e <= last and indentOf(e) > indentOf(k) do e = e + 1 end
+            kids[#kids + 1] = { first = k, last = e - 1 }
+            k = e
+        end
+        -- Runs of children between fixed ones (headings, totals, notes) sort; the fixed ones keep their place.
+        local s = 1
+        while s <= #kids do
+            if fixedRow(rows[kids[s].first]) then
+                s = s + 1
+            else
+                local e = s
+                while e + 1 <= #kids and not fixedRow(rows[kids[e + 1].first]) do e = e + 1 end
+                local run = {}
+                for x = s, e do run[#run + 1] = kids[x] end
+                table.sort(run, function(a, b)
+                    local va, vb = values[a.first].v, values[b.first].v
+                    if va == vb or (va == nil and vb == nil) then return a.first < b.first end
+                    if va == nil then return false end
+                    if vb == nil then return true end
+                    if desc then return va > vb end
+                    return va < vb
+                end)
+                for x = s, e do kids[x] = run[x - s + 1] end
+                s = e + 1
+            end
+        end
+        for _, kid in ipairs(kids) do emit(kid.first, kid.last) end
+    end
+    -- A virtual root over every row.
+    local root = { indent = -1, cells = {} }
+    table.insert(rows, 1, root)
+    table.insert(values, 1, { v = nil })
+    emit(1, n + 1)
+    table.remove(rows, 1)
+    table.remove(values, 1)
+    table.remove(out, 1)
+    return out
+end
+
+--- A click on title i of a table whose order is `state` (made with Widgets.SortState(id, true)): sorts by it, highest
+--- first for numbers and A to Z for text; a second click turns it round. `cols`, `rows` tell the column's kind.
+function Widgets.SortClick(state, cols, i, rows)
+    local key = Widgets.ColumnKey(cols[i])
+    if state.key == key or (state.key == nil and tonumber(state.col) == i) then
+        state.desc = not state.desc
+    else
+        local numeric = false
+        for _, d in ipairs(rows or {}) do
+            if not fixedRow(d) then
+                local _, kind = sortValue(d, i)
+                if kind == "number" then numeric = true break end
+            end
+        end
+        state.desc = numeric
+    end
+    state.key, state.col = key, nil
+end
+
 --- The column chooser of a table: a small button with three stacked dots (the game fonts have no vertical
 --- ellipsis). A click opens a menu under it: one check row per column (ticked = shown), and "Show all".
 --- A click on a row shows or hides that column at once; the menu stays open. It closes on a click outside,
@@ -46,7 +186,20 @@ function Widgets.ColumnChooser(parent, getColumns, changed)
         dot:SetSize(2, 2)
         dot:SetPoint("CENTER", b, "CENTER", 0, 8 - i * 4)
     end
-    Widgets.Tooltip(b, "Columns", "Choose the columns this table shows.")
+    b:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Columns", 1, 1, 1)
+        Widgets.AddHelp(GameTooltip, nil, "Choose the columns this table shows.")
+        local _, cols = getColumns()
+        local out = {}
+        for _, col in ipairs(cols or {}) do if col.leftOut then out[#out + 1] = col.key end end
+        if #out > 0 then
+            GameTooltip:AddLine("Left out, the window is as wide as the screen: " .. table.concat(out, ", ") .. ".",
+                1, 0.3, 0.3, true)
+        end
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
     -- (On UIParent: the tables clip what is inside them.)
     local menu = CreateFrame("Frame", nil, UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
     menu:SetFrameStrata("DIALOG")
@@ -69,6 +222,7 @@ function Widgets.ColumnChooser(parent, getColumns, changed)
     menu:EnableMouse(true)
     menu:Hide()
     local checks = {}
+    b.checks = checks   -- (the specs read them)
     local showAll
     local function newCheck(i)
         local c = Widgets.Check(menu, "", nil, function(on)
@@ -85,7 +239,7 @@ function Widgets.ColumnChooser(parent, getColumns, changed)
             if not why then return end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetText(rawget(self, "key"), 1, 1, 1)
-            GameTooltip:AddLine(why, 1, 0.82, 0, true)
+            Widgets.AddHelp(GameTooltip, nil, why)
             GameTooltip:Show()
         end)
         c:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -101,8 +255,8 @@ function Widgets.ColumnChooser(parent, getColumns, changed)
     showAll:HookScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText("Show all", 1, 1, 1)
-        GameTooltip:AddLine(self:IsEnabled() and "Shows every column of this table again."
-            or "Every column shows already.", 1, 0.82, 0, true)
+        Widgets.AddHelp(GameTooltip, nil, self:IsEnabled() and "Shows every column of this table again."
+            or "Every column shows already.")
         GameTooltip:Show()
     end)
     showAll:HookScript("OnLeave", function() GameTooltip:Hide() end)
@@ -113,10 +267,11 @@ function Widgets.ColumnChooser(parent, getColumns, changed)
         local widest, any = Widgets.TextWidth("Show all") or 60, false
         for i, col in ipairs(cols) do
             local c = checks[i] or newCheck(i)
-            c.key, c.reason = col.key, col.locked
+            c.key, c.reason = col.key, col.locked or col.leftOut
             c.label:SetText(col.key)
-            local on = col.locked ~= nil or Widgets.ColumnShown(id, col.key)
-            if not on then any = true end
+            -- (A column left out for want of room shows unticked, the reason on hover: the only sign of it.)
+            local on = col.locked ~= nil or (Widgets.ColumnShown(id, col.key) and not col.leftOut)
+            if not on and not col.leftOut then any = true end
             c:SetChecked(on)
             c:SetEnabled(col.locked == nil)
             if col.locked then c.label:SetTextColor(0.5, 0.5, 0.5) else c.label:SetTextColor(1, 1, 1) end
@@ -194,13 +349,15 @@ end
 ---                                                         column set: the columns hidden with the chooser (the
 ---                                                         button at the right end of the titles) are saved under
 ---                                                         it; a list without one has no chooser.
----   cols.statement = true                                 a statement (label and amounts): its totals' rules;
----                                                         it keeps its window's width beside other tables (a
----                                                         table's first column takes the free width, so the last
----                                                         column ends at the right edge; two or more tables in a
----                                                         view are each as wide as they need, Widgets.TrimTables,
----                                                         UI.md Tables 2)
----   list.onColumnsChanged = fn                            runs after a change in the chooser (else list:Refresh)
+---   cols.statement = true                                 a statement (label and amounts): its totals' rules; it
+---                                                         does not sort (its lines are in their order)
+---                                                         (every table spans its window: its first column takes
+---                                                         the free width, so the last column ends at the right
+---                                                         edge, UI.md Tables 2, SDD 127)
+---   col.sort = false                                      the column does not sort (Widgets.SortRows)
+---   list.onColumnsChanged = fn                            runs after a change in the chooser (else list:Refresh),
+---                                                         and after a sort click (list.onSortChanged first)
+---   list.sortId = id                                      where the order is saved (else the column set's id)
 ---   list:SetSource(count, getRow)                         getRow(i) -> row, only called for rows on screen
 ---   list:Refresh()
 --- row = { cells = { text, ... }, itemID = icon and tooltip, link = tooltip, indent = pixels,
@@ -213,14 +370,13 @@ end
 --- Unless `plain`, the list is drawn as a sunken table: dark panel, title band, every second row shaded.
 -- The fonts a table draws in, and measures in (Widgets.TextWidth): titles, cells, a total's texts (12 pt).
 local TITLE_FONT, CELL_FONT, BOLD_FONT = Widgets.TITLE_FONT, Widgets.CELL_FONT, Widgets.BOLD_FONT
-local NOTE_SAMPLE = "99 columns left out"   -- the widest note of left-out columns
 function Widgets.List(parent, opts)
     opts = opts or {}
     local ROW_H = opts.rowHeight or 22
     local TOGGLE = math.min(ROW_H, 18)   -- the open / close sign
     local HEAD_H = opts.header == false and 0 or ROW_H
     -- MAX_COLS: the cells made per row; a table with more columns is refused (SetColumns), not cut.
-    local MAX_ROWS, MAX_COLS, GAP, BAR_W = 60, 12, Widgets.COL_GAP, 18
+    local MAX_ROWS, MAX_COLS, BAR_W = 60, 12, 18
     local MIN_FIRST = 90       -- the first column never gets narrower than this
     -- The buttons' column (opts.actionWidth set): the warning sign (22) and the button (64), right after the last
     -- column, then 4 px. Its width is the button's: a true constant.
@@ -255,7 +411,6 @@ function Widgets.List(parent, opts)
     for i = 1, MAX_COLS do
         local h = list:CreateFontString(nil, "OVERLAY", TITLE_FONT)
         h:SetHeight(ROW_H)
-        h.canCut = i == 1
         h.measureFont = TITLE_FONT
         headers[i] = h
         -- An invisible area over the title, for its help text.
@@ -264,17 +419,19 @@ function Widgets.List(parent, opts)
         area:EnableMouse(true)
         area:SetScript("OnEnter", function(self)
             local help = helpText[i]
-            if not help then return end
+            local sortable = list.columns[i] and list:Sortable(i)
+            if not help and not sortable then return end
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText(help[1], 1, 1, 1)
-            GameTooltip:AddLine(helpLine(help[2]), 1, 0.82, 0, true)
+            local lines = {}
+            for n = 2, #(help or {}) do lines[#lines + 1] = helpLine(help[n]) end
+            Widgets.AddHelp(GameTooltip, help and help[1] or tostring(Widgets.ColumnKey(list.columns[i])), lines)
+            if sortable then Widgets.AddHelp(GameTooltip, nil, Widgets.SORT_HINT, 0.5, 0.8, 1) end
             GameTooltip:Show()
         end)
         area:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        -- A click on a title sorts by that column, where the list's owner asked for it (list.onSort).
+        -- A click on a title sorts by that column (Widgets.SortClick); again, the other way round.
         area:SetScript("OnMouseUp", function()
-            local onSort = rawget(list, "onSort")
-            if onSort and list.columns[i] then onSort(i) end
+            if list.columns[i] and list:Sortable(i) then list:SortBy(i) end
         end)
         area:Hide()
         helps[i] = area
@@ -283,8 +440,12 @@ function Widgets.List(parent, opts)
     if HEAD_H > 0 then
         local chooser = Widgets.ColumnChooser(list, function()
             local entries = {}
+            local out = {}
+            for _, k in ipairs(rawget(list, "leftOut") or {}) do out[k] = true end
             for i, col in ipairs(list.columns) do
-                entries[i] = { key = Widgets.ColumnKey(col), locked = i == 1 and FIRST_REASON or nil }
+                local key = Widgets.ColumnKey(col)
+                entries[i] = { key = key, locked = i == 1 and FIRST_REASON or nil,
+                    leftOut = out[tostring(key)] and Widgets.LEFT_OUT_REASON or nil }
             end
             if rawget(list, "actionTitle") then entries[#entries + 1] = { key = opts.actionTitle, locked = ACTION_REASON } end
             return rawget(list, "columnSet"), entries
@@ -295,31 +456,6 @@ function Widgets.List(parent, opts)
         chooser:SetPoint("TOPRIGHT", list, "TOPRIGHT", -2, -math.floor((HEAD_H - 16) / 2))
         chooser:Hide()
         list.chooser = chooser
-    end
-    -- The note of the columns left out for want of room, left of the chooser, with the reason on hover.
-    local note
-    if HEAD_H > 0 then
-        note = list:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        note:SetHeight(HEAD_H)
-        note:SetJustifyH("RIGHT")
-        note:SetPoint("TOPRIGHT", list, "TOPRIGHT", -BAR_W - 4, 0)
-        note:Hide()
-        local area = CreateFrame("Frame", nil, list)
-        area:SetAllPoints(note)
-        area:EnableMouse(true)
-        area:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText("Columns left out", 1, 1, 1)
-            GameTooltip:AddLine("No room for: " .. table.concat(rawget(list, "leftOut") or {}, ", ") .. ". Widen the "
-                .. "window, or hide other columns with the column chooser at the right. A window that fits its "
-                .. "tables gets as wide as the screen allows.", 1, 0.82, 0, true)
-            GameTooltip:Show()
-        end)
-        area:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        area.uiKind = "help"   -- (no look of its own: the note it lies over)
-        list.leftOutNote = note
-        note.area = area
-        area:Hide()
     end
     for r = 1, MAX_ROWS do
         local row = CreateFrame("Button", nil, list)
@@ -373,8 +509,9 @@ function Widgets.List(parent, opts)
             local tip = data and data.tip
             if tip then
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(tip[1], 1, 1, 1)
-                for i = 2, #tip do GameTooltip:AddLine(tip[i], 1, 0.82, 0, true) end
+                local lines = {}
+                for i = 2, #tip do lines[#lines + 1] = tip[i] end
+                Widgets.AddHelp(GameTooltip, tip[1], lines)
                 exact()
                 GameTooltip:Show()
                 return
@@ -423,7 +560,7 @@ function Widgets.List(parent, opts)
                 if not w then return end
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:SetText(w.title, 1, 0.3, 0.3)
-                GameTooltip:AddLine(w.text, 1, 0.82, 0, true)
+                Widgets.AddHelp(GameTooltip, nil, w.text)
                 GameTooltip:Show()
             end)
             row.warn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -455,16 +592,60 @@ function Widgets.List(parent, opts)
         local chooser = rawget(self, "chooser")
         if chooser and setId ~= rawget(self, "columnSet") then chooser.Close() end
         self.columns, self.columnSet = cols, setId
+        self.sortDirty = true
     end
 
     function list:SetSource(count, getRow)
+        self.rawCount, self.rawGet = count, getRow
         self.count, self.getRow = count, getRow
+        self.sortDirty = true
+    end
+
+    -- Sorting (Widgets.SortRows). The order is saved under `list.sortId` (else the column set's id); a list with
+    -- neither, without titles, or a statement has none. `list.sortState(create)`: the owner keeps the order itself.
+    function list:SortState(create)
+        local own = rawget(self, "sortState")
+        if own then return own(create) end
+        return Widgets.SortState(rawget(self, "sortId") or rawget(self, "columnSet"), create)
+    end
+    function list:Sortable(i)
+        if opts.sort == false or HEAD_H == 0 then return false end
+        if not (rawget(self, "sortState") or rawget(self, "sortId") or rawget(self, "columnSet")) then return false end
+        return Widgets.ColumnSortable(self.columns, i)
+    end
+    function list:ApplySort()
+        self.sortDirty = nil
+        local count, getRow = self.rawCount or 0, self.rawGet
+        local st = self:SortState(false)
+        local i = st and Widgets.SortColumn(self.columns, st)
+        self.sortedBy, self.sortDesc = nil, nil
+        if not (i and getRow and self:Sortable(i)) then
+            self.count, self.getRow = count, getRow
+            return
+        end
+        self.sortedBy, self.sortDesc = i, st.desc and true or false
+        -- (`list.presorted`: the owner's rows come in this order already, by values of its own: the Purchases' groups.)
+        if count < 2 or rawget(self, "presorted") then return end
+        local all = {}
+        for r = 1, count do all[#all + 1] = getRow(r) end
+        local sorted = Widgets.SortRows(all, i, st.desc)
+        self.count, self.getRow = #sorted, function(r) return sorted[r] end
+    end
+    function list:SortBy(i)
+        local all = {}
+        for r = 1, math.min(self.rawCount or 0, 400) do all[#all + 1] = self.rawGet(r) end
+        Widgets.SortClick(self:SortState(true), self.columns, i, all)
+        self.sortDirty, self.offset = true, 0
+        local fn = rawget(self, "onSortChanged") or rawget(self, "onColumnsChanged")
+        if fn then fn() else self:Refresh() end
     end
 
     function list:Refresh()
         local cols = self.columns
         -- A table shown before it has columns (a window drawing its views) has nothing to draw yet.
         if not cols or #cols == 0 then return end
+        if self.sortDirty then self:ApplySort() end
+        local sortedBy, sortDesc = rawget(self, "sortedBy"), rawget(self, "sortDesc")
         -- The columns hidden with the chooser take no room; the first one always shows.
         local setId, shown = rawget(self, "columnSet"), {}
         for i, col in ipairs(cols) do shown[i] = i == 1 or Widgets.ColumnShown(setId, Widgets.ColumnKey(col)) end
@@ -481,7 +662,7 @@ function Widgets.List(parent, opts)
         -- Every column but the first is as wide as its widest text (title or cell), and no wider; the first
         -- takes the room that is left. Where the client cannot measure text, the widths given are used.
         local titles, samples = {}, {}
-        for i, col in ipairs(cols) do titles[i], samples[i] = col[1], col.sample end
+        for i, col in ipairs(cols) do titles[i], samples[i] = Widgets.SortTitle(col[1], i, sortedBy, sortDesc), col.sample end
         local need, textNeed
         if opts.fit ~= false then
             need, textNeed = Widgets.FitColumns(titles, self.count, function(r)
@@ -502,7 +683,9 @@ function Widgets.List(parent, opts)
         local gapBefore, prev = {}, 1
         for i = 2, #cols do
             if shown[i] then
-                gapBefore[i] = Widgets.ColumnGap(cols[prev][3] or "LEFT", cols[i][3] or "LEFT")
+                -- (A centred title over cells of another justification: its pads are the title's.)
+                gapBefore[i] = Widgets.ColumnGap(cols[prev].titleJustify or cols[prev][3] or "LEFT",
+                    cols[i].titleJustify or cols[i][3] or "LEFT")
                 prev = i
             end
         end
@@ -513,29 +696,19 @@ function Widgets.List(parent, opts)
         -- leave it less is left out, from the right, and the first column takes its room too.
         local fits = {}
         for i = 1, #cols do fits[i] = shown[i] end
-        -- A column left out says so (UI.md Tables 2): a note at the right end of the titles, which takes room too.
-        local noteW, leftOut = 0, {}
+        -- A column left out shows unticked in the column chooser, the reason on hover (UI.md Tables 2): no note.
+        local leftOut = {}
         if need then
             local least = math.min(need[1], MIN_FIRST)
             for i = #cols, 2, -1 do
-                if avail - noteW - fixed >= least then break end
+                if avail - fixed >= least then break end
                 if fits[i] then
                     fits[i], fixed = false, fixed - need[i] - gapBefore[i]
                     table.insert(leftOut, 1, tostring(Widgets.ColumnKey(cols[i])))
-                    if HEAD_H > 0 then noteW = math.ceil(Widgets.TextWidth(NOTE_SAMPLE) or 100) + GAP end
                 end
             end
-            avail = avail - noteW
         end
         self.leftOut = leftOut
-        if note then
-            note:SetShown(#leftOut > 0)
-            note.area:SetShown(#leftOut > 0)
-            if #leftOut > 0 then
-                note:SetWidth(noteW - GAP)
-                note:SetText(#leftOut .. (#leftOut == 1 and " column" or " columns") .. " left out")
-            end
-        end
         local first = math.max(MIN_FIRST, avail - fixed)
         -- The first column (the row's label) takes all the free width, so the other columns end at the right edge
         -- (UI.md Tables 2): in a statement and in every other table alike.
@@ -597,12 +770,13 @@ function Widgets.List(parent, opts)
             if on then
                 h:ClearAllPoints()
                 h:SetPoint("TOPLEFT", self, "TOPLEFT", xs[i], 0)
-                h:SetWidth(ws[i]) h:SetJustifyH(col[3] or "LEFT") h:SetText(col[1]) h:Show()
+                -- (`titleJustify`: a title centred over cells of another justification, the Limits' pairs.)
+                h:SetWidth(ws[i]) h:SetJustifyH(col.titleJustify or col[3] or "LEFT") h:SetText(titles[i]) h:Show()
             else
                 h:Hide()
             end
             helpText[i] = on and col.help or nil
-            helps[i]:SetShown(on and (helpText[i] ~= nil or rawget(list, "onSort") ~= nil) or false)
+            helps[i]:SetShown(on and (helpText[i] ~= nil or self:Sortable(i)) or false)
         end
         for r = 1, MAX_ROWS do
             local row = rows[r]
@@ -727,6 +901,8 @@ function Widgets.CardList(parent)
     -- (The title band has two lines: the title, and under it the card's facts.)
     local TITLE_H, HEAD_H, ROW_H, GAP, BAR_W, STEP, MAX_COLS = 40, 18, 22, 8, 18, 22, 10
     local HEADING_H, TOGGLE, SEP, MORE = 26, 18, 12, 18   -- a heading card; the open / close sign; a separator; "?"
+    -- The group headings over the column titles (`col.group` on a group's first column: "Game rates"), one line.
+    local GROUP_H = 16
     -- A card may be a heading (data.heading: its title only), may open and close (data.open ~= nil: the sign
     -- before its title, a click on its title band calls data.onClick), and may sit in (data.indent).
     local stack = CreateFrame("Frame", nil, parent)
@@ -807,8 +983,9 @@ function Widgets.CardList(parent)
     local function tip(self, help)
         if not help then return end
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText(help[1], 1, 1, 1)
-        for n = 2, #help do GameTooltip:AddLine(helpLine(help[n]), 1, 0.82, 0, true) end
+        local lines = {}
+        for n = 2, #help do lines[#lines + 1] = helpLine(help[n]) end
+        Widgets.AddHelp(GameTooltip, help[1], lines)
         GameTooltip:Show()
     end
 
@@ -832,8 +1009,14 @@ function Widgets.CardList(parent)
         card.click:SetScript("OnClick", function()
             if card.data and card.data.onClick then card.data.onClick(card.data) end
         end)
+        -- A heading's help (data.help), on its whole band.
+        card.click:SetScript("OnEnter", function(self) tip(self, card.data and card.data.help) end)
+        card.click:SetScript("OnLeave", function() GameTooltip:Hide() end)
         card.title = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         card.title:SetPoint("TOPLEFT", card, "TOPLEFT", 8, -5)
+        -- A heading's summary (data.summary: what the cards under it add up to), after its title.
+        card.summary = card:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        card.summary:SetWordWrap(false)
         card.facts = card:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         card.facts:SetPoint("TOPLEFT", card, "TOPLEFT", 8, -23)
         card.facts:SetJustifyH("LEFT")
@@ -860,7 +1043,7 @@ function Widgets.CardList(parent)
         card.heads:SetPoint("TOPLEFT", card, "TOPLEFT", 0, -TITLE_H - 1)
         card.heads:SetPoint("TOPRIGHT", card, "TOPRIGHT", 0, -TITLE_H - 1)
         card.heads:SetHeight(HEAD_H)
-        card.headTexts, card.headHelps, card.seps = {}, {}, {}
+        card.headTexts, card.headHelps, card.seps, card.groupTexts = {}, {}, {}, {}
         for i = 1, MAX_COLS do
             local h = card.heads:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             h:SetHeight(HEAD_H)
@@ -870,9 +1053,18 @@ function Widgets.CardList(parent)
             area:EnableMouse(true)
             area:SetScript("OnEnter", function(self)
                 local col = stack.columns[i]
-                tip(self, col and col.help)
+                local help = col and col.help
+                if col and stack:Sortable(i) then
+                    help = { help and help[1] or tostring(Widgets.ColumnKey(col)) }
+                    for n = 2, #(col.help or {}) do help[#help + 1] = col.help[n] end
+                    help[#help + 1] = Widgets.SORT_HINT
+                end
+                tip(self, help)
             end)
             area:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            area:SetScript("OnMouseUp", function()
+                if stack.columns[i] and stack:Sortable(i) then stack:SortBy(i) end
+            end)
             card.headHelps[i] = area
         end
         card.rows = {}
@@ -894,7 +1086,23 @@ function Widgets.CardList(parent)
         t:Show()
     end
 
-    -- The facts of a card as parts, left to right, each with its help area.
+    -- The facts of a card as parts, left to right, each with its help area; each as wide as its text in its font.
+    local function factWidth(text)
+        return math.ceil(Widgets.TextWidth(text, CELL_FONT) or Widgets.EstimateWidth(text)) + 2
+    end
+    -- What a card's title band needs: its facts in a row, 16 px apart, after the title's indent, and the "?".
+    local function titleWidth(text)
+        return math.ceil(Widgets.TextWidth(text or "", "GameFontNormal") or Widgets.EstimateWidth(text or "")) + 2
+    end
+    local function factsNeed(data)
+        local parts = type(data.facts) == "table" and data.facts or {}
+        local tx = data.open ~= nil and (6 + TOGGLE + 4) or 8   -- (as drawCard places them)
+        if data.summary then return tx + titleWidth(data.title) + 12 + factWidth(data.summary) + 8 end
+        if #parts == 0 then return 0 end
+        local w = tx
+        for n, part in ipairs(parts) do w = w + factWidth(part[1]) + (n > 1 and 16 or 0) end
+        return w + (data.more and (MORE + 5 + 8) or 8)
+    end
     local function factParts(card, parts, x)
         for n, part in ipairs(parts) do
             local fs = card.parts[n]
@@ -914,7 +1122,7 @@ function Widgets.CardList(parent)
             fs:ClearAllPoints()
             fs:SetPoint("TOPLEFT", card, "TOPLEFT", x, -23)
             fs:SetText(part[1])
-            local w = math.ceil(Widgets.EstimateWidth(part[1])) + 2
+            local w = factWidth(part[1])
             fs:SetWidth(w)
             fs:Show()
             card.partHelps[n].help = part.help
@@ -927,8 +1135,7 @@ function Widgets.CardList(parent)
     local function newRow(card, r)
         local row = CreateFrame("Button", nil, card)
         row:SetHeight(ROW_H)
-        row:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -TITLE_H - HEAD_H - 1 - (r - 1) * ROW_H)
-        row:SetPoint("TOPRIGHT", card, "TOPRIGHT", -1, -TITLE_H - HEAD_H - 1 - (r - 1) * ROW_H)
+        row.index = r   -- (placed under the titles by drawCard: the titles' height depends on the group headings)
         local hl = row:CreateTexture(nil, "HIGHLIGHT")
         hl:SetAllPoints()
         hl:SetColorTexture(1, 1, 1, 0.08)
@@ -952,6 +1159,8 @@ function Widgets.CardList(parent)
             if not id then return end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetHyperlink("item:" .. id)
+            -- The row's own lines (the Odds: how many of your disenchants gave it).
+            for _, line in ipairs(self.data.lines or {}) do Widgets.AddHelp(GameTooltip, nil, line) end
             local hint = ns.RowHint and ns.RowHint(self.data)
             if hint then GameTooltip:AddLine(hint, 0.5, 0.8, 1) end
             GameTooltip:Show()
@@ -970,14 +1179,42 @@ function Widgets.CardList(parent)
         self.columns, self.columnSet = cols, setId
     end
     function stack:SetCards(cards) self.data = cards end
+    -- Sorting (Widgets.SortRows): the rows inside each card, by one order for every card of the stack, saved under
+    -- `stack.sortId` (else the column set's id).
+    function stack:SortState(create) return Widgets.SortState(rawget(self, "sortId") or rawget(self, "columnSet"), create) end
+    function stack:Sortable(i)
+        return (rawget(self, "sortId") or rawget(self, "columnSet")) ~= nil and Widgets.ColumnSortable(self.columns, i)
+    end
+    function stack:SortBy(i)
+        local all = {}
+        for _, data in ipairs(self.data) do for _, r in ipairs(data.rows or {}) do all[#all + 1] = r end end
+        Widgets.SortClick(self:SortState(true), self.columns, i, all)
+        local fn = rawget(self, "onSortChanged") or rawget(self, "onColumnsChanged")
+        if fn then fn() else self:Refresh() end
+    end
+
+    -- The group headings (col.group on a group's first column): each group from its first column to the column
+    -- before the next group (or the last), only the columns on show.
+    local function groupsOf()
+        local cols, shown, out = stack.columns, stack.colShown, {}
+        for i = 1, #cols do
+            if cols[i].group then out[#out + 1] = { text = cols[i].group, cols = {} } end
+            local g = out[#out]
+            if g and shown[i] then table.insert(g.cols, i) end
+        end
+        local kept = {}
+        for _, g in ipairs(out) do if #g.cols > 0 then kept[#kept + 1] = g end end
+        return kept
+    end
 
     -- Draws one card at (x, -y) in the content, `width` wide; returns its height.
-    local function drawCard(card, data, x, y, width, used, measured)
+    local function drawCard(card, data, x, y, width, used, measured, rows)
         card.data = data
         local cols = stack.columns
-        local rows = data.rows or {}
         local titleH = data.heading and HEADING_H or TITLE_H
-        local height = titleH + 2 + (#rows > 0 and (HEAD_H + #rows * ROW_H + 2) or 0)
+        local groups = stack.groups or {}
+        local headH = HEAD_H + (#groups > 0 and GROUP_H or 0)
+        local height = titleH + 2 + (#rows > 0 and (headH + #rows * ROW_H + 2) or 0)
         card:ClearAllPoints()
         card:SetPoint("TOPLEFT", content, "TOPLEFT", x, -y)
         card:SetSize(width, height)
@@ -1001,6 +1238,15 @@ function Widgets.CardList(parent)
         card.title:ClearAllPoints()
         card.title:SetPoint("TOPLEFT", card, "TOPLEFT", tx, data.heading and -6 or -5)
         card.title:SetText(data.title or "")
+        if data.summary then
+            card.summary:ClearAllPoints()
+            card.summary:SetPoint("LEFT", card.title, "LEFT", titleWidth(data.title) + 12, 0)
+            card.summary:SetWidth(factWidth(data.summary))
+            card.summary:SetText(data.summary)
+            card.summary:Show()
+        else
+            card.summary:Hide()
+        end
         local parts = type(data.facts) == "table" and data.facts or {}
         card.facts:ClearAllPoints()
         card.facts:SetPoint("TOPLEFT", card, "TOPLEFT", tx, -23)
@@ -1015,23 +1261,49 @@ function Widgets.CardList(parent)
         card.heads:ClearAllPoints()
         card.heads:SetPoint("TOPLEFT", card, "TOPLEFT", 0, -titleH - 1)
         card.heads:SetPoint("TOPRIGHT", card, "TOPRIGHT", 0, -titleH - 1)
+        card.heads:SetHeight(headH)
         local nSep = 0
         for i = 1, MAX_COLS do
             local h, col = card.headTexts[i], cols[i]
-            if col and stack.colShown[i] then
+            if col and stack.colShown[i] and #rows > 0 then
                 place(h, card.heads, i, i == 1, extra)
-                h:SetText(col[1])
+                -- (Under the group headings, on the strip's lower line.)
+                local _, _, _, px = h:GetPoint(1)
+                h:ClearAllPoints()
+                h:SetPoint("BOTTOMLEFT", card.heads, "BOTTOMLEFT", px or 0, 0)
+                h:SetText(stack.titles[i])
                 h:Show()
-                if col.sep and #rows > 0 then
+                if col.sep then
                     nSep = nSep + 1
                     separator(card, nSep, columnX(i, extra) - SEP / 2 - 4)
                 end
             else
                 h:Hide()
             end
-            card.headHelps[i]:SetShown(col ~= nil and stack.colShown[i] and col.help ~= nil)
+            card.headHelps[i]:SetShown(col ~= nil and stack.colShown[i] and #rows > 0
+                and (col.help ~= nil or stack:Sortable(i)))
         end
         for n = nSep + 1, #card.seps do card.seps[n]:Hide() end
+        -- The group headings: each centred over its columns, as wide as they are (they were made wide enough for it).
+        for n, g in ipairs(groups) do
+            local fs = card.groupTexts[n]
+            if not fs then
+                fs = card.heads:CreateFontString(nil, "OVERLAY", TITLE_FONT)
+                fs:SetHeight(GROUP_H)
+                fs:SetJustifyH("CENTER")
+                fs:SetWordWrap(false)
+                fs.measureFont = TITLE_FONT
+                card.groupTexts[n] = fs
+            end
+            local first, last = g.cols[1], g.cols[#g.cols]
+            local l, r = columnX(first, extra), columnX(last, extra) + stack.widths[last]
+            fs:ClearAllPoints()
+            fs:SetPoint("TOPLEFT", card.heads, "TOPLEFT", l, 0)
+            fs:SetWidth(math.max(1, r - l))
+            fs:SetText(g.text)
+            fs:SetShown(#rows > 0)
+        end
+        for n = #groups + 1, #card.groupTexts do card.groupTexts[n]:Hide() end
         for r = 1, math.max(#rows, #card.rows) do
             local row, rowData = card.rows[r], rows[r]
             if rowData and not row then
@@ -1042,6 +1314,10 @@ function Widgets.CardList(parent)
                 row.data = rowData
                 row:SetShown(rowData ~= nil)
                 if rowData then
+                    local top = -titleH - headH - 1 - (r - 1) * ROW_H
+                    row:ClearAllPoints()
+                    row:SetPoint("TOPLEFT", card, "TOPLEFT", 1, top)
+                    row:SetPoint("TOPRIGHT", card, "TOPRIGHT", -1, top)
                     local icon = rowData.itemID and Widgets.IconOf(rowData.itemID)
                     if icon then row.icon:SetTexture(icon) row.icon:Show() else row.icon:Hide() end
                     for i = 1, MAX_COLS do
@@ -1049,6 +1325,7 @@ function Widgets.CardList(parent)
                         if cols[i] and stack.colShown[i] then
                             place(fs, row, i, nil, extra)
                             fs:SetText(rowData.cells[i] or "")
+                            fs.measureFont = CELL_FONT
                             fs:Show()
                         else
                             fs:Hide()
@@ -1064,12 +1341,24 @@ function Widgets.CardList(parent)
     function stack:Refresh()
         local cols = self.columns
         if not cols or #cols == 0 then return end
+        -- The order of the rows in each card (a click on a title), the arrow on its title.
+        local st = self:SortState(false)
+        local sortedBy = st and Widgets.SortColumn(cols, st)
+        if sortedBy and not self:Sortable(sortedBy) then sortedBy = nil end
+        self.sortedBy = sortedBy
         -- Every column is as wide as its widest text over all cards, and no wider, so the cards line up.
         -- Where the client cannot measure text, the widths given are used.
         local titles, samples, all = {}, {}, {}
-        for i, col in ipairs(cols) do titles[i], samples[i] = col[1], col.sample end
-        for _, data in ipairs(self.data) do
-            for _, row in ipairs(data.rows or {}) do all[#all + 1] = row.cells end
+        for i, col in ipairs(cols) do
+            titles[i], samples[i] = Widgets.SortTitle(col[1], i, sortedBy, st and st.desc), col.sample
+        end
+        self.titles = titles
+        local rowsOf = {}
+        for n, data in ipairs(self.data) do
+            local rows = data.rows or {}
+            if sortedBy and #rows > 1 then rows = Widgets.SortRows(rows, sortedBy, st.desc) end
+            rowsOf[n] = rows
+            for _, row in ipairs(rows) do all[#all + 1] = row.cells end
         end
         local need = Widgets.FitColumns(titles, #all, function(r) return all[r] end, nil, samples)
         self.widths, self.colShown = {}, {}
@@ -1077,6 +1366,26 @@ function Widgets.CardList(parent)
         for i, col in ipairs(cols) do
             self.widths[i] = need and need[i] or col[2]
             self.colShown[i] = i == 1 or Widgets.ColumnShown(setId, Widgets.ColumnKey(col))
+        end
+        -- A group heading is never wider than its group can hold: a group too narrow for its heading widens, the room
+        -- shared by its columns (`groupWide`: their gaps may be wider than 16 px, the self-check allows it).
+        self.groups, self.groupWide = groupsOf(), {}
+        if need then
+            for _, g in ipairs(self.groups) do
+                local w = Widgets.TextWidth(g.text, TITLE_FONT)
+                local span = 0
+                for k, i in ipairs(g.cols) do
+                    span = span + self.widths[i] + (k < #g.cols and gapAfter(i) or 0)
+                end
+                local short = w and math.ceil(w + Widgets.CELL_PAD - span) or 0
+                if short > 0 then
+                    local each = math.ceil(short / #g.cols)
+                    for _, i in ipairs(g.cols) do
+                        self.widths[i] = self.widths[i] + each
+                        self.groupWide[i] = true
+                    end
+                end
+            end
         end
         chooser:SetShown(setId ~= nil)
         local widthOf = rawget(self, "widthOf")
@@ -1088,16 +1397,19 @@ function Widgets.CardList(parent)
         for i = 1, #cols do
             if self.colShown[i] then used = used + self.widths[i] + gapAfter(i) + (cols[i].sep and SEP or 0) end
         end
+        -- A card is at least as wide as its facts in a row (they are never cut): the first column takes the rest.
+        local least = used
         for _, data in ipairs(self.data) do
             indent = math.max(indent, data.indent or 0)
             if data.pair then pairs_ = true end
+            if need then least = math.max(least, factsNeed(data)) end
         end
         -- Two cards per row where both fit next to each other (UI.md Tables 17), else one. (1 px of slack: a window at
         -- the width two need may be a fraction short of it at the game's UI scale, and then showed one per row.)
-        local perRow = (pairs_ and room - indent >= 2 * used + GAP - 1) and 2 or 1
+        local perRow = (pairs_ and room - indent >= 2 * least + GAP - 1) and 2 or 1
         self.perRow = perRow
         local y, n, rowH, col = 0, 0, 0, 0
-        for _, data in ipairs(self.data) do
+        for k, data in ipairs(self.data) do
             n = n + 1
             local card = self.cards[n]
             if not card then
@@ -1113,7 +1425,7 @@ function Widgets.CardList(parent)
                 -- (A card that is not a pair after a half row: the row ends.)
                 y, rowH, col = y + rowH + GAP, 0, 0
             end
-            local h = drawCard(card, data, x, y, width, used, need ~= nil)
+            local h = drawCard(card, data, x, y, width, used, need ~= nil, rowsOf[k])
             if data.pair and perRow == 2 and col == 0 then
                 col, rowH = 1, h
             else
@@ -1123,10 +1435,10 @@ function Widgets.CardList(parent)
         end
         if col > 0 then y = y + rowH + GAP end
         for k = n + 1, #self.cards do self.cards[k]:Hide() end
-        -- The width the cards need (a window that fits its tables reads them): two per row where there are pairs, one.
+        -- The width the cards need (a window that fits its tables reads it): two per row where there are pairs, one.
         if need then
-            self.leastWidth = math.ceil(used + indent + BAR_W)
-            self.fitWidth = math.ceil((pairs_ and (2 * used + GAP) or used) + indent + BAR_W)
+            self.leastWidth = math.ceil(least + indent + BAR_W)
+            self.fitWidth = math.ceil((pairs_ and (2 * least + GAP) or least) + indent + BAR_W)
         end
         content:SetHeight(math.max(10, y))
         self.contentHeight = math.max(0, y - GAP)   -- what the cards need, for a window that fits them

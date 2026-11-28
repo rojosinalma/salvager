@@ -46,6 +46,7 @@ ReportsWindow.lua
 DisenchantWindow.lua
 LogWindow.lua
 Options.lua
+Macros.lua
 MiniPanel.lua
 Minimap.lua
 Layout.lua

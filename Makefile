@@ -16,9 +16,11 @@ image:
 	docker build -q -t $(DOCKER_IMAGE) test/
 
 # The specs write what they measure to .ratchet/ (gitignored); busted's and luacheck's outputs are kept there too.
+# The draw times (perf_spec) run first, in a Lua of their own: after the whole suite they measured up to 2x (0.4.0).
 test: image
 	@mkdir -p .ratchet
-	set -o pipefail; $(RUN) busted --lpath="./?.lua" spec 2>&1 | tee .ratchet/busted.txt
+	set -o pipefail; $(RUN) busted --lpath="./?.lua" spec/perf_spec.lua 2>&1 | tee .ratchet/busted.txt
+	set -o pipefail; $(RUN) busted --lpath="./?.lua" --exclude-pattern=perf_spec spec 2>&1 | tee -a .ratchet/busted.txt
 
 lint: image
 	@mkdir -p .ratchet

@@ -90,7 +90,7 @@ describe("Salvager in a simulated client", function()
         ns.db.windows.ledger.purchaseTab = nil
         W.Refresh()
         assert.is_true(W.purchaseTabs.all:IsShown())          -- the main subtab first, and shown
-        assert.are.equal("Not picked up (1)", W.purchaseTabs.mail:GetText())
+        assert.are.equal("Mail (1)", W.purchaseTabs.mail:GetText())
         local ARROW = "|TInterface\\ChatFrame\\ChatFrameExpandArrow:12:12:0:0|t"
         -- The stand-in's backpack, then the arrow and the space after taking the one item in the mail.
         assert.is_truthy(W.bagLabel:GetText():find(" 4/4 " .. ARROW .. " 3/4", 1, true))
@@ -136,7 +136,7 @@ describe("Salvager in a simulated client", function()
         assert.are.equal(500, ns.db.ledger.purchases[BOOTS][1].each)
         -- Its mail is taken: it leaves Not picked up, and the subtab says why it is empty.
         assert.are.equal(0, (ns.LedgerWindow.NotPickedUpTotal()))
-        assert.are.equal("Not picked up (0)", ns.LedgerWindow.purchaseTabs.mail:GetText())
+        assert.are.equal("Mail (0)", ns.LedgerWindow.purchaseTabs.mail:GetText())
         assert.is_truthy(ns.LedgerWindow.NotPickedUpRows()[1].cells[1]:find("Nothing waits in the mail", 1, true))
         ns.db.windows.ledger.purchaseTab = nil
         ns.LedgerWindow.view = "sales"
@@ -241,13 +241,14 @@ describe("Salvager in a simulated client", function()
         end
         assert.are.equal("1", band.cells[2])                       -- the one disenchant
         assert.are.equal(11083, dust.itemID)
-        -- The game's table, then yours: Material, Result rate, Quantity | Results, Result rate, Result quantity.
+        -- Material | Game rates: Rate, Qty | Your rates: Rate, Avg qty (each group Rate, then the quantity). The
+        -- results left the table: on the row's hover, and the band's total in the card's facts.
         assert.is_truthy(dust.cells[2]:find("75%", 1, true))
         assert.are.equal("1-2", dust.cells[3])                     -- one value per cell: the quantity apart
-        assert.are.equal("1", dust.cells[4])
-        assert.are.equal("100%", dust.cells[5])
-        assert.are.equal("2.00", dust.cells[6])
-        assert.are.equal(6, #dust.cells)
+        assert.are.equal("100%", dust.cells[4])
+        assert.are.equal("2.00", dust.cells[5])
+        assert.are.equal(5, #dust.cells)
+        assert.is_truthy(dust.lines[1]:find("Results: 1 of your 1 disenchants", 1, true))
         -- The band: its buy limit and the chance one disenchant is worth less than it.
         local v = ns.Model.Value(ns.Model.Outcomes(2, ns.Data.CLASS_ARMOR, 30), ns.PriceOf, ns.ValueOptions())
         local limit = ns.BuyLimit(2, ns.Data.CLASS_ARMOR, 30, v.net)
@@ -275,21 +276,32 @@ describe("Salvager in a simulated client", function()
         assert.is_true(card.pair)
         assert.are.equal(3, #card.rows)                            -- dust, essence, shard
         assert.are.equal(11083, card.rows[1].itemID)
-        -- Its facts: Disenchants, Weighted (results by age, SDD 118) and Loss chance, each with its help; the "?" has
-        -- the rest.
-        assert.are.equal(3, #card.facts)
-        assert.is_truthy(card.facts[1][1]:find("Disenchants", 1, true))
-        assert.is_truthy(card.facts[2][1]:find("Weighted", 1, true))
-        assert.is_truthy(card.facts[3][1]:find("Loss chance", 1, true))
-        assert.is_table(card.facts[1].help)
+        -- Its facts: Results first, Disenchants without / with the Salvager (with in light blue), Weighted (results by
+        -- age, SDD 118: red with "(few)" under the floor) and Loss chance, each with its help; the "?" has the rest.
+        assert.are.equal(4, #card.facts)
+        assert.are.equal(1, card.facts[1][1]:find("|cff808080Results|r 1", 1, true))   -- (the dust)
+        assert.is_truthy(card.facts[2][1]:find("Disenchants|r 0|cff808080/|r" .. ns.SALVAGER_COLOR .. "1|r", 1, true))
+        assert.is_truthy(card.facts[3][1]:find("Weighted|r |cffff4040", 1, true))
+        assert.is_truthy(card.facts[3][1]:find("(few)", 1, true))
+        assert.is_truthy(card.facts[4][1]:find("Loss chance", 1, true))
+        for n = 1, 4 do assert.is_table(card.facts[n].help) end
+        assert.is_truthy(table.concat(card.facts[3].help, " "):find("30", 1, true))
+        -- The headings sum up the bands under them: Results, Disenchants without / with; their help on hover.
+        assert.are.same({ 1, 0, 1 }, { cards[1].results, cards[1].dWithout, cards[1].dWith })
+        assert.are.same({ 1, 0, 1 }, { cards[2].results, cards[2].dWithout, cards[2].dWith })
+        assert.is_truthy(cards[1].summary:find("Results", 1, true))
+        assert.is_truthy(cards[1].help[1]:find("All the bands", 1, true))
         local more = table.concat(card.more(), "\n")
         for _, word in ipairs({ "Avg value now", "Range now", "Rule: ", "Buy below", "Your average", "Rates used from", "Price now",
             "Learning: ", "Recent results weigh more", "Salvager shape, " }) do
             assert.is_truthy(more:find(word, 1, true), word)
         end
-        -- Every column title has its help; the two groups are apart (a line before Results).
+        -- Every column title has its help; a line after Material and between the groups; each group has its heading.
         for _, col in ipairs(ns.Odds.Columns()) do assert.is_table(col.help, col[1]) end
-        assert.is_true(ns.Odds.Columns()[4].sep)
+        local oc = ns.Odds.Columns()
+        assert.are.same({ true, true }, { oc[2].sep, oc[4].sep })
+        assert.are.same({ "Game rates", "Your rates" }, { oc[2].group, oc[4].group })
+        assert.are.same({ "Rate", "Qty", "Rate", "Avg qty" }, { oc[2][1], oc[3][1], oc[4][1], oc[5][1] })
         -- The headings open and close, remembered; the bands have no toggle of their own.
         assert.is_nil(card.open)
         cards[2].onClick()                                         -- the Uncommon heading closes its bands
@@ -304,7 +316,7 @@ describe("Salvager in a simulated client", function()
         -- the Salvager does not add to it).
         des[#des + 1] = { quality = 2, classID = ns.Data.CLASS_ARMOR, band = 30, value = 0, got = { [11083] = 1 } }
         ns.Odds.Filter().both = true
-        assert.are.equal(8, #ns.Odds.Columns())
+        assert.are.equal(7, #ns.Odds.Columns())
         local both = ns.Odds.Rows()
         for i, r in ipairs(both) do
             if r.band and r.cells[1]:find("Uncommon", 1, true) and r.cells[1]:find("26-30", 1, true) then
@@ -315,22 +327,23 @@ describe("Salvager in a simulated client", function()
         -- The Salvager's two columns: after a line of their own, titles and values in the Salvager's color (its help
         -- says so); their chooser keys are the plain titles.
         local SALV = ns.SALVAGER_COLOR
-        assert.are.same({ "1", "100%", "1.00", SALV .. "100%|r", SALV .. "2.00|r" }, { dust.cells[4], dust.cells[5],
-            dust.cells[6], dust.cells[7], dust.cells[8] })
+        assert.are.same({ "100%", "1.00", SALV .. "100%|r", SALV .. "2.00|r" }, { dust.cells[4], dust.cells[5],
+            dust.cells[6], dust.cells[7] })
         local cols = ns.Odds.Columns()
-        assert.is_true(cols[7].sep)
-        assert.is_nil(cols[8].sep)
-        for i = 7, 8 do
+        assert.is_true(cols[6].sep)
+        assert.is_nil(cols[7].sep)
+        assert.are.equal(SALV .. "Salvager rates|r", cols[6].group)
+        for i = 6, 7 do
             assert.are.equal(1, cols[i][1]:find(SALV, 1, true))
             assert.are.equal(cols[i].key, ns.Widgets.ColumnKey(cols[i]))
             assert.is_nil(cols[i].key:find("|c", 1, true))
             assert.is_truthy(cols[i].help[#cols[i].help]:find("with the Salvager, observed only", 1, true))
         end
-        assert.are.same({ "Rate with Salvager", "Quantity with Salvager" }, { cols[7].key, cols[8].key })
+        assert.are.same({ "Rate with Salvager", "Quantity with Salvager" }, { cols[6].key, cols[7].key })
         assert.are_not.equal(SALV, "|cff40ff40")   -- (not the green of a gain, UI.md Controls 12)
         local shard
         for i, r in ipairs(both) do if r == dust then shard = both[i + 2] break end end
-        assert.are.same({ "", "" }, { shard.cells[7], shard.cells[8] })
+        assert.are.same({ "", "" }, { shard.cells[6], shard.cells[7] })
         -- The Salvager filter has no effect meanwhile: off, with the reason.
         ns.Reports.ShowView("odds")
         assert.is_false(ns.Reports.oddsView.salvagerDrop:IsEnabled())
@@ -531,7 +544,7 @@ describe("Salvager in a simulated client", function()
         W.purchaseTabs.batch:Click()
         assert.are.equal("batch", W.PurchaseTab())
         -- The purchase in the mail: under "In the mail" first, counted, in the totals (0.3.153).
-        assert.are.equal("Current batch (3)", W.purchaseTabs.batch:GetText())
+        assert.are.equal("Pending (3)", W.purchaseTabs.batch:GetText())
         local rows = W.BatchRows()
         assert.are.equal(7, #rows)
         assert.is_truthy(rows[1].cells[1]:find("^In the mail"))
@@ -540,7 +553,7 @@ describe("Salvager in a simulated client", function()
         assert.are.same({ 7004, ns.Money(300) }, { rows[2].itemID, rows[2].cells[3] })
         assert.is_truthy(rows[2].cells[6]:find("in the mail", 1, true))
         assert.is_truthy(rows[3].cells[1]:find("^Not disenchanted"))
-        assert.is_truthy(rows[7].cells[1]:find("^Batch.-3 pieces"))
+        assert.is_truthy(rows[7].cells[1]:find("^Pending.-3 pieces"))
         assert.is_truthy(rows[7].tip[2]:find("3 pieces: 1 in the mail, 1 waiting, 1 disenchanted", 1, true))
         assert.are.same({ ns.Money(2300), ns.Money(3100) }, { rows[7].cells[3], rows[7].cells[4] })   -- all three
         -- Picked up: it moves to Not disenchanted (the Disenchant panel never listed it while it was in the mail).
@@ -553,7 +566,7 @@ describe("Salvager in a simulated client", function()
         assert.is_truthy(rows[#rows].tip[2]:find("3 pieces: 0 in the mail, 2 waiting, 1 disenchanted", 1, true))
         env.bags[7004] = 0
         W.Refresh()
-        assert.are.equal("Current batch (2)", W.purchaseTabs.batch:GetText())
+        assert.are.equal("Pending (2)", W.purchaseTabs.batch:GetText())
         rows = W.BatchRows()
         assert.are.equal(5, #rows)                -- Not disenchanted first, its piece, the disenchanted, its piece, totals
         assert.is_truthy(rows[1].cells[1]:find("^Not disenchanted"))
@@ -589,10 +602,10 @@ describe("Salvager in a simulated client", function()
         env.bags[7001] = 0                                                      -- worn, not in the bags: not in it
         env.equipped = { [10] = 7001 }
         assert.are.equal(1, ns.GetItemCount(7001))                              -- (the game counts what you wear)
-        assert.is_truthy(W.BatchRows()[1].cells[1]:find("No batch", 1, true))
+        assert.is_truthy(W.BatchRows()[1].cells[1]:find("Nothing pending", 1, true))
         env.equipped = nil
         env.bags[7001] = 0                                                      -- the piece is gone: no batch
-        assert.is_truthy(W.BatchRows()[1].cells[1]:find("No batch", 1, true))
+        assert.is_truthy(W.BatchRows()[1].cells[1]:find("Nothing pending", 1, true))
         W.Refresh()
         L.purchases, L.disenchants, L.bought, L.sales = saved.purchases, saved.disenchants, saved.bought, saved.sales
         ns.db.posted, env.bags = saved.posted, saved.bags
@@ -2086,7 +2099,7 @@ describe("Salvager listings", function()
         assert.is_true(row.group)                                  -- the picked one
         assert.is_truthy(row.cells[3]:find("+10%", 1, true))
         -- Every view draws, with and without data.
-        for _, view in ipairs({ "value", "profit", "essence", "hour", "material" }) do
+        for _, view in ipairs({ "value", "profit", "hour", "material" }) do
             ns.Market.view = view
             ns.Market.Refresh()
             local rows = ns.Market.Rows()
@@ -2118,6 +2131,14 @@ describe("Salvager listings", function()
         end
         ns.Market.range = "24h"
         ns.db.history[DUST] = points
+        -- "Salvager Charts" (the Market until 0.4.0): Profit, Materials, Bands, Time of day; no Essences.
+        local titles = {}
+        for _, c in ipairs(ns.Market.bars.tabs._children) do
+            if rawget(c, "uiKind") == "tab" then titles[#titles + 1] = tostring(c.text) end
+        end
+        assert.are.same({ "Profit", "Materials", "Bands", "Time of day" }, titles)
+        assert.are.equal("Salvager Charts", _G.SalvagerMarketFrame.titleText:GetText())
+        assert.is_nil(ns.Market.VIEWS.essence)
         ns.Market.Toggle()
     end)
 

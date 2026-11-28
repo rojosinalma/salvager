@@ -125,6 +125,60 @@ function Util.ParseMoney(text)
     return total
 end
 
+--- The value a table cell sorts by (UI.md Tables 10), from its full text (before Widgets.CellText shortens money):
+--- money with coin icons -> copper; "12%" -> 12; a number (signed, decimals) -> the number; a range "a - b - c" of
+--- money -> its middle part (the average); "MM-DD HH:MM" -> a number in time order; "3d 4h", "12m", "1h 05m" -> seconds;
+--- "" and "-" -> nil (unknown: last both ways); any other text -> its lowercase letters without color codes, links
+--- or icons. Returns the value and its kind ("number" or "text").
+local function plain(text)
+    return (text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h", ""):gsub("|h", ""):gsub("|T.-|t", "")
+        :gsub("^%s+", ""):gsub("%s+$", ""))
+end
+local function moneyOf(text)
+    local t = Util.PlainMoney(text):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("[%*!]", "")
+        :gsub("^%s+", ""):gsub("%s+$", "")
+    local sign, rest = t:match("^([%+%-]?)(.*)$")
+    local total, any = 0, false
+    for _, unit in ipairs({ { "g", GOLD }, { "s", SILVER }, { "c", 1 } }) do
+        local num, after = rest:match("^(%d+)" .. unit[1] .. "%s*(.*)$")
+        if num then total, rest, any = total + tonumber(num) * unit[2], after, true end
+    end
+    if not any or rest ~= "" then return nil end
+    return sign == "-" and -total or total
+end
+function Util.SortValue(text)
+    if type(text) == "number" then return text, "number" end
+    if type(text) ~= "string" then return nil end
+    if text:find("Interface\\MoneyFrame", 1, true) then
+        -- A range "low - avg - high": its average (the middle).
+        local parts = {}
+        for part in (text .. " - "):gmatch("(.-) %- ") do parts[#parts + 1] = part end
+        if #parts == 3 then
+            local mid = moneyOf(parts[2])
+            if mid then return mid, "number" end
+        end
+        local m = moneyOf(text)
+        if m then return m, "number" end
+    end
+    local t = plain(text):gsub("[%*!]+$", ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if t == "" or t == "-" then return nil end
+    local n = tonumber((t:gsub("%%$", "")))
+    if n then return n, "number" end
+    local mo, d, h, mi = t:match("^(%d%d)%-(%d%d) (%d%d):(%d%d)$")
+    if mo then return ((tonumber(mo) * 31 + tonumber(d)) * 24 + tonumber(h)) * 60 + tonumber(mi), "number" end
+    if t:find("^%d+[dhms]") then
+        local secs, rest = 0, t
+        for _ = 1, 4 do
+            local num, unit, after = rest:match("^(%d+)%s*([dhms])%s*(.*)$")
+            if not num then break end
+            secs = secs + tonumber(num) * ({ d = 86400, h = 3600, m = 60, s = 1 })[unit]
+            rest = after
+        end
+        if rest == "" then return secs, "number" end
+    end
+    return t:lower(), "text"
+end
+
 --- Shallow copy of defaults into t for keys t does not have (tables copied deep).
 function Util.Defaults(t, defaults)
     for k, v in pairs(defaults) do

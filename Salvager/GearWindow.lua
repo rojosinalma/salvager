@@ -253,7 +253,7 @@ function Gear.Refresh()
         local part = parts[key]
         part.title:ClearAllPoints()
         part.title:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -TOP)
-        part.title:SetPoint("RIGHT", f, "RIGHT", -14, 0)
+        part.title:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -TOP)   -- (top and sides only: its height is its lines)
         part.title:SetJustifyH("LEFT")
         part.title:SetText(GOLD .. SECTIONS[key].title .. "|r" .. (key == "build" and (GREY .. "  " .. from .. "|r") or ""))
         -- A long title wraps and pushes its table down (UI.md Layout 6).
@@ -271,7 +271,7 @@ function Gear.Refresh()
         local part = parts[key]
         part.title:ClearAllPoints()
         part.title:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -y)
-        part.title:SetPoint("RIGHT", f, "RIGHT", -14, 0)
+        part.title:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -y)
         y = y + titleH[i]
         part.list:ClearAllPoints()
         part.list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -y)
@@ -293,7 +293,14 @@ function Gear.Refresh()
     -- As wide as its tables' columns need, up to the screen (SDD 107).
     local lists = {}
     for _, key in ipairs(ORDER) do lists[#lists + 1] = parts[key].list end
-    W.FitTables(f, lists, d.auctionID)
+    -- (A new width wraps the titles again: laid out once more in it, so no title is cut, 0.4.0.)
+        if W.FitTables(f, lists, d.auctionID) and not Gear.relaying then
+        Gear.relaying = true
+        Gear.Refresh()
+        Gear.relaying = false
+        return
+    end
+    W.CheckLayout(f, lists, d.auctionID)   -- (after the last layout: f.checkLater)
     local why = Gear.BuyReason(now)
     buyButton:SetEnabled(why == nil)
     buyButton.reason = why
@@ -306,6 +313,7 @@ local function build()
     -- As wide as its tables; the height is the player's (the last table scrolls).
     f = W.Window("SalvagerGearFrame", "Salvager Gear Details", "gear", WIDTH, HEIGHT, WIDTH, MIN_H, "vertical")
     f.layoutName = "gear"
+    f.checkLater = true   -- (Gear.Refresh runs the self-check after its last layout)
     -- The heading (UI.md Statements 1): what it is, the gear with its icon; its name shows the game's tooltip.
     icon = f:CreateTexture(nil, "ARTWORK")
     icon:SetSize(32, 32)
@@ -336,6 +344,8 @@ local function build()
         local title = W.Label(f, "", "GameFontNormal")
         local list = W.List(f, { rowHeight = ROW_H })
         list:SetColumns(SECTIONS[key].columns)
+        list.sortId = "gear." .. key   -- (a click on a title sorts it, Widgets.SortRows)
+        list.onColumnsChanged = function() Gear.Refresh() end
         parts[key] = { title = title, list = list }
     end
     -- The footer: Buy, the main action, at the right; Close last (UI.md Actions 5).
@@ -353,8 +363,8 @@ local function build()
         if self.reason then
             GameTooltip:AddLine(self.reason, 1, 0.3, 0.3, true)
         else
-            GameTooltip:AddLine("Buys this auction for " .. ns.Money(Gear.deal.buyout) .. ", as its Buy in the Gear tab "
-                .. "does.", 1, 0.82, 0, true)
+            W.AddHelp(GameTooltip, nil, "Buys this auction for " .. ns.Money(Gear.deal.buyout) .. ", as its Buy in the Gear tab "
+                .. "does.")
         end
         GameTooltip:Show()
     end)

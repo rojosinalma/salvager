@@ -20,5 +20,6 @@ read_globals = {
     "UnitName", "GetRealmName", "GetNormalizedRealmName", "InCombatLockdown", "GetScreenWidth", "GetScreenHeight",
     "PanelTemplates_SelectTab", "PanelTemplates_DeselectTab", "PanelTemplates_TabResize",
     "C_DateAndTime", "GetGameTime", "NUM_BAG_SLOTS", "GetCVarBool",
+    "GetMacroIndexByName", "GetMacroInfo", "GetNumMacros", "CreateMacro",
     "date", "hooksecurefunc", "time", "tinsert", "wipe",
 }

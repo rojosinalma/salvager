@@ -299,8 +299,8 @@ end
 function R.suite(dir)
     local busted, lint = readFile(dir .. "/busted.txt"), readFile(dir .. "/luacheck.txt")
     local out = {}
-    local ok = busted and busted:match("(%d+) successes? /")
-    if ok then out.specs = tonumber(ok) end
+        -- (Every busted run of `make test` adds up: the draw times run in a process of their own, then the rest.)
+    for ok in (busted or ""):gmatch("(%d+) success[e]?[s]? /") do out.specs = (out.specs or 0) + tonumber(ok) end
     local w = lint and lint:gsub("\27%[[%d;]*m", ""):match("Total: (%d+) warnings?")
     if w then out.luacheck = tonumber(w) end
     return { all = out }

@@ -12,16 +12,23 @@ local WIDTH, ROW_H = 780, 24   -- the width it opens with (Widgets.FitTables set
 local EDIT_W = W.MONEY_W + 14
 local EDIT = { [3] = "armor", [5] = "weapon" }   -- the columns with the gold, silver and copper boxes
 
+-- (The titles are centred over their columns, the cells keep their own justification: a pair of columns per gear
+-- type, the price and its override, reads as one group. UI.md Tables 8, the user 2026-11-28.)
 local COLUMNS = {
     { "Item level", 90 },
-    { "Armor: recommended", 120, "RIGHT", help = { "Armor: recommended", "The most to pay for one piece of armor of this "
-        .. "band: its value after the cut, less the min profit, or less the min return when that asks for more. A % "
-        .. "after the amount: the min return sets it. ?: a material of the band has no price yet." } },
-    { "Armor: limit used", 184, "LEFT", least = EDIT_W, help = { "Armor: limit used", "The most the scan pays for one piece of armor "
-        .. "of this band. Type your own (yellow); the x next to it goes back to the recommended one. Grey: the scan "
-        .. "does not look at armor, or at this quality." } },
-    { "Weapons: recommended", 120, "RIGHT", help = { "Weapons: recommended", "The same for weapons." } },
-    { "Weapons: limit used", 184, "LEFT", least = EDIT_W, help = { "Weapons: limit used", "The same for weapons." } },
+    { "Armor: Recommended price", 120, "RIGHT", titleJustify = "CENTER", help = { "Armor: Recommended price",
+        "The most to pay for one piece of armor of this band: its value after the cut, less the min profit, or less the "
+            .. "min return when that asks for more.",
+        "A % after the amount: the min return sets it. ?: a material of the band has no price yet." } },
+    { "Armor: Override", 184, "LEFT", titleJustify = "CENTER", least = EDIT_W, help = { "Armor: Override",
+        "The limit you set by hand for armor of this band: the scan uses it instead of the recommended price.",
+        "Empty: the recommended price. Type your own (yellow); the x next to it empties it again.",
+        "Grey: the scan does not look at armor, or at this quality." } },
+    { "Weapons: Recommended price", 120, "RIGHT", titleJustify = "CENTER", help = { "Weapons: Recommended price",
+        "The same for weapons: the most to pay for one weapon of this band." } },
+    { "Weapons: Override", 184, "LEFT", titleJustify = "CENTER", least = EDIT_W, help = { "Weapons: Override",
+        "The limit you set by hand for weapons of this band, used instead of the recommended price.",
+        "Empty: the recommended price." } },
 }
 
 local function recommendedText(x, dim)
@@ -55,6 +62,7 @@ function Limits.Rows()
                 cells = { ns.BandRange(r.quality, r.up), recommendedText(r.armor, dimA), "",
                     recommendedText(r.weapon, dimW), "" },
                 indent = 22,
+                sort = { r.up, r.armor and r.armor.recommended, nil, r.weapon and r.weapon.recommended },
                 limits = { armor = r.armor, weapon = r.weapon },
                 dim = { armor = dimA, weapon = dimW },
             }
@@ -170,6 +178,8 @@ local function build()
     f.layoutName = "limits"
     list = W.List(f, { rowHeight = ROW_H })
     list:SetColumns(COLUMNS)
+    list.sortId = "limits"   -- (a click on a title sorts it; the limit boxes' columns do not sort)
+    list.onColumnsChanged = function() Limits.Refresh() end
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -30)
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 40)
     Limits.list, Limits.footer = list, footer   -- (the specs read them)

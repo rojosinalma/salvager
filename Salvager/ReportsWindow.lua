@@ -956,8 +956,8 @@ local function build()
         function(names)
             if #names > 0 then return names[1] end
             local s = picked()
-            return s and Reports.SessionName(s) or "All time"
-        end)
+                        return s and Reports.SessionName(s) or "All time"
+        end, true)
     periodLabel = filterRow:AddFilter("Period", rangeDrop, 140, "The time the reports cover.")
     local x0 = f.saved.filter
     if type(x0) == "table" then
@@ -1019,7 +1019,7 @@ local function build()
             flt.salvager = key
             salvDrop:Close()
             changed()
-        end, "Disenchants with the Arcane Salvager's bonus, without it, or all.", "Salvager")
+                end, "Disenchants with the Arcane Salvager's bonus, without it, or all.", "Salvager", nil, true)
     add("Salvager", salvDrop, "Disenchants with the Arcane Salvager's bonus, without it, or all.")
     -- The Competition view's filter after the period: one material, or all.
     if f.saved.compMaterial then Reports.compMaterial = f.saved.compMaterial end
@@ -1032,7 +1032,7 @@ local function build()
             comp.drop:Close()
             changed()
         end, MAT_HELP, "Material",
-        function(names) return names[1] or "All" end)
+                function(names) return names[1] or "All" end, true)
     -- (Its options follow the materials seen: filled again at each refresh.)
     local oldUpdate = comp.drop.Update
     function comp.drop.Update(self)

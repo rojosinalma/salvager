@@ -104,7 +104,8 @@ local function build()
         for _, l in ipairs(lines) do w = math.max(w, tonumber((l:GetStringWidth())) or 0) end
         return math.ceil(14 + w + 14)
     end
-    list = W.List(f, { rowHeight = 20 })
+    -- (Not sorted by a click: the price ladder's order is what it shows, cheapest first, yours among them.)
+    list = W.List(f, { rowHeight = 20, sort = false })
     list:SetColumns(COLUMNS, "stand")
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -150)
     list:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)

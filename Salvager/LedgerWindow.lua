@@ -240,7 +240,7 @@ local function filterRow(bar, x, changed, salvager)
                 x.salvager = key
                 drop:Close()
                 changed()
-            end, "Disenchants with the Arcane Salvager's bonus, without it, or all.", "Salvager")
+                        end, "Disenchants with the Arcane Salvager's bonus, without it, or all.", "Salvager", nil, true)
         add("Salvager", 100, drop, "Disenchants with the Arcane Salvager's bonus, without it, or all.")
     end
     return controls
@@ -285,7 +285,12 @@ end
 --- is clicked.
 function Window.PurchaseSort()
     local x = purchaseFilter()
-    if type(x.sort) ~= "table" or not tonumber(x.sort.col) then x.sort = { col = 6, desc = true } end
+    if type(x.sort) ~= "table" then x.sort = { col = 6, desc = true } end
+    -- (A click on a title saves the column's key, Widgets.SortClick: its index here.)
+    if x.sort.key ~= nil then
+        for i, col in ipairs(COLUMNS.purchases) do if col[1] == x.sort.key then x.sort.col = i end end
+    end
+    if not tonumber(x.sort.col) then x.sort.col, x.sort.desc = 6, true end
     return x.sort
 end
 
@@ -567,7 +572,7 @@ function Window.BatchRows()
     local b = Window.Batch()
     local rows = {}
     if #b.mail == 0 and #b.waiting == 0 and #b.done == 0 then
-        rows[1] = note("No batch: every purchase you made is picked up and disenchanted, and its materials are posted.")
+        rows[1] = note("Nothing pending: every purchase you made is picked up and disenchanted, and its materials are posted.")
         return rows
     end
     local m = { n = #b.mail, paid = 0, ev = 0 }
@@ -629,8 +634,8 @@ function Window.BatchRows()
     -- label made the Gear column 371 px wide for names of 110, 0.4.0.)
     local split = pieces(all.n + d.n) .. ": " .. m.n .. " in the mail, " .. w.n .. " waiting, " .. d.n .. " disenchanted."
     rows[#rows + 1] = { bold = true, rule = "total",
-        cells = Window.BatchTotals("Batch" .. GREY .. "  " .. pieces(all.n + d.n) .. "|r", all, d),
-        tip = { "The batch", split, "Paid, Avg value and the average profit: every piece of the batch, the ones in the mail "
+        cells = Window.BatchTotals("Pending" .. GREY .. "  " .. pieces(all.n + d.n) .. "|r", all, d),
+        tip = { "Pending", split, "Paid, Avg value and the average profit: every piece of the batch, the ones in the mail "
             .. "too (sums of averages: "
             .. "averages too). Disenchant value, DV/EV % and Profit so far: the pieces disenchanted so far, against their "
             .. "average value. "
@@ -1088,9 +1093,9 @@ function Window.Refresh()
     bagLabel:SetShown(purchases)
     bagArea:SetShown(purchases)
     if purchases then
-        purchaseTabs.mail:SetText(string.format("Not picked up (%d)", (Window.NotPickedUpTotal())))
+        purchaseTabs.mail:SetText(string.format("Mail (%d)", (Window.NotPickedUpTotal())))
         local batch = Window.Batch()
-        purchaseTabs.batch:SetText(string.format("Current batch (%d)", #batch.mail + #batch.waiting + #batch.done))
+        purchaseTabs.batch:SetText(string.format("Pending (%d)", #batch.mail + #batch.waiting + #batch.done))
         bagLabel:SetText(Window.BagText())
     end
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -top)
@@ -1126,45 +1131,34 @@ function Window.Refresh()
         salesParts[4]:Refresh()
     elseif competition then
         local rows = Window.CompetitionRows()
-        list.onSort = nil
+        list.sortState, list.presorted = nil, nil
         list:SetColumns(COLUMNS.competition, "competition")
         list:SetSource(#rows, function(i) return rows[i] end)
         list:Refresh()
     elseif history then
         local rows = Window.SoldRows(true)
-        list.onSort = nil
+        list.sortState, list.presorted = nil, nil
         list:SetColumns(COLUMNS.history, "history")
         list:SetSource(#rows, function(i) return rows[i] end)
         list:Refresh()
     elseif batchTab then
         local rows = Window.BatchRows()
-        list.onSort = nil
+        list.sortState, list.presorted = nil, nil
         list:SetColumns(COLUMNS.batch, "batch")
         list:SetSource(#rows, function(i) return rows[i] end)
         list:Refresh()
     elseif mailTab then
         local rows = Window.NotPickedUpRows()
-        list.onSort = nil
+        list.sortState, list.presorted = nil, nil
         list:SetColumns(COLUMNS.waiting, "waiting")
         list:SetSource(#rows, function(i) return rows[i] end)
         list:Refresh()
     else
         local rows = Window.PurchaseRows()
-        -- The title it is ordered by shows an arrow; a click on a title orders by it, again turns it round.
-        local sort, cols = Window.PurchaseSort(), {}
-        for i, col in ipairs(COLUMNS.purchases) do
-            cols[i] = { col[1], col[2], col[3], help = col.help, key = col[1] }
-            if sort.col == i then
-                cols[i][1] = col[1] .. (sort.desc and " |TInterface\\Buttons\\Arrow-Down-Up:10|t"
-                    or " |TInterface\\Buttons\\Arrow-Up-Up:10|t")
-            end
-        end
-        list.onSort = function(col)
-            local s = Window.PurchaseSort()
-            if s.col == col then s.desc = not s.desc else s.col, s.desc = col, col > 1 end
-            list.offset = 0
-            Window.Refresh()
-        end
+        -- Ordered by the column picked (a click on its title, Widgets.SortClick), its arrow on it; the rows come
+        -- sorted (the items by their groups' totals), so the list does not sort them again.
+        local cols = COLUMNS.purchases
+        list.sortState, list.presorted = function() return Window.PurchaseSort() end, true
         list:SetColumns(cols, "purchases")
         list:SetSource(#rows, function(i) return rows[i] end)
         list:Refresh()
@@ -1184,13 +1178,15 @@ function Window.Refresh()
         local c, n = ns.Listings.checking, ns.Listings.CountUndercut()
         -- Only what is still for sale can be undercut: sold auctions are not checked.
         local unsold = ns.Listings.CountUnsold()
-        checkButton:SetText(c and string.format("Checking %d/%d", c.done, c.total)
-            or string.format("Check undercuts (%d)", unsold))
+                -- (The counts are in the tooltips since 0.4.0: the labels stay short, the buttons narrow.)
+        checkButton:SetText(c and string.format("Checking %d/%d", c.done, c.total) or "Check undercuts")
+        checkButton.count = unsold
         local open = ns.Queue.open
         checkButton:SetEnabled(open and not c and unsold > 0)
         checkButton.reason = (not open and W.AH_CLOSED) or (c and "A check is running.")
             or (unsold == 0 and "Nothing of yours is for sale.") or nil
-        cancelButton:SetText(ns.Listings.Cancelling() and "Cancelling..." or string.format("Cancel undercut (%d)", n))
+                cancelButton:SetText(ns.Listings.Cancelling() and "Cancelling..." or "Cancel undercut")
+        cancelButton.count = n
         -- CancelAuction needs the click itself: it cannot wait for a purchase, so the button is off meanwhile.
         local buying = ns.Scanner.Buying()
         cancelButton.reason = (not open and W.AH_CLOSED)
@@ -1237,28 +1233,46 @@ local function build()
     W.Tooltip(tabs.accuracy, "Accuracy", "The average value when you bought, against the disenchant value of what you got, "
         .. "against the sold value. By band and by material.")
     W.Tooltip(tabs.purchases, "Purchases", "All gear you bought, by day (newest first), then not disenchanted and "
-        .. "disenchanted. Under each one: what it was disenchanted into and what it was worth then. The Not picked up "
-        .. "subtab has what still waits in the mail, with your bag space; Current batch what you picked up and have "
-        .. "not disenchanted or not posted yet.")
+        .. "disenchanted. Under each one: what it was disenchanted into and what it was worth then. The Mail "
+        .. "subtab has what still waits in the mail, with your bag space; Pending what you bought and have not "
+        .. "disenchanted or not posted yet.")
     W.Tooltip(tabs.sales, "Sales", "Your open auctions, and what is sold with its money still to collect. The History "
         .. "subtab has the sales you have collected; Competition who undercuts you. Profit = what you get after the cut, minus what those "
         .. "materials cost you.")
     -- (Clear history is in the options, with the backups.)
-    cancelButton = W.Button(bars.footer, "Cancel undercut (0)", 150, function() ns.Listings.CancelNext() end,
+        -- Each as wide as its longest label (the width authority, SDD 120), measured in the button's font.
+    local function buttonW(...)
+        local most = 0
+        for _, t in ipairs({ ... }) do most = math.max(most, W.TextWidth(t, "GameFontNormal") or (#t * 7)) end
+        return math.ceil(most) + 24
+    end
+    local cancelW = buttonW("Cancel undercut", "Cancelling...")
+    cancelButton = W.Button(bars.footer, "Cancel undercut", cancelW, function() ns.Listings.CancelNext() end,
         "Cancels one undercut listing per click (the game wants a click for each). The materials come back by mail, "
         .. "and the auction house keeps its deposit. Needs the auction house open, and a check first.")
     -- The Sales view's actions, at the footer's right end; Cancel the last one (UI.md Actions 5).
-    bars.footer:AddRight(cancelButton, 150)
+    bars.footer:AddRight(cancelButton, cancelW)
     cancelButton:SetMotionScriptsWhileDisabled(true)
     cancelButton:HookScript("OnEnter", function(self)
+        local n = rawget(self, "count")
+        if n then W.AddHelp(GameTooltip, nil, n .. (n == 1 and " is" or " are") .. " undercut: each click cancels the next one.") end
         local why = self.reason
-        if why then GameTooltip:AddLine(why, 1, 0.3, 0.3, true) GameTooltip:Show() end
+        if why then GameTooltip:AddLine(why, 1, 0.3, 0.3, true) end
+        GameTooltip:Show()
     end)
-    checkButton = W.Button(bars.footer, "Check undercuts (0)", 150, function() ns.Listings.Check() end,
+    local checkW = buttonW("Check undercuts", "Checking 999/999")
+    checkButton = W.Button(bars.footer, "Check undercuts", checkW, function() ns.Listings.Check() end,
         "Searches each material you still have for sale and compares your price with the lowest listing that is not "
-        .. "yours. Auctions that are sold are not checked. The number is how many listings are still for sale. "
-        .. "About one second per material. Needs the auction house open.")
-    bars.footer:AddRight(checkButton, 150)
+        .. "yours. Auctions that are sold are not checked. About one second per material. Needs the auction house "
+        .. "open.")
+    bars.footer:AddRight(checkButton, checkW)
+    checkButton:HookScript("OnEnter", function(self)
+        local n = rawget(self, "count")
+        if n then
+            W.AddHelp(GameTooltip, nil, n .. " of your auctions " .. (n == 1 and "is" or "are") .. " still for sale.")
+            GameTooltip:Show()
+        end
+    end)
     W.ReasonTip(checkButton)
     -- Left of it: the check again and again (the user, 2026-11-27), one toggle: play while off, stop while on.
     autoButton = W.PlayToggle(bars.footer, 24, function()
@@ -1271,14 +1285,13 @@ local function build()
         local every = ns.Listings.AUTO_INTERVAL
         if ns.Listings.auto then
             GameTooltip:SetText("Stop checking undercuts", 1, 1, 1)
-            GameTooltip:AddLine(string.format("On: your listings are checked every %d seconds while the auction house "
-                .. "is open. Click to stop.", every), 1, 0.82, 0, true)
+            W.AddHelp(GameTooltip, nil, string.format("On: your listings are checked every %d seconds while the auction house "
+                .. "is open. Click to stop.", every))
         else
             GameTooltip:SetText("Check undercuts again and again", 1, 1, 1)
-            GameTooltip:AddLine(string.format("Checks your listings now and again every %d seconds while the auction "
+            W.AddHelp(GameTooltip, nil, string.format("Checks your listings now and again every %d seconds while the auction "
                 .. "house is open, so you see an undercut after everything is posted. It waits while you buy and "
-                .. "during a material scan. Off when the auction house closes. Cancel undercut stays a click.", every),
-                1, 0.82, 0, true)
+                .. "during a material scan. Off when the auction house closes. Cancel undercut stays a click.", every))
         end
         if self.reason then GameTooltip:AddLine(self.reason, 1, 0.3, 0.3, true) end
         GameTooltip:Show()
@@ -1335,9 +1348,9 @@ local function build()
     -- The subtabs of the Purchases view: every purchase; and what waits in the mail.
     bars.purchases = W.Bar(f, "subtabs"):Place(TABS_TOP + W.BAR_H.tabs + 4, 12, 12)
     for _, t in ipairs({ { "all", "All purchases", "All gear you bought, with what each piece was disenchanted into." },
-        { "mail", "Not picked up", "The gear you bought with Buy whose \"Auction won\" mail you have not taken "
+        { "mail", "Mail", "The gear you bought with Buy whose \"Auction won\" mail you have not taken "
             .. "yet, the first bought first. The number is how many." },
-        { "batch", "Current batch", "The gear you bought and have not disenchanted yet (in the mail or picked up), "
+        { "batch", "Pending", "The gear you bought and have not disenchanted yet (in the mail or picked up), "
             .. "and what you disenchanted whose materials are not all posted yet: what the batch cost, its average "
             .. "value, and what it has made so far. A piece leaves when all its materials are posted. The number counts "
             .. "every piece, the ones in the mail too." } }) do
@@ -1381,7 +1394,7 @@ local function build()
                 purchaseFilter().show = key
                 show:Close()
                 changed()
-            end, SHOW_HELP, "Show")
+                        end, SHOW_HELP, "Show", nil, true)
         fbar:AddFilter("Show", show, 150, SHOW_HELP)
         purchaseControls[#purchaseControls + 1] = show
         fbar:Hide()

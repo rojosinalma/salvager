@@ -1,9 +1,10 @@
--- Salvager: the mini panel (UI.md Layout 5). A small window of buttons, one per Salvager window, in two columns:
--- Salvager, Ledger, Materials at the left; Reports, Market, Log at the right; Disenchant across both under them
--- (SDD 108d, 114). The main window's Minimize shows it, and so does the minimap button away from the auction house.
--- The windows it opens stay on their own: closing the main window does not close them. It closes with its own X,
--- with the minimap button, and when the main window shows (Minimize brings it back). Escape leaves it: it is a
--- launcher, like the minimap button.
+-- Salvager: the mini panel (UI.md Layout 5, Controls 13). A small window of buttons, one per Salvager window, in two
+-- columns: Salvager, Ledger, Materials, Limits at the left; Reports, Charts, Log, Options at the right; Disenchant
+-- across both under them (SDD 108d, 114, 127). It is where the other windows open from (the main window's footer has
+-- no window buttons since 0.4.0): always on, at the auction house and away from it, with the main window or without,
+-- shown or hidden as the player left it (its X, Shift + left click on the minimap button), remembered across
+-- sessions. The windows it opens stay on their own: closing the main window does not close them. Escape leaves it:
+-- it is a launcher, like the minimap button.
 local _, ns = ...
 
 local W = ns.Widgets
@@ -26,12 +27,15 @@ local ROWS = {
         .. "gold, the profit of your gear, your materials, your competitors and the odds (on the tab you saw last)." } },
     { { "Ledger", function() ns.LedgerWindow.Toggle() end, "SalvagerLedgerFrame", "Opens or closes the ledger: your "
         .. "sales, purchases and competition, and the accuracy of the forecasts." },
-      { "Market", function() ns.Market.Toggle() end, "SalvagerMarketFrame", "Opens or closes the market charts: the "
-        .. "price of each material over time, from your scans." } },
+      { "Charts", function() ns.Market.Toggle() end, "SalvagerMarketFrame", "Opens or closes the charts: the price of "
+        .. "each material over time, from your scans, your profit by day, the bands and the time of day." } },
     { { "Materials", materials, "SalvagerMaterialsFrame", "Opens or closes the materials list in a window of its own: "
         .. "price, stock, average cost, break-even, and Post." },
       { "Log", function() ns.LogWindow.Toggle() end, "SalvagerLogFrame", "Opens or closes the log: what the addon "
         .. "did, and any error." } },
+    { { "Limits", function() ns.LimitsWindow.Toggle() end, "SalvagerLimitsFrame", "Opens or closes the buy limits: "
+        .. "the most the addon lets you pay per item level band, for armor and for weapons. You can set your own." },
+      { "Options", function() ns.Options.Open() end, nil, "Opens the addon's options." } },
     { { "Disenchant", function() ns.DisenchantPanel.Toggle() end, "SalvagerDisenchantFrame", "Opens or closes the "
         .. "Disenchant panel: the gear of your purchases in your bags, and a button that disenchants the next piece." } },
 }
@@ -73,13 +77,25 @@ function MiniPanel.Show()
     f.UserShow()
 end
 
+--- Hides it and remembers that (its X does the same).
 function MiniPanel.Hide()
-    if f and f:IsShown() then f:Hide() end
+    if f and f:IsShown() then f.UserHide() end
 end
 
 function MiniPanel.Toggle()
     if not f then build() end
     f.UserToggle()
+    ns.Log("mini panel %s", f:IsShown() and "shown" or "hidden")
 end
+
+--- At login: shown unless the player hid it (windows.mini.open == false).
+function MiniPanel.Restore()
+    local saved = ns.db.windows.mini
+    if saved and saved.open == false then return end
+    if not f then build() end
+    f:Show()
+end
+
+ns.On("SALVAGER_READY", function() MiniPanel.Restore() end)
 
 function MiniPanel.Frame() return f end

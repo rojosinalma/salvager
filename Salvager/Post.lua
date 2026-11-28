@@ -439,11 +439,15 @@ local function build()
     local dLabel = W.Label(d, "Duration")
     dLabel:SetPoint("TOPLEFT", pLabel, "BOTTOMLEFT", 0, -16)
     local labels = durationLabels()
-    d.duration = W.Choice(d, { { 1, labels[1] }, { 2, labels[2] }, { 3, labels[3] } }, function(v)
-        ns.db.settings.postDuration = v
-        d.confirm = nil
-        recalc()
-    end)
+    -- (One of three: a one-choice dropdown, UI.md Controls 2; until 0.4.0 three check boxes, W.Choice.)
+    d.duration = W.Dropdown(d, 120, { { 1, labels[1] }, { 2, labels[2] }, { 3, labels[3] } },
+        function(v) return ns.db.settings.postDuration == v end,
+        function(v)
+            ns.db.settings.postDuration = v
+            d.duration:Close()
+            d.confirm = nil
+            recalc()
+        end, "How long the auction lasts: a longer one costs a larger deposit.", "Duration", nil, true)
     d.duration:SetPoint("LEFT", dLabel, "LEFT", 76, 0)
 
     d.lines = {}
@@ -482,7 +486,9 @@ local function build()
         l:SetWordWrap(false)
         d.marketLines[i] = l
     end
-    d.list = W.List(d, { rowHeight = 20 })
+    -- (Not sorted by a click: its order is the market's, cheapest first, "Units up to here" adds up in it and your
+    -- price sits among them, UI.md Tables 10.)
+    d.list = W.List(d, { rowHeight = 20, sort = false })
     d.list:SetColumns({
         { "Price each", 190, help = { "Price each", "The other sellers' listings, cheapest first. The game shows the "
             .. "auctions of one price as one line. Red = under your break-even. Grey = dearer than your price.\n\n"
@@ -565,7 +571,7 @@ local function show(itemID, stale)
     d.name:SetText(ns.MaterialName(itemID))
     d.qty:SetText(tostring(Post.BagCount(itemID)))
     d.price:Set(s.price)
-    d.duration:Set(ns.db.settings.postDuration)
+        d.duration:Update()
     d:Show()
     recalc()
 end

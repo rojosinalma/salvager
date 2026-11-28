@@ -182,6 +182,7 @@ local function build()
     listB:SetColumns(columns("Band"), "breakdown.band")
     listB:SetPoint("TOPLEFT", listA, "BOTTOMLEFT", 0, -24)
     listB:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 14)
+    for _, l in ipairs({ listA, listB }) do l.onColumnsChanged = function() Breakdown.Refresh() end end
     -- The heading (the name, its two summary lines) and the tables' titles are content too (SDD 120).
     f.extraNeed = function()
         local function sw(fs) return tonumber((fs:GetStringWidth())) or 0 end

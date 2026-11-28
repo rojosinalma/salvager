@@ -68,7 +68,7 @@ local VIEWS = {
 local f, rows, headers, status, footer, minProfit, playButton, gearChoice, tabs =
     nil, {}, {}, nil, nil, nil, nil, nil, {}
 local maxPrice, cautious, bandDrop, ilvlMin, ilvlMax, levelHint, materialsOnly, scanOwned, gold, maxChecks
-local qualityDrop, popOut, minReturn, ahButton, helpButton
+local qualityDrop, popOut, minReturn, helpButton
 local headerHelp = {}
 local columnsButton, columnsView   -- the column chooser, and the view its menu was filled for
 local actionHeader
@@ -113,6 +113,11 @@ UI.HIGH_HELP = "Unusually high return (%d%% or more): check the gear, its item l
     .. "before you buy (see the outcomes)."
 local function highHelp() return string.format(UI.HIGH_HELP, tonumber(ns.db.settings.highlightReturn) or 0) end
 
+--- The values a Gear row sorts by: the name's text, then numbers (the range by its average, UI.md Tables 1). A group
+--- of auctions sorts by its best one (as the scan's order does).
+local function dealSort(d)
+    return { nil, nil, d.ilvl, d.buyout, d.profit, d.lose, ns.Scanner.Return(d) }
+end
 local function dealCells(d, label)
     return { label, CLASS_NAME[d.classID or ns.ClassOf(d.itemID)] or "", tostring(d.ilvl or ""),
         ns.Money(d.buyout) .. (UI.HighReturn(d) and (" " .. ORANGE .. "!|r") or ""), rangeText(d), ns.LoseText(d.lose),
@@ -145,18 +150,18 @@ local function dealRows()
         local first = ns.Scanner.Cheapest(g.deals) or g.deals[1]
         if #g.deals == 1 then
             out[#out + 1] = { cells = dealCells(first, first.link or g.name), link = first.link, itemID = first.itemID,
-                deal = first, high = UI.HighReturn(first) }
+                deal = first, high = UI.HighReturn(first), sort = dealSort(first) }
         else
             -- (A heading takes the highlight when any auction under it has it.)
             local high = false
             for _, d in ipairs(g.deals) do high = high or UI.HighReturn(d) end
             local head = { cells = dealCells(first, (first.link or g.name) .. " |cffffd100x" .. #g.deals .. "|r"),
-                link = first.link, itemID = first.itemID, group = g, high = high }
+                link = first.link, itemID = first.itemID, group = g, high = high, sort = dealSort(g.best) }
             out[#out + 1] = head
             if ns.HeadingToggle(head, ns.GroupState("main.gear"), g.name, function() UI.Refresh() end, true) then
                 for _, d in ipairs(g.deals) do
                     out[#out + 1] = { cells = dealCells(d, "   " .. (d.link or g.name)), link = d.link, itemID = d.itemID,
-                        deal = d, child = true, high = UI.HighReturn(d) }
+                        deal = d, child = true, high = UI.HighReturn(d), sort = dealSort(d) }
                 end
             end
         end
@@ -166,6 +171,32 @@ end
 
 local SOURCES = { deals = dealRows, materials = function() return ns.Materials.Rows() end,
     limits = function() return ns.LimitsWindow.Rows() end }   -- (Limits: its own window, LimitsWindow.lua)
+
+local sortOf   -- (below: the column a view is sorted by)
+
+--- The rows sorted by the column picked (Widgets.SortRows): the Gear tab's groups each with their auctions under
+--- them (the group by its own numbers, the auctions inside it sorted too).
+local function sorted(name, data)
+    if not VIEWS[name] then return data end
+    local i, desc = sortOf(VIEWS[name])
+    if not i or #data < 2 then return data end
+    if name ~= "deals" then return W.SortRows(data, i, desc) end
+    local units = {}
+    for _, r in ipairs(data) do
+        if r.child and #units > 0 then table.insert(units[#units].kids, r)
+        else units[#units + 1] = { cells = r.cells, sort = r.sort, row = r, kids = {} } end
+    end
+    local out = {}
+    for _, u in ipairs(W.SortRows(units, i, desc)) do
+        out[#out + 1] = u.row
+        for _, k in ipairs(W.SortRows(u.kids, i, desc)) do out[#out + 1] = k end
+    end
+    return out
+end
+local unsorted = SOURCES
+SOURCES = {}
+for name, fn in pairs(unsorted) do SOURCES[name] = function() return sorted(name, fn()) end end
+UI.Unsorted = function(name) return unsorted[name]() end
 
 --- The rows of a tab of the main window, or of the Limits window (for the tests).
 function UI.Rows(view) return SOURCES[view]() end
@@ -184,7 +215,6 @@ local function statusText()
     if s.paused then table.insert(parts, 1, "|cffffd100Paused|r") end
     if #parts == 0 then parts[1] = ns.Queue.open and (s.auto and "Waiting for the next scan" or "Ready")
         or "Auction house closed" end
-    if ns.SalvagerForBuy() then parts[#parts + 1] = ns.SALVAGER_COLOR .. "Arcane Salvager bonus included|r" end
     return table.concat(parts, "  ·  ")
 end
 
@@ -272,8 +302,11 @@ local function helpLines()
     local cut = math.floor(ns.Cut() * 100 + 0.5) .. "%"
     local by = ns.db.settings.dealSort == "return" and "the average return" or "the average profit"
     return {
-        "Sorted by: " .. by .. ", highest first (the title with the arrow). Click the Avg return or the Profit "
-            .. "title to sort by it. Each scan checks the gear in this order too.",
+                "A click on a title sorts the list by it (the arrow), again the other way round. Each scan checks the gear by "
+            .. by .. " (a click on Profit or Avg return picks it), and Buy Top buys in that order.",
+        "Arcane Salvager (Scan settings): ticked, the gear is valued with the Salvager's bonus.",
+        "The other windows open from the mini panel (Shift + click the minimap button shows or hides it); the gear "
+            .. "icon in the title bar opens the options.",
         "One disenchant gives whole units of one material: hover the profit for every outcome and its chance.",
         "Profit: pessimistic (9 in 10 give this or more) - average (over many pieces) - optimistic (1 in 10), "
             .. "after the " .. cut .. " cut.",
@@ -288,7 +321,8 @@ local function helpLines()
         "A Buy that is on buys with one click. It is off for the moment the auction house answers a request (your last "
             .. "purchase or the scan) and comes back by itself.",
         "For a second after each Buy click the scan sends nothing, so a quick next click finds the auction house free.",
-        string.format("Each scan makes %d gear searches, the best candidates first (Gear checks, in the Scan settings).",
+        string.format("Each scan searches and shows the top %d gear candidates, the best by the sort first (Show top, in the "
+            .. "Scan settings).",
             ns.db.settings.maxChecks),
         "Hover a column title for more about that column.",
     }
@@ -299,11 +333,25 @@ end
 --- boxes keep the width of their boxes. Where the client cannot measure text, the widths given are used
 --- and the first column takes the room the window has over its default width.
 --- A title as it shows: the one the list is ordered by has the arrow (so the column is measured with it).
-local SORT_ARROW = " |TInterface\\Buttons\\Arrow-Down-Up:10|t"
+-- (Every column sorts by a click, Widgets.SortRows, the order saved per view: "main.deals", and the Materials list's
+-- "materials" shared with the Materials window. With none saved, the Gear tab is in the order of the scan's sort,
+-- dealSort: the average profit or the average return, highest first.)
+function sortOf(view)
+    local st = W.SortState(view.id == "deals" and "main.deals" or view.id)
+    local cols = {}
+    for i, t in ipairs(view.header) do cols[i] = { t } end
+    local i = st and W.SortColumn(cols, st)
+    if i then return i, st.desc and true or false end
+    if view.sortable then
+        for c, key in pairs(view.sortable) do if key == ns.db.settings.dealSort then return c, true end end
+    end
+    return nil
+end
+UI.SortOf = function(name) return sortOf(VIEWS[name]) end
+UI.SortOfView = sortOf
 local function shownTitle(view, i, title)
-    local sortKey = view.sortable and view.sortable[i]
-    if sortKey and sortKey == ns.db.settings.dealSort then return title .. SORT_ARROW end
-    return title
+    local by, desc = sortOf(view)
+    return W.SortTitle(title, i, by, desc)
 end
 
 --- Does column i of a view show? The first always does; the others unless hidden with the chooser.
@@ -463,11 +511,6 @@ function UI.UpdatePlay()
         b:SetEnabled(open)
         b.reason = not open and W.AH_CLOSED or nil
     end
-    -- (The auction house button needs the auction house open; its tooltip says why it is off.)
-    if ahButton then
-        ahButton:SetEnabled(open)
-        ahButton.reason = not open and W.AH_CLOSED or nil
-    end
 end
 
 --- What a Buy button (a row's, Buy Top, Gear Details) shows for the auction it buys (SDD 105): "Buy"; "..." and off
@@ -552,8 +595,8 @@ local function buyTopTooltip(self)
         GameTooltip:AddLine(buyTop.reason or "", 1, 0.3, 0.3, true)
         GameTooltip:AddLine(d.link or dealName(d), 1, 1, 1)
     elseif d then
-        GameTooltip:AddLine("Buys the auction with the highest " .. (byReturn() and "average return" or "average profit")
-            .. " in the Gear tab (the sort), from any row. Each click buys the next best one.", 1, 0.82, 0, true)
+        W.AddHelp(GameTooltip, nil, "Buys the auction with the highest " .. (byReturn() and "average return" or "average profit")
+            .. " in the Gear tab (the sort), from any row. Each click buys the next best one.")
         if skipped then
             GameTooltip:AddLine(string.format("The best one, %s (%s), is skipped: not enough gold.", dealName(skipped),
                 ns.Money(skipped.buyout)), 1, 0.3, 0.3, true)
@@ -580,19 +623,37 @@ local function updateBuyTop()
         buyTop:SetText("Buy Top")
         buyTop:UnlockHighlight()
     end
-    -- Above the button: the gear the next click buys, as wide as its name, at most half the room left of the
-    -- button (cut there, one line). Nothing when the button is off: the reason is in its tooltip.
+    -- Above the button: the gear the next click buys, as wide as its name. Nothing when the button is off: the
+    -- reason is in its tooltip.
     topItem.link = d and (d.link or ("item:" .. d.itemID)) or nil
     topItem.deal = d
     topItem.text:SetText(d and (d.link or dealName(d)) or "")
     local icon = d and W.IconOf(d.itemID)
     if icon then topItem.icon:SetTexture(icon) topItem.icon:Show() else topItem.icon:Hide() end
     local tw = tonumber((topItem.text:GetStringWidth())) or 0
-    local w = math.max(1, math.min(tw + 2, ((f:GetWidth() or 800) - 150) / 2))
+    local w = math.max(1, tw + 2)   -- (as wide as its name, never cut: the footer's texts wrap in what is left)
     topItem.text:SetWidth(w)
     topItem:SetWidth(w + (icon and 17 or 0))   -- the icon (14) and its gap (3)
     topItem:SetShown(d ~= nil)
     if buyTop.hover then buyTopTooltip(buyTop) end
+end
+
+--- The footer's two texts wrap in the room left of the status (and its spinner) and the gear Buy Top buys; the list
+--- ends above their lines. @return number  the list's bottom (px above the window's bottom)
+local function layoutFooter()
+    local right = 0
+    if (status:GetText() or "") ~= "" then right = (tonumber((status:GetWidth())) or 0) + 24 end
+    if topItem:IsShown() then right = math.max(right, tonumber((topItem:GetWidth())) or 0) end
+    local w = math.max(120, (tonumber((f:GetWidth())) or 0) - 14 - 24 - 16 - right)
+    local h = 0
+    for _, fs in ipairs({ footer2, footer }) do
+        fs:SetWidth(w)
+                -- (As tall as its lines, so the client never cuts it.)
+        local fh = (fs:GetText() or "") == "" and 0 or math.ceil(tonumber((fs:GetStringHeight())) or 12) + 1
+        fs:SetHeight(math.max(1, fh))
+        h = h + fh
+    end
+    return math.max(LIST_BOTTOM, 36 + h + 4)
 end
 
 function UI.Refresh()
@@ -613,7 +674,7 @@ function UI.Refresh()
     P.inset:ClearAllPoints()
     P.inset:SetPoint("TOPLEFT", f, "TOPLEFT", 10,
         -(materials and (FILTERS_TOP + W.BAR_H.filters + 4) or (SETTINGS_TOP + SETTINGS_H + 6)))
-    P.inset:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, LIST_BOTTOM)
+    P.inset:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, UI.listBottom or LIST_BOTTOM)
     materialsOnly:SetChecked(ns.db.settings.materialsDataOnly)
     local view = VIEWS[UI.view]
     ROWS = fitRows()
@@ -667,7 +728,9 @@ function UI.Refresh()
         local help = view.help == "materials" and ns.Materials.HELP or view.help
         headerHelp[i].help = col and help and help[i] or nil
         headerHelp[i].sortKey = col and view.sortable and view.sortable[i] or nil
-        headerHelp[i]:SetShown(headerHelp[i].help ~= nil)
+        headerHelp[i].sortCol = col and i or nil   -- (every column sorts)
+        headerHelp[i].title = view.header[i]
+        headerHelp[i]:SetShown(headerHelp[i].help ~= nil or headerHelp[i].sortCol ~= nil)
     end
     actionHeader:SetText(view.actionTitle or "")
     for r = ROWS + 1, MAX_ROWS do rows[r]:Hide() end
@@ -719,9 +782,9 @@ function UI.Refresh()
         b:SetSelected(name == UI.view)
     end
     status:SetText(statusText())
-    -- As wide as its text, at most half the room left of "Buy Top": the footer keeps the rest.
+    -- As wide as its text (never cut): the footer's texts wrap in what it leaves (UI.layoutFooter).
     local sw = tonumber((status:GetStringWidth())) or 0
-    status:SetWidth(math.max(1, math.min(sw + 2, ((f:GetWidth() or 800) - 150) / 2)))
+    status:SetWidth(math.max(1, sw + 2))
     if ns.Busy() then spinner:Start() else spinner:Stop() end
     local dealsBusy = UI.view == "deals" and (ns.Scanner.state ~= "idle" or ns.scanBothPending)
     if dealsBusy and #data == 0 then
@@ -738,6 +801,7 @@ function UI.Refresh()
     maxPrice:Set(ns.db.settings.maxPrice)
 
     cautious:SetChecked(ns.db.settings.cautious)
+    P.salvager:SetChecked(ns.SalvagerForBuy())
     bandDrop:Update()
     local st = ns.db.settings
     if not ilvlMin:HasFocus() then ilvlMin:SetText(tostring(st.ilvlMin)) end
@@ -751,6 +815,15 @@ function UI.Refresh()
     footer2:SetText(line2)
     updateBuyTop()
     lastRefresh = GetTime()
+    -- (Lines that need more room move the list's bottom up: drawn again once with it.)
+    local bottom = layoutFooter()
+    if bottom ~= (UI.listBottom or LIST_BOTTOM) and not UI.refooting then
+        UI.listBottom = bottom
+        UI.refooting = true
+        UI.Refresh()
+        UI.refooting = false
+        return
+    end
     -- The self-check (SDD 120): no wider than the content, normal gaps.
     if not UI.fitting then W.CheckLayout(f, { UI.mainTable }, UI.view) end
 end
@@ -889,16 +962,16 @@ local function build()
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         if UI.Running() then
             GameTooltip:SetText("Stop", 1, 1, 1)
-            GameTooltip:AddLine("Ends auto scanning and cancels the scan that is running. The gear found so far stays "
-                .. "in the list.", 1, 0.82, 0, true)
+            W.AddHelp(GameTooltip, nil, "Ends auto scanning and cancels the scan that is running. The gear found so far stays "
+                .. "in the list.")
         else
             GameTooltip:SetText("Play", 1, 1, 1)
             local every = ns.db.settings.priceRescan
-            GameTooltip:AddLine("Scans the gear now and again every " .. ns.db.settings.autoInterval
+            W.AddHelp(GameTooltip, nil, "Scans the gear now and again every " .. ns.db.settings.autoInterval
                 .. " seconds while the auction house is open, so new cheap listings show up by themselves. "
                 .. (every > 0 and ("Material prices are scanned again when they are older than " .. every .. " minutes. ")
                     or "Material prices are not scanned again (see the options). ")
-                .. "You still click Buy yourself. Click again to stop.", 1, 0.82, 0, true)
+                .. "You still click Buy yourself. Click again to stop.")
         end
         if self.reason then GameTooltip:AddLine(self.reason, 1, 0.3, 0.3, true) end
         GameTooltip:Show()
@@ -907,43 +980,18 @@ local function build()
     UI.playButton = playButton   -- (the specs click it)
     spinner = W.Spinner(f, 18)   -- (with the status, under the list)
 
-    -- Left to right: Auction house, Ledger, Reports, Market, Disenchant, Limits, Log, Options (the user's order, 0.3.113;
-    -- Disenchant since 0.3.146).
-    ahButton = W.Button(P.footerBar, "Auction house", 104, function() UI.ToAuctionHouse() end,
-        "Closes the Salvager windows: only the auction house window stays. Scans keep running. The Salvager button "
-        .. "above the auction house window brings them back.")
-    ahButton:SetMotionScriptsWhileDisabled(true)
-    ahButton:HookScript("OnEnter", function(self)
-        if self.reason then GameTooltip:AddLine(self.reason, 1, 0.3, 0.3, true) GameTooltip:Show() end
-    end)
-    P.footerBar:Add(ahButton, 104)
-    P.footerBar:Add(W.Button(P.footerBar, "Ledger", 64, function() ns.LedgerWindow.Toggle() end,
-        "Opens the ledger in its own window: what you bought, what each piece of gear was disenchanted into, "
-        .. "your sales and their profit."), 64, 4)
-    P.footerBar:Add(W.Button(P.footerBar, "Reports", 70, function() ns.Reports.Toggle() end,
-        "Opens the reports in their own window: your gold, the profit of your gear by band and piece by piece, and "
-        .. "your materials."), 70, 4)
-    P.footerBar:Add(W.Button(P.footerBar, "Market", 64, function() ns.Market.Toggle() end,
-        "Opens the market charts in their own window: the price of each material over time, from your scans."), 64, 4)
-    P.footerBar:Add(W.Button(P.footerBar, "Disenchant", 84, function() ns.DisenchantPanel.Toggle() end,
-        "Opens the Disenchant panel: the gear of your purchases in your bags, and a button that disenchants the next "
-        .. "piece with each click."), 84, 4)
-    P.footerBar:Add(W.Button(P.footerBar, "Limits", 60, function() ns.LimitsWindow.Toggle() end,
-        "Opens the buy limits in their own window: the most the addon lets you pay per item level band, for armor "
-        .. "and for weapons. You can set your own."), 60, 4)
-    P.footerBar:Add(W.Button(P.footerBar, "Log", 48, function() ns.LogWindow.Toggle() end,
-        "Opens the log in its own window: what the addon did, and any error. For debugging."), 48, 4)
-    local options = W.IconButton(P.footerBar, 22, function() ns.Options.Open() end)
-    options:SetIcon("Interface\\Buttons\\UI-OptionsButton", 16, 16)
-    W.Tooltip(options, "Options", "Opens the addon's options.")
-    P.footerBar:Add(options, 22, 4)
+    -- (No window buttons here since 0.4.0, the user: the other windows open from the mini panel, always on, SDD 127.
+    -- The footer holds the status, the gold, the bags, Play and Buy Top; Options is a gear icon in the title bar.)
     -- At the bottom right, left of the resize grip: "Buy Top" buys the best auction of the list (the click is the
     -- hardware event the purchase needs). Left of it, what the addon is doing now (scanning, searching), the
     -- spinner before it; the footer takes the room on the left.
-    buyTop = W.Button(P.footerBar, "Buy Top", 80, function()
+    -- (Its global name: the "Salvager Buy" macro clicks it, /click SalvagerBuyTopButton, SDD 127. With the main
+    -- window hidden or the button off, a click does nothing.)
+    buyTop = W.Button(P.footerBar, "Buy Top", 80, function(self)
+        if not (f:IsVisible() and self:IsEnabled()) then return end
         local d = topDeal()
         if d and not d.wait then ns.Scanner.Buy(d, true) end
-    end)
+    end, nil, "SalvagerBuyTopButton")
     P.footerBar:AddRight(buyTop, 80)
     P.footerBar:AddRight(playButton, 24, 12)
     -- Left of Play: the bag space, and your gold right next to it (one group: gold, bags, Play), readouts (not
@@ -1217,13 +1265,23 @@ local function build()
         end
         ns.Fire("SALVAGER_SETTINGS")
     end)
-    local checksLabel = W.Label(box, "Gear checks", "GameFontHighlightSmall")
+        -- ("Show top" since 0.4.0, was "Gear checks"; the setting stays maxChecks.)
+    local checksLabel = W.Label(box, "Show top", "GameFontHighlightSmall")
     checksLabel:SetPoint("RIGHT", maxChecks, "LEFT", -8, 0)
-    W.HelpArea(box, checksLabel, "Gear checks per scan", "How many gear searches one scan makes, the best candidates first. "
-        .. "Each check is one auction house search (about 0.7 s), and the Gear list holds at most this many.")
+        W.HelpArea(box, checksLabel, "Show top", "How many of the best gear candidates each scan searches and shows (the best "
+        .. "by the sort first). Each one is one auction house search (about 0.7 s), and the Gear list holds at most this many.")
+        -- Left of Show top (the row with room): the Arcane Salvager's bonus in the buy prices, a setting of the scan
+    -- (UI.md Controls 10; it left the Options, Layout 1, and replaced the footer's "Arcane Salvager bonus included",
+    -- 0.4.0).
+    P.salvager = W.Check(box, "Arcane Salvager", nil, function(on)
+        ns.SetSalvagerForBuy(on)
+    end)
+    W.Tooltip(P.salvager, "Arcane Salvager", ns.SALVAGER_BOX_HELP)
+    local salvW = math.ceil(tonumber((P.salvager.label:GetStringWidth())) or 0)
+    P.salvager:SetPoint("RIGHT", checksLabel, "LEFT", -(2 + salvW + 16), 0)
     levelHint = W.Label(box, "", "GameFontDisableSmall")
     levelHint:SetPoint("LEFT", ilvlMax, "RIGHT", 8, 0)
-    levelHint:SetPoint("RIGHT", checksLabel, "LEFT", -8, 0)
+    levelHint:SetPoint("RIGHT", P.salvager, "LEFT", -8, 0)
     levelHint:SetJustifyH("LEFT")
     levelHint:SetWordWrap(false)
     -- What the settings need (the width authority, SDD 120): per row, its controls from the left to the right end of
@@ -1235,7 +1293,7 @@ local function build()
             local r = ilvlMax:GetRight()
             local hint = tonumber((levelHint:GetStringWidth())) or 0
             return r and (r + (hint > 0 and 8 + hint or 0))
-        end, right = checksLabel },
+        end, right = P.salvager },
     }
     function P.settingsNeed()
         local l, r = box:GetLeft(), box:GetRight()
@@ -1289,9 +1347,9 @@ local function build()
         local out = ns.Materials.IsPoppedOut()
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(out and "Put the materials list back" or "Pop out the materials list", 1, 1, 1)
-        GameTooltip:AddLine(out and "Closes its window and shows the list in the Materials tab again."
+        W.AddHelp(GameTooltip, nil, out and "Closes its window and shows the list in the Materials tab again."
             or "Moves the materials list to a window of its own, so you can watch it next to the gear. "
-                .. "Scans keep running. Click again, or close that window, to put it back.", 1, 0.82, 0, true)
+                .. "Scans keep running. Click again, or close that window, to put it back.")
         GameTooltip:Show()
     end)
     popOut:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1306,7 +1364,7 @@ local function build()
     P.inset = W.Panel(f, 0, 0, 0, 0.5)
     UI.listArea = P.inset   -- (the specs put the mouse on it)
     P.inset:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -(SETTINGS_TOP + SETTINGS_H + 6))
-    P.inset:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, LIST_BOTTOM)
+    P.inset:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, UI.listBottom or LIST_BOTTOM)
     titleBand = P.inset:CreateTexture(nil, "BACKGROUND", nil, 1)
     titleBand:SetPoint("TOPLEFT", P.inset, "TOPLEFT", 1, -1)
     titleBand:SetPoint("TOPRIGHT", P.inset, "TOPRIGHT", -1, -1)
@@ -1371,19 +1429,35 @@ local function build()
         area:SetAllPoints(h)
         area:EnableMouse(true)
         area:SetScript("OnEnter", function(self)
-            if not self.help then return end
+            local help, col = rawget(self, "help"), rawget(self, "sortCol")
+            if not (help or col) then return end
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText(self.help[1], 1, 1, 1)
-            GameTooltip:AddLine(self.help[2], 1, 0.82, 0, true)
+            W.AddHelp(GameTooltip, help and help[1] or tostring(rawget(self, "title") or ""), help and help[2])
+            if col then W.AddHelp(GameTooltip, nil, W.SORT_HINT, 0.5, 0.8, 1) end
             GameTooltip:Show()
         end)
         area:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        -- A title that orders the list: a click orders it by that column.
+        -- A click on a title sorts the list by it (Widgets.SortClick), again the other way round. Profit and Avg
+        -- return also set the scan's order (dealSort: what each scan checks first and Buy Top buys first).
         area:SetScript("OnMouseUp", function(self)
-            if not self.sortKey or ns.db.settings.dealSort == self.sortKey then return end
-            ns.db.settings.dealSort = self.sortKey
-            ns.Log("deals listed by %s", self.sortKey)
-            ns.Scanner.Sort()
+            local col, sortKey = rawget(self, "sortCol"), rawget(self, "sortKey")
+            if not col then return end
+            local view = VIEWS[UI.view]
+            local id = view.id == "deals" and "main.deals" or view.id
+            local st = W.SortState(id, true)
+            local by, desc = UI.SortOfView(view)
+            if st.key == nil and by then st.key, st.desc = view.header[by], desc end
+            local cols = {}
+            for n, t in ipairs(view.header) do cols[n] = { t } end
+            local plain = {}   -- (a Gear group row is not a heading here: it sorts with its auctions)
+            for _, r in ipairs(UI.Unsorted(UI.view)) do plain[#plain + 1] = { cells = r.cells, sort = r.sort } end
+            W.SortClick(st, cols, col, plain)
+            if sortKey and ns.db.settings.dealSort ~= sortKey then
+                ns.db.settings.dealSort = sortKey
+                ns.Scanner.Sort()
+            end
+            ns.Log("%s listed by %s", UI.view == "deals" and "deals" or "materials", tostring(view.header[col]))
+            UI.offset = 0
             UI.Refresh()
         end)
         area:Hide()
@@ -1450,7 +1524,7 @@ local function build()
             if not (itemDeal(item) and item.high) then return false end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetText("Unusually high return", 1, 0.5, 0.25)
-            GameTooltip:AddLine(highHelp(), 1, 0.82, 0, true)
+            W.AddHelp(GameTooltip, nil, highHelp())
             GameTooltip:Show()
             return true
         end)
@@ -1483,7 +1557,7 @@ local function build()
             if not sug then return end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetText("Below your break-even", 1, 0.3, 0.3)
-            GameTooltip:AddLine(ns.Materials.WarnText(sug), 1, 0.82, 0, true)
+            W.AddHelp(GameTooltip, nil, ns.Materials.WarnText(sug))
             GameTooltip:Show()
         end)
         row.warn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1513,20 +1587,17 @@ local function build()
     bigSpinnerText = list:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     bigSpinnerText:SetPoint("TOP", bigSpinner, "BOTTOM", 0, -6)
 
-    -- Two lines of text under the list, over the footer's buttons: what the last scan found (cut at the spinner and
-    -- the status), then the gear closest to its limit (cut at the gear "Buy Top" buys).
-    footer = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    footer:SetPoint("LEFT", f, "BOTTOMLEFT", 14, 58)
-    footer:SetPoint("RIGHT", spinner, "LEFT", -12, 0)
-    footer:SetJustifyH("LEFT")
-    footer:SetWordWrap(false)
-    footer.canCut = true   -- (one line cut at the next control, UI.md Layout 6; `canCut`: the fit spec allows it)
+    -- Two texts under the list, over the footer's row: what the last scan found, then the gear closest to its limit.
+    -- Never cut (0.4.0, the user: "no truncated text"): each wraps in the room left of the status and the gear Buy
+    -- Top buys, and the list's bottom moves up to make room for their lines (UI.layoutFooter, UI.md Layout 6).
     footer2 = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    footer2:SetPoint("LEFT", f, "BOTTOMLEFT", 14, 43)
-    footer2:SetPoint("RIGHT", topItem, "LEFT", -12, 0)
+    footer2:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 14, 36)
     footer2:SetJustifyH("LEFT")
-    footer2:SetWordWrap(false)
-    footer2.canCut = true
+    footer2:SetWordWrap(true)
+    footer = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    footer:SetPoint("BOTTOMLEFT", footer2, "TOPLEFT", 0, 2)
+    footer:SetJustifyH("LEFT")
+    footer:SetWordWrap(true)
     UI.footerLines = { footer, footer2 }
 
     -- Resize from the bottom right corner, the height only (the width is fixed: Refresh sets it and its bounds).
@@ -1561,10 +1632,9 @@ local function build()
 
     if VIEWS[ns.db.window.view] then UI.view = ns.db.window.view end
     f:SetScript("OnShow", function()
+        ns.SettleSalvager()
         UI.Refresh()
         UI.RestoreWindows()
-        -- The main window leads again: the mini panel is not needed while it shows (Minimize brings it back).
-        if ns.MiniPanel then ns.MiniPanel.Hide() end
     end)
     -- The main window closes (X, Escape, the Auction house button): every window it opened goes with it (what was
     -- open is still remembered, and comes back with the main window). Minimize keeps them.
@@ -1596,6 +1666,13 @@ local function build()
     W.Tooltip(mini, "Minimize", "Hides this window and shows the Salvager mini panel: a small window with a button for "
         .. "each Salvager window. The other windows stay open. Scans go on.")
     UI.minimizeButton = mini   -- (the specs click it)
+    -- Options: a gear icon in the title bar, left of Minimize (it left the footer, 0.4.0).
+    local options = W.IconButton(f, 20, function() ns.Options.Open() end)
+    options:SetIcon("Interface\\Buttons\\UI-OptionsButton", 14, 14)
+    options:SetPoint("RIGHT", mini, "LEFT", -2, 0)
+    options.uiKind = "titlebutton"
+    W.Tooltip(options, "Options", "Opens the addon's options.")
+    UI.optionsButton = options   -- (the specs click it)
     f:Hide()
 end
 
@@ -1720,6 +1797,7 @@ for _, e in ipairs({ "SALVAGER_PRICES", "SALVAGER_PRICES_DONE", "SALVAGER_SCAN",
 end
 
 ns.On("AUCTION_HOUSE_SHOW", function()
+    ns.SettleSalvager()
     addAuctionHouseButtons()
     -- (Another addon may build its auction window a moment after this event.)
     C_Timer.After(0.5, addAuctionHouseButtons)

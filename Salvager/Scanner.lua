@@ -220,7 +220,7 @@ local function checkDone()
     Scanner.checked = Scanner.checked + 1
     ns.Fire("SALVAGER_DEALS")
     if Scanner.checked >= Scanner.toCheck then
-        ns.Log("gear checks done: %d gear searches in %.0fs; %d searches got no answer and were sent again, %d used the game's "
+        ns.Log("show top done: %d gear searches in %.0fs; %d searches got no answer and were sent again, %d used the game's "
             .. "held results", Scanner.toCheck, GetTime() - (Scanner.checksAt or GetTime()), ns.Queue.lost, ns.Queue.late)
         logHolds()
         setState("idle")

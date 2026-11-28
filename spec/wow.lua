@@ -581,7 +581,22 @@ function M.install(opts)
     -- env.combat: in a fight (the client locks secure frames); env.cvars[name]: a game setting (true/false).
     _G.InCombatLockdown = function() return env.combat or false end
     _G.GetCVarBool = function(name) return env.cvars[name] end
-    _G.IsShiftKeyDown = function() return false end
+    _G.IsShiftKeyDown = function() return env.shift or false end
+    -- The macros (env.macros: { { name, icon, body } }, the account's; env.macroMax: its slots).
+    env.macros = {}
+    _G.Constants = { MacroConsts = { MAX_ACCOUNT_MACROS = 120, MAX_CHARACTER_MACROS = 30 } }
+    _G.GetNumMacros = function() return #env.macros, 0 end
+    _G.GetMacroIndexByName = function(name)
+        for i, m in ipairs(env.macros) do if m.name == name then return i end end
+        return 0
+    end
+    _G.GetMacroInfo = function(i) local m = env.macros[i] if m then return m.name, m.icon, m.body end end
+    _G.CreateMacro = function(name, icon, body, perCharacter)
+        assert(not perCharacter, "an account macro")
+        assert(#env.macros < (env.macroMax or 120), "no free slot")
+        env.macros[#env.macros + 1] = { name = name, icon = icon, body = body }
+        return #env.macros
+    end   -- (env.shift: the Shift key held)
     _G.GetMoney = function() return env.money end
     -- env.equipped[slot] = itemID: what the character wears (the game's item count includes it).
     _G.GetInventoryItemID = function(unit, slot) return unit == "player" and env.equipped and env.equipped[slot] or nil end

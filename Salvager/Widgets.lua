@@ -6,8 +6,9 @@ local Util = ns.Util
 local Widgets = {}
 ns.Widgets = Widgets
 
-function Widgets.Button(parent, text, width, onClick, tooltip)
-    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+--- An action button; `name`: its global name (a macro's /click finds it: Buy Top, SDD 127).
+function Widgets.Button(parent, text, width, onClick, tooltip, name)
+    local b = CreateFrame("Button", name, parent, "UIPanelButtonTemplate")
     b:SetSize(width, 22)
     b:SetText(text)
     b:SetScript("OnClick", onClick)
@@ -69,10 +70,11 @@ function Widgets.HelpButton(parent, title, getLines, opts)
     panel:Hide()
     b.panel, b.body = panel, body
     local function fill()
-        local lines = getLines()
+        -- (Each explanation on its own line, one empty line between: Widgets.Explanations, UI.md Words 4.)
+        local lines = Widgets.Explanations(getLines())
         head:SetText(type(title) == "function" and title() or title)
-        body:SetText(table.concat(lines, "\n"))
-        panel:SetHeight((tonumber(body:GetStringHeight()) or (#lines * 16)) + 44)
+        body:SetText(table.concat(lines, "\n\n"))
+        panel:SetHeight((tonumber(body:GetStringHeight()) or (#lines * 32)) + 44)
     end
     b:SetScript("OnClick", function()
         if panel:IsShown() then panel:Hide() return end
@@ -185,12 +187,46 @@ function Widgets.IconButton(parent, size, onClick)
     return b
 end
 
+--- A help's explanations (UI.md Words 4, the user 2026-11-28: "every explanation on its own line, one empty line
+--- between"): each argument a text or a list of texts (a function gives one when the help shows); each text is cut
+--- into its paragraphs ("\n") and its sentences (". " before a capital letter), one explanation each, the words kept.
+function Widgets.Explanations(...)
+    local out = {}
+    local function add(text)
+        if type(text) == "function" then text = text() end
+        if type(text) == "table" then for _, t in ipairs(text) do add(t) end return end
+        if text == nil then return end
+        text = tostring(text)
+        for para in (text .. "\n"):gmatch("(.-)\n") do
+            -- (". " then a capital letter starts the next explanation; a sentence keeps its full stop.)
+            local s = para:gsub("([%.!?])%s+(%u)", "%1\0%2")
+            for part in (s .. "\0"):gmatch("(.-)%z") do
+                part = part:gsub("^%s+", ""):gsub("%s+$", "")
+                if part ~= "" then out[#out + 1] = part end
+            end
+        end
+    end
+    for i = 1, select("#", ...) do add((select(i, ...))) end
+    return out
+end
+
+--- Fills `tip` (GameTooltip) with a help: its title in white, then each explanation on its own line (wrapped), one
+--- empty line between them, none after the last. `r, g, b`: the explanations' color (gold by default). The one help
+--- builder of every hover help: Widgets.Tooltip, HelpArea, the tables' titles and rows, the cards, the "?" buttons.
+function Widgets.AddHelp(tip, title, text, r, g, b)
+    if title ~= nil then tip:SetText(tostring(title), 1, 1, 1) end
+    for i, line in ipairs(Widgets.Explanations(text)) do
+        -- (Added to a help on show: a blank line after its lines, not right under its title.)
+        if i > 1 or (title == nil and tip.NumLines and (tip:NumLines() or 0) > 1) then tip:AddLine(" ") end
+        tip:AddLine(line, r or 1, g or 0.82, b or 0, true)
+    end
+end
+
 --- Shows a title and text when the mouse is over `frame`.
 function Widgets.Tooltip(frame, title, text)
     frame:HookScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(title, 1, 1, 1)
-        GameTooltip:AddLine(text, 1, 0.82, 0, true)
+        Widgets.AddHelp(GameTooltip, title, text)
         GameTooltip:Show()
     end)
     frame:HookScript("OnLeave", function() GameTooltip:Hide() end)
@@ -243,27 +279,8 @@ function Widgets.Check(parent, label, tooltip, onClick)
     return c
 end
 
---- A row of check buttons where exactly one is on. options = { {value, label}, ... }
-function Widgets.Choice(parent, options, onChange, tooltip)
-    local group = { buttons = {}, value = nil }
-    local prev
-    for _, o in ipairs(options) do
-        local c = Widgets.Check(parent, o[2], tooltip)
-        if prev then c:SetPoint("LEFT", prev.label, "RIGHT", 12, 0) end
-        c:SetScript("OnClick", function()
-            group:Set(o[1])
-            if onChange then onChange(o[1]) end
-        end)
-        group.buttons[#group.buttons + 1] = { button = c, value = o[1] }
-        prev = c
-    end
-    function group:Set(v)
-        self.value = v
-        for _, b in ipairs(self.buttons) do b.button:SetChecked(b.value == v) end
-    end
-    function group:SetPoint(...) self.buttons[1].button:SetPoint(...) end
-    return group
-end
+-- (Widgets.Choice, a row of check boxes where exactly one is on, went in 0.4.0: one of several values is a one-choice
+-- dropdown, Widgets.Dropdown with `single`; a check box is an on/off setting only, UI.md Controls 2.)
 
 function Widgets.Edit(parent, width, numeric)
     local e = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
@@ -328,7 +345,7 @@ function Widgets.Search(parent, width, get, set, tooltip)
         e:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
             GameTooltip:SetText("Search", 1, 1, 1)
-            GameTooltip:AddLine(tooltip, 1, 0.82, 0, true)
+            Widgets.AddHelp(GameTooltip, nil, tooltip)
             GameTooltip:Show()
         end)
         e:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -612,8 +629,10 @@ end
 --- gives the field's text from the ticked names. `tooltip`, `title`: the help on hover.
 --- d:Update() shows the values again (call it on refresh); d:Close() closes the list;
 --- d:SetOptions(options, menuWidth) changes the choices (the list may be wider than the field);
---- d.list, d.checks: the list and its check boxes. One choice only: call d:Close() in `set`.
-function Widgets.Dropdown(parent, width, options, get, set, tooltip, title, summary)
+--- d.list, d.checks: the list and its check boxes (its rows). `single` (UI.md Controls 2): one choice: the list is
+--- plain rows, no check boxes, the current value tinted with a marker; a click picks it and closes the list. Check
+--- boxes are for a dropdown of many choices only (and a lone on/off setting is one check box, not a dropdown).
+function Widgets.Dropdown(parent, width, options, get, set, tooltip, title, summary, single)
     local b = fromTemplate("DropdownButton", parent, "WowStyle1DropdownTemplate", { "Text", "Arrow" })
     local label
     if b then
@@ -645,7 +664,8 @@ function Widgets.Dropdown(parent, width, options, get, set, tooltip, title, summ
             label:SetWordWrap(false)
         end
     end
-    b.uiKind, b.maxWidth, b.title, b.summary = "dropdown", width, title, summary   -- (the fit spec reads them)
+        b.uiKind, b.maxWidth, b.title, b.summary = "dropdown", width, title, summary   -- (the fit spec reads them)
+    b.single = single and true or nil
     b:SetWidth(width)
     local list = CreateFrame("Frame", nil, b, BackdropTemplateMixin and "BackdropTemplate" or nil)
     list:SetFrameStrata("DIALOG")
@@ -671,11 +691,12 @@ function Widgets.Dropdown(parent, width, options, get, set, tooltip, title, summ
     local checks = {}
     function b.Update(self)
         local names = {}
-        for i, o in ipairs(options) do
+                for i, o in ipairs(options) do
             local on = get(o[1]) and true or false
             checks[i]:SetChecked(on)
             if on then names[#names + 1] = o[2] end
         end
+        if single then names = { names[1] } end
         local text = summary and summary(names, #options) or (#names > 0 and table.concat(names, ", ") or "none")
         self:SetText(text)
         -- As wide as its text needs (and the arrow), never wider than the width asked for.
@@ -689,18 +710,60 @@ function Widgets.Dropdown(parent, width, options, get, set, tooltip, title, summ
         self:SetWidth(w)
         if type(label) == "table" then label:SetWidth(w - 32) end
     end
+        -- A row of a one-choice list: the whole width is the click target, the current one tinted with a gold marker.
+    local function optionRow(i)
+        local r = CreateFrame("Button", nil, list)
+        r.uiKind = "option"
+        r:SetHeight(20)
+        r:SetPoint("TOPLEFT", list, "TOPLEFT", 6, -6 - (i - 1) * 22)
+        r:SetPoint("TOPRIGHT", list, "TOPRIGHT", -6, -6 - (i - 1) * 22)
+        local hl = r:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints()
+        hl:SetColorTexture(1, 1, 1, 0.10)
+        local tint = r:CreateTexture(nil, "BACKGROUND")
+        tint:SetAllPoints()
+        tint:SetColorTexture(1, 0.82, 0, 0.16)
+        local mark = r:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        mark:SetPoint("LEFT", r, "LEFT", 4, 0)
+        mark:SetText("|cffffd100>|r")
+        r.label = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        r.label:SetPoint("LEFT", r, "LEFT", 16, 0)
+        r.label:SetJustifyH("LEFT")
+        r.label:SetWordWrap(false)
+        function r.SetChecked(_, on)
+            r.selected = on and true or false
+            tint:SetShown(r.selected)
+            mark:SetShown(r.selected)
+        end
+        function r.GetChecked() return r.selected end
+        r:SetChecked(false)
+        r:SetScript("OnClick", function()
+            set(options[i][1], true)
+            list:Hide()
+            b:Update()
+        end)
+        return r
+    end
     function b.SetOptions(_, opts, menuWidth)
         options = opts
         b.options = opts
-        list:SetSize(menuWidth or width, #options * 22 + 12)
+        -- (The list as wide as its widest option: never a cut label, UI.md Tables 2.)
+        local widest = 0
+        for _, o in ipairs(options) do widest = math.max(widest, Widgets.TextWidth(o[2], "GameFontHighlightSmall") or 0) end
+        list:SetSize(math.max(menuWidth or width, math.ceil(widest) + (single and 16 + 12 or 8 + 26 + 12)),
+            #options * 22 + 12)
         for i, o in ipairs(options) do
             local c = checks[i]
             if not c then
-                c = Widgets.Check(list, o[2], nil, function(on)
-                    set(options[i][1], on)
-                    b:Update()
-                end)
-                c:SetPoint("TOPLEFT", list, "TOPLEFT", 8, -6 - (i - 1) * 22)
+                if single then
+                    c = optionRow(i)
+                else
+                    c = Widgets.Check(list, o[2], nil, function(on)
+                        set(options[i][1], on)
+                        b:Update()
+                    end)
+                    c:SetPoint("TOPLEFT", list, "TOPLEFT", 8, -6 - (i - 1) * 22)
+                end
                 checks[i] = c
             end
             c.label:SetText(o[2])
@@ -996,6 +1059,7 @@ function Widgets.Window(globalName, title, key, w, h, minW, minH, fixed)
         text:SetPoint("TOP", f, "TOP", 0, -5)
     end
     text:SetText(title)
+    f.titleText = text   -- (the specs read it)
     Widgets.TitleVersion(f, text, (fixed or vertical) and w or minW)
     tinsert(UISpecialFrames, globalName)
     -- Who opened it (UI.md Layout 5): "main" = shown while the main window is (it closes with it and comes back
@@ -1225,19 +1289,9 @@ function Widgets.FitTables(f, lists, view, extra)
     local trimmed = Widgets.TrimTables(f, lists)
     -- (A new width lays the tables out again here, so the check reads them as drawn.)
     for _, l in ipairs(lists) do if changed or trimmed[l] then l:Refresh() end end
-    Widgets.CheckLayout(f, lists, view)
+    -- (`f.checkLater`: the window draws more after the fit, its chart: it runs the self-check itself, at the end.)
+    if not rawget(f, "checkLater") then Widgets.CheckLayout(f, lists, view) end
     return changed
-end
-
---- The tables of a view on show, and whether they are two or more (UI.md Tables 2: then each is as wide as it needs).
-local function shownLists(lists)
-    local out = {}
-    for _, l in ipairs(lists or {}) do if l.IsShown and l:IsShown() then out[#out + 1] = l end end
-    return out, #out > 1
-end
-local function isStatement(l)
-    local cols = rawget(l, "columns")
-    return type(cols) == "table" and cols.statement == true
 end
 
 --- Moves the right edge of `l` (its anchors with a right point) `px` in from where its window put it. A window that
@@ -1265,20 +1319,15 @@ function Widgets.TrimRight(l, px)
     return true
 end
 
---- Two or more tables in a view (UI.md Tables 2, SDD 123): each table as wide as it needs, at the left; the narrower
---- one ends earlier (no room inside it). A statement keeps the window's width (its amounts flush right). One table
---- alone spans the window (its first column takes what the controls give it).
+--- Every table spans its window (UI.md Tables 2, SDD 127, the user 2026-11-28: "No inset table should be shorter than
+--- the total size of the window where it is"): two or more tables in a view are each as wide as the window's content,
+--- the narrower one's first column (its row label) takes its spare room. (Until then, SDD 123, each was as wide as it
+--- needed, at the left: this puts back the right edges an older saved layout moved in.)
 --- @return table  the lists moved, as keys
-function Widgets.TrimTables(f, lists)
+function Widgets.TrimTables(_, lists)
     local out = {}
-    local _, multi = shownLists(lists)
-    local fw = tonumber((f:GetWidth())) or 0
     for _, l in ipairs(lists or {}) do
-        local n, trim = rawget(l, "neededWidth"), 0
-        if multi and type(n) == "number" and not isStatement(l) and l:IsShown() then
-            trim = fw - (rawget(l, "margin") or 24) - math.ceil(n)
-        end
-        if Widgets.TrimRight(l, trim) then out[l] = true end
+        if Widgets.TrimRight(l, 0) then out[l] = true end
     end
     return out
 end
@@ -1288,11 +1337,11 @@ end
 --- placed in the column's box by its justification). `columns` = { { header = fs, cells = { fs, ... }, need = px,
 --- title = text, box = true (a column of controls: the whole box) }, ... }.
 local function drawnWidth(fs) return tonumber(((fs.GetUnboundedStringWidth or fs.GetStringWidth)(fs))) or 0 end
-local function placed(fs, tw)
+local function placed(fs, tw, justify)
     local l, r = fs:GetLeft(), fs:GetRight()
     if not (l and r) then return nil end
     tw = math.min(tw, r - l)
-    local j = fs:GetJustifyH()
+    local j = justify or fs:GetJustifyH()
     if j == "RIGHT" then return r - tw, r end
     if j == "CENTER" then return (l + r - tw) / 2, (l + r + tw) / 2 end
     return l, l + tw
@@ -1310,7 +1359,8 @@ function Widgets.ColumnSpans(columns)
         if h and h:IsShown() then
             if col.box then add(h:GetLeft(), h:GetRight()) end
             if (h:GetText() or "") ~= "" then add(textSpan(h)) end
-            if type(col.need) == "number" and col.need > 0 then add(placed(h, col.need)) end
+            -- (The data's widest text sits as the cells do: a column's justification, not its title's.)
+            if type(col.need) == "number" and col.need > 0 then add(placed(h, col.need, col.justify)) end
         end
         if lo then out[#out + 1] = { title = col.title or (h and h:GetText()) or "", l = lo, r = hi } end
     end
@@ -1355,7 +1405,7 @@ function Widgets.ListColumns(list)
             end
             -- (A column of controls, `least`: its content is the whole box.)
             cols[#cols + 1] = { title = tostring(Widgets.ColumnKey(col)), header = headers[i], cells = cells,
-                box = col.least ~= nil, need = need[i] }
+                box = col.least ~= nil, need = need[i], justify = col[3] or "LEFT" }
         end
     end
     return cols
@@ -1384,8 +1434,70 @@ end
 --- Tables 2); every text on show measured as drawn (Widgets.MeasureDrift, 1 px). One Log line per window and view per
 --- session: "layout: <window>/<view> wider than its content by N px", "column gaps over 16 px: <title>><title> <px>",
 --- "measured N px, drawn M px: <title> "<text>"". `f.layoutName` names the window (its key).
-local logged = {}
-Widgets.layoutLogged = logged
+local logged, cutChecked = {}, {}
+Widgets.layoutLogged, Widgets.cutChecked = logged, cutChecked
+
+--- Every text of a window on show that the client cuts (SDD 127, the user 2026-11-28: "check that no text is
+--- truncated"): each FontString of the window and of every frame in it, shown and with text, that IsTruncated() says
+--- is cut, or that is one line and drawn wider than its box (by more than 1 px), or that lies outside the window. Only a
+--- table cell with its full text on hover may end with "..." (`canCut`: a table's first cells). @return table  texts
+function Widgets.CutTexts(f)
+    local out = {}
+    local fl, fr = f:GetLeft(), f:GetRight()
+    local function check(fs, clip)
+        if not (fs:IsVisible() and not rawget(fs, "canCut")) then return end
+        local text = fs:GetText()
+        if not text or text == "" then return end
+        local l, r = fs:GetLeft(), fs:GetRight()
+        -- (Scrolled away, under a frame that clips: not on screen, not checked.)
+        if clip and l and r then
+            local b, t = fs:GetBottom(), fs:GetTop()
+            if r <= clip.l or l >= clip.r or (b and t and (t <= clip.b or b >= clip.t)) then return end
+        end
+        -- One line (no wrap, or one line of a wrapping text): cut where it is drawn wider than its box. More lines:
+        -- where they need more height than its box has. A text with no box of its own (auto-sized): where the client
+        -- says so. (Measured, not IsTruncated where a box is there: the sim says yes for texts that fit, the tabs'.)
+        local lines = fs.GetNumLines and tonumber((fs:GetNumLines())) or 1
+        local wraps = fs.GetWordWrap and fs:GetWordWrap()
+        local cut
+        if l and r and (r - l) > 1 and (not wraps or lines <= 1) then
+            cut = drawnWidth(fs) > (r - l) + 1
+        elseif l and r and (r - l) > 1 then
+            local h = tonumber((fs:GetHeight())) or 0
+            cut = h > 1 and (tonumber((fs:GetStringHeight())) or 0) > h + 1
+        else
+            cut = fs.IsTruncated and fs:IsTruncated() or false
+        end
+        if not cut and not clip and l and r and fl and fr and (l < fl - 1 or r > fr + 1) then
+            -- (Its letters, not its box: a text placed by its justification.)
+            local a, b = textSpan(fs)
+            cut = a ~= nil and (a < fl - 1 or b > fr + 1)
+        end
+        if cut then out[#out + 1] = text end
+    end
+    local function walk(x, clip)
+        if not x:IsVisible() then return end
+        local clips = (x.GetObjectType and x:GetObjectType() == "ScrollFrame") or (x.DoesClipChildren and x:DoesClipChildren())
+        if clips then
+            local l, r, b, t = x:GetLeft(), x:GetRight(), x:GetBottom(), x:GetTop()
+            if l and r and b and t then
+                clip = clip and { l = math.max(l, clip.l), r = math.min(r, clip.r), b = math.max(b, clip.b),
+                    t = math.min(t, clip.t) } or { l = l, r = r, b = b, t = t }
+            end
+        end
+        for _, region in ipairs({ x:GetRegions() }) do
+            if region.GetObjectType and region:GetObjectType() == "FontString" then check(region, clip) end
+        end
+        for _, child in ipairs({ x:GetChildren() }) do walk(child, clip) end
+    end
+    walk(f)
+    return out
+end
+local function plainText(text)
+    return (tostring(text):gsub("|T.-|t", "#"):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h", "")
+        :gsub("|h", ""))
+end
+
 function Widgets.CheckLayout(f, lists, view)
     local name = (rawget(f, "layoutName") or "window") .. "/" .. tostring(view or "-")
     if logged[name] then return end
@@ -1396,7 +1508,6 @@ function Widgets.CheckLayout(f, lists, view)
         problems[#problems + 1] = string.format("wider than its content by %d px", over)
     end
     local controls = Widgets.ControlsWidth(f)
-    local _, multi = shownLists(lists)
     local drift
     for _, l in ipairs(lists or {}) do
         local spansOf, columnsOf = rawget(l, "spansOf"), rawget(l, "columnsOf")
@@ -1409,11 +1520,12 @@ function Widgets.CheckLayout(f, lists, view)
                 return type(v) == "number" and v or nil
             end
             -- (The room the first column may take over its text: what the table's note (an empty table's why) needs
-            -- over its columns; alone in its view (or a statement), also what the controls give the window.)
+            -- over its columns, what the controls give the window, and in a view of two or more tables what the
+            -- widest of them needs: every table spans the window, SDD 127. Any other gap is a hole.)
             local margin = field("margin") or 24
             local cols = field("columnsWidth") or field("neededWidth") or 0
             local own = math.max(cols, field("neededWidth") or 0) + margin
-            local room = (multi and not isStatement(l)) and own or math.max(controls, need or 0, own)
+            local room = math.max(controls, need or 0, own)
             local spare = math.max(0, room - cols - margin)
             -- (A table too narrow for its columns leaves some out, and its first column takes what is left of them.)
             local out = rawget(l, "leftOut")
@@ -1427,10 +1539,17 @@ function Widgets.CheckLayout(f, lists, view)
         end
     end
     if drift then
-        local text = drift.text:gsub("|T.-|t", "#"):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h", "")
-            :gsub("|h", "")
         problems[#problems + 1] = string.format("measured %.1f px, drawn %.1f px: %s \"%s\"", drift.measured, drift.drawn,
-            drift.title, text:sub(1, 40))
+            drift.title, plainText(drift.text):sub(1, 40))
+    end
+        -- Every text of the window, not only the tables' (a status line was cut in the client, 0.4.0). (At most once a
+    -- second per window and view: it walks every text, and a scan refreshes often.)
+    local now = GetTime and GetTime() or 0
+    if not cutChecked[name] or now - cutChecked[name] >= 1 then
+        cutChecked[name] = now
+        for _, text in ipairs(Widgets.CutTexts(f)) do
+            problems[#problems + 1] = "cut text: " .. plainText(text):sub(1, 40)
+        end
     end
     if #problems > 0 then
         logged[name] = true

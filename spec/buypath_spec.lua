@@ -157,17 +157,16 @@ describe("Buy path safety", function()
         ns.Scanner.deals = {}
     end)
 
-    it("knows a disenchant had the Salvager by its effect, by a result over the table, or by the setting", function()
+    it("knows a disenchant had the Salvager by its effect or by a result over the table, not by the buy box", function()
         local outcomes = ns.Model.Outcomes(2, 4, 28)
         local dust = outcomes.results[1]
-        local was = ns.db.settings.salvager
-        ns.db.settings.salvager = "auto"
+        local was = ns.db.settings.salvagerBuy
         assert.are.same({ true, "aura" }, { ns.Disenchant.HadSalvager(true, outcomes, { [dust.id] = 1 }) })
         assert.are.same({ true, "result" }, { ns.Disenchant.HadSalvager(false, outcomes, { [dust.id] = dust.max + 1 }) })
         assert.is_false(ns.Disenchant.HadSalvager(false, outcomes, { [dust.id] = dust.max }))
-        ns.db.settings.salvager = "on"
-        assert.are.same({ true, "setting" }, { ns.Disenchant.HadSalvager(false, outcomes, { [dust.id] = 1 }) })
-        ns.db.settings.salvager = was
+        ns.db.settings.salvagerBuy = true                          -- (the main window's box: buy prices only)
+        assert.is_false(ns.Disenchant.HadSalvager(false, outcomes, { [dust.id] = 1 }))
+        ns.db.settings.salvagerBuy = was
         -- The buff itself: Boosted Disenchanting, by its spell ID, with its stacks.
         env.auras = { { name = "Warchief's Blessing", spellId = 16609 },
             { name = "Something else", spellId = 1283701, applications = 3 } }

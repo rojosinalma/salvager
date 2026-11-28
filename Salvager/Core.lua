@@ -23,7 +23,8 @@ local DEFAULTS = {
         ilvlMax = 0,
         materialsDataOnly = false, -- the materials list shows only the materials you hold, list, sold or got
         cautious = false,          -- buy limits count every material at its lowest amount (1 dust, not 1.5)
-        salvager = "auto",         -- "auto" | "on" | "off": add the Arcane Salvager bonus when valuing buys
+        -- salvagerBuy: the main window's "Arcane Salvager" box (true: buys are valued with the bonus); nil until the
+        -- old `salvager` setting ("auto" | "on" | "off", the Options until 0.4.0) is settled (ns.SettleSalvager).
         salvagerChance = 0.5,      -- the prior of the Salvager shape: one extra dust or essence half of the time (SDD 118)
         cut = 0.05,                -- auction house cut on sales
         priceUnits = 20,           -- material price = average of the cheapest N units
@@ -557,12 +558,39 @@ function ns.HasSalvager()
     return ok and (n or 0) > 0
 end
 
---- Whether buy prices include the Salvager bonus.
+--- Whether buy prices include the Salvager bonus: the main window's "Arcane Salvager" box. Until it is settled
+--- (ns.SettleSalvager), the old setting's rule: "on", "off", or "auto" = the player can use it now.
 function ns.SalvagerForBuy()
-    local mode = ns.db.settings.salvager
-    if mode == "on" then return true end
-    if mode == "off" then return false end
+    local s = ns.db.settings
+    if s.salvagerBuy ~= nil then return s.salvagerBuy and true or false end
+    if s.salvager == "on" then return true end
+    if s.salvager == "off" then return false end
     return ns.HasSalvager()
+end
+
+ns.SALVAGER_BOX_HELP = "Checked: the scan values the gear with the Arcane Salvager's bonus (one extra dust or "
+    .. "essence some of the time, learned from your disenchants near it), so the buy limits are higher.\n\n"
+    .. "Check it when you disenchant near the Arcane Salvager. Unchecked: valued without the bonus.\n\n"
+    .. "Your disenchants are counted with or without the Salvager from its effect on you, whatever this box says."
+
+--- The box's value from the old setting, once (0.4.0): "on" checked, "off" unchecked, "auto" checked when the player
+--- can use the Salvager now (the recipe known or one in the bags). Called when the bags are known: the auction house
+--- opens, or the main window shows. Then the box is the only source.
+function ns.SettleSalvager()
+    local s = ns.db.settings
+    if s.salvagerBuy ~= nil then return end
+    local old = s.salvager or "auto"
+    s.salvagerBuy = ns.SalvagerForBuy()
+    s.salvager = nil
+    ns.Log("Arcane Salvager box %s (from the old setting %s)", s.salvagerBuy and "checked" or "unchecked", old)
+end
+
+--- The box clicked (or /salv salvager on|off).
+function ns.SetSalvagerForBuy(on)
+    ns.db.settings.salvagerBuy = on and true or false
+    ns.db.settings.salvager = nil
+    ns.Log("Arcane Salvager bonus in buy prices %s", on and "on" or "off")
+    ns.Fire("SALVAGER_SETTINGS")
 end
 
 --- Expected value of disenchanting one item.
@@ -1029,7 +1057,7 @@ local HELP = {
     "/salv - open or close the window",
     "/salv minprofit 20s - lowest profit a deal must make",
     "/salv minreturn 15 - lowest return a deal must make as well, in percent of its price (0 = off)",
-    "/salv salvager auto|on|off - Arcane Salvager bonus in buy prices",
+    "/salv salvager on|off - Arcane Salvager bonus in buy prices (the main window's Arcane Salvager box)",
     "/salv quality uncommon|rare|epic|both|all - which gear the scan looks at",
     "/salv gear weapons|armor|both - which gear types the scan looks at",
     "/salv config - the options panel",
@@ -1043,6 +1071,9 @@ local HELP = {
     "/salv auras - list your buffs (to find the Salvager's)",
     "/salv materials - the materials list in its own window (again: put it back)",
     "/salv ledger - the ledger window (sales, purchases, accuracy)",
+    "/salv charts - the charts window (profit, materials, bands, time of day); /salv market works too",
+    "/salv limits - the buy limits window",
+    "/salv macros - create the Salvager Buy and Salvager DE macros again (a deleted one)",
     "/salv disenchant - the Disenchant panel: each click on its Disenchant button (or the key bound to it) is one cast",
     "/salv breakdown <material> - where a material came from, e.g. /salv breakdown 11083",
     "/salv log - the log window; /salv log 20 prints the last 20 lines in chat",
@@ -1073,10 +1104,9 @@ SlashCmdList.SALVAGER = function(msg)
         ns.Fire("SALVAGER_SETTINGS")
     elseif cmd == "salvager" then
         local m = (args[2] or ""):lower()
-        if m ~= "auto" and m ~= "on" and m ~= "off" then ns.Print("usage: /salv salvager auto|on|off") return end
-        s.salvager = m
-        ns.Print("Salvager bonus in buy prices: %s (now %s)", m, ns.SalvagerForBuy() and "on" or "off")
-        ns.Fire("SALVAGER_SETTINGS")
+        if m ~= "on" and m ~= "off" then ns.Print("usage: /salv salvager on|off (the main window's Arcane Salvager box)") return end
+        ns.SetSalvagerForBuy(m == "on")
+        ns.Print("Arcane Salvager bonus in buy prices: %s", m)
     elseif cmd == "quality" then
         local q = (args[2] or ""):lower()
         if q == "uncommon" then s.qualities = { [2] = true, [3] = false, [4] = false }
@@ -1138,6 +1168,12 @@ SlashCmdList.SALVAGER = function(msg)
         ns.DisenchantPanel.Toggle()
     elseif cmd == "ledger" or cmd == "results" then
         ns.LedgerWindow.Toggle()
+    elseif cmd == "charts" or cmd == "market" then
+        ns.Market.Toggle()
+    elseif cmd == "limits" then
+        ns.LimitsWindow.Toggle()
+    elseif cmd == "macros" then
+        ns.Macros.Create(true)
     elseif cmd == "log" and not tonumber(args[2]) or cmd == "activity" then
         ns.LogWindow.Toggle()
     elseif cmd == "log" then

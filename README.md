@@ -31,11 +31,14 @@ By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_foreve
 
 ## Use
 
-1. Open the auction house. The Salvager window opens with it (also: minimap button or `/salv`). Away from the
-   auction house the minimap button opens the mini panel: one button for each Salvager window, in two columns. The
-   **_** button in the main window's title bar minimizes it to that panel; the other windows stay open.
+1. Open the auction house. The Salvager window opens with it (also: minimap button or `/salv`). The other windows
+   open from the mini panel, always on: one button for each Salvager window, in two columns (Shift + click the
+   minimap button, or its X, to hide or show it). The **_** button in the main window's title bar minimizes it; the
+   gear icon next to it opens the options.
 2. Under **Scan once**, click **Both**: material prices first (about 20 seconds), then the gear.
-3. Click ▶ (play) to scan the gear again every 20 seconds; it turns into ■ (stop), which ends it.
+3. Click ▶ (play) to scan the gear again every 20 seconds; it turns into ■ (stop), which ends it. Tick
+   **Arcane Salvager** in the Scan settings when you disenchant near the Arcane Salvager: the gear is then valued
+   with its bonus.
 4. **Gear** lists every auction of gear below its buy limit, best average profit first. Its profit shows as
    "low - avg - high": the pessimistic outcome (9 in 10 disenchants give this or more), the average over many
    pieces and the optimistic outcome (1 in 10 gives this or more); point at it for every outcome of one
@@ -52,15 +55,19 @@ By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_foreve
    The **Disenchant** panel opens by itself when gear you bought lands in your bags: each click on its Disenchant
    button disenchants the next piece (only gear you bought with Salvager, never your own). Bind a key to it in Key
    Bindings, AddOns, Salvager, "Disenchant next piece": each press is one cast. Below, what each disenchant gave.
-   Also from the main window, the mini panel or `/salv disenchant`.
+      Also from the mini panel or `/salv disenchant`.
+   Two macros are made at the first login: **Salvager Buy** (clicks Buy Top) and **Salvager DE** (clicks the
+   Disenchant button). Drag them from `/macro` to your bars or bind them to keys; Options, "Create the macros again",
+   makes a deleted one again.
 6. **Materials** shows price, stock, average cost and break-even. **Post** sells what is in your bags at
    1 copper under the lowest listing; a warning sign shows when that is below your break-even.
    **Pop out** moves the materials list to a window of its own; close it to put the list back.
    **Limits** shows the buy limit per item level band for armor and weapons.
+      A click on a column's title sorts the table by it (again: the other way round).
    The ⋮ button at the right end of a table's titles chooses the columns it shows. Where a window has two tables,
    drag the bar between them to make one taller (right-click: back to the default).
    **Ledger** opens a window of its own: all gear you bought by day, with what each piece was disenchanted into,
-   what you bought and have not picked up from the mail yet (with your free bag space), your current batch (what
+   what waits in the mail (Mail, with your free bag space), what is pending (Pending: what
    you bought and have not disenchanted or posted yet, in the mail or picked up, with what it cost, its average value
    and what it has made),
    your auctions (listed, sold and waiting for the money, undercut; ▶ next to Check undercuts checks them every
@@ -77,7 +84,7 @@ By hand: copy the `Salvager` folder from the zip into `World of Warcraft/_foreve
    Salvager" for the dust and essence with its bonus apart), with the chance to lose at the buy limit; point at a
    band's "?" for its value, buy limit and prices. The button at the right of its filters pops it out.
    A heading of a grouped table (gear type, quality) opens and closes with a click; it stays as you left it.
-   **Search** (first on the filter row of Reports, Market and the Ledger's Purchases) shows the rows whose name has
+   **Search** (first on the filter row of Reports, Charts and the Ledger's Purchases) shows the rows whose name has
    the text you type; the X in the box or Escape clears it. Every list of materials is in the Materials window's
    order: dust, essences, shards, each from the lowest level up.
 7. Options: Esc > Options > AddOns > Salvager, the **Options** button, or right-click the minimap button.
@@ -107,8 +114,8 @@ your minimum profit.
   return per day (Avg return ÷ the days until its materials sell, at least one day).
 - Arcane Salvager: how often it gives one more unit is learned per material kind from all your disenchants with
   it, starting from the community figure (a 50% chance of one extra dust or essence, never on shards) as if it were
-  50 results; Options, "Starting chance of one extra dust or essence (%)", sets that start. It is included only
-  when you know the recipe or have the Salvager, or when you set `/salv salvager on`.
+  50 results; Options, "Starting chance of one extra dust or essence (%)", sets that start. It is included in the
+  buy prices while the main window's **Arcane Salvager** box is ticked (`/salv salvager on|off`).
 - Material price: the average of the cheapest 20 units listed (your own listings left out).
 
 ## Cost tracking

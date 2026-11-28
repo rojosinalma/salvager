@@ -1,9 +1,10 @@
--- Salvager: the Market window. Charts from the addon's own data:
---   Materials        the price of a material over time, its lowest listing, your break-even, units listed
---   Disenchant value what one disenchant of an item level band was worth over time, against its buy limit
+-- Salvager: the Charts window ("Salvager Charts"; the Market window until 0.4.0: its code and saved keys keep the
+-- name). Charts from the addon's own data, its tabs in this order (the user, 2026-11-28):
 --   Profit           the profit of your sales, added up over time, and per day
---   Essences         three lesser against one greater, per essence: when converting pays
---   By hour          the average price of a material per hour of the day
+--   Materials        the price of a material over time, its lowest listing, your break-even, units listed
+--   Bands            what one disenchant of an item level band was worth over time, against its buy limit
+--   Time of day      the average price of a material per hour of the day
+-- (The Essences tab, three lesser against one greater, left in 0.4.0; the Post window's convert advice has its own.)
 local _, ns = ...
 
 local History, Ledger, Model, Data, W = ns.History, ns.Ledger, ns.Model, ns.Data, ns.Widgets
@@ -121,7 +122,7 @@ end
 
 ------------------------------------------------------------------ Disenchant value
 
-local Value = { title = "Disenchant value", columns = { { "Band", 190 }, { "Avg value now", 76, "RIGHT", help = { "Avg value now",
+local Value = { title = "Bands", columns = { { "Band", 190 }, { "Avg value now", 76, "RIGHT", help = { "Avg value now",
     "What one disenchant of the band is worth on average over many pieces at today's prices, after the cut. One "
         .. "disenchant gives one of its outcomes (the Gear list's profit shows them)." } },
     { "Change", 54, "RIGHT", help = { "Change", "How much the value of one disenchant moved over the time picked." } } } }
@@ -250,63 +251,6 @@ function Profit.Chart()
         GOLD, (total >= 0 and GREEN or RED) .. ns.Money(total) .. "|r", GREY)
 end
 
------------------------------------------------------------------- Essences
-
-local Essence = { title = "Essences", columns = { { "Essence", 90 }, { "3 lesser", 70, "RIGHT" }, { "1 greater", 70, "RIGHT" },
-    { "Greater", 56, "RIGHT", help = { "Greater", "How much more (or less) one greater sells for than three lesser, now. "
-        .. "Plus: combining pays. Minus: splitting pays." } } } }
-
-local function essencePairs()
-    local out = {}
-    for _, m in ipairs(Data.MATERIALS) do
-        local pair = Data.ESSENCE_PAIR[m.id]
-        if pair and pair.factor < 1 then out[#out + 1] = { lesser = m.id, greater = pair.other } end
-    end
-    return out
-end
-
-function Essence.Rows()
-    local rows = {}
-    for _, e in ipairs(essencePairs()) do
-        if (hasHistory(e.lesser) or hasHistory(e.greater)) and matches(ns.MaterialName(e.lesser), ns.MaterialName(e.greater)) then
-            local l, g = ns.db.prices[e.lesser], ns.db.prices[e.greater]
-            local three, one = l and l.p and l.p * 3, g and g.p
-            rows[#rows + 1] = pickRow(e.lesser, { (ns.MaterialName(e.greater):gsub("^Greater ", ""):gsub(" Essence$", "")),
-                three and ns.Money(three) or (GREY .. "-|r"), one and ns.Money(one) or (GREY .. "-|r"),
-                percent(three and one and (one - three) / three) }, e.greater)
-            rows[#rows].key = e.lesser
-            rows[#rows].sort = { Data.MaterialRank(e.greater), three or -1, one or -1,
-                three and one and (one - three) / three or -math.huge }
-        end
-    end
-    return rows
-end
-
-function Essence.Chart(lesser)
-    local greater = Data.ESSENCE_PAIR[lesser].other
-    local from = since()
-    local a, b, first = {}, {}, nil
-    for _, pt in ipairs(History.Points(ns.db.history, lesser, from)) do
-        if pt.p then a[#a + 1] = { pt.t, pt.p * 3 } first = math.min(first or pt.t, pt.t) end
-    end
-    for _, pt in ipairs(History.Points(ns.db.history, greater, from)) do
-        if pt.p then b[#b + 1] = { pt.t, pt.p } first = math.min(first or pt.t, pt.t) end
-    end
-    local now3, now1 = a[#a] and a[#a][2], b[#b] and b[#b][2]
-    local text = GREY .. "No price in this time.|r"
-    if now3 and now1 then
-        text = string.format("%s3 lesser|r %s    %s1 greater|r %s    %s", GOLD, ns.Money(now3), GOLD, ns.Money(now1),
-            now1 > now3 and (GREEN .. "Combining pays " .. percent((now1 - now3) / now3))
-            or now3 > now1 and (GREEN .. "Splitting pays " .. percent((now3 - now1) / now1)) or "The same")
-    end
-    return widen({
-        from = first, to = time(),
-        lines = { { points = a, color = { 0.4, 0.7, 1 }, label = "3 x " .. ns.MaterialName(lesser) },
-            { points = b, color = { 1, 0.82, 0 }, label = "1 x " .. ns.MaterialName(greater) } },
-        empty = "No price seen for this essence in this time. Pick a longer time.",
-    }), ns.MaterialName(greater) .. " and " .. ns.MaterialName(lesser), text
-end
-
 ------------------------------------------------------------------ By hour
 
 local Hour = { title = "Time of day", columns = Material.columns }
@@ -342,17 +286,24 @@ end
 local MIN_W = 900      -- the width it opens with, before its content is measured (Widgets.FitTables sets it)
 local CHART_MIN = 496  -- the chart's least width: it has no text of its own to measure; it takes what the list leaves
 
-local VIEWS = { material = Material, value = Value, profit = Profit, essence = Essence, hour = Hour }
-local ORDER = { "material", "value", "profit", "essence", "hour" }
+local VIEWS = { material = Material, value = Value, profit = Profit, hour = Hour }
+local ORDER = { "profit", "material", "value", "hour" }
 Market.VIEWS = VIEWS
 
 -- A list of materials starts in the materials' order (the Materials window's, Data.SortMaterials); the bands start
 -- by their change, the biggest rise first. (Profit keeps its days in order.)
 local DEFAULT_SORT = { value = 3 }
-local function sortOf(view)
+local function sortOf(view, create)
     local sort = Market.sort[view]
-    if sort then return sort end
-    return DEFAULT_SORT[view] and { col = DEFAULT_SORT[view], desc = true } or nil
+    if not sort and (create or DEFAULT_SORT[view]) then
+        sort = { col = DEFAULT_SORT[view], desc = true }
+        Market.sort[view] = sort
+    end
+    -- (A click on a title saves the column's key, Widgets.SortClick: its index here.)
+    if sort and sort.key ~= nil then
+        for i, col in ipairs(VIEWS[view].columns) do if col[1] == sort.key then sort.col = i end end
+    end
+    return sort
 end
 
 function Market.Select(key)
@@ -370,21 +321,8 @@ function Market.Rows()
     local rows = view.Rows()
     -- Sorted by the column whose title was clicked; without one, in the view's own order.
     local sort = sortOf(Market.view)
-    if sort then
-        for i, row in ipairs(rows) do row.index = i end
-        table.sort(rows, function(a, b)
-            -- Grouped rows (ns.GroupedRows) are sorted inside their group, under its heading.
-            if (a.section or 0) ~= (b.section or 0) then return (a.section or 0) < (b.section or 0) end
-            if a.head or b.head then
-                if a.head and b.head then return a.index < b.index end
-                return a.head == true
-            end
-            local x, y = a.sort and a.sort[sort.col], b.sort and b.sort[sort.col]
-            if x == y or x == nil or y == nil or type(x) ~= type(y) then return a.index < b.index end
-            if sort.desc then return x > y end
-            return x < y
-        end)
-    end
+    -- (Widgets.SortRows, as every table: grouped rows inside their group, under its heading; row.sort's values.)
+    if sort and sort.col and VIEWS[Market.view].columns[sort.col] then rows = W.SortRows(rows, sort.col, sort.desc) end
     local picked
     for _, row in ipairs(rows) do
         if row.key ~= nil and row.key == Market.pick[Market.view] then picked = row.key end
@@ -415,16 +353,8 @@ function Market.Refresh()
     if not f or not f:IsShown() then return end
     local view = VIEWS[Market.view]
     local rows, picked = Market.Rows()
-    -- The sorted column shows an arrow in its title.
-    local sort, cols = sortOf(Market.view), {}
-    for i, col in ipairs(view.columns) do
-        cols[i] = { col[1], col[2], col[3], help = col.help, key = col[1] }
-        if sort and sort.col == i then
-            cols[i][1] = col[1] .. (sort.desc and " |TInterface\\Buttons\\Arrow-Down-Up:10|t"
-                or " |TInterface\\Buttons\\Arrow-Up-Up:10|t")
-        end
-    end
-    list:SetColumns(cols, "market." .. Market.view)
+    -- The sorted column shows an arrow in its title (Widgets.List); the rows come sorted (Market.Rows).
+    list:SetColumns(view.columns, "market." .. Market.view)
     list:SetSource(#rows, function(i) return rows[i] end)
     list:Refresh()
     -- The list is as wide as its columns need (all of them, the first in full), the chart at least CHART_MIN at its
@@ -462,16 +392,22 @@ function Market.Refresh()
     local lines = math.max(12, math.ceil(tonumber((facts:GetStringHeight())) or 12))
     chart:SetPoint("TOPLEFT", list, "TOPRIGHT", 10, -(26 + lines + 8))
     chart:Refresh()
+    -- The self-check after the chart is drawn (its labels are texts of the window too).
+    W.CheckLayout(f, { list }, Market.view)
 end
 
 local function build()
-    f = W.Window("SalvagerMarketFrame", "Salvager Market", "market", MIN_W, 480, MIN_W, 320)
+    -- (Its frame and saved key keep the old name "Market": the place and size saved stay.)
+    f = W.Window("SalvagerMarketFrame", "Salvager Charts", "market", MIN_W, 480, MIN_W, 320)
     f.layoutName = "market"
+    f.checkLater = true   -- (Market.Refresh runs the self-check once the chart is drawn)
     -- The chart takes the width the list leaves: the player may make the window wider, and that width stays.
     f.fitGrows = true
     -- (0.4.0: a width saved before the windows were tight came from a list sized for extremes: dropped once.)
     if not f.saved.tightW then f.saved.tightW, f.saved.w = true, nil end
     if (tonumber(f.saved.w) or 0) > MIN_W then f.userW = f.saved.w end
+    -- (The Essences tab left in 0.4.0: a saved view of it opens Materials.)
+    if f.saved.view == "essence" then f.saved.view = "material" end
     if VIEWS[f.saved.view] then Market.view = f.saved.view end
     for key, value in pairs(f.saved.pick or {}) do Market.pick[key] = value end
     for _, r in ipairs(RANGES) do if r[1] == f.saved.range then Market.range = r[1] end end
@@ -491,7 +427,6 @@ local function build()
         material = "The price of one material over time, its lowest listing, your break-even, and how many units were listed.",
         value = "What one disenchant of an item level band was worth over time, against its buy limit: is gear worth buying now?",
         profit = "The profit of your sales (units with a known cost, less deposits lost), added up over time, and per day.",
-        essence = "Three lesser against one greater, per essence: when combining or splitting pays.",
         hour = "The average price of a material at each time of day, over the time picked: when to post, and when to buy.",
     }
     for _, key in ipairs(ORDER) do
@@ -501,14 +436,14 @@ local function build()
             list.offset = 0
             Market.Refresh()
         end, help[key])
-        tabBar:Add(b, key == "value" and 124 or 90)
+        tabBar:Add(b, key == "hour" and 110 or 90)
         tabs[key] = b
     end
     -- The search first (UI.md Controls 6), then the time the charts cover.
     if type(f.saved.search) == "table" then Market.search = f.saved.search end
     f.saved.search = Market.search
     local SEARCH_HELP = "Shows the rows whose name has this text, in any case: the material's (Materials, Time of day), "
-        .. "the band's (Disenchant value, \"Uncommon Armor 26-30\"), the essence's (Essences). Each view keeps its own."
+        .. "the band's (Bands, \"Uncommon Armor 26-30\"). Each view keeps its own."
     searchBox = W.Search(filters, 110, function() return Market.SearchText() end, function(text)
         if NO_SEARCH[Market.view] then return end
         Market.search[Market.view] = text ~= "" and text or nil
@@ -526,20 +461,15 @@ local function build()
         f.saved.range = key
         rangeDrop:Close()
         Market.Refresh()
-    end, "How far back the charts and the Change column go.", "Time")
+        end, "How far back the charts and the Change column go.", "Time", nil, true)
     timeLabel = filters:AddFilter("Time", rangeDrop, 120, "How far back the charts and the Change column go.")
     list = W.List(f, { rowHeight = 22 })
     list:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -88)
     list:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 12, 14)
     list:SetWidth(370)   -- (until the first fit: Market.Refresh sets it from the columns)
-    -- A click on a column title sorts by it; a second click turns the order around.
-    list.onSort = function(col)
-        local sort = sortOf(Market.view)
-        if not sort or sort.col ~= col then
-            Market.sort[Market.view] = { col = col, desc = col > 1 }   -- numbers start with the highest
-        else
-            Market.sort[Market.view] = { col = col, desc = not sort.desc }
-        end
+    -- A click on a column title sorts by it (Widgets.SortClick); a second click turns the order around.
+    list.sortState, list.presorted = function(create) return sortOf(Market.view, create) end, true
+    list.onSortChanged = function()
         f.saved.sort = Market.sort
         Market.Refresh()
     end

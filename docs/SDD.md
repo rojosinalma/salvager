@@ -13,8 +13,8 @@ flipping is out of scope for now.
    results. Source: a community spreadsheet with 7000+ disenchants. Configurable (`salvagerChance`, Options
    "Starting chance of one extra dust or essence (%)"). Since 0.4.0 it is the prior of the learned Salvager shape
    (118), not the rule itself: your results with the Salvager take over as they grow.
-   Applied to buy prices only when the player can use it (recipe spell 1263056 or item 279985), or by
-   `/salv salvager on|off`.
+   Applied to buy prices when the main window's "Arcane Salvager" box is checked (127b; until 0.4.0 when the player
+   could use it, recipe spell 1263056 or item 279985, or by `/salv salvager on|off`, which now sets the box).
 3. **Material price and what a unit sells for** (rewritten 0.3.122, the user, 2026-11-26). The material's price
    (its value) = average unit price of the cheapest 20 units, own listings excluded. When a scan finds none, the
    last price stays in use (marked `*`) for one day at most (67). A missing essence price is filled from the other
@@ -230,7 +230,7 @@ flipping is out of scope for now.
 48. **Quality names and colors** live in `Core.lua` (`ns.QUALITY_NAME`, `ns.QUALITY_COLOR`, `ns.BandName`).
     The tables (`Widgets.List`, `Widgets.CardList`) live in `Tables.lua`.
 49. **One place per setting:** what the main window sets (gear, quality, min profit, max price, cautious
-    pricing, item levels, item checks per scan) is not in the options window.
+    pricing, item levels, Show top: the gear searches per scan, "Gear checks" until 0.4.0) is not in the options window.
 50. **(Replaced 0.3.99 by 83: the Gear filter; 0.3.148 Armor and Weapons headings, 114c.) Odds subtabs:** Armor and Weapons, one at a time (`windows.ledger.oddsTab`); they replace the gear type
     filter. Band names are written "Uncommon Armor", "Rare Weapons".
 51. **Odds band filter:** the scan's item level bands as ranges (`windows.ledger.oddsBandsOff`; with the Odds'
@@ -774,7 +774,8 @@ flipping is out of scope for now.
     writes (`k=`) and `make layout` checks (UI.md Controls 14). Per window:
     a. Main: tabs Gear and Materials (Deals until 0.3.129; Limits is a window now). Gear: a "Scan settings" block
        (heading, the Scan, Buy and Levels rows; Scan once: Gear, Materials, Both from 0.3.129), then the list. Materials: a filter row ("Only materials with my data"; Scan owned and
-       Pop out at its right end), then the list. Footer: two lines of text (the last scan and the closest item at
+       Pop out at its right end), then the list. (Since 0.4.0, 127d: no window buttons in the footer, they are on the
+       always-on mini panel; Options is a gear in the title bar; the texts wrap.) Footer: two lines of text (the last scan and the closest item at
        the left; the status (the gold until 0.3.133) at the right of line 1, the next item to buy at the right of line 2), and
        a row of buttons: Auction house, Ledger, Reports, Market, Limits, Log, Options at the left (Disenchant after Market
        since 0.3.146, 112); Play, Stop and
@@ -1241,7 +1242,8 @@ flipping is out of scope for now.
        row, `leastWidth` = one; a window that fits it gets two per row by default and can be made narrower down to
        one per row, 113). The Reports: 1266 px on Odds with the fit spec's long data (1798 with the Salvager columns);
        the pop-out the same, at least 760 (928 with the Salvager columns: one card).
-    - d. Columns: the game's table, Material, Result rate, Quantity; a vertical line (`sep`); yours, Results (how many
+    - d. (Since 0.4.0 the columns are in headed groups, Rate then the quantity, and Results is a fact: 127a.)
+       Columns: the game's table, Material, Result rate, Quantity; a vertical line (`sep`); yours, Results (how many
        of your disenchants gave it), Result rate (Results ÷ Disenchants), Result quantity (the average units when it
        came; "Avg quantity" since 0.3.152, 116g). The two "Result rate" titles have keys of their own for the column chooser ("Result rate (table)",
        "Result rate (yours)"). Every title has help. Rate used, Quantity used and Price now left the columns.
@@ -1256,7 +1258,7 @@ flipping is out of scope for now.
        have). Observed only: the game has no table of it. Disenchants then says "n without, m with the Salvager".
        The Salvager filter is off meanwhile, with the reason (UI.md Actions 3); off, the observed columns follow it
        as before. Its own column set (`odds.salvager`).
-    - g. The mini panel: two columns of buttons in three rows, Salvager, Ledger, Materials at the left, Reports,
+    - g. (Since 0.4.0 four rows, Limits and Options added, always on: 127c.) The mini panel: two columns of buttons in three rows, Salvager, Ledger, Materials at the left, Reports,
        Market, Log at the right, and "Disenchant" across both under them (92 px each, the panel 216 × 162). Materials
        opens or closes the materials list in its window (20). The minimap button opens the panel away from the
        auction house, as before (108e).
@@ -1467,15 +1469,17 @@ gear scan and buying, `Disenchant`, `Mail`, `Gold` the journal's glue, `Report` 
 `Tooltip`, `Listings` your auctions, `Convert` essences), the widgets (`Widgets`, `Tables`, `Chart`), and the
 windows (`Post`, `MaterialsWindow`, `LimitsWindow`, `UI` the main window, `LedgerWindow`, `StandWindow`,
 `BreakdownWindow`, `GearWindow` Gear Details, `MarketWindow`, `OddsWindow`, `ReportsWindow`, `DisenchantWindow`,
-`LogWindow`, `Options`, `MiniPanel`, `Minimap`, `Layout` the layout dump, 94). `Bindings.xml`: the Disenchant key (112g).
+`LogWindow`, `Options`, `Macros` the two macros (127k), `MiniPanel`, `Minimap`, `Layout` the layout dump, 94).
+`Bindings.xml`: the Disenchant key (112g).
 
 ## Data
 
 `SalvagerBackup` (account-wide): `list` of ledger copies (88). `SalvagerDB` (account-wide): `settings` (`timeZone`, 110, `highlightReturn`, 116h), `prices`, `ledger` (`purchases`, `stock`, `pools`, `disenchants`, `sales`),
 `money` (gold journal), `sessions` (97), `competition` (109), `disenchantSeen` (112), `quality` and `ilvl` (learned item data), `auraSeen` and `auraSnapshots` (to learn the Salvager's aura spell ID; matched by name until then),
 `posted` and `listings` (29), `history` (57), `log` and `logDay` (69), `windows` and `window` (places, sizes, views and
-filters), `groups` (103), `columns` (95), `layout` (94), and one-time flags (`historySeeded`, `buyResendBlocked`, 65,
-`falseCancelsDropped`, 75, `firstSalvagerBatchFixed`, 74b, `purchasesRestored`, 124, `recostFixed`, 125). In
+filters; `windows.mini.open`, 127c), `groups` (103), `columns` (95), `sorts` (127f), `layout` (94), and one-time flags (`historySeeded`, `buyResendBlocked`, 65,
+`falseCancelsDropped`, 75, `firstSalvagerBatchFixed`, 74b, `purchasesRestored`, 124, `recostFixed`, 125, `macrosMade`,
+127k). `settings.salvagerBuy`: the main window's Arcane Salvager box (127b; `settings.salvager` until it is settled). In
 `ledger`: `other` (the books' carried-in cost, 125) and `archive` (`d`, `s`, `head`, `upTo`: the records rolled up, 126).
 
 ## Open
@@ -1568,9 +1572,10 @@ kind from all bands (118).
        font, `Widgets.TITLE_FONT`, `CELL_FONT`, `BOLD_FONT`, the ones the tables draw with); `FitColumns` measures each
        row in its own font (a total in BOLD_FONT) and returns the widest text per column (`list.textNeed`,
        `UI.textNeed`; in the dump, the 5th field of each title).
-    - b. Two or more tables on show (`Widgets.TrimTables` in `FitTables`): each as wide as it needs (`neededWidth`),
-       at the left (its right anchors moved in); a statement keeps the window's width. One table alone spans the
-       window, its first column takes what the controls give (UI.md Tables 2).
+    - b. (Replaced by 127e, the user 2026-11-28: every table spans its window, the narrower one's first column takes
+       the room.) Two or more tables on show (`Widgets.TrimTables` in `FitTables`): each as wide as it needs
+       (`neededWidth`), at the left (its right anchors moved in); a statement keeps the window's width. One table alone
+       spans the window, its first column takes what the controls give (UI.md Tables 2).
     - c. The self-check (`Widgets.CheckLayout`): a column's span is its texts on show and its widest text of the data
        in its box; the first column may take what the table's note needs over its columns, and, alone in its view or a
        statement, what the controls give; a table that leaves columns out, what it got. And every text on show
@@ -1678,3 +1683,116 @@ kind from all bands (118).
        (`SalvagerBackup`, 88) keep up to 3 copies of the ledger on top. `spec/archive_spec.lua`: totals the same
        before and after, the learning within rounding, the batch with 1500 posts and an early roll-up, a bounded size.
 
+
+127. **One change of 2026-11-28 (0.4.0, the user): Odds groups, the Salvager box, the mini panel always on, no window
+    buttons in the main footer, full-width tables, sorting everywhere, one help layout, macros, no cut text.**
+    - a. The Odds cards (114d, e): per group Rate, then the quantity: Material | Game rates: Rate, Qty | Your rates:
+       Rate, Avg qty | (with "Show with and without the Salvager") Salvager rates: Rate, Avg qty, light blue. A line
+       after Material and before each group (`sep`); a heading row over the titles (`col.group` on a group's first
+       column, `Widgets.CardList`: centred over its columns; a group too narrow for its heading widens, its columns
+       share the room, `stack.groupWide`, and the gap checks allow those gaps). Results left the table: each row's
+       hover says how many of your disenchants gave it; the facts row reads "Results N · Disenchants a/b · Weighted W
+       · Loss chance", each with its help: Results = the results those disenchants gave (one per material a disenchant
+       gave), Disenchants a/b = without / with the Salvager (b light blue), both as the Salvager filter says (both
+       while "Show with and without" is on); Weighted red with "(few)" under `Model.FEW_RESULTS`, green at it or more
+       (UI.md Tables 7), the help names the floor and the 30-day half-life. Every gear-type and quality heading sums
+       up its bands ("Results N · Disenchants a/b", hover: what they are). A card is as wide as its facts in a row
+       (`factsNeed`): they are never cut.
+    - b. The Arcane Salvager box (2): a check box "Arcane Salvager" on the main window's Scan settings (the Levels
+       row, left of Show top (was "Gear checks", 127n): the row with room), checked = buys valued with the bonus (`settings.salvagerBuy`). It
+       replaces the Options' "Bonus in buy prices" (Auto/On/Off) and the footer's "Arcane Salvager bonus included".
+       Migration once (`ns.SettleSalvager`, when the auction house opens or the main window shows: the bags are known
+       then): "on" checked, "off" unchecked, "auto" checked when the recipe is known or one is in the bags; then
+       `settings.salvager` goes. `/salv salvager on|off` sets the box. A disenchant counts as with the Salvager by its
+       effect (Boosted Disenchanting, by ID) or a result over the table only: the setting "on" no longer marks every
+       disenchant (the box is about buy prices). The Options keep "Starting chance" (the learning's prior).
+    - c. The mini panel (108d, 114g) is where the other windows open from: always on (at the auction house and away,
+       with the main window or without; the main window no longer hides it), shown or hidden as the player left it
+       (`windows.mini.open`, its X; Shift + left click on the minimap button), restored at login. Its buttons:
+       Salvager, Ledger, Materials, Limits | Reports, Charts, Log, Options, Disenchant across. The minimap button:
+       left click the main window (open or close) everywhere, Shift + left click the panel, right click Options; its
+       tooltip lists them.
+    - d. The main window's footer (101a) has no window buttons: the status texts, the gold, the bags, Play/Stop, Buy
+       Top. Options is a gear icon in the title bar left of Minimize. The Auction house button went with no
+       replacement: the window's X leaves only the auction house, and the Salvager button on the auction house brings
+       it back. Its two texts (last scan, closest) wrap in the room left of the status and the gear Buy Top buys (both
+       as wide as their text, never cut), and the list's bottom moves up for their lines (`layoutFooter`).
+    - e. Every table spans its window (replaces 123b, the user: "No inset table should be shorter than the total size
+       of the window where it is"): in a view of two or more tables each inset is as wide as the window's content, the
+       narrower one's first column takes the spare room. That first column's room is the only gap allowed over 16 px:
+       the self-check gives it to every table (the window's widest row less its columns), `layoutcheck` and the sim
+       count the ratchet's gap without the first one (the window's slack holds it). `Widgets.TrimTables` only puts back
+       an older trim.
+    - f. Sorting (UI.md Tables 10), one implementation in `Tables.lua`: a click on a title sorts by it, again the other
+       way round (numbers start highest first, text A to Z); the arrow is on the sorted title only and counts in its
+       width; saved per table in `SalvagerDB.sorts[id]` (`{ key, desc }`, id = `list.sortId` or the column set). A row
+       sorts by `row.sort[i]`, else by its cell's full text (`Util.SortValue`: money with coin icons in copper,
+       percents and numbers as numbers, "MM-DD HH:MM" and "3h 5m" in time order, a range "low - avg - high" by its
+       average; "-" and "" unknown, last both ways; ties keep the previous order). `Widgets.SortRows` keeps headings
+       (`head`, `group`), totals (`rule`, `bold`) and notes (`span`) in their places and sorts the rows between them,
+       each with the rows indented under it. Not sortable: a statement, a column of controls (`least`), `sort = false`,
+       the Post window's and the Stand's price ladders (their order is what they show). The Purchases and the Charts
+       keep their own grouping sort (`list.presorted`, the state through `list.sortState`). The main window: every
+       column of Gear and Materials; a Gear group sorts by its best auction with its auctions under it; Profit and Avg
+       return also set the scan's order (`dealSort`: what each scan checks first and Buy Top buys first), another
+       column only re-orders the list. The Odds sort the rows inside each card, one order for every card.
+    - g. Left-out columns: no "N columns left out" note any more (0.3.136, 107): the column chooser shows them unticked
+       with the reason on hover (`Widgets.LEFT_OUT_REASON`), its own tooltip names them.
+    - h. Help (UI.md Words 4): one builder, `Widgets.AddHelp` / `Widgets.Explanations`: a title, then each explanation
+       on its own line, one empty line between, none after the last; a text is cut into its paragraphs and its
+       sentences (". " before a capital letter). Widgets.Tooltip, HelpArea, HelpButton (the "?" panels: lines joined
+       with an empty line), the tables' and cards' titles, rows' tips and the main window's titles use it.
+    - i. Charts (Chart.lua): the scale's labels are measured in their font; the plot starts at the widest + 16 px, the
+       labels right-aligned against the axis; the time labels stay inside the plot. The Market window is "Salvager
+       Charts" (its frame `SalvagerMarketFrame` and its saved key stay, so its place stays); tabs Profit, Materials,
+       Bands (was "Disenchant value"), Time of day; the Essences tab went (a saved view of it opens Materials; the Post
+       window's combine-or-split line has its own prices). `/salv charts`, `/salv market` too.
+    - j. Names: the Purchases subtabs "Mail (n)" (was "Not picked up") and "Pending (n)" (was "Current batch"), their
+       total row "Pending N pieces", the empty note "Nothing pending: ..."; code and saved keys keep "mail" and
+       "batch". The Limits' titles "Armor: Recommended price", "Armor: Override", "Weapons: ..." centred over their
+       columns (`col.titleJustify`; the cells keep theirs; gaps and checks place the data by the cells').
+    - k. Macros (`Macros.lua`): "Salvager Buy" (`/click SalvagerBuyTopButton`, Buy Top's global name) and "Salvager
+       DE" (`/click SalvagerDisenchantButton LeftButton`), account macros (`CreateMacro(name, icon, body, false)`, icons
+       INV_Misc_Coin_01 and INV_Enchant_Disenchant), made once at the first login with this version
+       (`SalvagerDB.macrosMade`), out of combat (else at `PLAYER_REGEN_ENABLED`), only where `GetMacroIndexByName` finds
+       none (one the player edited is left, one Log line), only with free slots (`GetNumMacros` against
+       `Constants.MacroConsts.MAX_ACCOUNT_MACROS`, 120 on Forever; else one chat line with how many to free); one chat
+       line when made. Options: "Create the macros again" (and `/salv macros`) makes a deleted one. Facts (Gethe
+       wow-ui-source, branch forever): `C_AuctionHouse.PlaceBid` has `HasRestrictions = true` (a hardware event, not a
+       protected call); `/click` (Blizzard_ChatFrameBase/Shared/SlashCommands.lua) calls `button:Click(mouseButton,
+       down)` in the key press's event, so the click Buy Top gets is the hardware event; `CreateMacro` and
+       `MacroConsts` from Blizzard_MacroUI and MacroConstantsDocumentation. Buy Top's click does nothing with the main
+       window hidden or the button off. The Disenchant button keeps its attributes in combat (the client allows no
+       change): its help and the macro's say so.
+    - l. No cut text. The cause of the one that got past the gates (the main window's "Auction house closed · Arcane
+       Salvager bonus included", cut in the client): the status was clamped to half the room left of Buy Top, which the
+       tight windows (120) made small, and no gate ever showed that state: the stand-in and the sim have no Salvager
+       recipe or item, so `SalvagerForBuy()` was false there and the text never drew. Now: (1) `canCut` only on a
+       table's first cells (their text on hover); the main footer's texts, the Disenchant panel's Auto Loot note (it
+       wraps), its bags' title and its next piece (the footer makes room), the List's first title, Gear Details' titles
+       (anchored top and sides, laid out again after a width change) and the chart's labels are content. (2) The
+       self-check (`Widgets.CheckLayout`) checks every FontString of the window (`Widgets.CutTexts`): one line drawn
+       wider than its box, more lines than its height, outside the window (not under a frame that clips): "layout:
+       <window>/<view> cut text: <first 40 characters>"; the Charts run it after the chart is drawn (`f.checkLater`).
+       `spec/tight_spec.lua` fails on any such line and checks the states that change texts (the Salvager box on and
+       off, Play, a purchase on its way, the auction house closed and open, the Disenchant panel with pieces and
+       empty, the mini panel). (3) `make sim-check` draws those states too (`SIM_STATES`, SimDeals.lua's `/salvsim
+       state`), the mini panel, and counts the self-check's lines; cut = 0 in every view.
+    - m. The ratchet moved on purpose (reasons in `spec/ratchet.json` and the sim's): the Reports' smallest widths are
+       their view's width (fixed width), the Limits wider by its longer titles, the Odds' line gaps 1 px (rounding of
+       centred columns after a line), the empty Breakdown's smallest a normal gap where one column was; keys renamed
+       (Mail, Pending, Bands) or gone (Essences; the empty Post, which only passed on a window an earlier test left
+       open).
+    - n. "Show top" (was "Gear checks", `settings.maxChecks` stays): the main window's box of how many of the best gear
+       candidates each scan searches and shows (the best by the sort first); its help, the "?" line and the scan's Log
+       line ("show top done: ...") say so.
+    - o. Choices (UI.md Controls 2): `Widgets.Dropdown(..., single)`: a one-choice list of plain rows (a tint and a gold
+       ">" on the current one, a click picks and closes); every one-choice call site sets it (Period, Show, Lines, Time,
+       Times shown in, Salvager all/with/without, the Competition's Material, the Post's Duration, which was a row of
+       three check boxes, `Widgets.Choice`, gone). The list is as wide as its widest option. `spec/tight_spec.lua`
+       opens every dropdown of every window and the Options: a one-choice list has no check box, a pick closes it, a
+       list of many stays open (one whose pick closes it without `single` fails), no on/off dropdown of two, no
+       `W.Choice` in the source.
+    - p. The Ledger's Sales buttons read "Check undercuts" and "Cancel undercut" (no count; "Checking n/m" and
+       "Cancelling..." stay); the counts are in their tooltips ("N of your auctions are still for sale", "N are
+       undercut: each click cancels the next one"); each as wide as its longest label in the button's font (was 150).

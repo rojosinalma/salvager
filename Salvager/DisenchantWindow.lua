@@ -139,6 +139,8 @@ function Panel.Update(pieces)
         nextLabel:SetText(reason and (GREY .. short .. "|r")
             or ("Next: " .. (p.link or ns.GetItemInfo(p.itemID) or ("item " .. p.itemID))))
         leftLabel:SetText(#pieces .. " left")
+        -- (As wide as its text: the name left of it ends there, and the footer's need is measured from the texts.)
+        leftLabel:SetWidth(math.ceil(tonumber((leftLabel:GetStringWidth())) or 40) + 2)
     end
     return pieces
 end
@@ -169,10 +171,12 @@ local function buildButton(parent)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText("Disenchant", 1, 1, 1)
         local p = self.piece
-        if p then GameTooltip:AddLine("Casts Disenchant on " .. tostring(p.link) .. ", the first piece of In your bags.",
-            1, 0.82, 0, true) end
-        GameTooltip:AddLine("Each click is one cast; then it aims at the next piece. A key does the same: Key Bindings, "
-            .. "AddOns, Salvager, Disenchant next piece (a mouse wheel notch too); each press is one cast.", 1, 0.82, 0, true)
+        if p then W.AddHelp(GameTooltip, nil, "Casts Disenchant on " .. tostring(p.link) .. ", the first piece of In your bags.") end
+        W.AddHelp(GameTooltip, nil, "Each click is one cast; then it aims at the next piece.")
+        W.AddHelp(GameTooltip, nil, "A key does the same: Key Bindings, AddOns, Salvager, Disenchant next piece (a mouse wheel "
+            .. "notch too), or the Salvager DE macro on a bar; each press is one cast.")
+        W.AddHelp(GameTooltip, nil, "In combat the game keeps this button as it was (no change is allowed): a press does "
+            .. "nothing until the fight ends.")
         if self.reason then GameTooltip:AddLine(self.reason, 1, 0.3, 0.3, true) end
         GameTooltip:Show()
     end)
@@ -242,8 +246,8 @@ function Panel.Rows(pieces, batch)
             { paid = 0, ev = 0 }, d), RESULT_KEYS)
         cells[2] = ns.Money(d.paid)
         bottom[#bottom + 1] = { bold = true, rule = "total", cells = cells, tip = { "Results", "The disenchants of the "
-            .. "Current batch (their materials not all posted yet): Paid, Disenchant value, Profit so far and DV/EV % of "
-            .. "all of them. The Ledger's Purchases, Current batch has the rest." } }
+            .. "pending purchases (their materials not all posted yet): Paid, Disenchant value, Profit so far and DV/EV % "
+            .. "of all of them. The Ledger's Purchases, Pending has the rest." } }
     end
     return top, bottom, pieces
 end
@@ -283,7 +287,12 @@ function Panel.Layout()
     local y = TOP
     local off = autoLootOff()
     lootNote:SetShown(off)
-    if off then y = y + 18 end
+    if off then
+        lootNote:SetWidth(math.max(100, (tonumber((f:GetWidth())) or W0) - 14 - 40))
+                local h = math.ceil(tonumber((lootNote:GetStringHeight())) or 12) + 1
+        lootNote:SetHeight(h)   -- (as tall as its lines: never cut)
+        y = y + h + 5
+    end
     local room = math.max(0, (tonumber((f:GetHeight())) or H0) - y - FOOT - 2 * TITLE_H - 8)
     Panel.room = room
     -- The top table as tall as its rows, up to 45% of the room; the bar between the tables moves it (SDD 113).
@@ -306,24 +315,32 @@ function Panel.Layout()
         results:SetPoint("TOPLEFT", bags, "BOTTOMLEFT", 0, -6 - TITLE_H)
         results:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, FOOT)
     end
-    bags:SetHeight(hTop)
+        bags:SetHeight(hTop)
     bags:Refresh()
     results:Refresh()
-    W.FitTables(f, { bags, results }, "disenchant")
+    -- (A new width wraps the Auto Loot note again: laid out once more in it, 0.4.0.)
+        if W.FitTables(f, { bags, results }, "disenchant") and not Panel.relaying then
+        Panel.relaying = true
+        Panel.Layout()
+        Panel.relaying = false
+        return
+    end
+    -- The self-check once it is laid out in its final width (f.checkLater).
+    W.CheckLayout(f, { bags, results }, "disenchant")
 end
 
 ------------------------------------------------------------------ the window
 
 local function build()
     f = W.Window("SalvagerDisenchantFrame", "Salvager Disenchant", "disenchant", W0, H0, MIN_W, MIN_H)
-    f.layoutName = "disenchant"
+        f.layoutName = "disenchant"
+    f.checkLater = true   -- (Panel.Layout runs the self-check after its last layout)
     lootNote = W.Label(f, GREY .. "Auto Loot is off: after each disenchant, the loot window needs a click (Options, "
         .. "Controls, Auto Loot).|r", "GameFontHighlightSmall")
-    lootNote:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -TOP)
-    lootNote:SetPoint("RIGHT", f, "RIGHT", -40, 0)
+    lootNote:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -TOP)   -- (its width and height: Panel.Layout, as it wraps)
     lootNote:SetJustifyH("LEFT")
-    lootNote:SetWordWrap(false)
-    lootNote.canCut = true   -- (one line, cut at the window's edge; UI.md Layout 6)
+    -- (It wraps and pushes the tables down: never cut, UI.md Layout 6, 0.4.0.)
+    lootNote:SetWordWrap(true)
     local help = W.HelpButton(f, "Disenchant", function()
         return { "Disenchant",
             "In your bags: the gear you bought with Salvager and picked up, in your bags (not the bank, not what you "
@@ -339,8 +356,7 @@ local function build()
     help:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -(TOP - 2))
     bagsTitle = W.Label(f, "", "GameFontNormal")
     bagsTitle:SetJustifyH("LEFT")
-    bagsTitle:SetWordWrap(false)
-    bagsTitle.canCut = true
+    bagsTitle:SetWordWrap(false)   -- (content: the window is as wide as it needs, extraNeed)
     bags = W.List(f, { rowHeight = 22 })
     resultsTitle = W.Label(f, GOLD .. "Results|r" .. GREY .. "  the disenchants of this batch, the last one at the top|r",
         "GameFontNormal")
@@ -364,13 +380,15 @@ local function build()
     footer:AddRight(leftLabel, leftW, 10)
     nextLabel = W.Label(footer, "", "GameFontHighlightSmall")
     footer:Add(nextLabel, 120)
-    nextLabel:SetPoint("RIGHT", leftLabel, "LEFT", -10, 0)
+    nextLabel:SetPoint("RIGHT", leftLabel, "LEFT", -8, 0)
     nextLabel:SetJustifyH("LEFT")
-    nextLabel:SetWordWrap(false)
-    nextLabel.canCut = true   -- (one line cut at the count; the full name is on the first row)
+    nextLabel:SetWordWrap(false)   -- (never cut: the footer makes room for it, bar:Need)
     Panel.bars = { footer = footer }   -- (the specs read them)
-    -- The Results title is content too (SDD 120); the bags' title and the Auto Loot note may be cut.
-    f.extraNeed = function() return math.ceil(14 + (tonumber((resultsTitle:GetStringWidth())) or 0) + 14) end
+    -- The tables' titles are content too (SDD 120): the bags' one ends before the "?" (40 px). The Auto Loot note wraps.
+    f.extraNeed = function()
+        local function sw(fs) return tonumber((fs:GetStringWidth())) or 0 end
+        return math.ceil(math.max(14 + sw(resultsTitle) + 14, 14 + sw(bagsTitle) + 40))
+    end
     Panel.bags, Panel.results, Panel.lootNote, Panel.nextLabel, Panel.leftLabel = bags, results, lootNote, nextLabel,
         leftLabel
     f.onResize = Panel.Layout

@@ -106,7 +106,7 @@ local function build()
             filterButton:Close()
             list.offset, list.atBottom = math.huge, nil
             Window.Refresh()
-        end, "All lines, only trades and gold, or only errors.", "Lines shown")
+                end, "All lines, only trades and gold, or only errors.", "Lines shown", nil, true)
     filters:AddFilter("Lines", filterButton, 140, "All lines, only trades and gold, or only errors.")
     local footer = W.Bar(f, "footer"):PlaceBottom(8, 12, 24)
     local clear = W.Button(footer, "Clear", 80, function()

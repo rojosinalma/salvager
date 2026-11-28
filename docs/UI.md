@@ -28,6 +28,13 @@ reply must say so.
 2. Each kind of control has one look, from one widget, and no other kind uses it: tab (`Widgets.Tab`), subtab
    (`Widgets.Subtab`), dropdown with its arrow (`Widgets.Dropdown`), check box (`Widgets.Check`), action button (the
    red button, `Widgets.Button`). A tab or a dropdown is never a red button. Rows are made with `Widgets.Bar`.
+   Choices (the user, 2026-11-28): a check box is only (a) a row of a dropdown of many choices (Gear, Quality, Bands,
+   the Options' Disenchant filter) or (b) a lone on/off setting outside a dropdown ("Only materials with my data",
+   "Cautious", "Arcane Salvager", the Options' check boxes). Picking one of several values is a one-choice dropdown
+   (`Widgets.Dropdown` with `single`): a plain list, the current value tinted with a gold marker, a click picks it
+   and closes the list (Period, Show, Lines, Time, Times shown in, Salvager all/with/without, Material, the Post's
+   Duration). Never a row of check boxes where one is on, never an on/off setting as a dropdown of two. A spec opens
+   every dropdown and checks both.
 3. A row of tabs or subtabs holds tabs only: no filter, no action, no readout.
 4. A filter is in the filter row directly above the content it filters. Never next to a tab.
 5. A filter has a label at its left that says what it filters ("Period:"), and shows its value in full (a dropdown is as wide as its widest value). "All" is the first
@@ -44,12 +51,14 @@ reply must say so.
     sits in its own inset with a heading (the main window's Scan settings), apart from the tabs and the list.
 11. Text that cannot be clicked never looks like a control.
 12. Text contrast 4.5:1 or more; control edges 3:1; one color means one thing everywhere.
-13. Buttons that open other windows are one group in the footer, at its left (the main window: Auction house, Ledger,
-    Reports, Market, Disenchant, Limits, Log, Options), never where they read as tabs. The mini panel is only such
-    buttons: two columns (Salvager, Ledger, Materials; Reports, Market, Log), Disenchant across both under them.
+13. Buttons that open other windows are one group, never where they read as tabs. The main window has none (the user,
+    2026-11-28): they are on the mini panel, always on (shown or hidden as the player left it: its X, Shift + left
+    click on the minimap button), only such buttons, two columns (Salvager, Ledger, Materials, Limits; Reports,
+    Charts, Log, Options), Disenchant across both under them. The main window's Options is a gear icon in its title
+    bar, left of Minimize.
 14. Checked by the specs (rows of tabs hold tabs only; filters under the subtabs; every row fits the smallest width;
     `spec/fit_spec.lua`: no cut text, no overlap in a row, nothing outside its window, at the smallest and the
-    default size, SDD 106; `spec/tight_spec.lua`: no window or column wider than its content, Tables 2, SDD 120)
+    default size, SDD 106; the self-check: every text of a window, cut or outside it, logged, SDD 127l; `spec/tight_spec.lua`: no window or column wider than its content, Tables 2, SDD 120)
     and by `make layout` (a row of tabs with another control; a statement's amounts not at the panel's right edge; a
     tab, subtab or dropdown with the red button's art).
 15. Start and stop of one thing is one toggle button: the play arrow while it is off, the stop square while it runs;
@@ -70,18 +79,20 @@ reply must say so.
    needs now: the shown table's columns, or a row of its controls (filter row, footer, the main window's settings), or
    a heading, if wider; its smallest width is what its controls need, measured. No spare width: a table alone in its
    view lets its first column take only a remainder of a few pixels, or the width the controls force, so the last
-   column ends at the table's right edge (in a stack of cards, at the cards' right edge, the columns lined up). Two or
-   more tables in a view (the user, 2026-11-28: tight tables, no holes; SDD 123): each is as wide as it needs, at the
-   left; the narrower one simply ends earlier, its inset as wide as its columns, never a first column with room in it.
+   column ends at the table's right edge (in a stack of cards, at the cards' right edge, the columns lined up). Every
+   table spans its window (the user, 2026-11-28: "No inset table should be shorter than the total size of the window
+   where it is"; SDD 127e, it replaced SDD 123's rule): two or more tables in a view are each as wide as the window's
+   content, the same margins as its other rows; the narrower one's first column (its row label) takes its spare room,
+   the only gap allowed over the normal one.
    A statement keeps the window's width (its amounts flush right, Statements 2). A text is measured in the font it is
    drawn in (titles, cells, a total's larger font), by a font string of that very font object, so the widths the
    tables get are the ones the client draws. In numbers: no window wider than its
    content needs + 8 px, no gap over 16 + 2 px (the self-check logs over 16 + 4; rows not on show count as measured,
-   so a gap is a hole only where no row of the data fills it). Text that does not fit ends with
-   "..." and shows in full on hover. A tab change gives the window the new view's width (narrower too); a window
+   so a gap is a hole only where no row of the data fills it). No text is cut (the user, 2026-11-28): only a table's
+   first cell may end with "...", and it shows in full on hover; a text that can grow wraps or its row makes room. A tab change gives the window the new view's width (narrower too); a window
    shrinks when its table empties. A column is never left out silently: where the screen (or a window the player made
-   narrower) is too narrow, a note at the right end of the titles says how many are left out, and its tooltip which
-   ones. Money of 1 gold or more shows gold and silver only in a cell, the copper on the row's hover; a value that
+   narrower) is too narrow, the column chooser (⋮) shows it unticked with the reason on hover, and its own tooltip
+   names the ones left out (no note at the titles: it took room, the user 2026-11-28). Money of 1 gold or more shows gold and silver only in a cell, the copper on the row's hover; a value that
    rests on few results or sales is grey with "*", the column's help and the row's hover say what it means.
    Three gates hold this, and the numbers are ratcheted (they may only get better, `spec/ratchet.json`, `make
    ratchet`): `spec/tight_spec.lua` (typical data, every window, view and size, in `make check`, the addon's own
@@ -103,10 +114,16 @@ reply must say so.
    (the user, 2026-11-26: grey forecasts read as "nothing there"). Grey is only for what is not known, rests on
    too few samples, or is a note. Color is never the only signal: the sign or a word says it too.
 8. Text, names and dates left-aligned. Numbers, money, percentages and times right-aligned. A title aligns like its
-   column.
+   column. One exception (the user, 2026-11-28): the Limits' titles are centred over their columns (a pair per gear
+   type, Recommended price and Override), the cells keep their own alignment.
 9. The numbers of a column have the same decimals and unit. Silver and copper show two digits after a larger coin,
    so the coins line up. A percentage keeps its "%".
-10. One sort arrow, on the sorted column. A click on the title reverses it. The sort is remembered.
+10. Every column that can be sorted is sorted by a click on its title (the user, 2026-11-28), a second click reverses
+    it; one sort arrow, on the sorted column (counted in its width). The sort is remembered per table. It sorts by the
+    value, never the text (money in copper, percents as numbers, times in order; unknown last both ways; ties keep the
+    order before); grouped tables sort inside each group, headings and totals stay in place, totals last. Not
+    sortable: a statement, a column of controls or buttons, a list whose order is its meaning (the Post and Stand
+    price ladders). The Gear list's profit range sorts by its average. One implementation: `Widgets.SortRows`.
 11. Rows are told apart by space and a highlight under the pointer, faint stripes in wide tables. No grid.
 12. The titles stay in view when the table scrolls. Titles and rows have one height in every table.
 13. A totals row is the last row, with a line above it; it does not sort.
@@ -119,6 +136,8 @@ reply must say so.
     level up): `Data.SortMaterials`. A click on a column title may re-sort it; with none, that order.
 17. A stack of small tables of the same kind (the Odds' bands) sets two next to each other where both fit, each half
     the width, else one per row; a heading row stays across the whole width. Their columns line up in every card.
+    Groups of columns (the Odds: Game rates, Your rates, Salvager rates) have a line before them and a heading row
+    over their titles, each heading centred over its group, the group as wide as its heading needs.
 
 ## Statements
 
@@ -159,7 +178,8 @@ reply must say so.
 3. A title says what the column holds ("Price now", not "Price"). No verbs as titles ("Got",
    "Came").
 4. Every title that is not obvious has help on hover. Static explanations are behind the "?"
-   button, one line each; the screen keeps only live information.
+   button; the screen keeps only live information. In every help (a hover, a "?" box): a title, then each explanation
+   on its own line, one empty line between them (the user, 2026-11-28); one builder, `Widgets.AddHelp`.
 
 ## Layout
 
@@ -170,11 +190,10 @@ reply must say so.
    different from tabs: each is a segment of a segmented control (a small box with an edge, so it reads as
    clickable; the selected one filled gold), smaller and flatter than a tab, never a red button.
 4. Live values (countdowns, gold) update while they show.
-5. The main window leads: the windows it opened close with it (X, Escape, the Auction house button) and come
-   back with it. Its Minimize button hides it alone and shows the mini panel (one button per window); the windows
-   opened from the mini panel, or while the main window is closed, are independent of it. The game's auction
-   house is one click away (Auction house button), and Salvager one click back (its button under the
-   auction house). Hiding windows never stops a scan.
+5. The main window leads: the windows it opened close with it (X, Escape) and come back with it. Its Minimize
+   button hides it alone (the mini panel stays: it is always on unless the player hid it); the windows opened from
+   the mini panel, or while the main window is closed, are independent of it. The game's auction house is one click
+   away (the main window's X), and Salvager one click back (its button on the auction house window). Hiding windows never stops a scan.
 6. Nothing overlaps, at the smallest size a window allows (its smallest width is its controls', measured: Tables 2). Two or more tables in a view share the height, each at
    least its titles and two rows; a bar between two of them moves the border (drag it; a right-click resets it). A filter row that is full wraps to a second filter row,
    or the window's smallest width grows; a control never moves to a row of tabs. A text that can grow either wraps

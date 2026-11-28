@@ -27,20 +27,30 @@ The biggest update since 0.3.113: a new forecast, honest books, and a new interf
   on stock from before your records, is repaired once.
 - Reports: a gold statement per session or period (trading profit, stock change, a check against your gold),
   Gear (Bands, History), Materials, Competition (who undercuts you and what it cost you) and Odds.
-- Ledger: purchases grouped by day and status, a Current batch from the mailbox to the last post, Accuracy with
+- Ledger: purchases grouped by day and status, Mail and Pending (from the mailbox to the last post), Accuracy with
   labelled averages.
 - Times in local or server time (Options).
 
 ### Windows
 - One order everywhere: tabs, subtabs, a filter row, the content, a footer; real game tabs and dropdowns.
-- A mini panel (minimap button, away from the auction house) and a Disenchant panel with a one-key disenchant
-  button and a filter in Options.
+- A mini panel, always on (Shift + click the minimap button to hide or show it), with a button for every window;
+  the main window's footer keeps only the status, gold, bags, Play and Buy Top, and its options are a gear icon in
+  the title bar. A Disenchant panel with a one-key disenchant button and a filter in Options.
+- Two macros made for you: Salvager Buy (Buy Top) and Salvager DE (the Disenchant button), for your bars or keys.
+- The Arcane Salvager bonus is a check box in the Scan settings (was Options' Auto/On/Off; your choice carries over).
+- Every column sorts by a click on its title, and remembers it; grouped tables sort inside their groups.
+- The Odds cards: Game rates, Your rates and Salvager rates as headed groups (Rate, then quantity), and a facts row
+  with Results, Disenchants without/with the Salvager, Weighted (red when too few) and Loss chance; the headings sum
+  up their bands.
+- The Market window is now Charts (Profit, Materials, Bands, Time of day); the Ledger's Purchases subtabs are Mail
+  and Pending.
+- No cut text: long status lines wrap, every help shows one point per line, and chart labels stay inside the chart.
 - Windows and columns as tight as what they show: every column as wide as its text, the same small gap between
   columns, a window no wider than its widest table or row of controls, narrower again when a table empties. Amounts
   of 1 gold or more show gold and silver in tables (the copper on hover); "few sales" is a grey value with "*".
-  Where a view has two tables, each is only as wide as its own columns.
+    Every table spans its window; where a view has two tables, the narrower one's first column takes the room.
 - The Gear list shows Loss chance next to the profit range, before Avg return.
 - Windows resize smoothly, can be dragged partly off the screen (/salv windows reset), and remember their place.
-  Search boxes in Reports and Market.
-- Faster with a long history: a settings change, the Ledger's Current batch, Accuracy and purchases, and the
+  Search boxes in Reports and Charts.
+- Faster with a long history: a settings change, the Ledger's Pending, Accuracy and purchases, and the
   Disenchant panel redraw several times faster with thousands of records.

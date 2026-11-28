@@ -58,12 +58,38 @@ end
 function Odds.Bands()
     local x = Odds.Filter()
     local both = x.both and true or false
-    local filtered = Ledger.Report(ns.db.ledger, nil, function(r)
-        return ns.LedgerWindow.FilterPasses(x, nil, nil, nil, r.salvager and true or false)
-    end)
-    local all = Ledger.Report(ns.db.ledger)
-    local without = both and Ledger.Report(ns.db.ledger, nil, function(r) return not r.salvager end) or nil
-    local with = both and Ledger.Report(ns.db.ledger, nil, function(r) return r.salvager and true or false end) or nil
+        -- Two passes over the records (without and with the Salvager); the filter's view and all of them are their sums.
+    -- (Four passes made the view twice as slow, 0.4.0.)
+    local without = Ledger.Report(ns.db.ledger, nil, function(r) return not r.salvager end)
+    local with = Ledger.Report(ns.db.ledger, nil, function(r) return r.salvager and true or false end)
+    -- The disenchants the facts count (Results, Disenchants without / with): as the Salvager filter says; both while
+    -- "Show with and without the Salvager" is on.
+    local passWithout = ns.LedgerWindow.FilterPasses(x, nil, nil, nil, false)
+    local passWith = ns.LedgerWindow.FilterPasses(x, nil, nil, nil, true)
+    local countWithout, countWith = both or passWithout, both or passWith
+    local function merged(a, b)
+        local out = {}
+        for _, part in ipairs({ a or {}, b or {} }) do
+            for key, p in pairs(part) do
+                local o = out[key]
+                if not o then o = { n = 0, value = 0, mats = {} } out[key] = o end
+                o.n, o.value = o.n + p.n, o.value + p.value
+                for id, m in pairs(p.mats) do
+                    local om = o.mats[id] or { hits = 0, qty = 0 }
+                    o.mats[id] = om
+                    om.hits, om.qty = om.hits + m.hits, om.qty + m.qty
+                end
+            end
+        end
+        return out
+    end
+    local filtered = merged(passWithout and without or nil, passWith and with or nil)
+    local all = merged(without, with)
+    local function results(part)
+        local sum = 0
+        for _, m in pairs(part and part.mats or {}) do sum = sum + (m.hits or 0) end
+        return sum
+    end
     local opts = ns.ValueOptions()
     local bands = {}
     for _, q in ipairs({ { 2, Data.GREEN }, { 3, Data.BLUE }, { 4, Data.PURPLE } }) do
@@ -88,24 +114,43 @@ function Odds.Bands()
                         value = v, limit = limit, outcomes = outcomes, rows = {},
                         lose = limit > 0 and Model.LossChance(outcomes, ns.PriceOf, opts, limit) or nil,
                         average = everything and everything.n > 0 and everything.value / everything.n or nil,
-                        allN = everything and everything.n or 0 }
+                        allN = everything and everything.n or 0,
+                        -- The facts: disenchants without and with the Salvager, and the results they gave.
+                        dWithout = countWithout and without[key] and without[key].n or 0,
+                        dWith = countWith and with[key] and with[key].n or 0,
+                        results = (countWithout and results(without[key]) or 0) + (countWith and results(with[key]) or 0) }
                     local inTable = {}
                     local function row(id, r)
                         local hits, rate, qty = seen(mine, id)
+                        local expected = r and not r.unexpected
                         local cells = { ns.MaterialName(id),
-                            r and (r.unexpected and (RED .. "not expected|r") or pct(r.tableChance)) or (RED .. "not expected|r"),
-                            (r and not r.unexpected) and (r.min == r.max and tostring(r.min) or (r.min .. "-" .. r.max)) or "",
-                            hits, rate, qty }
+                            expected and pct(r.tableChance) or (RED .. "not expected|r"),
+                            expected and (r.min == r.max and tostring(r.min) or (r.min .. "-" .. r.max)) or "",
+                            rate, qty }
+                        local m = mine and mine.mats[id]
+                        -- The values it sorts by (Widgets.List / CardList: a click on a title): numbers, not texts.
+                        local sort = { Data.MaterialRank(id), expected and r.tableChance or nil,
+                            expected and (r.min + r.max) / 2 or nil, n > 0 and (m and m.hits or 0) / n or nil,
+                            m and m.hits > 0 and m.qty / m.hits or nil }
+                        -- Its results (how many of your disenchants gave it) on the row's hover (they left the table).
+                        local lines = { "Results: " .. tostring(m and m.hits or 0) .. " of your " .. n .. " disenchants "
+                            .. "of this band gave it" .. (both and " (without the Salvager)" or "") .. "." }
                         if both then
                             -- Only the materials the Salvager adds to; the game has no table of it.
-                            if r and r.bonus and not r.unexpected then
+                            if expected and r.bonus then
                                 local _, wRate, wQty = seen(mineWith, id)
-                                cells[7], cells[8] = salv(wRate), salv(wQty)
+                                cells[6], cells[7] = salv(wRate), salv(wQty)
+                                local w = mineWith and mineWith.mats[id]
+                                sort[6] = nWith > 0 and (w and w.hits or 0) / nWith or nil
+                                sort[7] = w and w.hits > 0 and w.qty / w.hits or nil
+                                lines[#lines + 1] = "Results with the Salvager: " .. tostring(w and w.hits or 0) .. " of "
+                                    .. nWith .. "."
                             else
-                                cells[7], cells[8] = "", ""
+                                cells[6], cells[7] = "", ""
                             end
                         end
-                        entry.rows[#entry.rows + 1] = { itemID = id, cells = cells, price = ns.PriceOf(id) }
+                        entry.rows[#entry.rows + 1] = { itemID = id, cells = cells, price = ns.PriceOf(id), sort = sort,
+                            hits = hits, lines = lines }
                     end
                     for _, r in ipairs(outcomes.results) do
                         inTable[r.id] = true
@@ -133,38 +178,40 @@ local function note()
         .. "to see the tables." or "Nothing selected: pick a quality and an item level band above."
 end
 
---- The columns: the game's table, a line, then yours (with the Salvager's when both show). Two titles read "Result
---- rate": their keys tell them apart in the column chooser.
--- (Short titles, the user, 0.4.0: the cards were as wide as their titles. The groups are told apart by the lines
--- between them, the Salvager's color, and each title's help: left the game's table, then your disenchants, then with
--- the Salvager.)
+--- The columns, in groups, each after a line and under a heading of its own (UI.md Tables 17): the game's table
+--- ("Game rates": Rate, Qty), yours ("Your rates": Rate, Avg qty), and with "Show with and without the Salvager" on the
+--- Salvager's ("Salvager rates", light blue). Each group is Rate, then the quantity. The three "Rate" titles have keys
+--- of their own for the column chooser. How many of your disenchants gave a material (its results) is on the row's
+--- hover; the band's total is the card's first fact.
+-- (Short titles, the user, 0.4.0: the cards were as wide as their titles. The group headings say whose rates.)
 local TABLE_HELP = "By the game's disenchant table the addon uses (Classic's table; not confirmed for Forever)."
 local COLUMNS = {
     { "Material", 150, help = { "Material", "What a disenchant in this band can give: the game's table, and what came "
-        .. "in yours that the table does not have (\"not expected\"). Click one: where yours came from." } },
-    { "Rate", 60, "CENTER", key = "Result rate (table)", help = { "Rate: result rate (the game's table)",
-        "How often this material comes from one disenchant in this band. " .. TABLE_HELP } },
-    { "Qty", 56, "CENTER", key = "Quantity (table)", help = { "Qty: quantity (the game's table)",
+        .. "in yours that the table does not have (\"not expected\"). Hover a row: how many of your disenchants gave it. "
+        .. "Click one: where yours came from." } },
+    { "Rate", 60, "CENTER", sep = true, group = "Game rates", key = "Result rate (table)", help = {
+        "Rate: result rate (Game rates)", "How often this material comes from one disenchant in this band. " .. TABLE_HELP } },
+    { "Qty", 56, "CENTER", key = "Quantity (table)", help = { "Qty: quantity (Game rates)",
         "How many come when a disenchant gives it. " .. TABLE_HELP } },
-    { "Seen", 50, "CENTER", sep = true, key = "Results", help = { "Seen: results (your disenchants)", "How many of your disenchants in "
-        .. "this band gave this material (as the Salvager filter says; without the Salvager while \"Show with and "
-        .. "without the Salvager\" is on)." } },
-    { "Rate", 60, "CENTER", key = "Result rate (yours)", help = { "Rate: result rate (your disenchants)",
-        "How often it came in your disenchants in this band: Results ÷ Disenchants." } },
-    { "Avg qty", 70, "CENTER", key = "Avg quantity", help = { "Avg qty: average quantity (your disenchants)", "How many came on average "
-        .. "when a disenchant of yours gave it: an average of whole units (one disenchant gives a whole number)." } },
+    { "Rate", 60, "CENTER", sep = true, group = "Your rates", key = "Result rate (yours)", help = {
+        "Rate: result rate (Your rates)", "How often it came in your disenchants in this band: its results ÷ "
+        .. "Disenchants (as the Salvager filter says; without the Salvager while \"Show with and without the Salvager\" "
+        .. "is on)." } },
+    { "Avg qty", 70, "CENTER", key = "Avg quantity", help = { "Avg qty: average quantity (Your rates)", "How many came "
+        .. "on average when a disenchant of yours gave it: an average of whole units (one disenchant gives a whole number)." } },
 }
--- The Salvager's columns: after a line of their own, in the Salvager's color (titles and values; grey still says
--- "too few" or "none"). Their keys stay the plain titles (the column chooser's saved choices).
+-- The Salvager's columns: after a line of their own, in the Salvager's color (heading, titles and values; grey still
+-- says "too few" or "none"). Their keys stay the plain titles (the column chooser's saved choices).
 local COLOR_HELP = "In the Salvager's color (light blue): with the Salvager, observed only."
 local SALVAGER_COLUMNS = {
-    { SALV .. "Rate|r", 70, "CENTER", key = "Rate with Salvager", sep = true, help = {
-        "Rate (light blue): rate with the Salvager (your disenchants)", "How often it came in your disenchants with the Arcane Salvager's "
-        .. "bonus. Only dust and essence: the Salvager adds to them, not to shards. The game has no table of it.",
-        COLOR_HELP } },
+    { SALV .. "Rate|r", 70, "CENTER", key = "Rate with Salvager", sep = true, group = SALV .. "Salvager rates|r", help = {
+        "Rate: rate with the Salvager (Salvager rates, light blue)", "How often it came in your disenchants with the "
+        .. "Arcane Salvager's bonus. Only dust and essence: the Salvager adds to them, not to shards. The game has no "
+        .. "table of it.", COLOR_HELP } },
     { SALV .. "Avg qty|r", 80, "CENTER", key = "Quantity with Salvager", help = {
-        "Avg qty (light blue): average quantity with the Salvager (your disenchants)",
-        "How many came on average with the Salvager's bonus, when a disenchant gave it (an average of whole units).", COLOR_HELP } },
+        "Avg qty: average quantity with the Salvager (Salvager rates, light blue)",
+        "How many came on average with the Salvager's bonus, when a disenchant gave it (an average of whole units).",
+        COLOR_HELP } },
 }
 Odds.SALVAGER_COLUMNS = SALVAGER_COLUMNS
 function Odds.Columns()
@@ -174,11 +221,42 @@ function Odds.Columns()
     return cols
 end
 
-local DISENCHANTS_HELP = { "Disenchants", "How many of your disenchants are in this band (as the Salvager filter "
-    .. "says). With \"Show with and without the Salvager\" on: without the Salvager, then with it." }
-local WEIGHT_HELP = { "Weighted results", "The weight of your disenchants of this band that the rates, the range and "
-    .. "Loss chance use (with or without the Salvager as buying counts it): each counts 0.5^(its age in days / 30), so "
-    .. "today's count 1 and a month old 0.5. \"few results\" under " .. Model.FEW_RESULTS .. ": the table weighs more." }
+local RESULTS_HELP = { "Results",
+    "How many results those disenchants gave: one per material a disenchant gave (dust and an essence from one "
+        .. "disenchant count two).",
+    "As the Salvager filter says (both while \"Show with and without the Salvager\" is on).",
+    "Hover a material's row: its own count." }
+local DISENCHANTS_HELP = { "Disenchants without / with the Arcane Salvager",
+    "How many of your disenchants are in this band: without the Salvager, then with it (light blue).",
+    "As the Salvager filter says (both while \"Show with and without the Salvager\" is on)." }
+local WEIGHT_HELP = { "Weighted results",
+    "The weight of your disenchants of this band that the rates, the range and Loss chance rest on (with or without the "
+        .. "Salvager as buying counts it, SDD 118).",
+    "Recent ones weigh more: each counts 0.5^(its age in days / 30), a half-life of 30 days, so today's count 1 and a "
+        .. "month old 0.5.",
+    "Red with \"(few)\" under " .. Model.FEW_RESULTS .. ": too few, the game's table weighs more. Green at "
+        .. Model.FEW_RESULTS .. " or more." }
+local HEADING_HELP = { "All the bands under this heading",
+    "Results: how many results the disenchants of these bands gave (one per material a disenchant gave).",
+    "Disenchants without / with the Arcane Salvager: the disenchants of these bands without it, then with it (light "
+        .. "blue).",
+    "As the Salvager filter says. Click the heading: open or close it." }
+local GREEN_ = "|cff40ff40"
+local DOT = GREY .. "· |r"
+Odds.HELP = { results = RESULTS_HELP, disenchants = DISENCHANTS_HELP, weighted = WEIGHT_HELP, heading = HEADING_HELP }
+
+--- The facts' texts (a band's card and each heading, UI.md Words 2): "Results N", "Disenchants a/b" (b, with the
+--- Salvager, light blue), "Weighted W" (red with "(few)" under the floor, green at it or more: color is never the only
+--- signal, UI.md Tables 7).
+function Odds.ResultsText(n) return GREY .. "Results|r " .. ((n or 0) > 0 and tostring(n) or grey("0")) end
+function Odds.DisenchantsText(a, b)
+    return GREY .. "Disenchants|r " .. tostring(a or 0) .. GREY .. "/|r" .. SALV .. tostring(b or 0) .. "|r"
+end
+function Odds.WeightedText(o)
+    local w = ns.WeightText(o and o.n or 0)
+    if o and o.few then return GREY .. "Weighted|r " .. RED .. w .. " (few)|r" end
+    return GREY .. "Weighted|r " .. GREEN_ .. w .. "|r"
+end
 local LOSS_HELP = { "Loss chance", "The chance that one disenchant is worth less than Buy below (the most the addon "
     .. "lets you pay), so the risk when you pay the full limit. \"-\" when the limit is 0. The \"?\" has the rest." }
 
@@ -239,22 +317,28 @@ function Odds.Cards()
     local bands = Odds.Bands()
     local byKey = {}
     for _, band in ipairs(bands) do byKey[Ledger.BandKey(band.quality, band.classID, band.band)] = band end
+    -- Each heading (gear type, quality) sums up the bands under it: Results, Disenchants without / with.
+    local function head(of, label)
+        local res, a, b = 0, 0, 0
+        for _, band in ipairs(of) do res, a, b = res + band.results, a + band.dWithout, b + band.dWith end
+        return { cells = { label }, summary = Odds.ResultsText(res) .. "  " .. DOT .. Odds.DisenchantsText(a, b),
+            results = res, dWithout = a, dWith = b }
+    end
     local rows = ns.GroupedRows(bands, function(band)
         return { key = Ledger.BandKey(band.quality, band.classID, band.band), cells = { "" } }
-    end, nil, INDENT, { collapsed = x.collapsed, changed = function() Odds.Refresh() end })
+    end, head, INDENT, { collapsed = x.collapsed, changed = function() Odds.Refresh() end })
     local cards = {}
     for _, r in ipairs(rows) do
         if r.head then
-            cards[#cards + 1] = { heading = true, title = r.cells[1], open = r.open, onClick = r.onClick, indent = r.indent }
+            cards[#cards + 1] = { heading = true, title = r.cells[1], open = r.open, onClick = r.onClick, indent = r.indent,
+                summary = r.summary, help = HEADING_HELP, results = r.results, dWithout = r.dWithout, dWith = r.dWith }
         else
             local band = byKey[r.key]
-            local count = band.both and (tostring(band.n) .. GREY .. " without, |r" .. band.nWith .. GREY .. " with the "
-                .. "Salvager|r") or (band.n > 0 and tostring(band.n) or grey("0"))
             cards[#cards + 1] = { title = r.cells[1], indent = r.indent, pair = true, rows = band.rows, band = band,
-                facts = { { GREY .. "Disenchants|r " .. count, help = DISENCHANTS_HELP },
-                    { GREY .. "Weighted|r " .. ns.WeightText(band.outcomes.n) .. (band.outcomes.few and grey(" few results")
-                        or ""), help = WEIGHT_HELP },
-                    { GREY .. "Loss chance|r " .. (band.lose and ns.LoseText(band.lose) or grey("-")), help = LOSS_HELP } },
+                facts = { { Odds.ResultsText(band.results), help = RESULTS_HELP },
+                    { DOT .. Odds.DisenchantsText(band.dWithout, band.dWith), help = DISENCHANTS_HELP },
+                    { DOT .. Odds.WeightedText(band.outcomes), help = WEIGHT_HELP },
+                    { DOT .. GREY .. "Loss chance|r " .. (band.lose and ns.LoseText(band.lose) or grey("-")), help = LOSS_HELP } },
                 more = function() return moreLines(band) end }
         end
     end
@@ -323,6 +407,7 @@ function Odds.NewView(parent, bar, checkBar, poppedOut)
     bar:AddRight(view.pop, 22)
     view.stack = W.CardList(parent)
     view.stack.onColumnsChanged = function() Odds.Refresh() end
+    view.stack.sortId = "odds"   -- (one order with and without the Salvager columns)
     function view:SetShown(on)
         self.bar:SetShown(on)
         if self.checkBar then self.checkBar:SetShown(on) end

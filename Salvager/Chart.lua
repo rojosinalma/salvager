@@ -19,7 +19,9 @@ local _, ns = ...
 local Widgets = ns.Widgets
 
 function Widgets.Chart(parent)
-    local LEFT, BOTTOM, TOP, BARS = 78, 18, 20, 0.2   -- room for the scale, the times, the legend; the bars' share
+    -- Room for the scale (LEFT until it is measured: its widest label + 6 px to the axis + 8 px from the edge, 0.4.0),
+    -- the times, the legend; the bars' share.
+    local LEFT, BOTTOM, TOP, BARS = 78, 18, 20, 0.2
     local chart = Widgets.Panel(parent, 0, 0, 0, 0.5)
     local plot = CreateFrame("Frame", nil, chart)
     plot:SetPoint("TOPLEFT", chart, "TOPLEFT", LEFT, -TOP)
@@ -28,8 +30,9 @@ function Widgets.Chart(parent)
     legend:SetPoint("TOPLEFT", chart, "TOPLEFT", LEFT, -5)
     legend:SetPoint("RIGHT", chart, "RIGHT", -12, 0)
     legend:SetJustifyH("LEFT")
-    -- The legend wraps; the plot starts under its lines (UI.md Layout 6).
-    local plotTop = TOP
+    -- The legend wraps; the plot starts under its lines (UI.md Layout 6). The plot starts right of the scale's widest
+    -- label (the labels went past the chart's left edge, 0.4.0, the user: nothing outside its window).
+    local plotTop, plotLeft = TOP, LEFT
     local empty = chart:CreateFontString(nil, "OVERLAY", "GameFontDisable")
     empty:SetPoint("CENTER", plot, "CENTER", 0, 0)
     local scale, times, grid = {}, {}, {}
@@ -229,10 +232,26 @@ function Widgets.Chart(parent)
         local function x(t) return (t - from) / (to - from) * w end
         local function y(v) return base + (v - lo) / (hi - lo) * (h - base) end
         view = { x = x, y = y, w = w, from = from, to = to }
+        -- The scale's labels, right-aligned against the axis, each as wide as the widest (measured in its own font).
+        local widest = 0
+        for i, v in ipairs({ hi, (hi + lo) / 2, lo }) do
+            scale[i]:SetWidth(0)
+            scale[i]:SetText(format(math.floor(v + 0.5)))
+            widest = math.max(widest, tonumber(((scale[i].GetUnboundedStringWidth or scale[i].GetStringWidth)(scale[i]))) or 0)
+        end
+        local left = math.ceil(widest) + 2 + 6 + 8
+        if left ~= plotLeft then
+            plotLeft = left
+            plot:SetPoint("TOPLEFT", chart, "TOPLEFT", left, -plotTop)
+            legend:SetPoint("TOPLEFT", chart, "TOPLEFT", left, -5)
+            return chart:Refresh()   -- (once: drawn again in the plot's new width)
+        end
+        chart.scaleLeft = left
         for i, v in ipairs({ hi, (hi + lo) / 2, lo }) do
             scale[i]:ClearAllPoints()
             scale[i]:SetPoint("RIGHT", plot, "BOTTOMLEFT", -6, y(v))
-            scale[i]:SetText(format(math.floor(v + 0.5)))
+            scale[i]:SetWidth(math.ceil(widest) + 2)
+            scale[i].chartLabel = true   -- (the checks find them: inside the chart, never cut)
             grid[i]:ClearAllPoints()
             grid[i]:SetPoint("BOTTOMLEFT", plot, "BOTTOMLEFT", 0, y(v))
             grid[i]:SetPoint("BOTTOMRIGHT", plot, "BOTTOMRIGHT", 0, y(v))
@@ -264,9 +283,14 @@ function Widgets.Chart(parent)
                         l = chart:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
                         tickLabels[nl] = l
                     end
-                    l:ClearAllPoints()
-                    l:SetPoint("TOP", plot, "BOTTOMLEFT", x(tk[1]), -3)
                     l:SetText(tk[2])
+                    -- (Centred under its mark, but kept inside the plot's width: the last one went past the
+                    -- window's edge, 0.4.0.)
+                    local lw = math.ceil(tonumber((l:GetStringWidth())) or 0) + 2
+                    local lx = math.max(0, math.min(w - lw, x(tk[1]) - lw / 2))
+                    l:SetWidth(lw)
+                    l:ClearAllPoints()
+                    l:SetPoint("TOPLEFT", plot, "BOTTOMLEFT", lx, -3)
                     l:Show()
                 end
             end
@@ -318,7 +342,7 @@ function Widgets.Chart(parent)
         local top = math.max(TOP, math.ceil(tonumber((legend:GetStringHeight())) or 0) + 8)
         if top ~= plotTop then
             plotTop = top
-            plot:SetPoint("TOPLEFT", chart, "TOPLEFT", LEFT, -top)
+            plot:SetPoint("TOPLEFT", chart, "TOPLEFT", plotLeft, -top)
             return chart:Refresh()   -- (once: drawn again in the plot's new height)
         end
     end

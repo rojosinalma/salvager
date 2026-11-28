@@ -8,19 +8,19 @@
     },
     "breakdown/-/smallest": {
       "cut": 0,
-      "gap": 0,
+      "gap": 17,
       "overlap": 0,
       "width": 246
     },
     "disenchant/-/default": {
       "cut": 0,
-      "gap": 93,
+      "gap": 17,
       "overlap": 0,
       "width": 476
     },
     "disenchant/-/smallest": {
       "cut": 0,
-      "gap": 93,
+      "gap": 17,
       "overlap": 0,
       "width": 455
     },
@@ -38,43 +38,43 @@
     },
     "ledger/Purchases/All purchases/default": {
       "cut": 0,
-      "gap": 284,
+      "gap": 17,
       "overlap": 0,
       "width": 667
     },
     "ledger/Purchases/All purchases/smallest": {
       "cut": 0,
-      "gap": 284,
+      "gap": 17,
       "overlap": 0,
       "width": 667
     },
-    "ledger/Purchases/Current batch/default": {
+    "ledger/Purchases/Mail/default": {
+      "cut": 0,
+      "gap": 16,
+      "overlap": 0,
+      "width": 581
+    },
+    "ledger/Purchases/Mail/smallest": {
+      "cut": 0,
+      "gap": 16,
+      "overlap": 0,
+      "width": 581
+    },
+    "ledger/Purchases/Pending/default": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
       "width": 930
     },
-    "ledger/Purchases/Current batch/smallest": {
+    "ledger/Purchases/Pending/smallest": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
       "width": 930
-    },
-    "ledger/Purchases/Not picked up/default": {
-      "cut": 0,
-      "gap": 296,
-      "overlap": 0,
-      "width": 581
-    },
-    "ledger/Purchases/Not picked up/smallest": {
-      "cut": 0,
-      "gap": 296,
-      "overlap": 0,
-      "width": 581
     },
     "ledger/Purchases/default": {
       "cut": 0,
-      "gap": 284,
+      "gap": 17,
       "overlap": 0,
       "width": 667
     },
@@ -110,19 +110,19 @@
     },
     "ledger/Sales/Open and sold/default": {
       "cut": 0,
-      "gap": 17,
+      "gap": 16,
       "overlap": 0,
       "width": 417
     },
     "ledger/Sales/Open and sold/smallest": {
       "cut": 0,
-      "gap": 17,
+      "gap": 16,
       "overlap": 0,
       "width": 417
     },
     "ledger/Sales/default": {
       "cut": 0,
-      "gap": 17,
+      "gap": 16,
       "overlap": 0,
       "width": 417
     },
@@ -134,27 +134,27 @@
     },
     "limits/-/default": {
       "cut": 0,
-      "gap": 17,
+      "gap": 15,
       "overlap": 0,
-      "width": 779
+      "width": 842
     },
     "limits/-/smallest": {
       "cut": 0,
-      "gap": 17,
+      "gap": 15,
       "overlap": 0,
-      "width": 779
+      "width": 842
     },
     "main/Gear/default": {
       "cut": 0,
-      "gap": 155,
+      "gap": 17,
       "overlap": 0,
-      "width": 802
+      "width": 801
     },
     "main/Gear/smallest": {
       "cut": 0,
-      "gap": 155,
+      "gap": 17,
       "overlap": 0,
-      "width": 802
+      "width": 801
     },
     "main/Materials/default": {
       "cut": 0,
@@ -164,29 +164,17 @@
     },
     "main/Materials/smallest": {
       "cut": 0,
-      "gap": 19,
+      "gap": 17,
       "overlap": 0,
       "width": 855
     },
-    "market/Disenchant value/default": {
+    "market/Bands/default": {
       "cut": 0,
       "gap": 0,
       "overlap": 0,
       "width": 0
     },
-    "market/Disenchant value/smallest": {
-      "cut": 0,
-      "gap": 0,
-      "overlap": 0,
-      "width": 0
-    },
-    "market/Essences/default": {
-      "cut": 0,
-      "gap": 0,
-      "overlap": 0,
-      "width": 0
-    },
-    "market/Essences/smallest": {
+    "market/Bands/smallest": {
       "cut": 0,
       "gap": 0,
       "overlap": 0,
@@ -230,13 +218,13 @@
     },
     "materials/-/default": {
       "cut": 0,
-      "gap": 19,
+      "gap": 17,
       "overlap": 0,
       "width": 857
     },
     "materials/-/smallest": {
       "cut": 0,
-      "gap": 19,
+      "gap": 17,
       "overlap": 0,
       "width": 857
     },
@@ -244,89 +232,77 @@
       "cut": 0,
       "gap": 28,
       "overlap": 0,
-      "width": 1118
+      "width": 902
     },
     "odds/-/smallest": {
       "cut": 0,
       "gap": 28,
       "overlap": 0,
-      "width": 588
-    },
-    "post/-/default": {
-      "cut": 0,
-      "gap": 0,
-      "overlap": 0,
-      "width": 0
-    },
-    "post/-/smallest": {
-      "cut": 0,
-      "gap": 0,
-      "overlap": 0,
-      "width": 0
+      "width": 530
     },
     "reports/Competition/default": {
       "cut": 0,
-      "gap": 474,
+      "gap": 18,
       "overlap": 0,
       "width": 888
     },
     "reports/Competition/smallest": {
       "cut": 0,
-      "gap": 270,
+      "gap": 18,
       "overlap": 0,
-      "width": 684
+      "width": 888
     },
     "reports/Gear/Bands/default": {
       "cut": 0,
-      "gap": 204,
+      "gap": 17,
       "overlap": 0,
       "width": 823
     },
     "reports/Gear/Bands/smallest": {
       "cut": 0,
-      "gap": 204,
+      "gap": 17,
       "overlap": 0,
       "width": 823
     },
     "reports/Gear/History/default": {
       "cut": 0,
-      "gap": 417,
+      "gap": 17,
       "overlap": 0,
       "width": 823
     },
     "reports/Gear/History/smallest": {
       "cut": 0,
-      "gap": 417,
+      "gap": 17,
       "overlap": 0,
       "width": 823
     },
     "reports/Gear/default": {
       "cut": 0,
-      "gap": 204,
+      "gap": 17,
       "overlap": 0,
       "width": 823
     },
     "reports/Gear/smallest": {
       "cut": 0,
-      "gap": 417,
+      "gap": 17,
       "overlap": 0,
       "width": 823
     },
     "reports/Gold/All gold changes/default": {
       "cut": 0,
-      "gap": 136,
+      "gap": 17,
       "overlap": 0,
       "width": 404
     },
     "reports/Gold/All gold changes/smallest": {
       "cut": 0,
-      "gap": 136,
+      "gap": 17,
       "overlap": 0,
       "width": 404
     },
     "reports/Gold/Statement/default": {
       "cut": 0,
-      "gap": 17,
+      "gap": 0,
       "overlap": 0,
       "width": 443
     },
@@ -334,17 +310,17 @@
       "cut": 0,
       "gap": 0,
       "overlap": 0,
-      "width": 402
+      "width": 443
     },
     "reports/Gold/default": {
       "cut": 0,
-      "gap": 17,
+      "gap": 0,
       "overlap": 0,
       "width": 443
     },
     "reports/Gold/smallest": {
       "cut": 0,
-      "gap": 136,
+      "gap": 17,
       "overlap": 0,
       "width": 404
     },
@@ -356,21 +332,21 @@
     },
     "reports/Materials/smallest": {
       "cut": 0,
-      "gap": 79,
+      "gap": 17,
       "overlap": 0,
-      "width": 402
+      "width": 570
     },
     "reports/Odds/default": {
       "cut": 0,
       "gap": 28,
       "overlap": 0,
-      "width": 1118
+      "width": 902
     },
     "reports/Odds/smallest": {
       "cut": 0,
       "gap": 28,
       "overlap": 0,
-      "width": 588
+      "width": 902
     }
   },
   "layout-extreme": {
@@ -384,15 +360,15 @@
     },
     " / Materials/default": {
       "cut": 0,
-      "width": 962
+      "width": 938
     },
     " / Materials/smallest": {
       "cut": 0,
-      "width": 962
+      "width": 938
     },
     "/default": {
       "cut": 0,
-      "width": 962
+      "width": 938
     },
     "/smallest": {
       "cut": 0,
@@ -412,7 +388,7 @@
     },
     "Disenchant/smallest": {
       "cut": 0,
-      "width": 408
+      "width": 528
     },
     "Gear/default": {
       "cut": 0,
@@ -438,21 +414,21 @@
       "cut": 0,
       "width": 1031
     },
-    "Ledger / Purchases / Current batch (1188)/default": {
-      "cut": 0,
-      "width": 1368
-    },
-    "Ledger / Purchases / Current batch (1188)/smallest": {
-      "cut": 0,
-      "width": 1368
-    },
-    "Ledger / Purchases / Not picked up (12)/default": {
+    "Ledger / Purchases / Mail (12)/default": {
       "cut": 0,
       "width": 736
     },
-    "Ledger / Purchases / Not picked up (12)/smallest": {
+    "Ledger / Purchases / Mail (12)/smallest": {
       "cut": 0,
       "width": 736
+    },
+    "Ledger / Purchases / Pending (1188)/default": {
+      "cut": 0,
+      "width": 1368
+    },
+    "Ledger / Purchases / Pending (1188)/smallest": {
+      "cut": 0,
+      "width": 1368
     },
     "Ledger / Purchases/default": {
       "cut": 0,
@@ -504,11 +480,11 @@
     },
     "Limits/default": {
       "cut": 0,
-      "width": 779
+      "width": 842
     },
     "Limits/smallest": {
       "cut": 0,
-      "width": 779
+      "width": 842
     },
     "Log/default": {
       "cut": 0,
@@ -518,21 +494,13 @@
       "cut": 0,
       "width": 360
     },
-    "Market / Disenchant value/default": {
+    "Market / Bands/default": {
       "cut": 0,
       "width": 820
     },
-    "Market / Disenchant value/smallest": {
+    "Market / Bands/smallest": {
       "cut": 0,
       "width": 820
-    },
-    "Market / Essences/default": {
-      "cut": 0,
-      "width": 849
-    },
-    "Market / Essences/smallest": {
-      "cut": 0,
-      "width": 849
     },
     "Market / Materials/default": {
       "cut": 0,
@@ -584,11 +552,11 @@
     },
     "Odds/default": {
       "cut": 0,
-      "width": 1142
+      "width": 936
     },
     "Odds/smallest": {
       "cut": 0,
-      "width": 600
+      "width": 530
     },
     "Options/default": {
       "cut": 0,
@@ -612,7 +580,7 @@
     },
     "Reports / Competition/smallest": {
       "cut": 0,
-      "width": 605
+      "width": 1393
     },
     "Reports / Gear / Bands/default": {
       "cut": 0,
@@ -620,7 +588,7 @@
     },
     "Reports / Gear / Bands/smallest": {
       "cut": 0,
-      "width": 823
+      "width": 1015
     },
     "Reports / Gear / History/default": {
       "cut": 0,
@@ -636,7 +604,7 @@
     },
     "Reports / Gear/smallest": {
       "cut": 0,
-      "width": 823
+      "width": 1015
     },
     "Reports / Gold / All gold changes/default": {
       "cut": 0,
@@ -652,7 +620,7 @@
     },
     "Reports / Gold / Statement/smallest": {
       "cut": 0,
-      "width": 402
+      "width": 526
     },
     "Reports / Gold/default": {
       "cut": 0,
@@ -660,7 +628,7 @@
     },
     "Reports / Gold/smallest": {
       "cut": 0,
-      "width": 402
+      "width": 526
     },
     "Reports / Materials/default": {
       "cut": 0,
@@ -668,23 +636,23 @@
     },
     "Reports / Materials/smallest": {
       "cut": 0,
-      "width": 402
+      "width": 973
     },
     "Reports / Odds/default": {
       "cut": 0,
-      "width": 1142
+      "width": 936
     },
     "Reports / Odds/smallest": {
       "cut": 0,
-      "width": 600
+      "width": 936
     },
     "Reports/default": {
       "cut": 0,
-      "width": 1142
+      "width": 936
     },
     "Reports/smallest": {
       "cut": 0,
-      "width": 402
+      "width": 526
     },
     "Stand/default": {
       "cut": 0,
@@ -704,7 +672,7 @@
     },
     "breakdown/-/smallest": {
       "cut": 0,
-      "gap": 33,
+      "gap": 17,
       "overlap": 0,
       "width": 550
     },
@@ -722,13 +690,13 @@
     },
     "gear/-/default": {
       "cut": 0,
-      "gap": 305,
+      "gap": 17,
       "overlap": 0,
       "width": 597
     },
     "gear/-/smallest": {
       "cut": 0,
-      "gap": 305,
+      "gap": 17,
       "overlap": 0,
       "width": 597
     },
@@ -756,29 +724,29 @@
       "overlap": 0,
       "width": 768
     },
-    "ledger/Purchases/Current batch/default": {
+    "ledger/Purchases/Mail/default": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 582
+    },
+    "ledger/Purchases/Mail/smallest": {
+      "cut": 0,
+      "gap": 17,
+      "overlap": 0,
+      "width": 582
+    },
+    "ledger/Purchases/Pending/default": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
       "width": 1313
     },
-    "ledger/Purchases/Current batch/smallest": {
+    "ledger/Purchases/Pending/smallest": {
       "cut": 0,
       "gap": 17,
       "overlap": 0,
       "width": 1313
-    },
-    "ledger/Purchases/Not picked up/default": {
-      "cut": 0,
-      "gap": 74,
-      "overlap": 0,
-      "width": 582
-    },
-    "ledger/Purchases/Not picked up/smallest": {
-      "cut": 0,
-      "gap": 74,
-      "overlap": 0,
-      "width": 582
     },
     "ledger/Purchases/default": {
       "cut": 0,
@@ -806,13 +774,13 @@
     },
     "ledger/Sales/History/default": {
       "cut": 0,
-      "gap": 169,
+      "gap": 18,
       "overlap": 0,
       "width": 582
     },
     "ledger/Sales/History/smallest": {
       "cut": 0,
-      "gap": 169,
+      "gap": 18,
       "overlap": 0,
       "width": 582
     },
@@ -842,63 +810,51 @@
     },
     "limits/-/default": {
       "cut": 0,
-      "gap": 17,
+      "gap": 15,
       "overlap": 0,
-      "width": 779
+      "width": 842
     },
     "limits/-/smallest": {
       "cut": 0,
-      "gap": 17,
+      "gap": 15,
       "overlap": 0,
-      "width": 779
+      "width": 842
     },
     "main/Gear/default": {
       "cut": 0,
-      "gap": 146,
+      "gap": 17,
       "overlap": 0,
-      "width": 926
+      "width": 801
     },
     "main/Gear/smallest": {
       "cut": 0,
-      "gap": 146,
+      "gap": 17,
       "overlap": 0,
-      "width": 926
+      "width": 801
     },
     "main/Materials/default": {
       "cut": 0,
-      "gap": 31,
+      "gap": 17,
       "overlap": 0,
-      "width": 926
+      "width": 911
     },
     "main/Materials/smallest": {
       "cut": 0,
-      "gap": 33,
+      "gap": 18,
       "overlap": 0,
-      "width": 926
+      "width": 911
     },
-    "market/Disenchant value/default": {
+    "market/Bands/default": {
       "cut": 0,
-      "gap": 17,
+      "gap": 16,
       "overlap": 0,
       "width": 900
     },
-    "market/Disenchant value/smallest": {
+    "market/Bands/smallest": {
       "cut": 0,
-      "gap": 17,
+      "gap": 16,
       "overlap": 0,
       "width": 820
-    },
-    "market/Essences/default": {
-      "cut": 0,
-      "gap": 17,
-      "overlap": 0,
-      "width": 900
-    },
-    "market/Essences/smallest": {
-      "cut": 0,
-      "gap": 17,
-      "overlap": 0,
-      "width": 807
     },
     "market/Materials/default": {
       "cut": 0,
@@ -914,13 +870,13 @@
     },
     "market/Profit/default": {
       "cut": 0,
-      "gap": 17,
+      "gap": 16,
       "overlap": 0,
       "width": 900
     },
     "market/Profit/smallest": {
       "cut": 0,
-      "gap": 17,
+      "gap": 16,
       "overlap": 0,
       "width": 726
     },
@@ -950,15 +906,15 @@
     },
     "odds/-/default": {
       "cut": 0,
-      "gap": 28,
+      "gap": 29,
       "overlap": 0,
-      "width": 1142
+      "width": 948
     },
     "odds/-/smallest": {
       "cut": 0,
-      "gap": 28,
+      "gap": 29,
       "overlap": 0,
-      "width": 600
+      "width": 530
     },
     "post/-/default": {
       "cut": 0,
@@ -974,67 +930,67 @@
     },
     "reports/Competition/default": {
       "cut": 0,
-      "gap": 656,
+      "gap": 18,
       "overlap": 0,
       "width": 1112
     },
     "reports/Competition/smallest": {
       "cut": 0,
-      "gap": 126,
+      "gap": 18,
       "overlap": 0,
-      "width": 469
+      "width": 1112
     },
     "reports/Gear/Bands/default": {
       "cut": 0,
-      "gap": 46,
+      "gap": 17,
       "overlap": 0,
       "width": 823
     },
     "reports/Gear/Bands/smallest": {
       "cut": 0,
-      "gap": 46,
+      "gap": 17,
       "overlap": 0,
       "width": 823
     },
     "reports/Gear/History/default": {
       "cut": 0,
-      "gap": 208,
+      "gap": 17,
       "overlap": 0,
       "width": 823
     },
     "reports/Gear/History/smallest": {
       "cut": 0,
-      "gap": 208,
+      "gap": 17,
       "overlap": 0,
       "width": 823
     },
     "reports/Gear/default": {
       "cut": 0,
-      "gap": 46,
+      "gap": 17,
       "overlap": 0,
       "width": 823
     },
     "reports/Gear/smallest": {
       "cut": 0,
-      "gap": 208,
+      "gap": 17,
       "overlap": 0,
       "width": 823
     },
     "reports/Gold/All gold changes/default": {
       "cut": 0,
-      "gap": 136,
+      "gap": 17,
       "overlap": 0,
       "width": 404
     },
     "reports/Gold/All gold changes/smallest": {
       "cut": 0,
-      "gap": 136,
+      "gap": 17,
       "overlap": 0,
       "width": 404
     },
     "reports/Gold/Statement/default": {
       "cut": 0,
-      "gap": 17,
+      "gap": 0,
       "overlap": 0,
       "width": 478
     },
@@ -1042,17 +998,17 @@
       "cut": 0,
       "gap": 0,
       "overlap": 0,
-      "width": 402
+      "width": 478
     },
     "reports/Gold/default": {
       "cut": 0,
-      "gap": 17,
+      "gap": 0,
       "overlap": 0,
       "width": 478
     },
     "reports/Gold/smallest": {
       "cut": 0,
-      "gap": 136,
+      "gap": 17,
       "overlap": 0,
       "width": 404
     },
@@ -1066,19 +1022,19 @@
       "cut": 0,
       "gap": 17,
       "overlap": 0,
-      "width": 402
+      "width": 764
     },
     "reports/Odds/default": {
       "cut": 0,
-      "gap": 28,
+      "gap": 29,
       "overlap": 0,
-      "width": 1142
+      "width": 948
     },
     "reports/Odds/smallest": {
       "cut": 0,
-      "gap": 28,
+      "gap": 29,
       "overlap": 0,
-      "width": 600
+      "width": 948
     },
     "stand/-/default": {
       "cut": 0,
@@ -1099,8 +1055,8 @@
     "ledger/Accuracy": 20.340,
     "ledger/Purchases": 42.279,
     "ledger/Purchases/All purchases": 51.089,
-    "ledger/Purchases/Current batch": 28.709,
-    "ledger/Purchases/Not picked up": 15.151,
+    "ledger/Purchases/Mail": 14.672,
+    "ledger/Purchases/Pending": 27.892,
     "ledger/Sales": 3.204,
     "ledger/Sales/Competition": 2.598,
     "ledger/Sales/History": 21.253,
@@ -1109,8 +1065,7 @@
     "log": 0.053,
     "main/Gear": 4.634,
     "main/Materials": 4.886,
-    "market/Disenchant value": 1.083,
-    "market/Essences": 0.374,
+    "market/Bands": 1.474,
     "market/Materials": 0.422,
     "market/Profit": 13.155,
     "market/Time of day": 0.793,
@@ -1128,12 +1083,16 @@
   },
   "reasons": [
     "2026-11-28 looser (layout-empty:ledger/Purchases/All purchases/default:gap, layout-empty:ledger/Purchases/All purchases/smallest:gap, layout-empty:ledger/Purchases/default:gap, layout-empty:ledger/Sales/History/default:gap, layout-empty:ledger/Sales/History/smallest:gap, layout-empty:limits/-/default:gap, layout-empty:limits/-/default:width, layout-empty:limits/-/smallest:gap, layout-empty:limits/-/smallest:width, layout-empty:main/Gear/default:gap, layout-empty:main/Gear/smallest:gap, layout-empty:reports/Gear/Bands/default:gap, layout-empty:reports/Gear/Bands/smallest:gap, layout-empty:reports/Gear/default:gap, layout-empty:reports/Gold/Statement/smallest:width, layout-empty:reports/Materials/smallest:gap, layout-empty:reports/Materials/smallest:width, layout-typical:breakdown/-/smallest:gap, layout-typical:limits/-/default:gap, layout-typical:limits/-/default:width, layout-typical:limits/-/smallest:gap, layout-typical:limits/-/smallest:width, layout-typical:main/Gear/default:gap, layout-typical:main/Gear/smallest:gap, layout-typical:main/Materials/default:gap, layout-typical:main/Materials/smallest:gap, layout-typical:reports/Gear/History/default:gap, layout-typical:reports/Gear/History/smallest:gap, layout-typical:reports/Gear/smallest:gap, layout-typical:reports/Gold/Statement/smallest:width, layout-typical:reports/Materials/smallest:gap, layout-typical:reports/Materials/smallest:width): 0.4.0: the stand-in's text widths are calibrated per font size to the client's layout dump of 2026-11-28 (SDD 123: digits wider, capitals narrower than the old one-share model), and a total is measured in its own 12 pt font instead of 10 pt x 1.2: the same layout measures differently, and the client agrees with the new numbers",
-    "2026-11-28 looser (layout-extreme:Ledger / Purchases / Current batch (588)/default, layout-extreme:Ledger / Purchases / Current batch (588)/smallest): 0.4.0 purchases: no per-item bound of 50 any more, so the extreme data keeps all its purchases: the Current batch has 1188 rows (was 588), its title and widest count 7 px wider"
+    "2026-11-28 looser (layout-extreme:Ledger / Purchases / Current batch (588)/default, layout-extreme:Ledger / Purchases / Current batch (588)/smallest): 0.4.0 purchases: no per-item bound of 50 any more, so the extreme data keeps all its purchases: the Current batch has 1188 rows (was 588), its title and widest count 7 px wider",
+    "2026-11-28 looser (layout-empty:reports/Competition/smallest:width, layout-empty:reports/Gold/Statement/smallest:width, layout-empty:reports/Materials/smallest:width, layout-empty:reports/Odds/smallest:width, layout-typical:reports/Competition/smallest:width, layout-typical:reports/Gold/Statement/smallest:width, layout-typical:reports/Materials/smallest:width, layout-typical:reports/Odds/smallest:width): Reports has a fixed width (the user, 2026-11-28): its smallest size is its view's width",
+    "2026-11-28 looser (layout-empty:limits/-/default:width, layout-empty:limits/-/smallest:width, layout-typical:limits/-/default:width, layout-typical:limits/-/smallest:width): The Limits' titles renamed by the user (2026-11-28): Armor/Weapons: Recommended price and Override, centred over their columns",
+    "2026-11-28 looser (layout-empty:breakdown/-/smallest:gap, layout-typical:odds/-/default:gap, layout-typical:odds/-/smallest:gap, layout-typical:reports/Odds/default:gap, layout-typical:reports/Odds/smallest:gap): Odds: the gaps at the group lines 1 px wider (centred columns after a line, rounding), groups asked by the user 2026-11-28; the empty Breakdown at its smallest shows two columns now (every table spans its window, the user 2026-11-28): a normal 17 px gap where one column was",
+    "2026-11-28 looser (layout-empty:ledger/Purchases/Current batch/default, layout-empty:ledger/Purchases/Current batch/smallest, layout-empty:ledger/Purchases/Not picked up/default, layout-empty:ledger/Purchases/Not picked up/smallest, layout-empty:market/Disenchant value/default, layout-empty:market/Disenchant value/smallest, layout-empty:market/Essences/default, layout-empty:market/Essences/smallest, layout-empty:post/-/default, layout-empty:post/-/smallest, layout-extreme:Ledger / Purchases / Current batch (1188)/default, layout-extreme:Ledger / Purchases / Current batch (1188)/smallest, layout-extreme:Ledger / Purchases / Not picked up (12)/default, layout-extreme:Ledger / Purchases / Not picked up (12)/smallest, layout-extreme:Market / Disenchant value/default, layout-extreme:Market / Disenchant value/smallest, layout-extreme:Market / Essences/default, layout-extreme:Market / Essences/smallest, layout-typical:ledger/Purchases/Current batch/default, layout-typical:ledger/Purchases/Current batch/smallest, layout-typical:ledger/Purchases/Not picked up/default, layout-typical:ledger/Purchases/Not picked up/smallest, layout-typical:market/Disenchant value/default, layout-typical:market/Disenchant value/smallest, layout-typical:market/Essences/default, layout-typical:market/Essences/smallest, perf:ledger/Purchases/Current batch, perf:ledger/Purchases/Not picked up, perf:market/Disenchant value, perf:market/Essences): Renamed or gone on the user's request (2026-11-28): Purchases' Mail and Pending, Charts' Bands, the Essences tab removed; the empty Post is not opened (it passed only on a window an earlier test left open)"
   ],
   "suite": {
     "all": {
       "luacheck": 0,
-      "specs": 357
+      "specs": 375
     }
   }
 }
