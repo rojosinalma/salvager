@@ -53,7 +53,7 @@ end
 local function snap(state, t, stock)
     if not stock then return end
     state.snaps[#state.snaps + 1] = { t = t, v = stock.v, c = stock.c }
-    Util.Cap(state.snaps, Statement.MAX_SNAPS)
+    Util.Cap(state.snaps, Statement.MAX_SNAPS, "stock snapshots")
 end
 
 --- A closed session goes to the list, closed at the last time it was seen.
@@ -62,7 +62,7 @@ local function close(state)
     if not s then return end
     s.stop = s.last or s.start
     state.list[#state.list + 1] = s
-    Util.Cap(state.list, Statement.MAX_SESSIONS)
+    Util.Cap(state.list, Statement.MAX_SESSIONS, "sessions")
     state.open = nil
 end
 

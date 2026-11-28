@@ -16,6 +16,10 @@ The biggest update since 0.3.113: a new forecast, honest books, and a new interf
 
 ### Books and reports
 - Material costs are shared per band, so every material's cost, break-even and profit is faithful.
+- Every purchase is kept until you disenchant it: older versions kept only the last 50 purchases of one item, so
+  in a big batch the rest were disenchanted at no cost and the profit looked higher than it was. At the first load
+  of 0.4.0 those purchases are rebuilt once from the auction house record (after a backup, with a line in the Log),
+  and the costs and profits that follow are booked again. When a list of records is full, the Log now says so.
 - Reports: a gold statement per session or period (trading profit, stock change, a check against your gold),
   Gear (Bands, History), Materials, Competition (who undercuts you and what it cost you) and Odds.
 - Ledger: purchases grouped by day and status, a Current batch from the mailbox to the last post, Accuracy with

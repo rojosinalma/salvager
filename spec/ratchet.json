@@ -424,43 +424,43 @@
     },
     "Ledger / Accuracy/default": {
       "cut": 0,
-      "width": 1111
+      "width": 1110
     },
     "Ledger / Accuracy/smallest": {
       "cut": 0,
-      "width": 1111
+      "width": 1110
     },
     "Ledger / Purchases / All purchases/default": {
       "cut": 0,
-      "width": 1025
+      "width": 1031
     },
     "Ledger / Purchases / All purchases/smallest": {
       "cut": 0,
-      "width": 1025
+      "width": 1031
     },
-    "Ledger / Purchases / Current batch (588)/default": {
+    "Ledger / Purchases / Current batch (1188)/default": {
       "cut": 0,
-      "width": 1361
+      "width": 1368
     },
-    "Ledger / Purchases / Current batch (588)/smallest": {
+    "Ledger / Purchases / Current batch (1188)/smallest": {
       "cut": 0,
-      "width": 1361
+      "width": 1368
     },
     "Ledger / Purchases / Not picked up (12)/default": {
       "cut": 0,
-      "width": 696
+      "width": 736
     },
     "Ledger / Purchases / Not picked up (12)/smallest": {
       "cut": 0,
-      "width": 696
+      "width": 736
     },
     "Ledger / Purchases/default": {
       "cut": 0,
-      "width": 1361
+      "width": 1368
     },
     "Ledger / Purchases/smallest": {
       "cut": 0,
-      "width": 1025
+      "width": 1031
     },
     "Ledger / Sales / Competition/default": {
       "cut": 0,
@@ -472,11 +472,11 @@
     },
     "Ledger / Sales / History/default": {
       "cut": 0,
-      "width": 696
+      "width": 736
     },
     "Ledger / Sales / History/smallest": {
       "cut": 0,
-      "width": 696
+      "width": 736
     },
     "Ledger / Sales / Open and sold/default": {
       "cut": 0,
@@ -496,7 +496,7 @@
     },
     "Ledger/default": {
       "cut": 0,
-      "width": 1111
+      "width": 1110
     },
     "Ledger/smallest": {
       "cut": 0,
@@ -616,7 +616,7 @@
     },
     "Reports / Gear / Bands/default": {
       "cut": 0,
-      "width": 1021
+      "width": 1015
     },
     "Reports / Gear / Bands/smallest": {
       "cut": 0,
@@ -664,7 +664,7 @@
     },
     "Reports / Materials/default": {
       "cut": 0,
-      "width": 978
+      "width": 973
     },
     "Reports / Materials/smallest": {
       "cut": 0,
@@ -1127,12 +1127,13 @@
     "tick: Ledger Sales countdown": 0.002
   },
   "reasons": [
-    "2026-11-28 looser (layout-empty:ledger/Purchases/All purchases/default:gap, layout-empty:ledger/Purchases/All purchases/smallest:gap, layout-empty:ledger/Purchases/default:gap, layout-empty:ledger/Sales/History/default:gap, layout-empty:ledger/Sales/History/smallest:gap, layout-empty:limits/-/default:gap, layout-empty:limits/-/default:width, layout-empty:limits/-/smallest:gap, layout-empty:limits/-/smallest:width, layout-empty:main/Gear/default:gap, layout-empty:main/Gear/smallest:gap, layout-empty:reports/Gear/Bands/default:gap, layout-empty:reports/Gear/Bands/smallest:gap, layout-empty:reports/Gear/default:gap, layout-empty:reports/Gold/Statement/smallest:width, layout-empty:reports/Materials/smallest:gap, layout-empty:reports/Materials/smallest:width, layout-typical:breakdown/-/smallest:gap, layout-typical:limits/-/default:gap, layout-typical:limits/-/default:width, layout-typical:limits/-/smallest:gap, layout-typical:limits/-/smallest:width, layout-typical:main/Gear/default:gap, layout-typical:main/Gear/smallest:gap, layout-typical:main/Materials/default:gap, layout-typical:main/Materials/smallest:gap, layout-typical:reports/Gear/History/default:gap, layout-typical:reports/Gear/History/smallest:gap, layout-typical:reports/Gear/smallest:gap, layout-typical:reports/Gold/Statement/smallest:width, layout-typical:reports/Materials/smallest:gap, layout-typical:reports/Materials/smallest:width): 0.4.0: the stand-in's text widths are calibrated per font size to the client's layout dump of 2026-11-28 (SDD 123: digits wider, capitals narrower than the old one-share model), and a total is measured in its own 12 pt font instead of 10 pt x 1.2: the same layout measures differently, and the client agrees with the new numbers"
+    "2026-11-28 looser (layout-empty:ledger/Purchases/All purchases/default:gap, layout-empty:ledger/Purchases/All purchases/smallest:gap, layout-empty:ledger/Purchases/default:gap, layout-empty:ledger/Sales/History/default:gap, layout-empty:ledger/Sales/History/smallest:gap, layout-empty:limits/-/default:gap, layout-empty:limits/-/default:width, layout-empty:limits/-/smallest:gap, layout-empty:limits/-/smallest:width, layout-empty:main/Gear/default:gap, layout-empty:main/Gear/smallest:gap, layout-empty:reports/Gear/Bands/default:gap, layout-empty:reports/Gear/Bands/smallest:gap, layout-empty:reports/Gear/default:gap, layout-empty:reports/Gold/Statement/smallest:width, layout-empty:reports/Materials/smallest:gap, layout-empty:reports/Materials/smallest:width, layout-typical:breakdown/-/smallest:gap, layout-typical:limits/-/default:gap, layout-typical:limits/-/default:width, layout-typical:limits/-/smallest:gap, layout-typical:limits/-/smallest:width, layout-typical:main/Gear/default:gap, layout-typical:main/Gear/smallest:gap, layout-typical:main/Materials/default:gap, layout-typical:main/Materials/smallest:gap, layout-typical:reports/Gear/History/default:gap, layout-typical:reports/Gear/History/smallest:gap, layout-typical:reports/Gear/smallest:gap, layout-typical:reports/Gold/Statement/smallest:width, layout-typical:reports/Materials/smallest:gap, layout-typical:reports/Materials/smallest:width): 0.4.0: the stand-in's text widths are calibrated per font size to the client's layout dump of 2026-11-28 (SDD 123: digits wider, capitals narrower than the old one-share model), and a total is measured in its own 12 pt font instead of 10 pt x 1.2: the same layout measures differently, and the client agrees with the new numbers",
+    "2026-11-28 looser (layout-extreme:Ledger / Purchases / Current batch (588)/default, layout-extreme:Ledger / Purchases / Current batch (588)/smallest): 0.4.0 purchases: no per-item bound of 50 any more, so the extreme data keeps all its purchases: the Current batch has 1188 rows (was 588), its title and widest count 7 px wider"
   ],
   "suite": {
     "all": {
       "luacheck": 0,
-      "specs": 341
+      "specs": 350
     }
   }
 }

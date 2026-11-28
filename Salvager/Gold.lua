@@ -303,5 +303,5 @@ end
 ns.On("SALVAGER_READY", function()
     Journal.Init(ns.db.money)
     Statement.Init(ns.db.sessions)
-    Util.Cap(ns.db.money.entries, Journal.MAX)
+    Util.Cap(ns.db.money.entries, Journal.MAX, "gold journal entries")
 end)

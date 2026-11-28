@@ -141,11 +141,20 @@ function Util.Defaults(t, defaults)
     return t
 end
 
---- Keeps at most `max` entries in an array, dropping the oldest (front).
-function Util.Cap(list, max)
+--- Something kept was dropped by a bound: `n` entries of `what`, `max` kept. Calls Util.OnDrop(what, n, max) when
+--- the game glue has set it (Core logs it), so no bound drops data silently.
+function Util.Dropped(what, n, max)
+    if n > 0 and what and Util.OnDrop then Util.OnDrop(what, n, max) end
+end
+
+--- Keeps at most `max` entries in an array, dropping the oldest (front). `what` (what the entries are, for the
+--- Log): the drop is reported (Util.Dropped). @return number entries dropped
+function Util.Cap(list, max, what)
     local extra = #list - max
-    if extra <= 0 then return end
+    if extra <= 0 then return 0 end
     for _ = 1, extra do table.remove(list, 1) end
+    Util.Dropped(what, extra, max)
+    return extra
 end
 
 --- A copy of a table and every table in it (no shared parts). Other values are returned as they are.

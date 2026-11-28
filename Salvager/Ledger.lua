@@ -22,7 +22,8 @@ local Util, Data, Model = ns.Util, ns.Data, ns.Model
 local Ledger = {}
 ns.Ledger = Ledger
 
-Ledger.MAX_PURCHASES_PER_ITEM = 50
+-- Each kind of record (purchases over all items, disenchants, sales, auction-house purchases seen) keeps at most this
+-- many, the oldest dropped first, with a Log line (Util.Dropped). Purchases also go after Ledger.EXPIRE_AFTER.
 Ledger.MAX_RECORDS = 5000
 
 --- Profit counts only the units with a known cost: their part of the net, minus their cost.
@@ -88,7 +89,29 @@ function Ledger.AddPurchase(state, itemID, count, total, ev, t, link, judged)
     state.purchases[itemID] = list
     local each = math.floor(total / count + 0.5)
     for _ = 1, count do list[#list + 1] = { each = each, ev = ev, t = t, link = link, j = judged } end
-    Util.Cap(list, Ledger.MAX_PURCHASES_PER_ITEM)
+    Ledger.CapPurchases(state)
+end
+
+--- Keeps at most Ledger.MAX_RECORDS purchases over all items: past it the oldest go (each item's list is oldest
+--- first), reported (Util.Dropped). @return number purchases dropped
+function Ledger.CapPurchases(state)
+    local n = 0
+    for _, list in pairs(state.purchases) do n = n + #list end
+    local extra = n - Ledger.MAX_RECORDS
+    if extra <= 0 then return 0 end
+    for _ = 1, extra do
+        local oldest
+        for itemID, list in pairs(state.purchases) do
+            local p = list[1]
+            if p and (not oldest or (p.t or 0) < (state.purchases[oldest][1].t or 0)
+                or ((p.t or 0) == (state.purchases[oldest][1].t or 0) and itemID < oldest)) then
+                oldest = itemID
+            end
+        end
+        Ledger.TakePurchase(state, oldest)
+    end
+    Util.Dropped("purchases not disenchanted", extra, Ledger.MAX_RECORDS)
+    return extra
 end
 
 --- A purchase seen at the auction house. The "Auction won" mail for it comes later
@@ -96,7 +119,7 @@ end
 function Ledger.AuctionPurchase(state, itemID, total, ev, t, link, judged)
     Ledger.AddPurchase(state, itemID, 1, total, ev, t, link, judged)
     state.bought[#state.bought + 1] = { itemID = itemID, each = total, t = t }
-    Util.Cap(state.bought, Ledger.MAX_RECORDS)
+    Util.Cap(state.bought, Ledger.MAX_RECORDS, "auction-house purchases seen")
 end
 
 --- An "Auction won" mail. Returns false when the purchase was already recorded at the auction house.
@@ -357,7 +380,7 @@ function Ledger.Sell(state, matID, count, gross, cutPaid, t)
     }
     splitNet(rec)
     state.sales[#state.sales + 1] = rec
-    Util.Cap(state.sales, Ledger.MAX_RECORDS)
+    Util.Cap(state.sales, Ledger.MAX_RECORDS, "sale records")
     return rec
 end
 
@@ -536,7 +559,7 @@ function Ledger.Disenchant(state, rec, purchase, priceOf, cut)
         for id, qty in pairs(rec.got) do Ledger.AddStock(state, id, qty, nil) end
     end
     state.disenchants[#state.disenchants + 1] = rec
-    Util.Cap(state.disenchants, Ledger.MAX_RECORDS)
+    Util.Cap(state.disenchants, Ledger.MAX_RECORDS, "disenchant records")
     return rec
 end
 
@@ -556,7 +579,25 @@ end
 ---     pools do not hold stay outside them at the material's old average cost.
 --- The stock's counts (known and unknown) do not change. Disenchant records lose `shares`.
 --- @return number disenchants pooled, number sales booked again
-function Ledger.Recost(state)
+-- Each material's known units outside the band pools, and their cost: { [matID] = { qty, cost } }.
+local function outsideOf(state)
+    local out = {}
+    for id, s in pairs(state.stock) do
+        local qty, cost = s.qty - (s.unknown or 0), s.cost or 0
+        for _, p in pairs(state.pools) do
+            local m = p.mats[id]
+            if m then qty, cost = qty - m.qty, cost - m.cost end
+        end
+        out[id] = { qty = qty, cost = cost }
+    end
+    return out
+end
+
+--- `outside` (optional): the known units outside the pools before the replay and their cost (outsideOf); by default
+--- as the ledger is now. Outside units keep that cost (all of it while as many are left; a ledger with no pools yet
+--- has all its known units outside: the old average).
+function Ledger.Recost(state, outside)
+    outside = outside or outsideOf(state)
     local old = state.stock
     local work = { stock = {}, pools = {} }
     local events = {}
@@ -596,13 +637,17 @@ function Ledger.Recost(state)
         local extra = Ledger.KnownQty(work, id) - math.max(0, known)
         if extra > 0 then withdraw(work, id, extra) end
     end
-    -- The known units outside the pools keep the material's old average cost.
+    -- The known units outside the pools keep the cost they had outside them (the old average).
     for id, s in pairs(old) do
         local known = s.qty - (s.unknown or 0)
         local w = work.stock[id]
         local inPools, poolCost = w and w.qty or 0, w and w.cost or 0
-        local outside = known - inPools
-        s.cost = poolCost + (known > 0 and math.floor((s.cost or 0) * outside / known + 0.5) or 0)
+        local out, o = known - inPools, outside[id]
+        local kept = 0
+        if o and o.qty > 0 and out > 0 then
+            kept = out >= o.qty and o.cost or math.floor(o.cost * out / o.qty + 0.5)
+        end
+        s.cost = poolCost + kept
     end
     state.pools = work.pools
     state.jointCost = Ledger.JOINT_COST
@@ -667,6 +712,171 @@ function Ledger.Expire(state, now)
     return nb, np, ns_
 end
 
+--- Per item, the purchases the auction house record (`bought`) has that no record accounts for: not in `purchases`
+--- (same time and price each) and not taken by a disenchant with a known cost (its purchase's time and price; one
+--- with neither takes the oldest left bought at or before it). Versions up to 0.4.0 kept 50 purchases per item and
+--- dropped the older ones without a word. Only those of the last EXPIRE_AFTER count. Then, first in, first out as
+--- TakePurchase would have, which disenchants of no known cost of that item they pay for (each made at or after its
+--- purchase), and the ones left (not disenchanted). `skip(itemID)` (optional): items left out (ClearHistory's `drop`:
+--- their purchases went on purpose).
+--- @return table { { itemID, missing, give = { { r = disenchant, b = bought }, ... }, left = { bought, ... },
+---   fallback (disenchants matched by count) }, ... } by item ID
+function Ledger.DroppedPurchases(state, now, skip)
+    local cutoff = now - Ledger.EXPIRE_AFTER
+    local function order(a, c)
+        if (a.x.t or 0) ~= (c.x.t or 0) then return (a.x.t or 0) < (c.x.t or 0) end
+        return a.i < c.i
+    end
+    local bought, dis = {}, {}
+    for i, b in ipairs(state.bought) do
+        if b.itemID and b.each and not (skip and skip(b.itemID)) then
+            bought[b.itemID] = bought[b.itemID] or {}
+            table.insert(bought[b.itemID], { x = b, i = i })
+        end
+    end
+    for i, r in ipairs(state.disenchants) do
+        if r.itemID and bought[r.itemID] then
+            dis[r.itemID] = dis[r.itemID] or {}
+            table.insert(dis[r.itemID], { x = r, i = i })
+        end
+    end
+    local out = {}
+    for itemID, list in pairs(bought) do
+        table.sort(list, order)
+        local used = {}
+        local function take(match)
+            for k, e in ipairs(list) do
+                if not used[k] and match(e.x) then used[k] = true return true end
+            end
+            return false
+        end
+        for _, p in ipairs(state.purchases[itemID] or {}) do
+            take(function(b) return b.t == p.t and b.each == p.each end)
+        end
+        local mine = dis[itemID] or {}
+        table.sort(mine, order)
+        local unmatched, unknown = {}, {}
+        for _, e in ipairs(mine) do
+            local r = e.x
+            if not r.costKnown then
+                unknown[#unknown + 1] = r
+            elseif not take(function(b) return b.t == r.boughtAt and b.each == r.cost end) then
+                unmatched[#unmatched + 1] = r
+            end
+        end
+        for _, r in ipairs(unmatched) do take(function(b) return (b.t or 0) <= (r.t or 0) end) end
+        local missing = {}
+        for k, e in ipairs(list) do
+            if not used[k] and (e.x.t or 0) >= cutoff then missing[#missing + 1] = e.x end
+        end
+        if #missing > 0 then
+            local give, k = {}, 1
+            for _, r in ipairs(unknown) do
+                local b = missing[k]
+                if b and (b.t or 0) <= (r.t or 0) then
+                    give[#give + 1] = { r = r, b = b }
+                    k = k + 1
+                end
+            end
+            local left = {}
+            for j = k, #missing do left[#left + 1] = missing[j] end
+            out[#out + 1] = { itemID = itemID, missing = #missing, give = give, left = left, fallback = #unmatched }
+        end
+    end
+    table.sort(out, function(a, b) return a.itemID < b.itemID end)
+    return out
+end
+
+--- Restores the purchases Ledger.DroppedPurchases finds, once (SDD 124): each disenchant it pays for gets its cost
+--- (`costRestored`), its units become units of known cost (a later sale that sold units of no known cost of that
+--- material sold these first, oldest first: its untracked units become tracked), the purchases left go back into
+--- `purchases`; then every cost is shared per band again (Ledger.Recost): stock costs, break-evens and every booked
+--- sale's cost follow (SDD 4: booked sales are booked again only in such a one-time repair).
+--- @return table { items = { { itemID, link, restored, costed, back, cost } }, restored, costed, back, cost,
+---   shifted (sale units now tracked), gone (units no longer in stock: their cost went with them), sales (sales whose
+---   cost changed), profitBefore, profitAfter }
+function Ledger.RestorePurchases(state, now, skip)
+    local plan = Ledger.DroppedPurchases(state, now, skip)
+    local rep = { items = {}, restored = 0, costed = 0, back = 0, cost = 0, shifted = 0, gone = 0, sales = 0,
+        profitBefore = 0, profitAfter = 0 }
+    if #plan == 0 then return rep end
+    local before = {}
+    for i, s in ipairs(state.sales) do
+        before[i] = s.cost
+        rep.profitBefore = rep.profitBefore + (s.profit or 0)
+    end
+    local outside = outsideOf(state)   -- (before any unit changes)
+    -- The replay of the books as they are (A): the repair's effect on each sale and material is what the replay with
+    -- it (B) books more or less than A, so whatever the replay does not reproduce of the live books (records long
+    -- gone, a cost booked by an older rule) stays as booked.
+    local A = Util.Copy({ stock = state.stock, pools = state.pools, disenchants = state.disenchants, sales = state.sales })
+    Ledger.Recost(A, outside)
+    local liveSales, liveStock = {}, {}
+    for i, s in ipairs(state.sales) do liveSales[i] = s.cost or 0 end
+    for id, s in pairs(state.stock) do liveStock[id] = s.cost or 0 end
+    local known = {}                   -- [matID] = { { t, qty }, ... }: the units that now have a known cost
+    for _, it in ipairs(plan) do
+        local link
+        for _, r in ipairs(state.disenchants) do if r.itemID == it.itemID and r.link then link = r.link break end end
+        local row = { itemID = it.itemID, link = link, restored = it.missing, costed = #it.give, back = #it.left, cost = 0 }
+        for _, g in ipairs(it.give) do
+            local r = g.r
+            r.cost, r.costKnown, r.boughtAt, r.costRestored = g.b.each, true, g.b.t, true
+            row.cost = row.cost + g.b.each
+            for id, qty in pairs(r.got or {}) do
+                known[id] = known[id] or {}
+                table.insert(known[id], { t = r.t or 0, qty = qty })
+            end
+        end
+        local list = state.purchases[it.itemID] or {}
+        state.purchases[it.itemID] = list
+        for _, b in ipairs(it.left) do list[#list + 1] = { each = b.each, t = b.t, link = link } end
+        table.sort(list, function(a, b) return (a.t or 0) < (b.t or 0) end)
+        if #list == 0 then state.purchases[it.itemID] = nil end
+        rep.items[#rep.items + 1] = row
+        rep.restored, rep.costed, rep.back, rep.cost = rep.restored + row.restored, rep.costed + row.costed,
+            rep.back + row.back, rep.cost + row.cost
+    end
+    for id, units in pairs(known) do
+        table.sort(units, function(a, b) return a.t < b.t end)
+        local total = 0
+        for _, u in ipairs(units) do total = total + u.qty end
+        local sales = {}
+        for i, s in ipairs(state.sales) do
+            if s.id == id and not s.lost and (s.untracked or 0) > 0 then sales[#sales + 1] = { s = s, i = i } end
+        end
+        table.sort(sales, function(a, b)
+            if (a.s.t or 0) ~= (b.s.t or 0) then return (a.s.t or 0) < (b.s.t or 0) end
+            return a.i < b.i
+        end)
+        local k, avail, shifted = 1, 0, 0
+        for _, e in ipairs(sales) do
+            while units[k] and units[k].t <= (e.s.t or 0) do avail, k = avail + units[k].qty, k + 1 end
+            local n = math.min(avail, e.s.untracked)
+            e.s.untracked, avail, shifted = e.s.untracked - n, avail - n, shifted + n
+        end
+        local s = state.stock[id]
+        local flip = math.min(total - shifted, s and s.unknown or 0)
+        if s then s.unknown = s.unknown - flip end
+        rep.shifted, rep.gone = rep.shifted + shifted, rep.gone + (total - shifted - flip)
+    end
+    Ledger.CapPurchases(state)
+    Ledger.Recost(state, outside)
+    for i, s in ipairs(state.sales) do
+        s.cost = liveSales[i] + (s.cost or 0) - (A.sales[i].cost or 0)
+        if s.net and not s.lost then splitNet(s) end
+        if s.cost ~= before[i] then rep.sales = rep.sales + 1 end
+        rep.profitAfter = rep.profitAfter + (s.profit or 0)
+    end
+    rep.replayed = true   -- the replay of the books as they were matched them (stock costs)
+    for id, s in pairs(state.stock) do
+        local a = A.stock[id] and A.stock[id].cost or 0
+        if a ~= liveStock[id] then rep.replayed = false end
+        s.cost = liveStock[id] + s.cost - a
+    end
+    return rep
+end
+
 --- The deposit of an auction that expired or was cancelled: the auction house keeps it.
 --- Booked as a sale record of no units with the deposit as its loss (`lost` = "expired" | "cancelled"),
 --- so the sales history, the totals and the Profit view count it. Accuracy leaves it out.
@@ -674,7 +884,7 @@ function Ledger.DepositLost(state, matID, qty, amount, why, t)
     local rec = { t = t, id = matID, count = 0, qty = qty, gross = 0, cut = 0, net = -amount, cost = 0,
         untracked = 0, netUntracked = 0, profit = -amount, lost = why, paidAt = t }
     state.sales[#state.sales + 1] = rec
-    Util.Cap(state.sales, Ledger.MAX_RECORDS)
+    Util.Cap(state.sales, Ledger.MAX_RECORDS, "sale records")
     return rec
 end
 

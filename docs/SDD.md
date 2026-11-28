@@ -53,7 +53,8 @@ flipping is out of scope for now.
    order; each sale's known units from the pools at that moment's average, units the pools do not hold (no record:
    opening stock, conversions) at their old cost; then units the pools hold beyond the stock go with their cost,
    and known units outside the pools keep the old average cost. One log line says it was done. A restored backup
-   from before 0.3.120 is recalculated the same way.
+   from before 0.3.120 is recalculated the same way. Booked sales are booked again only in such a one-time repair: this one, and
+   the purchases restored in 0.4.0 (124).
 5. **Stock valuation:** weighted average cost per material over its known-cost units, in every band pool and
    outside them (4). Break-even = ceil(average ÷ (1 − cut)). A sale is booked at that average and never changes
    afterwards.
@@ -61,6 +62,9 @@ flipping is out of scope for now.
    from any addon). A mail that matches a purchase already recorded is not counted again. Matched to
    disenchants first in, first out per item ID. A disenchant with no recorded purchase adds its materials as
    units of unknown cost; they stay out of the average cost and break-even.
+   Every purchase is kept until it is disenchanted or 30 days old (`Ledger.Expire`); the only other bound is
+   `Ledger.MAX_RECORDS` over all items, oldest first, with a Log line (124; up to 0.4.0 a bound of 50 per item dropped
+   the older ones without a word).
 7. **Sales** are recorded from the "Auction successful" invoice: net = sale − cut (replaced by 40: a sale is booked
    when your auctions list shows it sold, and the invoice marks it paid and books only units never seen). Deposits
    lost on expired or cancelled auctions are tracked (70d) and counted in the forecast (96).
@@ -1467,7 +1471,7 @@ windows (`Post`, `MaterialsWindow`, `LimitsWindow`, `UI` the main window, `Ledge
 `money` (gold journal), `sessions` (97), `competition` (109), `disenchantSeen` (112), `quality` and `ilvl` (learned item data), `auraSeen` and `auraSnapshots` (to learn the Salvager's aura spell ID; matched by name until then),
 `posted` and `listings` (29), `history` (57), `log` and `logDay` (69), `windows` and `window` (places, sizes, views and
 filters), `groups` (103), `columns` (95), `layout` (94), and one-time flags (`historySeeded`, `buyResendBlocked`, 65,
-`falseCancelsDropped`, 75, `firstSalvagerBatchFixed`, 74b).
+`falseCancelsDropped`, 75, `firstSalvagerBatchFixed`, 74b, `purchasesRestored`, 124).
 
 ## Open
 
@@ -1576,3 +1580,39 @@ kind from all bands (118).
        fails on any self-check Log line; `make sim-check` counts the self-check's Log lines in the sim (CHECKSELF):
        on the code before this change it found 19 (the client's batch line among them), on this one none. The
        ratchet moved on purpose for the calibrated widths (`reasons` in `spec/ratchet.json`).
+
+124. **No bound drops records without a word; the purchases the old bound dropped, restored once** (0.4.0, found
+    2026-11-28 in the user's saved data). `Ledger.AddPurchase` kept at most 50 purchases per item
+    (`MAX_PURCHASES_PER_ITEM`, since 0.1.0) and dropped the older ones silently. The user bought 108 Hillman's
+    Shoulders (4251) before disenchanting them on 2026-11-28 and 52 on 2026-11-27: 58 and 2 purchase records were
+    dropped, so the Disenchant panel and the Current batch listed only 50, 59 disenchants were booked with no cost
+    (the Log's "gave ..., worth ..." with no "(paid ...)"), their materials entered stock at unknown cost and the
+    profits were overstated. `ledger.bought` still held every auction-house purchase.
+    - a. Bounds: no bound per item. Purchases are bounded by `Ledger.MAX_RECORDS` (5000) over all items, the oldest
+       first (`Ledger.CapPurchases`), and by `Ledger.Expire`'s 30 days. Every `Util.Cap` of the books (Ledger:
+       purchases, auction-house purchases seen, sales, disenchants; Journal: gold changes, expected changes; Statement:
+       stock snapshots, sessions; Competition: undercut events, profit-lost records, cancels and reposts after an
+       undercut) names what it keeps and reports a drop (`Util.Dropped` -> `Util.OnDrop`, set by Core): one Log line
+       "bound: N oldest <what> dropped (M kept)", at most one a minute per kind, the drops between counted into the
+       next line or into one at logout. The others were already bounds over all items; at the user's pace (871
+       disenchants and 869 purchases in 3 days) the 5000 disenchants are reached in about 17 days: from then each
+       drop shows in the Log. `spec/purchases_spec.lua` fails on a cap in those files with no name.
+    - b. The repair, once at load (`SalvagerDB.purchasesRestored`), after a backup, with one Log line of what it did
+       (`Ledger.DroppedPurchases`, `Ledger.RestorePurchases`): per item, the auction-house purchases of the last 30 days
+       (`ledger.bought`) less those still in `purchases` (same time and price each) and those taken by a disenchant
+       with a known cost (its `boughtAt` and price; one with neither takes the oldest left bought at or before it).
+       Those pay the item's disenchants of no known cost made after them, oldest purchase first (as
+       `Ledger.TakePurchase` would have): `cost`, `costKnown`, `boughtAt`, `costRestored`. The ones left go back into
+       `purchases`. Items `ns.NoDisenchant` drops on Clear history are left out. Their units become units of known
+       cost: a later sale that sold units of no known cost of that material sold these first (its untracked units
+       become tracked, oldest first); the rest leave the unknown count. Then the costs are shared per band again
+       (`Ledger.Recost`, 4), as a difference: each sale's cost and each material's stock cost move by what the replay
+       with the repair books more than the replay of the books as they were, so what the replay does not reproduce of
+       the live books stays as booked (on the user's data one sale of 2026-11-26, booked by the 0.3.120 rule, 975
+       copper off in the replay alone). `Ledger.Recost` keeps the units outside the pools at the cost they had outside
+       them (the old average when there are no pools yet: no change for 0.3.120's case).
+    - c. On a copy of the user's data (2026-11-28 03:55): 60 purchases of Hillman's Shoulders restored, 59
+       disenchants given their cost (6g 30s 07c), 1 back as not disenchanted, 5 units sold now of known cost, 37 sales
+       booked again (none before the first repaired disenchant, 2026-11-27 03:33 UTC), stock cost 68g 60s -> 74g 86s,
+       booked profit 24g 43s -> 25g 44s; the cost added (63 007 copper) is the change of booked sale cost and stock
+       cost, to the copper. A second run restores nothing.

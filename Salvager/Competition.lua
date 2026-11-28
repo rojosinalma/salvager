@@ -42,9 +42,7 @@ function Competition.Clear(state)
     return Competition.Init(state)
 end
 
-local function cap(list, max)
-    while #list > max do table.remove(list, 1) end
-end
+local function cap(list, max, what) ns.Util.Cap(list, max, what) end
 
 local function union(a, b)
     local out, seen = {}, {}
@@ -113,7 +111,7 @@ function Competition.Observe(state, id, lines, mine, now, self)
         end
     end
     state.seen[id], state.last[id] = seen, last
-    cap(state.events, Competition.MAX_EVENTS)
+    cap(state.events, Competition.MAX_EVENTS, "undercut events")
     return added
 end
 
@@ -136,7 +134,7 @@ end
 local function lose(state, t, id, kind, amount, who)
     if amount <= 0 or not who or #who == 0 then return end
     state.losses[#state.losses + 1] = { t = t, id = id, kind = kind, amount = amount, who = who }
-    cap(state.losses, Competition.MAX_LOSSES)
+    cap(state.losses, Competition.MAX_LOSSES, "profit-lost records")
 end
 
 --- A post of yours (made through Salvager): it is followed for its sales. Units of `id` cancelled after an undercut
@@ -169,7 +167,7 @@ function Competition.NotePost(state, p)
             if c.base then lose(state, p.t, p.id, "repost", math.floor((p.deposit or 0) * c.n / p.qty + 0.5), c.cause) end
         end
         state.reposts[#state.reposts + 1] = { t = p.t, id = p.id, n = took, delay = since and (p.t - since) or nil }
-        cap(state.reposts, Competition.MAX_LOSSES)
+        cap(state.reposts, Competition.MAX_LOSSES, "reposts after an undercut")
     end
     -- Old posts go: their sales would come long after.
     for aid, post in pairs(state.posts) do
@@ -190,7 +188,7 @@ function Competition.NoteCancel(state, c)
     lose(state, c.t, c.id, "cancel", (c.fee or 0) + (c.deposit or 0), who)
     local since = firstUnder(state, c.id, c.each, post and post.t, c.t)
     state.cancels[#state.cancels + 1] = { t = c.t, id = c.id, qty = c.qty, since = since }
-    cap(state.cancels, Competition.MAX_LOSSES)
+    cap(state.cancels, Competition.MAX_LOSSES, "cancels after an undercut")
     local pend = state.pending[c.id] or {}
     local left = c.qty
     for _, ch in ipairs(post and post.chunks or {}) do

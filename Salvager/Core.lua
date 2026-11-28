@@ -159,6 +159,25 @@ function ns.Log(fmt, ...)
     Util.Cap(log, LOG_MAX)
 end
 
+-- A bound dropped records (Util.Dropped): one Log line with the count. At most one line a minute per kind, so a
+-- full list does not write a line per new record; the drops between are counted into the next line, or into one
+-- at logout.
+local DROP_LINE_EVERY = 60
+local drops = {}
+local function logDrops(what, d)
+    ns.Log("bound: %d oldest %s dropped (%d kept)", d.n, what, d.max)
+    d.n, d.at = 0, time()
+end
+function Util.OnDrop(what, n, max)
+    local d = drops[what] or { n = 0, at = 0 }
+    drops[what] = d
+    d.n, d.max = d.n + n, max
+    if time() - d.at >= DROP_LINE_EVERY then logDrops(what, d) end
+end
+local function flushDrops()
+    for what, d in pairs(drops) do if d.n > 0 then logDrops(what, d) end end
+end
+
 ------------------------------------------------------------------ events
 
 local handlers = {}
@@ -186,6 +205,9 @@ function ns.Fire(event, ...)
 end
 
 frame:SetScript("OnEvent", function(_, event, ...) ns.Fire(event, ...) end)
+
+-- (Registered here, before the other files' logout handlers: the last drop counts are in the saved log.)
+ns.On("PLAYER_LOGOUT", flushDrops)
 
 -- The realm's clock (ns.Date): read at login (and at each loading screen), then every hour.
 local measuring = false
@@ -910,6 +932,25 @@ ns.On("ADDON_LOADED", function(name)
         ns.Backup.Save("before sharing the costs per band")
         local n, sold = Ledger.Recost(ns.db.ledger)
         ns.Log("ledger: material costs shared per band once (%d disenchants, %d sales booked again)", n, sold)
+    end
+    -- Purchases the old bound of 50 per item dropped (up to 0.4.0, SDD 124): rebuilt once from the auction house
+    -- record, after a backup.
+    if not ns.db.purchasesRestored then
+        ns.db.purchasesRestored = true
+        if #Ledger.DroppedPurchases(ns.db.ledger, time(), ns.NoDisenchant) > 0 then
+            ns.Backup.Save("before restoring the purchases the old bound dropped")
+            local r = Ledger.RestorePurchases(ns.db.ledger, time(), ns.NoDisenchant)
+            local items = {}
+            for _, it in ipairs(r.items) do
+                items[#items + 1] = string.format("%s %d (%d disenchants paid, %d not disenchanted)",
+                    it.link or ("item " .. it.itemID), it.restored, it.costed, it.back)
+            end
+            ns.Log("ledger: %d purchases the old bound of 50 per item dropped restored from the auction house record: "
+                .. "%s; %s of cost moved onto %d disenchants of no known cost; every booked sale's cost booked again "
+                .. "once (%d changed; units sold now of known cost %d, gone from stock %d): profit %s -> %s",
+                r.restored, table.concat(items, ", "), ns.Money(r.cost), r.costed, r.sales, r.shifted, r.gone,
+                ns.Money(r.profitBefore), ns.Money(r.profitAfter))
+        end
     end
     -- Windows renamed in 0.3.4: keep their place and size.
     local w = ns.db.windows

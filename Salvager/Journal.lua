@@ -14,6 +14,7 @@ local Journal = {}
 ns.Journal = Journal
 
 Journal.MAX = 20000
+Journal.MAX_EXPECTED = 50   -- expected changes waiting (each lives seconds)
 
 Journal.KINDS = {
     { "buy", "Gear bought" },
@@ -55,7 +56,7 @@ function Journal.Seen(state, char, balance, t, kind, ref)
     if d == 0 then return nil end
     local e = { t = t, c = char, d = d, b = balance, k = kind or "other", r = ref }
     state.entries[#state.entries + 1] = e
-    Util.Cap(state.entries, Journal.MAX)
+    Util.Cap(state.entries, Journal.MAX, "gold journal entries")
     return e
 end
 
@@ -101,7 +102,7 @@ end
 function Journal.Expect(list, x, now, ttl)
     x.until_ = now + (ttl or 10)
     list[#list + 1] = x
-    Util.Cap(list, 50)
+    Util.Cap(list, Journal.MAX_EXPECTED, "expected gold changes")
 end
 
 --- Takes the expectation that explains a change of `d`: the oldest with this exact amount, else the oldest

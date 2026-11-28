@@ -327,7 +327,7 @@ describe("Old ledger records in a simulated client", function()
         local old, recent = env.clock - 31 * 86400, env.clock - 3600
         _G.SalvagerDB = { ledger = {
             bought = { { itemID = 1, each = 5, t = old }, { itemID = 2, each = 5, t = recent } },
-            purchases = { [1] = { { each = 5, t = old } } },
+            purchases = { [1] = { { each = 5, t = old } }, [2] = { { each = 5, t = recent } } },
             sales = { { id = 11083, count = 2, unpaid = 2, each = 100, gross = 200, cut = 10, net = 190, cost = 0,
                 untracked = 2, profit = 190, t = old } },
         } }
